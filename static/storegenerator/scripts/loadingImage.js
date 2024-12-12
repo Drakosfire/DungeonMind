@@ -46,7 +46,7 @@ export function stopLoadingAnimation() {
 // Fetch the list of loading images from the server and preload them
 export async function fetchLoadingImages() {
     try {
-        const response = await fetch('/store/list-loading-images');
+        const response = await fetch('/api/store/list-loading-images');
         if (response.ok) {
             const data = await response.json();
             // Preload images to cache

@@ -132,7 +132,7 @@ export async function shareStore() {
     const htmlContent = captureStoreHTML();
 
     try {
-        const response = await fetch('/store/share-store', {
+        const response = await fetch('/api/store/share-store', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

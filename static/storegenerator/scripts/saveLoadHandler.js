@@ -7,7 +7,7 @@ import { clearBlocks } from "./utils.js";
 
 // Function to save JSON data to the server
 async function saveJson(dataToSend) {
-    return fetch('/store/save-store', {
+    return fetch('/api/store/save-store', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -28,7 +28,7 @@ async function saveJson(dataToSend) {
 async function uploadImageToCloudflare(image_url) {
     console.log('Uploading image:', image_url);
     try {
-        const response = await fetch('/store/upload-image', {
+        const response = await fetch('/api/store/upload-image', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -148,7 +148,7 @@ export function loadHandler() {
 // Function to fetch the list of saved stores from the server
 export async function fetchSavedStores() {
     try {
-        const response = await fetch(`/store/list-saved-stores`);
+        const response = await fetch(`/api/store/list-saved-stores`);
         if (response.ok) {
             const data = await response.json();
             console.log('Fetched saved stores:', data);
@@ -206,7 +206,7 @@ export async function loadSelectedStore() {
 
     if (selectedStore) {
         try {
-            const response = await fetch(`/store/load-store?storeName=${encodeURIComponent(selectedStore)}`);
+            const response = await fetch(`/api/store/load-store?storeName=${encodeURIComponent(selectedStore)}`);
             if (response.ok) {
                 console.log('Response:', response);
                 const responseData = await response.json();
