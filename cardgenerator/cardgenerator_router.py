@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, File, UploadFile
 from auth_router import get_current_user
 import os
 import json
+import fal_client
 from pydantic import BaseModel
 import firestore.firestore_utils as firestore_utils
 import logging
@@ -30,21 +31,45 @@ router = APIRouter()
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+def preview_and_generate_image(sd_prompt):   
+    prompt = f"magnum opus, blank card, no text, blank textbox at top for title, mid for details and bottom for description, detailed high quality thematic borders, {sd_prompt}"
 
-# @router.post('/generate-image')
-# async def generate_image(data: GenerateImageRequest):
-#     sd_prompt = data.sd_prompt
-#     if not sd_prompt:
-#         raise HTTPException(status_code=400, detail="Missing sd_prompt")
-#     try:
-#         image_url = sd.preview_and_generate_image(sd_prompt)
-#         # logger.info("Generated image URL: %s", image_url)
-#         # uploaded_image = await upload_image_to_cloudflare(image_url)
-#         # logger.info("Uploaded image: %s", uploaded_image)
-#         return {"image_url": image_url}
-#     except Exception as e:
-#         # logger.error("Error generating image: %s", str(e))
-#         raise HTTPException(status_code=500, detail="Internal Server Error")
+    handler = fal_client.submit(
+        "fal-ai/flux/dev",
+        arguments={
+            "prompt": prompt,
+            "num_inference_steps": 28,
+            "guidance_scale": 3.5,
+
+        },
+    )
+
+    result = handler.get()
+    return result['images'][0]['url']
+
+@router.post('/generate-card-images')
+async def generate_card_images(
+    template: UploadFile = File(...),
+    sdPrompt: str = Form(...),
+    numImages: int = Form(...)
+):
+    try:
+        # 1. Upload template to Cloudflare
+        template_url = await upload_image_to_cloudflare(template)
+        
+        # 2. Generate images using the template and SD prompt
+        generated_images = []
+        for _ in range(numImages):
+            image_url = preview_and_generate_image(sdPrompt)
+            generated_images.append(image_url)
+            
+        return {
+            "template_url": template_url,
+            "images": generated_images
+        }
+    except Exception as e:
+        logger.error("Error generating images: %s", str(e))
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @router.post('/upload-image')
 async def upload_image(file: UploadFile = File(...)):  # Note the File(...) specification
