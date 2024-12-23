@@ -65,3 +65,51 @@ def upload_html_and_get_url(html_content, bucket_name='store-generator'):
     except Exception as e:
         print(f"Error in upload_file_and_get_url: {str(e)}")
         raise
+
+async def upload_temp_file_and_get_url(file_path, expiration_days=1, bucket_name='temp-images'):
+    """
+    Upload a temporary file to R2 and get a presigned URL to access it.
+    
+    Args:
+        file_path (str): Path to the local file to upload
+        expiration_days (int): Number of days until URL expires (default 7)
+        bucket_name (str): Name of R2 bucket to upload to (default 'temp-images')
+        
+    Returns:
+        str: Presigned URL to access the uploaded file
+        
+    Raises:
+        Exception: If upload fails
+    """
+    try:
+        # Generate unique filename while preserving extension
+        file_id = str(uuid.uuid4())
+        file_extension = os.path.splitext(file_path)[1]
+        object_key = f"temp/{file_id}{file_extension}"
+        
+        # Upload file
+        r2_client = get_r2_client()
+        with open(file_path, 'rb') as file:
+            r2_client.put_object(
+                Bucket=bucket_name,
+                Key=object_key,
+                Body=file,
+                ContentType='image/png'  # Assuming PNG files for now
+            )
+        
+        # Generate presigned URL
+        url = r2_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': bucket_name,
+                'Key': object_key
+            },
+            ExpiresIn=3600 * 24 * expiration_days  # Convert days to seconds
+        )
+        
+        return url
+        
+    except Exception as e:
+        print(f"Error uploading temp file to R2: {str(e)}")
+        raise
+
