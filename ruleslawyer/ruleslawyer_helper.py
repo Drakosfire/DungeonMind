@@ -9,30 +9,30 @@ import textwrap
 import json
 
 class EmbeddingLoader:
-    def __init__(self, embeddings_file_path, enhanced_json_path=None):
+    def __init__(self, embeddings_file_path=None, enhanced_json_path=None, cached_data=None):
         """
-        Initialize the EmbeddingLoader with paths to required files.
-        
+        Initialize the EmbeddingLoader with paths or cached data.
+
         Args:
-            file_path (str): Path to the embeddings CSV file
-            enhanced_json_path (str, optional): Path to the enhanced JSON file
+            embeddings_file_path (str, optional): Path to the embeddings CSV file.
+            enhanced_json_path (str, optional): Path to the enhanced JSON file.
+            cached_data (dict, optional): Preloaded embeddings and pages/chunks.
         """
-
-
-        # Convert embeddings to torch tensor and send to device (note: NumPy arrays are float64, torch tensors are float32 by default)
-        # embeddings = torch.tensor(np.array(text_chunks_and_embedding_df_load["embedding"].tolist()), dtype=torch.float32).to('cpu')
-        self.embeddings_file_path = embeddings_file_path
-        self.enhanced_json_path = enhanced_json_path
-        
-        # Force CPU usage for the model
         self.embedding_model = SentenceTransformer(
             model_name_or_path='BAAI/bge-m3',
             device='cpu'
         )
-        
-        # Load the data
-        self.pages_and_chunks, self.embeddings = self._load_embeddings()
-        self.document_summary, self.page_summaries = self._load_enhanced_json() if enhanced_json_path else (None, None)
+        self.document_summary = None
+        self.page_summaries = None
+
+        if cached_data:
+            self.pages_and_chunks, self.embeddings = cached_data
+        else:
+            self.embeddings_file_path = embeddings_file_path
+            self.enhanced_json_path = enhanced_json_path
+            self.pages_and_chunks, self.embeddings = self._load_embeddings()
+            if enhanced_json_path:
+                self.document_summary, self.page_summaries = self._load_enhanced_json()
 
     def _load_embeddings(self):
         """Load and process the embeddings CSV file."""
@@ -79,7 +79,7 @@ class EmbeddingLoader:
 
     def retrieve_relevant_resources(self, query: str, n_resources_to_return: int = 4):
         """Embeds a query and returns top k scores and indices from embeddings."""
-        # print(f"Retrieving relevant resources for query: {query}")
+        print(f"Retrieving relevant resources for query: {query}")
         query_embedding = self.embedding_model.encode(query, convert_to_tensor=False)
         
         # Convert query embedding directly to a numpy array before tensor creation
