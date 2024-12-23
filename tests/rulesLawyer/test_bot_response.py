@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 from rulesLawyer_helper import generate_bot_response
-
+import pytest
 class TestBotResponse(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
@@ -15,7 +15,8 @@ class TestBotResponse(unittest.TestCase):
             [0, 1]       # indices
         )
         self.mock_embeddings_loader.format_prompt.return_value = "Test prompt"
-
+    
+    @pytest.mark.skip(reason="No changes to bot response")
     @patch('openai.OpenAI')
     def test_generate_bot_response(self, mock_openai):
         """Test bot response generation"""

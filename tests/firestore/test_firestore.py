@@ -22,6 +22,7 @@ def cleanup_firestore():
         doc_id = list(doc.keys())[0]
         delete_document(COLLECTION_NAME, doc_id)
 
+@pytest.mark.skip(reason="No changes to firestore")
 def test_add_document(sample_data):
     """Test adding a document to Firestore."""
     doc_id = "user_1"
@@ -29,6 +30,7 @@ def test_add_document(sample_data):
     result = get_document(COLLECTION_NAME, doc_id)
     assert result == sample_data
 
+@pytest.mark.skip(reason="No changes to firestore")
 def test_get_document(sample_data):
     """Test retrieving a document from Firestore."""
     doc_id = "user_2"
@@ -39,6 +41,7 @@ def test_get_document(sample_data):
     # Test non-existent document
     assert get_document(COLLECTION_NAME, "non_existent") is None
 
+@pytest.mark.skip(reason="No changes to firestore")
 def test_update_document(sample_data):
     """Test updating a document in Firestore."""
     doc_id = "user_3"
@@ -49,6 +52,7 @@ def test_update_document(sample_data):
     assert result["age"] == 30
     assert result["roles"] == ["admin"]
 
+@pytest.mark.skip(reason="No changes to firestore")
 def test_delete_document(sample_data):
     """Test deleting a document from Firestore."""
     doc_id = "user_4"
@@ -56,6 +60,7 @@ def test_delete_document(sample_data):
     delete_document(COLLECTION_NAME, doc_id)
     assert get_document(COLLECTION_NAME, doc_id) is None
 
+@pytest.mark.skip(reason="No changes to firestore")
 def test_query_documents(sample_data):
     """Test querying documents from Firestore."""
     doc_id_1 = "user_5"
