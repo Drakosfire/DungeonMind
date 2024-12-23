@@ -4,6 +4,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
+from contextlib import asynccontextmanager
+from fastapi import Depends
 
 
 import os
@@ -23,21 +25,39 @@ else:
     logger.info(f"Development environment detected.")
 
 # Import routers AFTER loading the environment variables
-from auth_router import router as auth_router
-from storegenerator.store_router import router as store_router
-from ruleslawyer.ruleslawyer_router import router as lawyer_router
-from cardgenerator.cardgenerator_router import router as cardgenerator_router
+from routers import (
+    auth_router,
+    session_router,
+    store_router,
+    lawyer_router,
+    cardgenerator_router
+)
+
+# Import session_manager
+from session_management import get_session
+
+# Import RulesLawyerService
+from routers.ruleslawyer_router import RulesLawyerService
 
 app = FastAPI()
 
-# Add SessionMiddleware
-app.add_middleware(
-    SessionMiddleware, 
-    secret_key=os.environ.get("SESSION_SECRET_KEY"),
-    same_site="lax",  # This allows cookies to be sent in cross-site requests
-    https_only=True, # Set to True in production
-    domain=".dungeonmind.net" # Set to .dungeonmind.net in production
-)
+# Initialize RulesLawyerService
+rules_lawyer_service = RulesLawyerService()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan function to preload embeddings on app startup."""
+    try:
+        logger.info("Starting application and loading default embeddings...")
+        # Load default embeddings into memory
+        rules_lawyer_service.load_embeddings_on_startup()
+        logger.info("Default embeddings successfully cached.")
+        yield  # Application runs here
+    except Exception as e:
+        logger.error(f"Error during startup: {str(e)}")
+        raise e
+    finally:
+        logger.info("Cleaning up resources...")
 
 
 # Set allowed hosts based on the environment
@@ -47,8 +67,7 @@ logger.info(f"Allowed hosts: {allowed_hosts}")
 react_landing_url = os.environ.get('REACT_LANDING_URL')
 logger.info(f"React landing URL: {react_landing_url}")
 
-# Add the middleware with the appropriate allowed hosts
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+
 
 # CORS Middleware
 app.add_middleware(
@@ -59,11 +78,53 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Add SessionMiddleware
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=os.environ.get("SESSION_SECRET_KEY"),
+    same_site="lax",  # This allows cookies to be sent in cross-site requests
+    https_only=True, # Set to True in production
+    domain=".dungeonmind.net" # Set to .dungeonmind.net in production
+)
+# Add the middleware with the appropriate allowed hosts (this used to be first)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+
 # Routers
-app.include_router(auth_router, prefix='/api/auth')
-app.include_router(store_router, prefix="/api/store")
-app.include_router(lawyer_router, prefix="/api/ruleslawyer")
-app.include_router(cardgenerator_router, prefix="/api/cardgenerator")
+app.include_router(
+    session_router,
+    prefix="/api/session",
+    tags=["session"]
+)
+
+app.include_router(
+    auth_router, 
+    prefix='/api/auth',
+    tags=["auth"],
+    dependencies=[Depends(get_session)]
+)
+
+app.include_router(
+    store_router, 
+    prefix="/api/store",
+    tags=["store"],
+    dependencies=[Depends(get_session)]
+)
+
+app.include_router(
+    lawyer_router, 
+    prefix="/api/ruleslawyer",
+    tags=["ruleslawyer"],
+    dependencies=[Depends(get_session)]
+)
+
+app.include_router(
+    cardgenerator_router, 
+    prefix="/api/cardgenerator",
+    tags=["cardgenerator"],
+    dependencies=[Depends(get_session)]
+)
+
 # Health check route
 @app.get("/health", response_class=JSONResponse)
 async def health_check():
