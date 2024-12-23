@@ -1,31 +1,13 @@
 prompt_instructions = """ **Purpose**: ONLY Generate a structured inventory entry for a specific item as a hashmap. Do NOT reply with anything other than a hashmap.
 
 **Instructions**:
-1. Only output structured data. The file structure starts with { and ends with } it is CRITICAL to end with a } 
-2. Do not enclose the output in any other characters such as ''' or json    
-3. DO NOT use null, use "". 
-4. All keys and values MUST be enclosed in double quotes.
-5. Replace `{item}` with the name of the user item, DO NOT CHANGE THE USER ITEM NAME enclosed in single quotes (e.g., `'Magic Wand'`).
-6. Ensure your request is formatted as a hashmap. 
-7. The Image Prompt MUST be inside double quotations ie " ".
-    {"{item}": {
-    'Name': "{item name}",
-    'Type': '{item type}',
-    'Rarity': '{item rarity},
-    'Value': '{item value}',
-    'Properties': ["{property1}", "{property2}", ...],
-    'Damage': '{damage formula} , '{damage type}',
-    'Weight': '{weight}',
-    'Description': "{item description}",
-    'Quote': "{item quote}",
-    'SD Prompt': "{special description for the item}"
-    } } 
-8. Weapons MUST have a key 'Damage' 
-9. The description should be brief and puncy, or concise and thoughtful.
-10. The quote and SD Prompt MUST be inside double quotations ie " ".
-11. The quote is from the perspective of someone commenting on the impact of the {item} on their life
-12. Value should be assigned as an integer of copper pieces (cp), silver pieces (sp), electrum pieces (ep), gold pieces (gp), and platinum pieces (pp). 
-13. Use this table for reference on value : 
+1. Replace `{item}` with the name of the user item, DO NOT CHANGE THE USER ITEM NAME enclosed in single quotes (e.g., `'Magic Wand'`).
+2. Weapons MUST have a key 'Damage' 
+3. The description should be brief and punchy, or concise and thoughtful.
+4. The quote and SD Prompt should be richly detailed and descriptive.
+5. The quote is from the perspective of someone commenting on the impact of the {item} on their life
+6. Value should be assigned as an integer of copper pieces (cp), silver pieces (sp), electrum pieces (ep), gold pieces (gp), and platinum pieces (pp). 
+7. Use this table for reference on value : 
 
 1 cp 	1 lb. of wheat
 2 cp 	1 lb. of flour or one chicken
@@ -79,7 +61,7 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
 **Output Examples**:
 1. Cloak of Whispering Shadows Entry:
     
-    {"Cloak of Whispering Shadows": {
+    {
     'Name': 'Cloak of Whispering Shadows',
     'Type': 'Cloak',
     'Rarity': 'Very Rare', 
@@ -89,11 +71,11 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "A cloak woven from the essence of twilight, blending its wearer into the shadows. Whispers of the past and present linger in its folds, offering secrets to those who listen.",
     'Quote': "In the embrace of night, secrets surface in the silent whispers of the dark.",
     'SD Prompt': " Cloak of deep indigo almost black, swirling patterns that shift and move with every step. As it drapes over one's shoulders, an eerie connection forms between the wearer and darkness itself." 
-    } }   
+    } 
     
 2. Health Potion Entry:
     
-    {"Health Potion": {
+    {
     'Name' : "Health Portion",
     'Type' : 'Potion',
     'Rarity' : 'Common',
@@ -103,11 +85,11 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "Contained within this small vial is a crimson liquid that sparkles when shaken, a life-saving elixir for those who brave the unknown.",
     'Quote': "To the weary, a drop of hope; to the fallen, a chance to stand once more.",
     'SD Prompt' : " a small, delicate vial containing a sparkling crimson liquid. Emit a soft glow, suggesting its restorative properties. The vial is set against a dark, ambiguous background." 
-    } }     
+    } 
     
 3. Wooden Shield Entry:
     
-    {"Wooden Shield": {
+    {
     'Name' : "Wooden Shield",
     'Type' : 'Armor, Shield',
     'Rarity': 'Common',
@@ -117,11 +99,11 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "Sturdy and reliable, this wooden shield is a simple yet effective defense against the blows of adversaries.",
     'Quote': "In the rhythm of battle, it dances - a barrier between life and defeat.",
     'SD Prompt': " a sturdy wooden shield, a symbol of defense, with a simple yet solid design. The shield, has visible grain patterns and a few battle scars. It stands as a steadfast protector, embodying the essence of a warrior's resilience in the face of adversity." 
-    } }
+    }
      
 4.  Helmet of Perception Entry:
     
-    {"Helmet of Perception": {
+    {
     'Name' : "Helmet of Perception",
     'Type' : 'Magical Item (armor, helmet)',
     'Rarity': 'Very Rare', 
@@ -131,11 +113,11 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "Forged from mystic metals and enchanted with ancient spells, this helmet offers protection beyond the physical realm.",
     'Quote': "A crown not of royalty, but of unyielding vigilance, warding off the unseen threats that lurk in the shadows.",
     'SD Prompt': " a mystical helmet crafted from enchanted metals, glowing with subtle runes.  imbued with spells, radiates a mystical aura, symbolizing enhanced perception and vigilance,elegant,formidable" 
-    } }
+    }
     
 5. Longbow Entry:
     
-    {"Longbow": {
+    {
     'Name': "Longbow",
     'Type': 'Ranged Weapon (martial, longbow)',
     'Rarity': 'Common',
@@ -146,12 +128,12 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "With a sleek and elegant design, this longbow is crafted for speed and precision, capable of striking down foes from a distance.",
     'Quote': "From the shadows it emerges, a silent whisper of steel that pierces the veil of darkness, bringing justice to those who dare to trespass.",
     'SD Prompt' : "a longbow with intricate carvings and stone inlay with a black string" 
-    } }
+    }
     
 
 6. Mace Entry:
     
-    {"Mace": {
+    {
     'Name': "Mace",
     'Type': 'Melee Weapon (martial, bludgeoning)',
     'Rarity': 'Common',
@@ -162,7 +144,7 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "This mace is a fearsome sight, its head a heavy and menacing ball of metal designed to crush bone and break spirits.", 
     'Quote': "With each swing, it sings a melody of pain and retribution, an anthem of justice to those who wield it.", 
     'SD Prompt': "a menacing  metal spike ball mace, designed for bludgeoning, with a heavy, intimidating head, embodying a tool for bone-crushing and spirit-breaking." 
-    } }
+    }
     
 7. Flying Carpet Entry:
     
@@ -180,7 +162,7 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     
 8. Tome of Endless Stories Entry:
     
-    {"Tome of Endless Stories": {
+    {
     'Name': "Tome of Endless Stories",
     'Type': 'Book',
     'Rarity': 'Uncommon'
@@ -193,11 +175,11 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "An ancient tome bound in leather that shifts colors like the sunset. Its pages are never-ending, filled with tales from worlds both known and undiscovered.",
     'Quote': "Within its pages lie the keys to a thousand worlds, each story a doorway to infinite possibilities.",
     'SD Prompt': "leather-bound with gold and silver inlay, pages appear aged but are incredibly durable, magical glyphs shimmer softly on the cover." 
-    } }    
+    } 
     
 9. Ring of Miniature Summoning Entry:
     
-    {"Ring of Miniature Summoning": {
+    {
     'Name': "Ring of Miniature Summoning",
     'Type': 'Ring',
     'Rarity': 'Rare',
@@ -207,12 +189,12 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "A delicate ring with a gem that shifts colors. When activated, it brings forth a small, loyal beast companion from the ether.",
     'Quote': "Not all companions walk beside us. Some are summoned from the depths of magic, small in size but vast in heart.",
     'SD Prompt': "gemstone with changing colors, essence of companionship and versatility." 
-    } } 
+    } 
      
 
 10. Spoon of Tasting Entry:
     
-    {"Spoon of Tasting": {
+    {
     'Name': "Spoon of Tasting",
     'Type': 'Spoon',
     'Rarity': 'Uncommon',
@@ -222,11 +204,11 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "A culinary critic’s dream or nightmare. This spoon doesn’t hold back its opinions on any dish it tastes.",
     'Quote': "A spoonful of sugar helps the criticism go down.",
     'SD Prompt': "Looks like an ordinary spoon, but with a mouth that speaks more than you’d expect."
-    } }
+    } 
     
 11. Infinite Scroll Entry: 
     
-    {"Infinite Scroll": {
+    {
     'Name': "Infinite Scroll",
     'Type': 'Magical Scroll',
     'Rarity': 'Legendary',
@@ -237,11 +219,11 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "This scroll appears to be a standard parchment at first glance. However, as one begins to read, it unrolls to reveal an ever-expanding tapestry of knowledge, lore, and spells that seems to have no end.",
     'Quote': "In the pursuit of knowledge, the horizon is ever receding. So too is the content of this scroll, an endless journey within a parchment’s bounds.",
     'SD Prompt': "A seemingly ordinary scroll that extends indefinitely" 
-    } }
+    } 
     
 12. Mimic Treasure Chest Entry:
     
-    {"Mimic Treasure Chest": {
+    {
     'Name': "Mimic Treasure Chest",
     'Type': 'Trap',
     'Rarity': 'Rare',
@@ -250,11 +232,11 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Weight': '50 lb',  # Mimics are heavy due to their monstrous nature
     'Description': "This enticing treasure chest is a deadly Mimic, luring adventurers with the promise of riches only to unleash its monstrous true form upon those who dare to approach, turning their greed into a fight for survival.",
     'SD Prompt': "A seemingly ordinary treasure chest that glimmers with promise. Upon closer inspection, sinister, almost living edges move with malice, revealing its true nature as a Mimic, ready to unleash fury on the unwary."
-    } }
+    } 
     
 13. Hammer of Thunderbolts Entry:
     
-    {'Hammer of Thunderbolts': {
+    {
     'Name': 'Hammer of Thunderbolts',
     'Type': 'Melee Weapon (maul, bludgeoning)',
     'Rarity': 'Legendary',
@@ -265,11 +247,11 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "God-forged and storm-bound, a supreme force, its rune-etched head blazing with power. More than a weapon, it's a symbol of nature's fury, capable of reshaping landscapes and commanding elements with every strike.",
     'Quote': "When the skies rage and the earth trembles, know that the Hammer of Thunderbolts has found its mark. It is not merely a weapon, but the embodiment of the storm\'s wrath wielded by those deemed worthy.",
     'SD Prompt': "It radiates with electric energy, its rune-etched head and storm-weathered leather grip symbolizing its dominion over storms. In its grasp, it pulses with the potential to summon the heavens' fury, embodying the tempest's raw power."
-    } }
+    } 
 
 14. Shadow Lamp Entry:  
 
-    {'Shadow Lamp': {
+    {
     'Name': 'Shadow Lamp',
     'Type': 'Magical Item',
     'Rarity': 'Uncommon',
@@ -279,11 +261,11 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "A small lamp carved from obsidian and powered by a mysterious force, it casts an eerie glow that illuminates its surroundings while making the wielder invisible to those relying on darkness-based senses.",
     'Quote': "In the heart of shadow lies an unseen light, casting away darkness and revealing what was once unseen.",
     'SD Prompt': "Glass lantern filled with inky swirling shadows, black gaseous clouds flow out, blackness flows from it, spooky, sneaky"
-    } }
+    } 
 
 15. Dark Mirror:
 
-    {'Dark Mirror': {
+    {
     'Name': 'Dark Mirror',
     'Type': 'Magical Item',
     'Rarity': 'Rare',
@@ -293,11 +275,11 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "An ordinary-looking mirror with a dark, almost sinister tint. It reflects only darkness and distorted images when viewed from one side, making it an ideal tool for spies and those seeking to hide their true identity.",
     'Quote': "A glass that hides what lies within, a surface that reflects only darkness and deceit.",
     'SD Prompt': "Dark and mysterious black surfaced mirror with an obsidian flowing center with a tint of malice, its surface reflecting nothing but black and distorted images, swirling with tendrils, spooky, ethereal"
-    } }
+    } 
 
 16. Moon-Touched Greatsword Entry:
     
-    {'Moon-Touched Greatsword':{
+    {
     'Name': 'Moontouched Greatsword',
     'Type': 'Melee Weapon (greatsword, slashing)',
     'Rarity': 'Very Rare',
@@ -308,5 +290,5 @@ Cunning Hunters. Mimics live and hunt alone, though they occasionally share thei
     'Description': "Forged from lunar metal and imbued with celestial magic, this greatsword gleams like a silver crescent moon, its edge sharp enough to cut through the darkest shadows.",
     'Quote': "With each swing, it sings a melody of light that pierces the veil of darkness, a beacon of hope and justice.",
     'SD Prompt': "A silver greatsword with a crescent moon-shaped blade that reflects a soft glow, reminiscent of the moon's radiance. The hilt is wrapped in silvery leather, and the metal seems to shimmer and change with the light, reflecting the lunar cycles."
-    } }
+    } 
 """
