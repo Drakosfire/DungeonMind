@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, File, UploadFile, Form
-from auth_router import get_current_user
+from .auth_router import get_current_user
 import os
 import json
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ import storegenerator.sd_generator as sd
 import logging
 from cloudflare.handle_images import upload_image_to_cloudflare
 from cloudflareR2.cloudflareR2_utils import upload_html_and_get_url
+
 # Cloudflare credentials
 cloudflare_account_id = os.environ.get('CLOUDFLARE_ACCOUNT_ID')
 cloudflare_api_token = os.environ.get('CLOUDFLARE_IMAGES_API_TOKEN')
