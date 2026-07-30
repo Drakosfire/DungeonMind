@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+
+# Environment & secrets — never commit real values
+.env
+.env.*
+!.env.example
+serviceAccountKey.json
+*serviceAccount*.json
+
+# Model weights and corpus prose — never commit (see CONTRIBUTING.md)
+models/
+*.gguf
+*.bin
+corpus/
+
+# Data / local artifacts
+saved_data/
+*.sqlite3
+artifacts/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

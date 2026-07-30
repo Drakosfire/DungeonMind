@@ -1,0 +1,143 @@
+{
+  "fixture_version": "curated_world_v1",
+  "graph_payload": {
+    "nodes": [
+      {
+        "aliases": [
+          "Vael City"
+        ],
+        "kind": "location",
+        "label": "Vael",
+        "object_id": "obj:city-vael"
+      },
+      {
+        "aliases": [
+          "Astor"
+        ],
+        "kind": "npc",
+        "label": "Mere Astor",
+        "object_id": "obj:npc-mere-astor"
+      },
+      {
+        "kind": "artifact",
+        "label": "The Sun Ledger",
+        "object_id": "obj:item-sun-ledger"
+      }
+    ],
+    "relationships": [
+      {
+        "object_object_id": "obj:city-vael",
+        "predicate": "resides_in",
+        "subject_object_id": "obj:npc-mere-astor"
+      },
+      {
+        "object_object_id": "obj:item-sun-ledger",
+        "predicate": "safeguards",
+        "subject_object_id": "obj:npc-mere-astor"
+      }
+    ],
+    "world_id": "world:demo-atlas"
+  },
+  "graph_schema": "dm_union_graph_v1",
+  "queries": [
+    {
+      "embedding": [
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "expect_dense_first": "sdoc:obj-item-sun-ledger",
+      "name": "ledger_semantic"
+    }
+  ],
+  "semantic_documents": [
+    {
+      "campaign_scope": null,
+      "content": "Vael: a terraced harbor city ruled by its tide-courts and lantern ward.",
+      "document_kind": "graph_object",
+      "embedding": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "graph_object_id": "obj:city-vael",
+      "semantic_document_id": "sdoc:obj-city-vael",
+      "visibility": "gm"
+    },
+    {
+      "campaign_scope": null,
+      "content": "Mere Astor: the Sun Ledger's keeper, a soft-spoken factor of Vael.",
+      "document_kind": "graph_object",
+      "embedding": [
+        0.8,
+        0.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "graph_object_id": "obj:npc-mere-astor",
+      "semantic_document_id": "sdoc:obj-npc-mere-astor",
+      "visibility": "gm"
+    },
+    {
+      "campaign_scope": null,
+      "content": "The Sun Ledger: a brass-bound account of every dawn debt owed in Vael.",
+      "document_kind": "graph_object",
+      "embedding": [
+        0.0,
+        0.05,
+        0.95,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "graph_object_id": "obj:item-sun-ledger",
+      "semantic_document_id": "sdoc:obj-item-sun-ledger",
+      "visibility": "gm"
+    },
+    {
+      "campaign_scope": "camp:demo",
+      "content": "Street rumor: the tide-courts of Vael vote at dawn and forget by dusk.",
+      "document_kind": "graph_object",
+      "embedding": [
+        0.6,
+        0.1,
+        0.3,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "graph_object_id": "obj:city-vael",
+      "semantic_document_id": "sdoc:rumor-tide-courts",
+      "visibility": "player"
+    }
+  ],
+  "source_artifacts": [
+    {
+      "campaign_id": null,
+      "session_id": null,
+      "source_artifact_id": "src:atlas-notes",
+      "source_domain": "worldbuilding",
+      "visibility": "gm",
+      "world_id": "world:demo-atlas"
+    }
+  ],
+  "world_id": "world:demo-atlas"
+}

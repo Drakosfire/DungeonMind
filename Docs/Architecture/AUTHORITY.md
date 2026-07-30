@@ -1,0 +1,69 @@
+# DungeonMind — Authority and Source Precedence
+
+**Status:** founding (PR A)
+
+## 1. Precedence rules
+
+1. **This repository's checked-in state** (code, contracts, ADRs) is the
+   current truth for DungeonMind.
+2. **GitHub current state beats local or Project Source copies** wherever
+   they disagree (applies to sibling repos inspected during founding).
+3. **DungeonMindBuddy architecture docs** are authority for the *proven
+   semantics* this repo adopts (§2) — but never for implementation mechanics
+   (filesystem layout, app wiring), which this repo replaces.
+4. **RulesIngestion** is authority for retrieval *benchmark discipline* —
+   not for DungeonMind production behavior, and never a runtime dependency.
+5. **Chat history is never authority.** If chat and checked-in sources
+   disagree, the sources win or the sources get fixed in the same edit batch.
+
+## 2. DungeonMindBuddy authority set (read in this order)
+
+1. `Docs/Design/ARCHITECTURE-campaign-supergraph.md`
+2. `Docs/Roadmaps/ROADMAP-campaign-supergraph.md`
+3. `Docs/Plans/PR-TRACKER-campaign-supergraph.md`
+4. `Docs/Design/STATUS-world-graph-continuity-spine.md`
+5. `Docs/Design/CONTRACT-graph-kernel-boundary.md`
+6. `Docs/Design/ARCHITECTURE-hermes-campaign-authoring-foundation.md`
+7. Current graph-memory models, kernel APIs, projection contracts,
+   retrieval-session contracts, tests, accepted dogfood reports.
+
+The decisions adopted from these are listed in `ARCHITECTURE.md` §3 and were
+extracted with citations in
+`Docs/Reports/RECON-2026-07-29-founding-inventory.md` §A.
+
+## 3. Known drift found at founding (do not re-import)
+
+Founding recon (same report, §G) documented places where Buddy's
+implementation disagrees with its own closed decisions. DungeonMind follows
+the *decisions*, not the drift:
+
+- Buddy's durable store payload still carries campaign+focus session-union
+  keys at its root; DungeonMind models campaign strictly as scope.
+- Buddy evidence models use `extra="allow"`; DungeonMind contracts are
+  `extra="forbid"` everywhere.
+- Buddy capability taxonomy exists twice (doc-level five categories vs
+  runtime `allowed_effects={"read"}`); DungeonMind implements the five
+  categories with a fail-closed evaluator.
+- Buddy `graph_memory` modules import `apps.*`; DungeonMind forbids any such
+  import by test.
+- Buddy keeps preview/latest-ingest paths as product debt; DungeonMind has no
+  preview authority paths at all.
+
+## 4. Project Source classification (from the founding handoff §2.4)
+
+| Source | Status here |
+| --- | --- |
+| `CORPUS-ANCHOR.md` | Source-location anchor only |
+| `GRAPH-MEMORY-PROJECT-LAYOUT.md` | Reference, subject to current GitHub state |
+| `ARCHITECTURE-plan-surface-toolbox.md` | Surface-boundary reference |
+| `LLM-graph-construction.md` | Research only |
+| `dungeonbuddy_spec_architecture_v0_2.md` | Historical conceptual ancestor |
+| `GRAPH-MEMORY-SUPERGRAPH-ARCHITECTURE-ROADMAP.md` | Superseded historical roadmap |
+| `PROPOSAL-context-audit-source-reanchor.md` | Proposal, not authority |
+| `_bmad-output/project-context.md` | Engineering rules kept; "no API/database/vector" scope superseded |
+
+## 5. The founding charter
+
+The dispatching handoff is preserved verbatim at
+`Docs/Handoffs/HANDOFF-found-dungeonmind-repository.md`. Its §15 stop
+conditions and §14 non-goals remain binding for every successor slice.
