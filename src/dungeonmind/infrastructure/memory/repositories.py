@@ -41,6 +41,7 @@ from ...domain.errors import (
     ImmutableRevisionConflictError,
     InvalidLifecycleTransitionError,
     RevisionNotFoundError,
+    ScopeResolutionError,
     StaleParentRevisionError,
     ThreadContextMismatchError,
 )
@@ -455,7 +456,7 @@ class InMemorySemanticDocumentRepository:
         self._runs = embedding_runs
         self._lock = threading.Lock()
 
-    def _assert_run_compatible(self, doc: SemanticDocument) -> None:
+    def _assert_run_compatible(self, doc: SemanticDocument) -> EmbeddingRun:
         run = self._runs.get(doc.materialization_run_id)
         if run is None:
             raise DocumentNotFoundError(
@@ -482,12 +483,13 @@ class InMemorySemanticDocumentRepository:
             raise IdempotencyConflictError(
                 f"document {doc.semantic_document_id!r} world_id incompatible with run"
             )
+        return run
 
     def upsert_batch(self, documents: list[SemanticDocument]) -> int:
         stored = 0
         with self._lock:
             for doc in documents:
-                self._assert_run_compatible(doc)
+                run = self._assert_run_compatible(doc)
                 existing = self._docs.get(doc.semantic_document_id)
                 if existing is not None:
                     if _fingerprint(existing) != _fingerprint(doc):
@@ -497,6 +499,17 @@ class InMemorySemanticDocumentRepository:
                             "document ids (ADR-0003)"
                         )
                     continue
+                if run.status is not EmbeddingRunStatus.RUNNING:
+                    raise InvalidLifecycleTransitionError(
+                        (
+                            "new semantic documents require a RUNNING materialization "
+                            f"run; {run.run_id!r} is {run.status.value}"
+                        ),
+                        record_type="embedding_run",
+                        record_id=run.run_id,
+                        current_status=run.status.value,
+                        requested_status="accept_document",
+                    )
                 self._docs[doc.semantic_document_id] = _copy(doc)
                 stored += 1
         return stored
@@ -527,10 +540,15 @@ class InMemorySemanticDocumentRepository:
 
 
 class InMemoryEmbeddingRunRepository:
-    """Monotonic lifecycle: RUNNING→COMPLETED|FAILED; COMPLETED|FAILED→SUPERSEDED."""
+    """Monotonic lifecycle: RUNNING→COMPLETED|FAILED; COMPLETED|FAILED→SUPERSEDED.
+
+    ``activate`` binds one COMPLETED run per world for retrieval when a query
+    omits ``materialization_run_id``. Superseding an active run clears it.
+    """
 
     def __init__(self) -> None:
         self._runs: dict[str, EmbeddingRun] = {}
+        self._active_by_world: dict[str, str] = {}
         self._lock = threading.Lock()
 
     def begin(self, run: EmbeddingRun) -> EmbeddingRun:
@@ -634,7 +652,38 @@ class InMemoryEmbeddingRunRepository:
                 },
             )
             self._runs[run_id] = updated
+            if existing.world_id is not None and self._active_by_world.get(
+                existing.world_id
+            ) == run_id:
+                del self._active_by_world[existing.world_id]
             return _copy(updated)
+
+    def activate(self, run_id: str) -> EmbeddingRun:
+        with self._lock:
+            existing = self._runs.get(run_id)
+            if existing is None:
+                raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
+            if existing.status is not EmbeddingRunStatus.COMPLETED:
+                raise InvalidLifecycleTransitionError(
+                    (
+                        "activate requires a COMPLETED embedding run; "
+                        f"{run_id!r} is {existing.status.value}"
+                    ),
+                    record_type="embedding_run",
+                    record_id=run_id,
+                    current_status=existing.status.value,
+                    requested_status="activate",
+                )
+            if existing.world_id is None:
+                raise ScopeResolutionError(
+                    f"embedding run {run_id!r} has no world_id; cannot activate",
+                    details={"run_id": run_id, "reason": "missing_world_id"},
+                )
+            self._active_by_world[existing.world_id] = run_id
+            return _copy(existing)
+
+    def get_active_run_id(self, world_id: str) -> str | None:
+        return self._active_by_world.get(world_id)
 
     def get(self, run_id: str) -> EmbeddingRun | None:
         item = self._runs.get(run_id)
@@ -661,19 +710,73 @@ class InMemorySemanticSearch:
 
     Filter semantics (fail-closed):
     - ``world_id`` is mandatory and exact.
+    - retrieval is bound to one COMPLETED materialization run (explicit query
+      pin or the world's active-run pointer); failed/superseded/running runs
+      never contribute candidates.
     - a campaign-scoped query sees that campaign's docs plus world-universal docs;
       a world-level query (no campaign_scope) sees only world-universal docs.
     - ``visibility`` is required: ``player`` sees player docs only; ``gm`` sees all.
     """
 
-    def __init__(self, documents: InMemorySemanticDocumentRepository) -> None:
+    def __init__(
+        self,
+        documents: InMemorySemanticDocumentRepository,
+        embedding_runs: InMemoryEmbeddingRunRepository,
+    ) -> None:
         self._documents = documents
+        self._runs = embedding_runs
+
+    def _resolve_retrieval_run(self, query: SemanticQuery) -> str:
+        run_id = query.materialization_run_id
+        if run_id is None:
+            run_id = self._runs.get_active_run_id(query.world_id)
+        if run_id is None:
+            raise ScopeResolutionError(
+                f"no materialization run bound for world {query.world_id!r}",
+                details={
+                    "world_id": query.world_id,
+                    "reason": "missing_active_materialization_run",
+                },
+            )
+        run = self._runs.get(run_id)
+        if run is None:
+            raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
+        if run.status is not EmbeddingRunStatus.COMPLETED:
+            raise ScopeResolutionError(
+                (
+                    f"retrieval requires a COMPLETED materialization run; "
+                    f"{run_id!r} is {run.status.value}"
+                ),
+                details={
+                    "world_id": query.world_id,
+                    "run_id": run_id,
+                    "status": run.status.value,
+                    "reason": "materialization_run_not_retrieval_eligible",
+                },
+            )
+        if run.world_id is not None and run.world_id != query.world_id:
+            raise ScopeResolutionError(
+                (
+                    f"materialization run {run_id!r} world {run.world_id!r} "
+                    f"does not match query world {query.world_id!r}"
+                ),
+                details={
+                    "world_id": query.world_id,
+                    "run_id": run_id,
+                    "run_world_id": run.world_id,
+                    "reason": "materialization_run_world_mismatch",
+                },
+            )
+        return run_id
 
     def _eligible(self, query: SemanticQuery) -> list[SemanticDocument]:
+        run_id = self._resolve_retrieval_run(query)
         result: list[SemanticDocument] = []
         for doc_id in self._documents.list_ids():
             doc = self._documents.get(doc_id)
             if doc is None:  # pragma: no cover - defensive
+                continue
+            if doc.materialization_run_id != run_id:
                 continue
             if doc.world_id != query.world_id:
                 continue

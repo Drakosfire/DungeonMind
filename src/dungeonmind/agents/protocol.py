@@ -11,9 +11,15 @@ mean writing a new adapter, not changing DungeonMind.
 ``CapabilityPolicy`` on ``AgentTurnContext`` is the sole authority for tools.
 Adapters that need a serialized tool list must derive it via
 ``domain.capability.permitted_tool_names`` — never from caller-supplied names.
+
+When a policy carries ``graph_scope``, it must agree with ``AgentTurnInput``
+on world, campaign, focus, admissibility, and the resolved revision pin —
+otherwise the turn is split-brain and rejected.
 """
 
-from typing import Protocol
+from typing import Protocol, Self
+
+from pydantic import model_validator
 
 from ..contracts.base import DungeonMindModel
 from ..contracts.capability import CapabilityPolicy
@@ -44,11 +50,47 @@ class AgentTurnInput(DungeonMindModel):
 
 
 class AgentTurnContext(DungeonMindModel):
-    """Everything an adapter may see for one turn — assembled, bounded, explicit."""
+    """Everything an adapter may see for one turn — assembled, bounded, explicit.
+
+    ``capability_policy.graph_scope``, when present, must match ``input`` on
+    world/campaign/focus/admissibility and must pin ``revision_pin`` to the
+    same resolved ``input.revision_id`` (never an unresolved ``None`` pin).
+    """
 
     input: AgentTurnInput
     # Sole tool authority. Derive permitted names from this policy.
     capability_policy: CapabilityPolicy
+
+    @model_validator(mode="after")
+    def _graph_scope_agrees_with_input(self) -> Self:
+        scope = self.capability_policy.graph_scope
+        if scope is None:
+            return self
+        if scope.revision_pin is None:
+            raise ValueError(
+                "AgentTurnContext requires capability_policy.graph_scope.revision_pin "
+                "bound to the resolved input.revision_id"
+            )
+        inp = self.input
+        mismatches: list[str] = []
+        if inp.world_id != scope.world_id:
+            mismatches.append("world_id")
+        if inp.campaign_id != scope.campaign_id:
+            mismatches.append("campaign_id")
+        if inp.admissibility != scope.admissibility:
+            mismatches.append("admissibility")
+        if inp.focus_kind != scope.focus.kind:
+            mismatches.append("focus.kind")
+        if inp.focus_session_id != scope.focus.session_id:
+            mismatches.append("focus.session_id")
+        if inp.revision_id != scope.revision_pin:
+            mismatches.append("revision_id/revision_pin")
+        if mismatches:
+            raise ValueError(
+                "AgentTurnInput and CapabilityPolicy.graph_scope disagree on: "
+                + ", ".join(mismatches)
+            )
+        return self
 
 
 class AgentTurnResult(DungeonMindModel):

@@ -1,5 +1,8 @@
 """Agent adapters receive sanitized input; CapabilityPolicy is sole tool authority."""
 
+import pytest
+from pydantic import ValidationError
+
 from dungeonmind.agents import AgentTurnContext, sanitize_agent_input
 from dungeonmind.contracts import (
     Admissibility,
@@ -8,9 +11,35 @@ from dungeonmind.contracts import (
     CapabilityPolicy,
     FocusKind,
     GraphScope,
+    ProjectionFocus,
     ToolCapabilityRule,
 )
 from dungeonmind.domain import permitted_tool_names
+
+REVISION = "rev:" + "ab" * 16
+
+
+def _player_policy(**scope_overrides: object) -> CapabilityPolicy:
+    scope_kwargs: dict[str, object] = {
+        "world_id": "world:demo",
+        "campaign_id": "camp:1",
+        "focus": ProjectionFocus(),
+        "admissibility": Admissibility.PLAYER,
+        "revision_pin": REVISION,
+    }
+    scope_kwargs.update(scope_overrides)
+    return CapabilityPolicy(
+        policy_id="pol:1",
+        graph_scope=GraphScope(**scope_kwargs),  # type: ignore[arg-type]
+        enabled_tools=["graph.search"],
+        tool_rules=[
+            ToolCapabilityRule(
+                tool_name="graph.search",
+                category=CapabilityCategory.READ_ONLY,
+                allowed_effects=[CapabilityEffect.READ],
+            )
+        ],
+    )
 
 
 def test_sanitize_agent_input_omits_auth_fields() -> None:
@@ -25,7 +54,7 @@ def test_sanitize_agent_input_omits_auth_fields() -> None:
         surface_mode="ask",
         selected_object_ids=["obj:1"],
         assembled_context="Mere Astor resides in Vael.",
-        revision_id="rev:" + "ab" * 16,
+        revision_id=REVISION,
     )
     dumped = agent_input.model_dump()
     assert "caller_id" not in dumped
@@ -43,7 +72,30 @@ def test_caller_cannot_inject_tools_through_sanitization() -> None:
     agent_input = sanitize_agent_input(
         message="hi",
         world_id="world:demo",
-        campaign_id=None,
+        campaign_id="camp:1",
+        focus_kind=FocusKind.NONE,
+        focus_session_id=None,
+        admissibility=Admissibility.PLAYER,
+        surface_id="surface:plan",
+        surface_mode=None,
+        selected_object_ids=[],
+        assembled_context="",
+        revision_id=REVISION,
+    )
+    policy = _player_policy()
+    context = AgentTurnContext(input=agent_input, capability_policy=policy)
+    assert permitted_tool_names(context.capability_policy) == ["graph.search"]
+    assert "permitted_tool_names" not in type(context.input).model_fields
+    assert context.capability_policy.graph_scope is not None
+    assert context.capability_policy.graph_scope.admissibility is Admissibility.PLAYER
+    assert context.capability_policy.graph_scope.revision_pin == REVISION
+
+
+def test_agent_turn_context_rejects_admissibility_mismatch() -> None:
+    agent_input = sanitize_agent_input(
+        message="hi",
+        world_id="world:demo",
+        campaign_id="camp:1",
         focus_kind=FocusKind.NONE,
         focus_session_id=None,
         admissibility=Admissibility.GM,
@@ -51,22 +103,54 @@ def test_caller_cannot_inject_tools_through_sanitization() -> None:
         surface_mode=None,
         selected_object_ids=[],
         assembled_context="",
-        revision_id="rev:" + "ab" * 16,
+        revision_id=REVISION,
     )
-    policy = CapabilityPolicy(
-        policy_id="pol:1",
-        graph_scope=GraphScope(world_id="world:demo", admissibility=Admissibility.PLAYER),
-        enabled_tools=["graph.search"],
-        tool_rules=[
-            ToolCapabilityRule(
-                tool_name="graph.search",
-                category=CapabilityCategory.READ_ONLY,
-                allowed_effects=[CapabilityEffect.READ],
-            )
-        ],
+    with pytest.raises(ValidationError, match="admissibility"):
+        AgentTurnContext(input=agent_input, capability_policy=_player_policy())
+
+
+def test_agent_turn_context_rejects_unresolved_revision_pin() -> None:
+    agent_input = sanitize_agent_input(
+        message="hi",
+        world_id="world:demo",
+        campaign_id="camp:1",
+        focus_kind=FocusKind.NONE,
+        focus_session_id=None,
+        admissibility=Admissibility.PLAYER,
+        surface_id="surface:plan",
+        surface_mode=None,
+        selected_object_ids=[],
+        assembled_context="",
+        revision_id=REVISION,
     )
-    context = AgentTurnContext(input=agent_input, capability_policy=policy)
-    assert permitted_tool_names(context.capability_policy) == ["graph.search"]
-    assert "permitted_tool_names" not in type(context.input).model_fields
-    assert context.capability_policy.graph_scope is not None
-    assert context.capability_policy.graph_scope.admissibility is Admissibility.PLAYER
+    with pytest.raises(ValidationError, match="revision_pin"):
+        AgentTurnContext(
+            input=agent_input,
+            capability_policy=_player_policy(revision_pin=None),
+        )
+
+
+def test_agent_turn_context_rejects_world_and_revision_mismatch() -> None:
+    agent_input = sanitize_agent_input(
+        message="hi",
+        world_id="world:demo",
+        campaign_id="camp:1",
+        focus_kind=FocusKind.NONE,
+        focus_session_id=None,
+        admissibility=Admissibility.PLAYER,
+        surface_id="surface:plan",
+        surface_mode=None,
+        selected_object_ids=[],
+        assembled_context="",
+        revision_id=REVISION,
+    )
+    with pytest.raises(ValidationError, match="world_id"):
+        AgentTurnContext(
+            input=agent_input,
+            capability_policy=_player_policy(world_id="world:other"),
+        )
+    with pytest.raises(ValidationError, match="revision_id/revision_pin"):
+        AgentTurnContext(
+            input=agent_input,
+            capability_policy=_player_policy(revision_pin="rev:" + "cd" * 16),
+        )

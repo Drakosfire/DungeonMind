@@ -155,9 +155,17 @@ Contract closures that PostgreSQL adapters must reproduce (PR A.1):
   must match the pinned revision. Invented evidence IDs cannot ground a fact.
 - **Embedding-run lifecycle.** `RUNNING → COMPLETED|FAILED`;
   `COMPLETED|FAILED → SUPERSEDED`. Terminal retries do not rewrite timestamps.
+  New semantic documents insert only into `RUNNING` runs; exact replays remain
+  idempotent after terminal. Candidate retrieval binds one `COMPLETED`
+  non-superseded run (explicit query pin or per-world active-run pointer).
+  Failed and superseded runs never contribute candidates.
 - **Exact semantic provenance.** Source chunks require `source_revision_id`;
   graph-object documents require `graph_object_id` and `graph_revision_id`.
   Document model metadata must match the materialization run.
+- **Agent turn scope unity.** `AgentTurnContext` requires
+  `CapabilityPolicy.graph_scope` (when present) to agree with
+  `AgentTurnInput` on world, campaign, focus, admissibility, and the resolved
+  revision pin — no split-brain assembled vs tool scope.
 - **v1 threads.** Caller-private and cross-surface. Immutable binding is
   `(thread_id, tenant_id, caller_id, world_id, campaign_id)`. Surface is
   per-turn. Append is retry-safe by `turn_id`. Shared multi-user threads are

@@ -107,8 +107,10 @@ def test_publish_read_and_search(fixture: dict[str, object]) -> None:
         for entry in fixture["semantic_documents"]  # type: ignore[union-attr]
     ]
     assert doc_repo.upsert_batch(docs) == len(docs)
+    run_repo.complete("erun:fixture-1", completed_at=FIXED_NOW)
+    run_repo.activate("erun:fixture-1")
 
-    search = InMemorySemanticSearch(doc_repo)
+    search = InMemorySemanticSearch(doc_repo, run_repo)
     for query in fixture["queries"]:  # type: ignore[union-attr]
         results = search.search(
             SemanticQuery(

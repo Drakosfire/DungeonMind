@@ -52,12 +52,14 @@ Exit proof (initial hardening + contract-blocker closure):
 - Closed admitted-evidence ledger on retrieval sessions and Mind Turn
   responses (no invented evidence/anchor grounding).
 - Embedding-run monotonic lifecycle with typed transition errors and
-  non-rewriting terminal retries.
+  non-rewriting terminal retries; active-materialization semantics so only
+  COMPLETED non-superseded runs participate in retrieval.
 - Exact semantic-document provenance (`source_revision_id` /
   `graph_revision_id`) plus materialization-run metadata compatibility.
 - v1 threads: caller-private, cross-surface; immutable
   world/campaign/caller/tenant binding; retry-safe `turn_id` append.
-- One capability policy authority; permitted tools derived, never caller-supplied.
+- One capability policy authority; permitted tools derived, never caller-supplied;
+  `AgentTurnContext` rejects input/policy graph-scope disagreement.
 - Unambiguous campaign/focus scope (no `campaign_id` on focus; world/campaign
   modes cannot contradict).
 - Sanitized agent-adapter input (no caller/tenant auth metadata).

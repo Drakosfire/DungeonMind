@@ -12,7 +12,12 @@ from dungeonmind.contracts import (
     SemanticQuery,
     Visibility,
 )
-from dungeonmind.domain.errors import DocumentNotFoundError, IdempotencyConflictError
+from dungeonmind.domain.errors import (
+    DocumentNotFoundError,
+    IdempotencyConflictError,
+    InvalidLifecycleTransitionError,
+    ScopeResolutionError,
+)
 from dungeonmind.infrastructure.memory import (
     InMemoryEmbeddingRunRepository,
     InMemorySemanticDocumentRepository,
@@ -32,7 +37,7 @@ def _begin_run(
     model: str = "test-model",
     revision: str = "rev-1",
     recipe: str = "raw-v1",
-    world_id: str | None = None,
+    world_id: str | None = "world:demo",
 ) -> EmbeddingRun:
     return runs.begin(
         EmbeddingRun(
@@ -45,6 +50,20 @@ def _begin_run(
             created_at=NOW,
         )
     )
+
+
+def _complete_and_activate(
+    runs: InMemoryEmbeddingRunRepository, *, run_id: str = "erun:1"
+) -> None:
+    runs.complete(run_id, completed_at=NOW)
+    runs.activate(run_id)
+
+
+def _search(
+    store: InMemorySemanticDocumentRepository,
+    runs: InMemoryEmbeddingRunRepository,
+) -> InMemorySemanticSearch:
+    return InMemorySemanticSearch(store, runs)
 
 
 def make_doc(
@@ -224,14 +243,18 @@ def test_missing_run_rejected() -> None:
         store.upsert_batch([make_doc("sdoc:1")])
 
 
-def test_dense_search_orders_by_cosine(store: InMemorySemanticDocumentRepository) -> None:
+def test_dense_search_orders_by_cosine(
+    runs: InMemoryEmbeddingRunRepository,
+    store: InMemorySemanticDocumentRepository,
+) -> None:
     store.upsert_batch(
         [
             make_doc("sdoc:far", embedding=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
             make_doc("sdoc:near", embedding=[0.0, 0.95, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0]),
         ]
     )
-    search = InMemorySemanticSearch(store)
+    _complete_and_activate(runs)
+    search = _search(store, runs)
     results = search.search(
         SemanticQuery(
             world_id="world:demo",
@@ -245,8 +268,10 @@ def test_dense_search_orders_by_cosine(store: InMemorySemanticDocumentRepository
 
 
 def test_scope_and_visibility_filters_fail_closed(
+    runs: InMemoryEmbeddingRunRepository,
     store: InMemorySemanticDocumentRepository,
 ) -> None:
+    _begin_run(runs, run_id="erun:other", world_id="world:other")
     store.upsert_batch(
         [
             make_doc("sdoc:universal", content="shared lore", embedding=list(UNIT_VEC)),
@@ -263,12 +288,16 @@ def test_scope_and_visibility_filters_fail_closed(
                 embedding=list(UNIT_VEC),
             ),
             make_doc(
-                "sdoc:other-world", world_id="world:other", content="foreign",
+                "sdoc:other-world",
+                world_id="world:other",
+                content="foreign",
                 embedding=list(UNIT_VEC),
+                run_id="erun:other",
             ),
         ]
     )
-    search = InMemorySemanticSearch(store)
+    _complete_and_activate(runs)
+    search = _search(store, runs)
 
     def dense_ids(query: SemanticQuery) -> list[str]:
         return [
@@ -302,14 +331,18 @@ def test_scope_and_visibility_filters_fail_closed(
     assert set(player_only) == {"sdoc:player"}
 
 
-def test_exact_and_lexical_channels(store: InMemorySemanticDocumentRepository) -> None:
+def test_exact_and_lexical_channels(
+    runs: InMemoryEmbeddingRunRepository,
+    store: InMemorySemanticDocumentRepository,
+) -> None:
     store.upsert_batch(
         [
             make_doc("sdoc:astor", content="Mere Astor safeguards the Sun Ledger"),
             make_doc("sdoc:vael", content="The city of Vael"),
         ]
     )
-    search = InMemorySemanticSearch(store)
+    _complete_and_activate(runs)
+    search = _search(store, runs)
     results = search.search(
         SemanticQuery(
             world_id="world:demo", visibility=Visibility.GM, text="Sun Ledger", top_k=5
@@ -320,3 +353,122 @@ def test_exact_and_lexical_channels(store: InMemorySemanticDocumentRepository) -
     assert [c.semantic_document_id for c in exact] == ["sdoc:astor"]
     assert lexical[0].semantic_document_id == "sdoc:astor"
     assert lexical[0].score == 1.0
+
+
+def test_new_documents_rejected_after_run_fails(
+    runs: InMemoryEmbeddingRunRepository,
+    store: InMemorySemanticDocumentRepository,
+) -> None:
+    doc = make_doc("sdoc:partial")
+    assert store.upsert_batch([doc]) == 1
+    runs.fail("erun:1", completed_at=NOW)
+    assert store.upsert_batch([doc]) == 0  # exact replay still allowed
+    with pytest.raises(InvalidLifecycleTransitionError) as exc:
+        store.upsert_batch([make_doc("sdoc:late")])
+    assert exc.value.details["current_status"] == "failed"
+    assert exc.value.details["requested_status"] == "accept_document"
+
+
+def test_failed_and_superseded_runs_never_return_candidates(
+    runs: InMemoryEmbeddingRunRepository,
+    store: InMemorySemanticDocumentRepository,
+) -> None:
+    store.upsert_batch([make_doc("sdoc:failed", content="failed lore", embedding=list(UNIT_VEC))])
+    runs.fail("erun:1", completed_at=NOW)
+    search = _search(store, runs)
+    with pytest.raises(ScopeResolutionError, match="COMPLETED"):
+        search.search(
+            SemanticQuery(
+                world_id="world:demo",
+                visibility=Visibility.GM,
+                materialization_run_id="erun:1",
+                embedding=list(UNIT_VEC),
+            )
+        )
+
+    _begin_run(runs, run_id="erun:2")
+    store.upsert_batch(
+        [make_doc("sdoc:ok", content="live lore", embedding=list(UNIT_VEC), run_id="erun:2")]
+    )
+    runs.complete("erun:2", completed_at=NOW)
+    runs.activate("erun:2")
+    assert [
+        c.semantic_document_id
+        for c in search.search(
+            SemanticQuery(
+                world_id="world:demo",
+                visibility=Visibility.GM,
+                embedding=list(UNIT_VEC),
+            )
+        )
+        if c.channel is CandidateChannel.DENSE
+    ] == ["sdoc:ok"]
+
+    runs.supersede("erun:2", completed_at=NOW)
+    assert runs.get_active_run_id("world:demo") is None
+    with pytest.raises(ScopeResolutionError, match="COMPLETED"):
+        search.search(
+            SemanticQuery(
+                world_id="world:demo",
+                visibility=Visibility.GM,
+                materialization_run_id="erun:2",
+                embedding=list(UNIT_VEC),
+            )
+        )
+    with pytest.raises(ScopeResolutionError, match="no materialization run bound"):
+        search.search(
+            SemanticQuery(
+                world_id="world:demo",
+                visibility=Visibility.GM,
+                embedding=list(UNIT_VEC),
+            )
+        )
+
+
+def test_two_completed_runs_do_not_duplicate_without_explicit_binding(
+    runs: InMemoryEmbeddingRunRepository,
+    store: InMemorySemanticDocumentRepository,
+) -> None:
+    store.upsert_batch(
+        [make_doc("sdoc:run1", content="first representation", embedding=list(UNIT_VEC))]
+    )
+    runs.complete("erun:1", completed_at=NOW)
+    _begin_run(runs, run_id="erun:2")
+    store.upsert_batch(
+        [
+            make_doc(
+                "sdoc:run2",
+                content="second representation",
+                embedding=list(UNIT_VEC),
+                run_id="erun:2",
+            )
+        ]
+    )
+    runs.complete("erun:2", completed_at=NOW)
+    runs.activate("erun:2")
+    search = _search(store, runs)
+    dense = [
+        c.semantic_document_id
+        for c in search.search(
+            SemanticQuery(
+                world_id="world:demo",
+                visibility=Visibility.GM,
+                embedding=list(UNIT_VEC),
+            )
+        )
+        if c.channel is CandidateChannel.DENSE
+    ]
+    assert dense == ["sdoc:run2"]
+    pinned = [
+        c.semantic_document_id
+        for c in search.search(
+            SemanticQuery(
+                world_id="world:demo",
+                visibility=Visibility.GM,
+                materialization_run_id="erun:1",
+                embedding=list(UNIT_VEC),
+            )
+        )
+        if c.channel is CandidateChannel.DENSE
+    ]
+    assert pinned == ["sdoc:run1"]

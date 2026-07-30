@@ -172,3 +172,31 @@ def test_missing_run_not_found() -> None:
     runs = InMemoryEmbeddingRunRepository()
     with pytest.raises(DocumentNotFoundError):
         runs.complete("erun:missing", completed_at=NOW)
+
+
+def test_activate_requires_completed_run_with_world() -> None:
+    from dungeonmind.domain.errors import ScopeResolutionError
+
+    runs = InMemoryEmbeddingRunRepository()
+    runs.begin(_running(world_id="world:demo"))
+    with pytest.raises(InvalidLifecycleTransitionError):
+        runs.activate("erun:1")
+    runs.complete("erun:1", completed_at=NOW)
+    activated = runs.activate("erun:1")
+    assert activated.status is EmbeddingRunStatus.COMPLETED
+    assert runs.get_active_run_id("world:demo") == "erun:1"
+
+    runs2 = InMemoryEmbeddingRunRepository()
+    runs2.begin(_running(run_id="erun:noworld", world_id=None))
+    runs2.complete("erun:noworld", completed_at=NOW)
+    with pytest.raises(ScopeResolutionError):
+        runs2.activate("erun:noworld")
+
+
+def test_supersede_clears_active_pointer() -> None:
+    runs = InMemoryEmbeddingRunRepository()
+    runs.begin(_running(world_id="world:demo"))
+    runs.complete("erun:1", completed_at=NOW)
+    runs.activate("erun:1")
+    runs.supersede("erun:1", completed_at=LATER)
+    assert runs.get_active_run_id("world:demo") is None

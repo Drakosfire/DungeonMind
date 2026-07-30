@@ -9,6 +9,13 @@ A similarity score is a candidate-retrieval signal, never factual support.
 
 ``EmbeddingRun.completed_at`` is the lifecycle terminal timestamp for every
 terminal status (COMPLETED, FAILED, SUPERSEDED), not only successful completion.
+
+Active-materialization semantics (PR A.1):
+- New semantic documents may be inserted only while their run is ``RUNNING``.
+- Exact document replays remain idempotent after the run becomes terminal.
+- Candidate retrieval uses only a ``COMPLETED``, non-superseded run, bound
+  either by ``SemanticQuery.materialization_run_id`` or by the world's
+  active-run pointer set during query planning.
 """
 
 from datetime import datetime
@@ -136,6 +143,10 @@ class SemanticQuery(DungeonMindModel):
 
     ``visibility`` is required with no default. Absence never means unrestricted
     GM access — callers must state the reader class explicitly.
+
+    ``materialization_run_id`` binds retrieval to one embedding run. When
+    omitted, the search port resolves the world's active completed run.
+    Failed, superseded, and still-running runs never participate in candidates.
     """
 
     world_id: str
@@ -143,6 +154,8 @@ class SemanticQuery(DungeonMindModel):
     document_kind: SemanticDocumentKind | None = None
     visibility: Visibility
     graph_revision_id: str | None = None
+    # Explicit run binding for query planning; else active-run pointer.
+    materialization_run_id: str | None = None
     text: str | None = None
     # Precomputed by the caller's embedding provider; adapters never embed.
     embedding: list[float] | None = None

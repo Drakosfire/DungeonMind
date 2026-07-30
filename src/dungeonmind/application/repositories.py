@@ -140,7 +140,9 @@ class SemanticDocumentRepository(Protocol):
     """Provenance-complete store for derived semantic documents.
 
     Insertions must verify materialization-run compatibility (model, revision,
-    dimensions, recipe, world) before accepting a document.
+    dimensions, recipe, world) before accepting a document. New documents may
+    be inserted only while the materialization run is ``RUNNING``; exact
+    replays remain idempotent after the run becomes terminal.
     """
 
     def upsert_batch(self, documents: list[SemanticDocument]) -> int: ...
@@ -153,7 +155,12 @@ class SemanticDocumentRepository(Protocol):
 
 
 class SemanticSearchPort(Protocol):
-    """Candidate retrieval over semantic documents. Never evidence; never truth."""
+    """Candidate retrieval over semantic documents. Never evidence; never truth.
+
+    Retrieval is bound to one ``COMPLETED``, non-superseded materialization
+    run (explicit ``SemanticQuery.materialization_run_id`` or the world's
+    active-run pointer). Failed and superseded runs never contribute candidates.
+    """
 
     def search(self, query: SemanticQuery) -> list[SemanticCandidate]: ...
 
@@ -164,6 +171,9 @@ class EmbeddingRunRepository(Protocol):
     ``begin`` is idempotent on immutable creation fields. Lifecycle transitions:
     RUNNING → COMPLETED | FAILED; COMPLETED | FAILED → SUPERSEDED.
     Terminal retries do not rewrite timestamps.
+
+    ``activate`` marks a ``COMPLETED`` run as the world's active retrieval
+    profile. Superseding an active run clears the pointer.
     """
 
     def begin(self, run: EmbeddingRun) -> EmbeddingRun: ...
@@ -173,5 +183,9 @@ class EmbeddingRunRepository(Protocol):
     def fail(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun: ...
 
     def supersede(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun: ...
+
+    def activate(self, run_id: str) -> EmbeddingRun: ...
+
+    def get_active_run_id(self, world_id: str) -> str | None: ...
 
     def get(self, run_id: str) -> EmbeddingRun | None: ...
