@@ -158,3 +158,30 @@ def test_binding_column_corruption_fails_closed(
     req = _request(thread_id=thread_id)
     with pytest.raises(PersistenceIntegrityError, match="binding"):
         threads.append_turn(req, _response(req))
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("payload_column", ["request_payload", "response_payload"])
+def test_exact_turn_replay_rejects_corrupted_payload(
+    migrated_database: str, pg, payload_column: str
+) -> None:
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+    from dungeonmind.infrastructure.postgres.database import SCHEMA, PostgresDatabase, jsonb
+
+    threads = pg.threads
+    thread_id = f"thr:corrupt-{payload_column}"
+    _create(threads, thread_id=thread_id)
+    req = _request(thread_id=thread_id, request_id="req:replay")
+    resp = _response(req, turn_id="turn:replay")
+    threads.append_turn(req, resp)
+
+    db = PostgresDatabase(migrated_database)
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE {SCHEMA}.mind_turns SET {payload_column} = %s "
+            "WHERE thread_id = %s AND turn_id = %s",
+            (jsonb({"corrupted": True}), thread_id, "turn:replay"),
+        )
+
+    with pytest.raises(PersistenceIntegrityError):
+        threads.append_turn(req, resp)

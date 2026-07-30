@@ -124,6 +124,129 @@ def test_revision_extracted_column_drift_fails_closed(
 
 
 @pytest.mark.integration
+def test_publish_rejects_corrupted_head(migrated_database: str, pg) -> None:
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+    from dungeonmind.infrastructure.postgres.database import SCHEMA, PostgresDatabase
+
+    repo = pg.world_graph
+    rev1 = repo.publish_revision(make_publish(payload={"v": 1}))
+    db = PostgresDatabase(migrated_database)
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE {SCHEMA}.world_graph_heads SET schema_version = %s "
+            "WHERE world_id = %s",
+            ("dm_graph_head_corrupt", WORLD_ID),
+        )
+    with pytest.raises(PersistenceIntegrityError, match="schema_version"):
+        repo.publish_revision(
+            make_publish(
+                parent=rev1.revision_id, payload={"v": 2}, created_at=FIXED_LATER
+            )
+        )
+    # Mutation must not leave a new readable head/revision behind.
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE {SCHEMA}.world_graph_heads SET schema_version = %s "
+            "WHERE world_id = %s",
+            ("dm_graph_head_v1", WORLD_ID),
+        )
+    head = repo.get_head(WORLD_ID)
+    assert head is not None
+    assert head.head_revision_id == rev1.revision_id
+
+
+@pytest.mark.integration
+def test_publish_replay_rejects_corrupted_revision_hash(
+    migrated_database: str, pg
+) -> None:
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+    from dungeonmind.infrastructure.postgres.database import SCHEMA, PostgresDatabase
+
+    repo = pg.world_graph
+    rev1 = repo.publish_revision(make_publish(payload={"v": 1}))
+    rev2 = repo.publish_revision(
+        make_publish(parent=rev1.revision_id, payload={"v": 2}, created_at=FIXED_LATER)
+    )
+    # Head back at rev1 so an identical rev2 publish passes CAS and hits replay.
+    repo.rollback_head(WORLD_ID, rev1.revision_id, updated_at=FIXED_LATER)
+
+    db = PostgresDatabase(migrated_database)
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE {SCHEMA}.graph_revisions SET graph_payload_sha256 = %s "
+            "WHERE world_id = %s AND revision_id = %s",
+            ("deadbeef" * 8, WORLD_ID, rev2.revision_id),
+        )
+
+    with pytest.raises(PersistenceIntegrityError, match="graph_payload_sha256"):
+        repo.publish_revision(
+            make_publish(
+                parent=rev1.revision_id, payload={"v": 2}, created_at=FIXED_LATER
+            )
+        )
+    head = repo.get_head(WORLD_ID)
+    assert head is not None
+    assert head.head_revision_id == rev1.revision_id
+
+
+@pytest.mark.integration
+def test_rollback_rejects_corrupted_head(migrated_database: str, pg) -> None:
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+    from dungeonmind.infrastructure.postgres.database import SCHEMA, PostgresDatabase
+
+    repo = pg.world_graph
+    rev1 = repo.publish_revision(make_publish(payload={"v": 1}))
+    rev2 = repo.publish_revision(
+        make_publish(parent=rev1.revision_id, payload={"v": 2}, created_at=FIXED_LATER)
+    )
+    db = PostgresDatabase(migrated_database)
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE {SCHEMA}.world_graph_heads SET schema_version = %s "
+            "WHERE world_id = %s",
+            ("dm_graph_head_corrupt", WORLD_ID),
+        )
+    with pytest.raises(PersistenceIntegrityError, match="schema_version"):
+        repo.rollback_head(WORLD_ID, rev1.revision_id, updated_at=FIXED_LATER)
+
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE {SCHEMA}.world_graph_heads SET schema_version = %s "
+            "WHERE world_id = %s",
+            ("dm_graph_head_v1", WORLD_ID),
+        )
+    head = repo.get_head(WORLD_ID)
+    assert head is not None
+    assert head.head_revision_id == rev2.revision_id
+
+
+@pytest.mark.integration
+def test_rollback_rejects_corrupted_target_revision(
+    migrated_database: str, pg
+) -> None:
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+    from dungeonmind.infrastructure.postgres.database import SCHEMA, PostgresDatabase
+
+    repo = pg.world_graph
+    rev1 = repo.publish_revision(make_publish(payload={"v": 1}))
+    rev2 = repo.publish_revision(
+        make_publish(parent=rev1.revision_id, payload={"v": 2}, created_at=FIXED_LATER)
+    )
+    db = PostgresDatabase(migrated_database)
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE {SCHEMA}.graph_revisions SET graph_payload_sha256 = %s "
+            "WHERE world_id = %s AND revision_id = %s",
+            ("deadbeef" * 8, WORLD_ID, rev1.revision_id),
+        )
+    with pytest.raises(PersistenceIntegrityError, match="graph_payload_sha256"):
+        repo.rollback_head(WORLD_ID, rev1.revision_id, updated_at=FIXED_LATER)
+    head = repo.get_head(WORLD_ID)
+    assert head is not None
+    assert head.head_revision_id == rev2.revision_id
+
+
+@pytest.mark.integration
 def test_failed_publish_via_trigger_leaves_prior_head(pg, db) -> None:
     repo = pg.world_graph
     fail_world = "world:fail"

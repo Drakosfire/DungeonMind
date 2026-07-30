@@ -485,6 +485,8 @@ class PostgresSemanticDocumentRepository:
         documents = normalize_semantic_document_batch(documents)
         if not documents:
             return 0
+        # Stable lock order across concurrent batches (avoids AB-BA deadlocks).
+        documents = sorted(documents, key=lambda doc: doc.semantic_document_id)
         with self._db.transaction() as conn:
             register_vector(conn)
             run_ids = sorted({doc.materialization_run_id for doc in documents})

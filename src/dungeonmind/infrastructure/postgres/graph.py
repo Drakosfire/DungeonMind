@@ -39,6 +39,8 @@ _REVISION_SELECT = """
     graph_payload
 """
 
+_HEAD_SELECT = "world_id, head_revision_id, updated_at, schema_version"
+
 
 class PostgresWorldGraphRepository:
     """Immutable revisions + one head per world, published by atomic CAS."""
@@ -50,9 +52,9 @@ class PostgresWorldGraphRepository:
         with self._database.transaction() as conn:
             row = conn.execute(
                 sql.SQL(
-                    """
-                    SELECT world_id, head_revision_id, updated_at, schema_version
-                    FROM {}.world_graph_heads
+                    f"""
+                    SELECT {_HEAD_SELECT}
+                    FROM {{}}.world_graph_heads
                     WHERE world_id = %s
                     """
                 ).format(sql.Identifier(SCHEMA)),
@@ -60,17 +62,7 @@ class PostgresWorldGraphRepository:
             ).fetchone()
         if row is None:
             return None
-        head = WorldGraphHead(
-            world_id=row["world_id"],
-            head_revision_id=row["head_revision_id"],
-            updated_at=row["updated_at"],
-        )
-        if row["schema_version"] != head.schema_version:
-            raise PersistenceIntegrityError(
-                f"world graph head {world_id!r} schema_version drift "
-                f"({row['schema_version']!r} != {head.schema_version!r})"
-            )
-        return head.model_copy(deep=True)
+        return _head_from_row(row).model_copy(deep=True)
 
     def get_revision(self, world_id: str, revision_id: str) -> StoredGraphRevision | None:
         with self._database.transaction() as conn:
@@ -102,15 +94,18 @@ class PostgresWorldGraphRepository:
 
             head_row = conn.execute(
                 sql.SQL(
-                    """
-                    SELECT head_revision_id
-                    FROM {}.world_graph_heads
+                    f"""
+                    SELECT {_HEAD_SELECT}
+                    FROM {{}}.world_graph_heads
                     WHERE world_id = %s
                     """
                 ).format(sql.Identifier(SCHEMA)),
                 (command.world_id,),
             ).fetchone()
-            current_head_id = head_row["head_revision_id"] if head_row else None
+            if head_row is None:
+                current_head_id = None
+            else:
+                current_head_id = _head_from_row(head_row).head_revision_id
 
             if command.expected_parent_revision_id != current_head_id:
                 raise StaleParentRevisionError(
@@ -137,12 +132,10 @@ class PostgresWorldGraphRepository:
             ).fetchone()
 
             if existing_row is not None:
-                if existing_row["graph_payload_sha256"] != payload_hash:
-                    raise ImmutableRevisionConflictError(
-                        f"revision {revision_id!r} already exists with different payload"
-                    )
+                # Reconstruct first so column/payload corruption fails closed as
+                # PersistenceIntegrityError, not ImmutableRevisionConflictError.
                 stored = _reconstruct_stored_revision(existing_row)
-                if model_fingerprint(stored) != existing_row["record_fingerprint"]:
+                if stored.revision.graph_payload_sha256 != payload_hash:
                     raise ImmutableRevisionConflictError(
                         f"revision {revision_id!r} already exists with different payload"
                     )
@@ -213,11 +206,25 @@ class PostgresWorldGraphRepository:
         with self._database.transaction() as conn:
             lock_world(conn, world_id, created_at=updated_at)
 
+            head_row = conn.execute(
+                sql.SQL(
+                    f"""
+                    SELECT {_HEAD_SELECT}
+                    FROM {{}}.world_graph_heads
+                    WHERE world_id = %s
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (world_id,),
+            ).fetchone()
+            previous_revision_id = (
+                None if head_row is None else _head_from_row(head_row).head_revision_id
+            )
+
             revision_row = conn.execute(
                 sql.SQL(
-                    """
-                    SELECT revision_id
-                    FROM {}.graph_revisions
+                    f"""
+                    SELECT {_REVISION_SELECT}
+                    FROM {{}}.graph_revisions
                     WHERE world_id = %s AND revision_id = %s
                     """
                 ).format(sql.Identifier(SCHEMA)),
@@ -227,18 +234,7 @@ class PostgresWorldGraphRepository:
                 raise RevisionNotFoundError(
                     f"revision {target_revision_id!r} does not exist for world {world_id!r}"
                 )
-
-            head_row = conn.execute(
-                sql.SQL(
-                    """
-                    SELECT head_revision_id
-                    FROM {}.world_graph_heads
-                    WHERE world_id = %s
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (world_id,),
-            ).fetchone()
-            previous_revision_id = head_row["head_revision_id"] if head_row else None
+            _reconstruct_stored_revision(revision_row)
 
             conn.execute(
                 sql.SQL(
@@ -248,7 +244,8 @@ class PostgresWorldGraphRepository:
                     ) VALUES (%s, %s, %s, %s)
                     ON CONFLICT (world_id) DO UPDATE SET
                         head_revision_id = EXCLUDED.head_revision_id,
-                        updated_at = EXCLUDED.updated_at
+                        updated_at = EXCLUDED.updated_at,
+                        schema_version = EXCLUDED.schema_version
                     """
                 ).format(sql.Identifier(SCHEMA)),
                 (world_id, target_revision_id, updated_at, GRAPH_HEAD_SCHEMA),
@@ -276,6 +273,20 @@ class PostgresWorldGraphRepository:
         return head.model_copy(deep=True)
 
 
+def _head_from_row(row: dict[str, Any]) -> WorldGraphHead:
+    head = WorldGraphHead(
+        world_id=row["world_id"],
+        head_revision_id=row["head_revision_id"],
+        updated_at=row["updated_at"],
+    )
+    if row["schema_version"] != head.schema_version:
+        raise PersistenceIntegrityError(
+            f"world graph head {row['world_id']!r} schema_version drift "
+            f"({row['schema_version']!r} != {head.schema_version!r})"
+        )
+    return head
+
+
 def _upsert_head(
     conn: Connection[Any],
     *,
@@ -292,7 +303,8 @@ def _upsert_head(
             ) VALUES (%s, %s, %s, %s)
             ON CONFLICT (world_id) DO UPDATE SET
                 head_revision_id = EXCLUDED.head_revision_id,
-                updated_at = EXCLUDED.updated_at
+                updated_at = EXCLUDED.updated_at,
+                schema_version = EXCLUDED.schema_version
             """
         ).format(sql.Identifier(SCHEMA)),
         (world_id, head_revision_id, updated_at, GRAPH_HEAD_SCHEMA),

@@ -191,7 +191,13 @@ class PostgresMindThreadRepository:
             conflicts = conn.execute(
                 sql.SQL(
                     """
-                    SELECT turn_id, request_id, request_fingerprint, response_fingerprint
+                    SELECT
+                        turn_id,
+                        request_id,
+                        request_fingerprint,
+                        response_fingerprint,
+                        request_payload,
+                        response_payload
                     FROM {}.mind_turns
                     WHERE thread_id = %s
                       AND (turn_id = %s OR request_id = %s)
@@ -205,6 +211,9 @@ class PostgresMindThreadRepository:
                         row["request_fingerprint"] == request_fp
                         and row["response_fingerprint"] == response_fp
                     ):
+                        # Reconstruct before accepting exact replay so corrupted
+                        # JSONB cannot be silently blessed by fingerprint match.
+                        _row_to_turn_pair(row, thread_id=request.thread_id)
                         upsert_evidence_refs(conn, response.evidence)
                         return
                     raise IdempotencyConflictError(
