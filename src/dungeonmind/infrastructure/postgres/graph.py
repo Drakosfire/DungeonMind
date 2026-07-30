@@ -24,7 +24,20 @@ from ...domain.errors import (
 )
 from ...domain.revision_ids import compute_revision_id
 from .database import SCHEMA, PostgresDatabase, jsonb, lock_world
-from .serialization import dump_payload, model_fingerprint, reconstruct
+from .serialization import _normalize, dump_payload, model_fingerprint, reconstruct
+
+_REVISION_SELECT = """
+    world_id,
+    revision_id,
+    parent_revision_id,
+    created_at,
+    graph_schema,
+    graph_payload_sha256,
+    schema_version,
+    record_fingerprint,
+    revision_payload,
+    graph_payload
+"""
 
 
 class PostgresWorldGraphRepository:
@@ -52,22 +65,20 @@ class PostgresWorldGraphRepository:
             head_revision_id=row["head_revision_id"],
             updated_at=row["updated_at"],
         )
+        if row["schema_version"] != head.schema_version:
+            raise PersistenceIntegrityError(
+                f"world graph head {world_id!r} schema_version drift "
+                f"({row['schema_version']!r} != {head.schema_version!r})"
+            )
         return head.model_copy(deep=True)
 
     def get_revision(self, world_id: str, revision_id: str) -> StoredGraphRevision | None:
         with self._database.transaction() as conn:
             row = conn.execute(
                 sql.SQL(
-                    """
-                    SELECT
-                        world_id,
-                        revision_id,
-                        parent_revision_id,
-                        graph_schema,
-                        record_fingerprint,
-                        revision_payload,
-                        graph_payload
-                    FROM {}.graph_revisions
+                    f"""
+                    SELECT {_REVISION_SELECT}
+                    FROM {{}}.graph_revisions
                     WHERE world_id = %s AND revision_id = %s
                     """
                 ).format(sql.Identifier(SCHEMA)),
@@ -116,13 +127,9 @@ class PostgresWorldGraphRepository:
 
             existing_row = conn.execute(
                 sql.SQL(
-                    """
-                    SELECT
-                        graph_payload_sha256,
-                        record_fingerprint,
-                        revision_payload,
-                        graph_payload
-                    FROM {}.graph_revisions
+                    f"""
+                    SELECT {_REVISION_SELECT}
+                    FROM {{}}.graph_revisions
                     WHERE world_id = %s AND revision_id = %s
                     """
                 ).format(sql.Identifier(SCHEMA)),
@@ -134,15 +141,7 @@ class PostgresWorldGraphRepository:
                     raise ImmutableRevisionConflictError(
                         f"revision {revision_id!r} already exists with different payload"
                     )
-                stored = _reconstruct_stored_revision(
-                    {
-                        **existing_row,
-                        "world_id": command.world_id,
-                        "revision_id": revision_id,
-                        "parent_revision_id": command.parent_revision_id,
-                        "graph_schema": command.graph_schema,
-                    }
-                )
+                stored = _reconstruct_stored_revision(existing_row)
                 if model_fingerprint(stored) != existing_row["record_fingerprint"]:
                     raise ImmutableRevisionConflictError(
                         f"revision {revision_id!r} already exists with different payload"
@@ -341,5 +340,22 @@ def _reconstruct_stored_revision(row: dict[str, Any]) -> StoredGraphRevision:
     if rev.graph_schema != row["graph_schema"]:
         raise PersistenceIntegrityError(
             f"StoredGraphRevision graph_schema drift for {row['revision_id']!r}"
+        )
+    if rev.graph_payload_sha256 != row["graph_payload_sha256"]:
+        raise PersistenceIntegrityError(
+            f"StoredGraphRevision graph_payload_sha256 drift for {row['revision_id']!r}"
+        )
+    if rev.schema_version != row["schema_version"]:
+        raise PersistenceIntegrityError(
+            f"StoredGraphRevision schema_version drift for {row['revision_id']!r}"
+        )
+    if _normalize(rev.created_at) != _normalize(row["created_at"]):
+        raise PersistenceIntegrityError(
+            f"StoredGraphRevision created_at drift for {row['revision_id']!r}"
+        )
+    payload_hash = canonical_sha256(stored.graph_payload)
+    if payload_hash != rev.graph_payload_sha256:
+        raise PersistenceIntegrityError(
+            f"StoredGraphRevision graph_payload hash mismatch for {row['revision_id']!r}"
         )
     return stored.model_copy(deep=True)

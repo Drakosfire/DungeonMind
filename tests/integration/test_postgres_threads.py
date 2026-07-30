@@ -117,3 +117,44 @@ def test_retry_and_ordinal_order(pg) -> None:
     assert [resp.turn_id for _, resp in turns] == ["turn:1", "turn:2"]
     assert turns[0][0].surface_context.surface_id == "surface:plan"
     assert turns[1][0].surface_context.surface_id == "surface:play"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("caller_id", "user:attacker"),
+        ("tenant_id", "tenant:evil"),
+        ("created_at", NOW + timedelta(seconds=30)),
+    ],
+)
+def test_binding_column_corruption_fails_closed(
+    migrated_database: str, pg, column: str, value: object
+) -> None:
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+    from dungeonmind.infrastructure.postgres.database import SCHEMA, PostgresDatabase
+
+    threads = pg.threads
+    thread_id = f"thr:corrupt-{column}"
+    _create(threads, thread_id=thread_id)
+
+    db = PostgresDatabase(migrated_database)
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE {SCHEMA}.mind_threads SET {column} = %s WHERE thread_id = %s",
+            (value, thread_id),
+        )
+
+    with pytest.raises(PersistenceIntegrityError, match="binding"):
+        threads.create_thread(
+            thread_id,
+            world_id="world:demo",
+            campaign_id="camp:1",
+            caller_id="user:1",
+            tenant_id="tenant:a",
+            created_at=NOW,
+        )
+
+    req = _request(thread_id=thread_id)
+    with pytest.raises(PersistenceIntegrityError, match="binding"):
+        threads.append_turn(req, _response(req))

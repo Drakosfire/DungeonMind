@@ -237,6 +237,8 @@ class PostgresEmbeddingRunRepository:
 
     def __init__(self, database: PostgresDatabase) -> None:
         self._db = database
+        # Test-only: invoked immediately before SELECT … FOR UPDATE on a run row.
+        self._before_run_lock: Callable[[], None] | None = None
 
     def begin(self, run: EmbeddingRun) -> EmbeddingRun:
         if run.status is not EmbeddingRunStatus.RUNNING:
@@ -321,6 +323,7 @@ class PostgresEmbeddingRunRepository:
 
     def complete(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun:
         with self._db.transaction() as conn:
+            _invoke_hook(self._before_run_lock)
             row = _lock_embedding_run(conn, run_id)
             if row is None:
                 raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
@@ -345,6 +348,7 @@ class PostgresEmbeddingRunRepository:
 
     def fail(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun:
         with self._db.transaction() as conn:
+            _invoke_hook(self._before_run_lock)
             row = _lock_embedding_run(conn, run_id)
             if row is None:
                 raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
@@ -369,6 +373,7 @@ class PostgresEmbeddingRunRepository:
 
     def supersede(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun:
         with self._db.transaction() as conn:
+            _invoke_hook(self._before_run_lock)
             row = _lock_embedding_run(conn, run_id)
             if row is None:
                 raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
@@ -406,6 +411,7 @@ class PostgresEmbeddingRunRepository:
 
     def activate(self, run_id: str) -> EmbeddingRun:
         with self._db.transaction() as conn:
+            _invoke_hook(self._before_run_lock)
             row = _lock_embedding_run(conn, run_id)
             if row is None:
                 raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
@@ -491,9 +497,10 @@ class PostgresSemanticDocumentRepository:
 
             _invoke_hook(self._after_run_lock_observe)
 
-            to_insert: list[SemanticDocument] = []
+            inserted = 0
             for doc in documents:
-                _assert_run_compatible(doc, locked_runs[doc.materialization_run_id])
+                run = locked_runs[doc.materialization_run_id]
+                _assert_run_compatible(doc, run)
                 existing = conn.execute(
                     sql.SQL(
                         f"""
@@ -514,25 +521,6 @@ class PostgresSemanticDocumentRepository:
                             "document ids (ADR-0003)"
                         )
                     continue
-                run = locked_runs[doc.materialization_run_id]
-                if run.status is not EmbeddingRunStatus.RUNNING:
-                    raise InvalidLifecycleTransitionError(
-                        (
-                            "new semantic documents require a RUNNING materialization "
-                            f"run; {run.run_id!r} is {run.status.value}"
-                        ),
-                        record_type="embedding_run",
-                        record_id=run.run_id,
-                        current_status=run.status.value,
-                        requested_status="accept_document",
-                    )
-                to_insert.append(doc)
-
-            if not to_insert:
-                return 0
-
-            for doc in to_insert:
-                run = locked_runs[doc.materialization_run_id]
                 if run.status is not EmbeddingRunStatus.RUNNING:
                     raise InvalidLifecycleTransitionError(
                         (
@@ -551,7 +539,7 @@ class PostgresSemanticDocumentRepository:
                         f"{doc.embedding_dimensions}"
                     )
                 fingerprint = model_fingerprint(doc)
-                conn.execute(
+                result = conn.execute(
                     sql.SQL(
                         """
                         INSERT INTO {}.semantic_documents (
@@ -581,6 +569,7 @@ class PostgresSemanticDocumentRepository:
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                         )
+                        ON CONFLICT (semantic_document_id) DO NOTHING
                         """
                     ).format(sql.Identifier(SCHEMA)),
                     (
@@ -608,7 +597,31 @@ class PostgresSemanticDocumentRepository:
                         doc.embedding,
                     ),
                 )
-            return len(to_insert)
+                stored_row = conn.execute(
+                    sql.SQL(
+                        f"""
+                        SELECT {_DOC_SELECT}
+                        FROM {{}}.semantic_documents
+                        WHERE semantic_document_id = %s
+                        """
+                    ).format(sql.Identifier(SCHEMA)),
+                    (doc.semantic_document_id,),
+                ).fetchone()
+                if stored_row is None:
+                    raise PersistenceIntegrityError(
+                        f"semantic document {doc.semantic_document_id!r} missing "
+                        "after insert/reconcile"
+                    )
+                stored = _row_to_semantic_document(stored_row)
+                if model_fingerprint(stored) != fingerprint:
+                    raise IdempotencyConflictError(
+                        f"semantic document {doc.semantic_document_id!r} re-ingested with "
+                        "different payload; re-embedding must create a new run and new "
+                        "document ids (ADR-0003)"
+                    )
+                if result.rowcount == 1:
+                    inserted += 1
+            return inserted
 
     def get(self, semantic_document_id: str) -> SemanticDocument | None:
         with self._db.transaction() as conn:

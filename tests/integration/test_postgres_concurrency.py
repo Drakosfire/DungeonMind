@@ -55,6 +55,28 @@ def _doc(doc_id: str, *, run_id: str = "erun:race") -> SemanticDocument:
     )
 
 
+def _wait_for_postgres_lock_wait(database_url: str, *, timeout: float = 5.0) -> None:
+    """Poll until another backend is waiting on a Lock (FOR UPDATE contention)."""
+    from dungeonmind.infrastructure.postgres import PostgresDatabase
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        with PostgresDatabase(database_url).connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS n
+                FROM pg_stat_activity
+                WHERE datname = current_database()
+                  AND pid <> pg_backend_pid()
+                  AND wait_event_type = 'Lock'
+                """
+            ).fetchone()
+            if row is not None and int(row["n"]) >= 1:
+                return
+        time.sleep(0.01)
+    raise AssertionError("PostgreSQL lock wait was not observed before timeout")
+
+
 @pytest.mark.integration
 def test_two_publishers_same_parent(migrated_database: str, pg) -> None:
     from dungeonmind.infrastructure.postgres import (
@@ -125,22 +147,23 @@ def test_insert_vs_complete_race(migrated_database: str, pg) -> None:
     docs_a.upsert_batch([_doc("sdoc:seed")])
 
     observed = threading.Event()
-    complete_attempted = threading.Event()
+    before_complete_lock = threading.Event()
     complete_finished = threading.Event()
     outcomes: list[str] = []
     timestamps: dict[str, float] = {}
 
     def after_observe() -> None:
         observed.set()
-        assert complete_attempted.wait(timeout=5), "complete did not attempt"
-        # While insert holds the run lock, complete must block on FOR UPDATE.
-        time.sleep(0.2)
+        assert before_complete_lock.wait(timeout=5), "complete did not reach FOR UPDATE"
+        # Prove the competitor is blocked in PostgreSQL, not merely descheduled.
+        _wait_for_postgres_lock_wait(migrated_database)
         assert not complete_finished.is_set(), (
             "complete finished while insert still held the run lock — "
             "would allow an invalid insert-after-complete linearization"
         )
 
     docs_a._after_run_lock_observe = after_observe
+    runs_b._before_run_lock = before_complete_lock.set
 
     def do_insert() -> None:
         try:
@@ -153,7 +176,6 @@ def test_insert_vs_complete_race(migrated_database: str, pg) -> None:
 
     def do_complete() -> None:
         assert observed.wait(timeout=5)
-        complete_attempted.set()
         # Blocks here on the run row lock until insert commits.
         runs_b.complete("erun:race", completed_at=NOW)
         timestamps["complete"] = time.monotonic()
@@ -238,20 +260,21 @@ def test_search_vs_supersede_race(migrated_database: str, pg) -> None:
     runs.activate("erun:search")
 
     observed = threading.Event()
-    supersede_attempted = threading.Event()
+    before_supersede_lock = threading.Event()
     supersede_finished = threading.Event()
     results: list[tuple[str, object]] = []
     timestamps: dict[str, float] = {}
 
     def after_observe() -> None:
         observed.set()
-        assert supersede_attempted.wait(timeout=5)
-        time.sleep(0.2)
+        assert before_supersede_lock.wait(timeout=5)
+        _wait_for_postgres_lock_wait(db_url)
         assert not supersede_finished.is_set(), (
             "supersede finished while search still held the run lock"
         )
 
     search._after_run_lock_observe = after_observe
+    runs_b._before_run_lock = before_supersede_lock.set
 
     def do_search() -> None:
         try:
@@ -270,7 +293,6 @@ def test_search_vs_supersede_race(migrated_database: str, pg) -> None:
 
     def do_supersede() -> None:
         assert observed.wait(timeout=5)
-        supersede_attempted.set()
         # Blocks on the run row lock until search commits its snapshot.
         runs_b.supersede("erun:search", completed_at=NOW)
         timestamps["supersede"] = time.monotonic()
@@ -476,3 +498,59 @@ def test_concurrent_exact_thread_create(migrated_database: str, pg) -> None:
     t1.join(timeout=10)
     t2.join(timeout=10)
     assert errors == []
+
+
+@pytest.mark.integration
+def test_concurrent_conflicting_semantic_document_across_runs(
+    migrated_database: str, pg
+) -> None:
+    """Same semantic_document_id under two RUNNING runs → one insert, one conflict."""
+    from dungeonmind.infrastructure.postgres import (
+        PostgresDatabase,
+        PostgresEmbeddingRunRepository,
+        PostgresSemanticDocumentRepository,
+    )
+
+    del pg
+    runs = PostgresEmbeddingRunRepository(PostgresDatabase(migrated_database))
+    docs_a = PostgresSemanticDocumentRepository(PostgresDatabase(migrated_database))
+    docs_b = PostgresSemanticDocumentRepository(PostgresDatabase(migrated_database))
+    for run_id in ("erun:race-a", "erun:race-b"):
+        runs.begin(
+            EmbeddingRun(
+                run_id=run_id,
+                embedding_model="test-model",
+                embedding_model_revision="rev-1",
+                embedding_dimensions=8,
+                embedding_recipe="raw-v1",
+                world_id="world:demo",
+                created_at=NOW,
+            )
+        )
+
+    barrier = threading.Barrier(2)
+    successes: list[str] = []
+    errors: list[BaseException] = []
+
+    def upsert(repo: PostgresSemanticDocumentRepository, run_id: str) -> None:
+        try:
+            barrier.wait(timeout=5)
+            count = repo.upsert_batch([_doc("sdoc:cross-run", run_id=run_id)])
+            successes.append(run_id if count == 1 else f"{run_id}:noop")
+        except BaseException as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=upsert, args=(docs_a, "erun:race-a"))
+    t2 = threading.Thread(target=upsert, args=(docs_b, "erun:race-b"))
+    t1.start()
+    t2.start()
+    t1.join(timeout=15)
+    t2.join(timeout=15)
+    assert not t1.is_alive() and not t2.is_alive()
+    assert len(successes) == 1
+    assert successes[0] in {"erun:race-a", "erun:race-b"}
+    assert len(errors) == 1
+    assert isinstance(errors[0], IdempotencyConflictError)
+    stored = docs_a.get("sdoc:cross-run")
+    assert stored is not None
+    assert stored.materialization_run_id == successes[0]

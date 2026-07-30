@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from psycopg import sql
@@ -33,9 +33,30 @@ def _binding_fingerprint(
         "campaign_id": campaign_id,
         "caller_id": caller_id,
         "tenant_id": tenant_id,
-        "created_at": created_at.isoformat(),
+        "created_at": created_at.astimezone(UTC).isoformat(),
     }
     return canonical_sha256(binding)
+
+
+_BINDING_SELECT = """
+    world_id, campaign_id, caller_id, tenant_id, created_at, binding_fingerprint
+"""
+
+
+def _verify_binding_row(row: dict[str, Any], *, thread_id: str) -> dict[str, Any]:
+    """Fail closed if extracted binding columns disagree with binding_fingerprint."""
+    recomputed = _binding_fingerprint(
+        world_id=row["world_id"],
+        campaign_id=row["campaign_id"],
+        caller_id=row["caller_id"],
+        tenant_id=row["tenant_id"],
+        created_at=row["created_at"],
+    )
+    if recomputed != row["binding_fingerprint"]:
+        raise PersistenceIntegrityError(
+            f"thread {thread_id!r} binding columns disagree with binding_fingerprint"
+        )
+    return row
 
 
 class PostgresMindThreadRepository:
@@ -89,9 +110,9 @@ class PostgresMindThreadRepository:
             )
             existing = conn.execute(
                 sql.SQL(
-                    """
-                    SELECT binding_fingerprint
-                    FROM {}.mind_threads
+                    f"""
+                    SELECT {_BINDING_SELECT}
+                    FROM {{}}.mind_threads
                     WHERE thread_id = %s
                     """
                 ).format(sql.Identifier(SCHEMA)),
@@ -101,7 +122,8 @@ class PostgresMindThreadRepository:
                 raise PersistenceIntegrityError(
                     f"thread {thread_id!r} missing after insert/reconcile"
                 )
-            if existing["binding_fingerprint"] != fingerprint:
+            verified = _verify_binding_row(existing, thread_id=thread_id)
+            if verified["binding_fingerprint"] != fingerprint:
                 raise IdempotencyConflictError(
                     f"thread {thread_id!r} already bound with different context"
                 )
@@ -113,9 +135,9 @@ class PostgresMindThreadRepository:
         with self._db.transaction() as conn:
             binding = conn.execute(
                 sql.SQL(
-                    """
-                    SELECT world_id, campaign_id, caller_id, tenant_id
-                    FROM {}.mind_threads
+                    f"""
+                    SELECT {_BINDING_SELECT}
+                    FROM {{}}.mind_threads
                     WHERE thread_id = %s
                     FOR UPDATE
                     """
@@ -124,6 +146,7 @@ class PostgresMindThreadRepository:
             ).fetchone()
             if binding is None:
                 raise DocumentNotFoundError(f"thread {request.thread_id!r} not found")
+            binding = _verify_binding_row(binding, thread_id=request.thread_id)
             if request.world_id != binding["world_id"]:
                 raise ThreadContextMismatchError(
                     f"request world_id {request.world_id!r} != thread world "
@@ -224,14 +247,17 @@ class PostgresMindThreadRepository:
         with self._db.transaction() as conn:
             thread = conn.execute(
                 sql.SQL(
-                    """
-                    SELECT thread_id FROM {}.mind_threads WHERE thread_id = %s
+                    f"""
+                    SELECT {_BINDING_SELECT}
+                    FROM {{}}.mind_threads
+                    WHERE thread_id = %s
                     """
                 ).format(sql.Identifier(SCHEMA)),
                 (thread_id,),
             ).fetchone()
             if thread is None:
                 return []
+            _verify_binding_row(thread, thread_id=thread_id)
             rows = conn.execute(
                 sql.SQL(
                     """

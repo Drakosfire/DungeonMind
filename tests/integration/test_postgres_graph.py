@@ -86,6 +86,44 @@ def test_unavailable_database_maps_to_persistence_error() -> None:
 
 
 @pytest.mark.integration
+def test_head_schema_version_drift_fails_closed(migrated_database: str, pg) -> None:
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+    from dungeonmind.infrastructure.postgres.database import SCHEMA, PostgresDatabase
+
+    repo = pg.world_graph
+    repo.publish_revision(make_publish(payload={"v": 1}))
+    db = PostgresDatabase(migrated_database)
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE {SCHEMA}.world_graph_heads SET schema_version = %s "
+            "WHERE world_id = %s",
+            ("dm_graph_head_corrupt", WORLD_ID),
+        )
+    with pytest.raises(PersistenceIntegrityError, match="schema_version"):
+        repo.get_head(WORLD_ID)
+
+
+@pytest.mark.integration
+def test_revision_extracted_column_drift_fails_closed(
+    migrated_database: str, pg
+) -> None:
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+    from dungeonmind.infrastructure.postgres.database import SCHEMA, PostgresDatabase
+
+    repo = pg.world_graph
+    rev = repo.publish_revision(make_publish(payload={"v": 1}))
+    db = PostgresDatabase(migrated_database)
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE {SCHEMA}.graph_revisions SET graph_payload_sha256 = %s "
+            "WHERE world_id = %s AND revision_id = %s",
+            ("deadbeef" * 8, WORLD_ID, rev.revision_id),
+        )
+    with pytest.raises(PersistenceIntegrityError, match="graph_payload_sha256"):
+        repo.get_revision(WORLD_ID, rev.revision_id)
+
+
+@pytest.mark.integration
 def test_failed_publish_via_trigger_leaves_prior_head(pg, db) -> None:
     repo = pg.world_graph
     fail_world = "world:fail"
