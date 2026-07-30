@@ -297,6 +297,21 @@ def semantic_batch_atomicity(bundle: RepositoryBundle) -> None:
     assert bundle.documents.get("sdoc:existing").content == "kept"  # type: ignore[union-attr]
 
 
+def semantic_batch_duplicate_ids(bundle: RepositoryBundle) -> None:
+    """Duplicate IDs in one batch: identical collapse; conflicting raise."""
+    _begin_run(bundle.runs, run_id="erun:dupes", world_id="world:demo")
+    doc = _make_doc("sdoc:dupe", run_id="erun:dupes", content="once")
+    assert bundle.documents.upsert_batch([doc, doc]) == 1
+    assert bundle.documents.get("sdoc:dupe") is not None
+
+    conflict = doc.model_copy(
+        update={"content": "other", "content_sha256": "other-sha"}
+    )
+    with pytest.raises(IdempotencyConflictError):
+        bundle.documents.upsert_batch([doc, conflict])
+    assert bundle.documents.get("sdoc:dupe").content == "once"  # type: ignore[union-attr]
+
+
 def active_run_search_and_supersede(bundle: RepositoryBundle) -> None:
     _begin_run(bundle.runs, run_id="erun:active", world_id="world:demo")
     bundle.documents.upsert_batch(
@@ -467,6 +482,7 @@ CASES: list[tuple[str, Callable[[RepositoryBundle], None]]] = [
     ("thread_append_retry", thread_append_retry),
     ("embedding_lifecycle_monotonic", embedding_lifecycle_monotonic),
     ("semantic_batch_atomicity", semantic_batch_atomicity),
+    ("semantic_batch_duplicate_ids", semantic_batch_duplicate_ids),
     ("active_run_search_and_supersede", active_run_search_and_supersede),
     ("scope_visibility_filtering", scope_visibility_filtering),
     ("graph_publish_genesis_and_stale_parent", graph_publish_genesis_and_stale_parent),

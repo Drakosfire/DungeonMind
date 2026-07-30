@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
 from pgvector.psycopg import register_vector
 from psycopg import Connection, sql
 
+from ...application.repositories import normalize_semantic_document_batch
 from ...contracts.semantic import (
     CandidateChannel,
     EmbeddingRun,
@@ -28,13 +30,69 @@ from .database import SCHEMA, PostgresDatabase, jsonb, utcnow
 from .serialization import dump_payload, immutable_run_fingerprint, model_fingerprint, reconstruct
 
 
+def _embedding_run_identity(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "run_id": row["run_id"],
+        "world_id": row["world_id"],
+        "embedding_model": row["embedding_model"],
+        "embedding_model_revision": row["embedding_model_revision"],
+        "embedding_dimensions": row["embedding_dimensions"],
+        "embedding_recipe": row["embedding_recipe"],
+        "corpus_fingerprint": row["corpus_fingerprint"],
+        "benchmark_projection_id": row["benchmark_projection_id"],
+        "status": row["status"],
+        "created_at": row["created_at"],
+        "completed_at": row["completed_at"],
+        "schema_version": row["schema_version"],
+    }
+
+
+def _semantic_document_identity(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "semantic_document_id": row["semantic_document_id"],
+        "document_kind": row["document_kind"],
+        "world_id": row["world_id"],
+        "campaign_scope": row["campaign_scope"],
+        "graph_revision_id": row["graph_revision_id"],
+        "graph_object_id": row["graph_object_id"],
+        "source_artifact_id": row["source_artifact_id"],
+        "source_revision_id": row["source_revision_id"],
+        "session_id": row["session_id"],
+        "visibility": row["visibility"],
+        "content": row["content"],
+        "content_sha256": row["content_sha256"],
+        "embedding_model": row["embedding_model"],
+        "embedding_model_revision": row["embedding_model_revision"],
+        "embedding_dimensions": row["embedding_dimensions"],
+        "embedding_recipe": row["embedding_recipe"],
+        "materialization_run_id": row["materialization_run_id"],
+        "created_at": row["created_at"],
+        "schema_version": row["schema_version"],
+    }
+
+
+_DOC_SELECT = """
+    semantic_document_id, document_kind, world_id, campaign_scope,
+    graph_revision_id, graph_object_id, source_artifact_id, source_revision_id,
+    session_id, visibility, content, content_sha256, embedding_model,
+    embedding_model_revision, embedding_dimensions, embedding_recipe,
+    materialization_run_id, created_at, schema_version, record_fingerprint,
+    payload, embedding
+"""
+
+
 def _row_to_embedding_run(row: dict[str, Any]) -> EmbeddingRun:
-    return reconstruct(
+    run = reconstruct(
         EmbeddingRun,
         dict(row["payload"]),
         expected_fingerprint=row["record_fingerprint"],
-        identity={"run_id": row["run_id"]},
+        identity=_embedding_run_identity(row),
     )
+    if row["immutable_fingerprint"] != immutable_run_fingerprint(run):
+        raise PersistenceIntegrityError(
+            f"embedding run {row['run_id']!r} immutable_fingerprint drift"
+        )
+    return run
 
 
 def _lock_embedding_run(conn: Connection[Any], run_id: str) -> dict[str, Any] | None:
@@ -112,12 +170,36 @@ def _row_to_semantic_document(row: dict[str, Any]) -> SemanticDocument:
     payload = dict(row["payload"])
     if row["embedding"] is not None:
         payload["embedding"] = _embedding_to_list(row["embedding"])
-    return reconstruct(
+    doc = reconstruct(
         SemanticDocument,
         payload,
         expected_fingerprint=row["record_fingerprint"],
-        identity={"semantic_document_id": row["semantic_document_id"]},
+        identity=_semantic_document_identity(row),
     )
+    if doc.embedding is not None and len(doc.embedding) != doc.embedding_dimensions:
+        raise PersistenceIntegrityError(
+            f"document {doc.semantic_document_id!r} embedding dimensions drift"
+        )
+    return doc
+
+
+def _matches_query_filters(doc: SemanticDocument, query: SemanticQuery, run_id: str) -> bool:
+    if doc.materialization_run_id != run_id:
+        return False
+    if doc.world_id != query.world_id:
+        return False
+    if query.campaign_scope is not None:
+        if doc.campaign_scope not in (None, query.campaign_scope):
+            return False
+    elif doc.campaign_scope is not None:
+        return False
+    if query.visibility is Visibility.PLAYER and doc.visibility is not Visibility.PLAYER:
+        return False
+    if query.document_kind is not None and doc.document_kind is not query.document_kind:
+        return False
+    if query.graph_revision_id is None:
+        return True
+    return doc.graph_revision_id == query.graph_revision_id
 
 
 def _doc_filter_sql(
@@ -145,6 +227,11 @@ def _doc_filter_sql(
     return sql.SQL(" AND ").join(conditions), params
 
 
+def _invoke_hook(hook: Callable[[], None] | None) -> None:
+    if hook is not None:
+        hook()
+
+
 class PostgresEmbeddingRunRepository:
     """Materialization run lifecycle with row-level locking."""
 
@@ -168,15 +255,8 @@ class PostgresEmbeddingRunRepository:
                 requested_status=EmbeddingRunStatus.RUNNING.value,
             )
         immutable_fp = immutable_run_fingerprint(run)
+        fingerprint = model_fingerprint(run)
         with self._db.transaction() as conn:
-            existing = _lock_embedding_run(conn, run.run_id)
-            if existing is not None:
-                if existing["immutable_fingerprint"] != immutable_fp:
-                    raise IdempotencyConflictError(
-                        f"embedding run {run.run_id!r} replayed with different "
-                        "immutable creation metadata"
-                    )
-                return _row_to_embedding_run(existing)
             conn.execute(
                 sql.SQL(
                     """
@@ -199,6 +279,7 @@ class PostgresEmbeddingRunRepository:
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
+                    ON CONFLICT (run_id) DO NOTHING
                     """
                 ).format(sql.Identifier(SCHEMA)),
                 (
@@ -215,11 +296,28 @@ class PostgresEmbeddingRunRepository:
                     run.completed_at,
                     run.schema_version,
                     immutable_fp,
-                    model_fingerprint(run),
+                    fingerprint,
                     jsonb(dump_payload(run)),
                 ),
             )
-            return run.model_copy(deep=True)
+            existing = conn.execute(
+                sql.SQL(
+                    """
+                    SELECT * FROM {}.embedding_runs WHERE run_id = %s
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (run.run_id,),
+            ).fetchone()
+            if existing is None:
+                raise PersistenceIntegrityError(
+                    f"embedding run {run.run_id!r} missing after insert/reconcile"
+                )
+            if existing["immutable_fingerprint"] != immutable_fp:
+                raise IdempotencyConflictError(
+                    f"embedding run {run.run_id!r} replayed with different "
+                    "immutable creation metadata"
+                )
+            return _row_to_embedding_run(existing)
 
     def complete(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun:
         with self._db.transaction() as conn:
@@ -373,8 +471,12 @@ class PostgresSemanticDocumentRepository:
 
     def __init__(self, database: PostgresDatabase) -> None:
         self._db = database
+        # Test-only: invoked after run rows are locked and statuses observed,
+        # while the transaction still holds those locks.
+        self._after_run_lock_observe: Callable[[], None] | None = None
 
     def upsert_batch(self, documents: list[SemanticDocument]) -> int:
+        documents = normalize_semantic_document_batch(documents)
         if not documents:
             return 0
         with self._db.transaction() as conn:
@@ -387,18 +489,16 @@ class PostgresSemanticDocumentRepository:
                     raise DocumentNotFoundError(f"materialization run {run_id!r} not found")
                 locked_runs[run_id] = _row_to_embedding_run(row)
 
+            _invoke_hook(self._after_run_lock_observe)
+
             to_insert: list[SemanticDocument] = []
             for doc in documents:
                 _assert_run_compatible(doc, locked_runs[doc.materialization_run_id])
                 existing = conn.execute(
                     sql.SQL(
-                        """
-                        SELECT
-                            semantic_document_id,
-                            record_fingerprint,
-                            payload,
-                            embedding
-                        FROM {}.semantic_documents
+                        f"""
+                        SELECT {_DOC_SELECT}
+                        FROM {{}}.semantic_documents
                         WHERE semantic_document_id = %s
                         FOR UPDATE
                         """
@@ -515,13 +615,9 @@ class PostgresSemanticDocumentRepository:
             register_vector(conn)
             row = conn.execute(
                 sql.SQL(
-                    """
-                    SELECT
-                        semantic_document_id,
-                        record_fingerprint,
-                        payload,
-                        embedding
-                    FROM {}.semantic_documents
+                    f"""
+                    SELECT {_DOC_SELECT}
+                    FROM {{}}.semantic_documents
                     WHERE semantic_document_id = %s
                     """
                 ).format(sql.Identifier(SCHEMA)),
@@ -529,8 +625,7 @@ class PostgresSemanticDocumentRepository:
             ).fetchone()
             if row is None:
                 return None
-            doc = _row_to_semantic_document(row)
-            return doc.model_copy(deep=True)
+            return _row_to_semantic_document(row).model_copy(deep=True)
 
     def delete_run_documents(self, materialization_run_id: str) -> int:
         with self._db.transaction() as conn:
@@ -593,37 +688,52 @@ class PostgresSemanticSearch:
 
     def __init__(self, database: PostgresDatabase) -> None:
         self._db = database
+        # Test-only: invoked after the retrieval run is locked and confirmed
+        # COMPLETED, while the transaction still holds that lock.
+        self._after_run_lock_observe: Callable[[], None] | None = None
 
     def search(self, query: SemanticQuery) -> list[SemanticCandidate]:
         with self._db.transaction() as conn:
             register_vector(conn)
             run_id = self._resolve_retrieval_run(conn, query)
-            candidates: list[SemanticCandidate] = []
+            _invoke_hook(self._after_run_lock_observe)
+
             where_clause, params = _doc_filter_sql(query, run_id)
+            rows = conn.execute(
+                sql.SQL(
+                    f"""
+                    SELECT {_DOC_SELECT}
+                    FROM {{}}.semantic_documents
+                    WHERE {{}}
+                    """
+                ).format(sql.Identifier(SCHEMA), where_clause),
+                params,
+            ).fetchall()
+
+            eligible: list[SemanticDocument] = []
+            for row in rows:
+                doc = _row_to_semantic_document(row)
+                if not _matches_query_filters(doc, query, run_id):
+                    raise PersistenceIntegrityError(
+                        f"semantic document {doc.semantic_document_id!r} filter "
+                        "columns disagree with reconstructed payload"
+                    )
+                eligible.append(doc)
+
+            candidates: list[SemanticCandidate] = []
 
             if query.text:
-                exact_rows = conn.execute(
-                    sql.SQL(
-                        """
-                        SELECT semantic_document_id, content, graph_object_id
-                        FROM {}.semantic_documents
-                        WHERE {}
-                        """
-                    ).format(sql.Identifier(SCHEMA), where_clause),
-                    params,
-                ).fetchall()
                 exact = [
-                    (row["semantic_document_id"], 1.0)
-                    for row in exact_rows
-                    if query.text.casefold() in row["content"].casefold()
-                    or query.text == row["semantic_document_id"]
-                    or query.text == row["graph_object_id"]
+                    (doc.semantic_document_id, 1.0)
+                    for doc in eligible
+                    if query.text.casefold() in doc.content.casefold()
+                    or query.text == doc.semantic_document_id
+                    or query.text == doc.graph_object_id
                 ]
-                candidates.extend(
-                    _ranked(exact, CandidateChannel.EXACT, query.top_k)
-                )
+                candidates.extend(_ranked(exact, CandidateChannel.EXACT, query.top_k))
 
-            if query.text:
+            if query.text and eligible:
+                eligible_ids = [doc.semantic_document_id for doc in eligible]
                 lexical_rows = conn.execute(
                     sql.SQL(
                         """
@@ -633,13 +743,13 @@ class PostgresSemanticSearch:
                                    plainto_tsquery('simple', %s)
                                ) AS score
                         FROM {}.semantic_documents
-                        WHERE {}
+                        WHERE semantic_document_id = ANY(%s)
                           AND search_tsv @@ plainto_tsquery('simple', %s)
                         ORDER BY score DESC, semantic_document_id ASC
                         LIMIT %s
                         """
-                    ).format(sql.Identifier(SCHEMA), where_clause),
-                    [query.text, *params, query.text, query.top_k],
+                    ).format(sql.Identifier(SCHEMA)),
+                    [query.text, eligible_ids, query.text, query.top_k],
                 ).fetchall()
                 lexical_scored = [
                     (row["semantic_document_id"], float(row["score"]))
@@ -661,20 +771,27 @@ class PostgresSemanticSearch:
                     (run_id,),
                 ).fetchone()
                 dimensions = run_row["embedding_dimensions"] if run_row is not None else None
-                if dimensions is not None and len(query.embedding) == dimensions:
+                dense_ids = [
+                    doc.semantic_document_id for doc in eligible if doc.embedding
+                ]
+                if (
+                    dimensions is not None
+                    and len(query.embedding) == dimensions
+                    and dense_ids
+                ):
                     dense_rows = conn.execute(
                         sql.SQL(
                             """
                             SELECT semantic_document_id,
                                    1 - (embedding <=> %s::vector) AS score
                             FROM {}.semantic_documents
-                            WHERE {}
+                            WHERE semantic_document_id = ANY(%s)
                               AND embedding IS NOT NULL
                             ORDER BY score DESC, semantic_document_id ASC
                             LIMIT %s
                             """
-                        ).format(sql.Identifier(SCHEMA), where_clause),
-                        [query.embedding, *params, query.top_k],
+                        ).format(sql.Identifier(SCHEMA)),
+                        [query.embedding, dense_ids, query.top_k],
                     ).fetchall()
                     candidates.extend(
                         _ranked(

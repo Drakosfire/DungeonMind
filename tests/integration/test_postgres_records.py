@@ -152,3 +152,115 @@ def test_contribution_conflict(pg) -> None:
         pg.contributions.append(
             contrib.model_copy(update={"extraction_profile": "other"})
         )
+
+
+@pytest.mark.integration
+def test_session_save_updates_extracted_created_at(pg) -> None:
+    session = _session("rsess:created-at")
+    pg.retrieval_sessions.create(session)
+    later = NOW.replace(year=2027)
+    updated = session.model_copy(
+        update={"created_at": later, "updated_at": later, "question": "moved?"}
+    )
+    pg.retrieval_sessions.save(updated)
+    loaded = pg.retrieval_sessions.get("rsess:created-at")
+    assert loaded is not None
+    assert loaded.created_at == later
+    assert loaded.question == "moved?"
+
+
+@pytest.mark.integration
+def test_contribution_status_column_drift_fails_closed(migrated_database: str, pg) -> None:
+    from dungeonmind.infrastructure.postgres.database import SCHEMA, PostgresDatabase
+
+    contrib = _contribution("contrib:drift-status")
+    pg.contributions.append(contrib)
+    db = PostgresDatabase(migrated_database)
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE {SCHEMA}.graph_contributions SET status = 'retracted' "
+            "WHERE contribution_id = %s",
+            ("contrib:drift-status",),
+        )
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+
+    with pytest.raises(PersistenceIntegrityError, match="status"):
+        pg.contributions.get(WORLD_ID, "contrib:drift-status")
+
+
+@pytest.mark.integration
+def test_conflicting_duplicate_evidence_in_contribution_fails(pg) -> None:
+    from dungeonmind.contracts import (
+        EvidenceRef,
+        EvidenceRole,
+        GraphContributionAssertion,
+        SourceDomain,
+    )
+
+    ev_a = EvidenceRef(
+        evidence_ref_id="ev:dup",
+        source_artifact_id="src:a",
+        source_revision_id="srev:x",
+        source_domain=SourceDomain.WORLDBUILDING,
+        evidence_role=EvidenceRole.SUPPORT,
+    )
+    ev_b = ev_a.model_copy(update={"source_revision_id": "srev:y"})
+    contrib = GraphContribution(
+        contribution_id="contrib:ev-conflict",
+        world_id=WORLD_ID,
+        source_kind=ContributionSourceKind.MANUAL_IMPORT,
+        produced_at=NOW,
+        assertions=[
+            GraphContributionAssertion(
+                assertion_id="a:1",
+                assertion_kind="attribute",
+                evidence_refs=[ev_a],
+            ),
+            GraphContributionAssertion(
+                assertion_id="a:2",
+                assertion_kind="attribute",
+                evidence_refs=[ev_b],
+            ),
+        ],
+    )
+    with pytest.raises(IdempotencyConflictError, match="conflicting evidence_ref"):
+        pg.contributions.append(contrib)
+    assert pg.contributions.get(WORLD_ID, "contrib:ev-conflict") is None
+
+
+@pytest.mark.integration
+def test_identical_duplicate_evidence_in_contribution_ok(pg) -> None:
+    from dungeonmind.contracts import (
+        EvidenceRef,
+        EvidenceRole,
+        GraphContributionAssertion,
+        SourceDomain,
+    )
+
+    ev = EvidenceRef(
+        evidence_ref_id="ev:same",
+        source_artifact_id="src:a",
+        source_revision_id="srev:x",
+        source_domain=SourceDomain.WORLDBUILDING,
+        evidence_role=EvidenceRole.SUPPORT,
+    )
+    contrib = GraphContribution(
+        contribution_id="contrib:ev-same",
+        world_id=WORLD_ID,
+        source_kind=ContributionSourceKind.MANUAL_IMPORT,
+        produced_at=NOW,
+        assertions=[
+            GraphContributionAssertion(
+                assertion_id="a:1",
+                assertion_kind="attribute",
+                evidence_refs=[ev],
+            ),
+            GraphContributionAssertion(
+                assertion_id="a:2",
+                assertion_kind="attribute",
+                evidence_refs=[ev],
+            ),
+        ],
+    )
+    assert pg.contributions.append(contrib) == contrib
+    assert pg.contributions.get(WORLD_ID, "contrib:ev-same") == contrib

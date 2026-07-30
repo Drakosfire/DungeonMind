@@ -10,39 +10,16 @@ from typing import Any
 from psycopg import Connection, sql
 
 from ...contracts.evidence import EvidenceRef
-from ...domain.errors import IdempotencyConflictError
+from ...domain.errors import IdempotencyConflictError, PersistenceIntegrityError
 from .database import SCHEMA, jsonb
 from .serialization import dump_payload, model_fingerprint, reconstruct
 
 
 def upsert_evidence_refs(conn: Connection[Any], evidence: list[EvidenceRef]) -> None:
-    """Persist evidence refs with exact-replay idempotency; commit with the parent."""
+    """Persist evidence refs with atomic insert/reconcile idempotency."""
     for item in evidence:
         fingerprint = model_fingerprint(item)
         payload = dump_payload(item)
-        existing = conn.execute(
-            sql.SQL(
-                """
-                SELECT record_fingerprint, payload
-                FROM {}.evidence_refs
-                WHERE evidence_ref_id = %s
-                FOR UPDATE
-                """
-            ).format(sql.Identifier(SCHEMA)),
-            (item.evidence_ref_id,),
-        ).fetchone()
-        if existing is not None:
-            if existing["record_fingerprint"] != fingerprint:
-                raise IdempotencyConflictError(
-                    f"evidence_ref {item.evidence_ref_id!r} replayed with different payload"
-                )
-            reconstruct(
-                EvidenceRef,
-                dict(existing["payload"]),
-                expected_fingerprint=existing["record_fingerprint"],
-                identity={"evidence_ref_id": item.evidence_ref_id},
-            )
-            continue
         conn.execute(
             sql.SQL(
                 """
@@ -56,6 +33,7 @@ def upsert_evidence_refs(conn: Connection[Any], evidence: list[EvidenceRef]) -> 
                     record_fingerprint,
                     payload
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (evidence_ref_id) DO NOTHING
                 """
             ).format(sql.Identifier(SCHEMA)),
             (
@@ -69,15 +47,61 @@ def upsert_evidence_refs(conn: Connection[Any], evidence: list[EvidenceRef]) -> 
                 jsonb(payload),
             ),
         )
+        existing = conn.execute(
+            sql.SQL(
+                """
+                SELECT
+                    evidence_ref_id,
+                    source_artifact_id,
+                    source_revision_id,
+                    source_domain,
+                    evidence_role,
+                    schema_version,
+                    record_fingerprint,
+                    payload
+                FROM {}.evidence_refs
+                WHERE evidence_ref_id = %s
+                """
+            ).format(sql.Identifier(SCHEMA)),
+            (item.evidence_ref_id,),
+        ).fetchone()
+        if existing is None:
+            raise PersistenceIntegrityError(
+                f"evidence_ref {item.evidence_ref_id!r} missing after insert/reconcile"
+            )
+        if existing["record_fingerprint"] != fingerprint:
+            raise IdempotencyConflictError(
+                f"evidence_ref {item.evidence_ref_id!r} replayed with different payload"
+            )
+        reconstruct(
+            EvidenceRef,
+            dict(existing["payload"]),
+            expected_fingerprint=existing["record_fingerprint"],
+            identity={
+                "evidence_ref_id": existing["evidence_ref_id"],
+                "source_artifact_id": existing["source_artifact_id"],
+                "source_revision_id": existing["source_revision_id"],
+                "source_domain": existing["source_domain"],
+                "evidence_role": existing["evidence_role"],
+                "schema_version": existing["schema_version"],
+            },
+        )
 
 
 def collect_evidence_from_contribution_payload(contribution: Any) -> list[EvidenceRef]:
-    refs: list[EvidenceRef] = []
-    seen: set[str] = set()
+    """Deduplicate evidence IDs across assertions; reject conflicting duplicates."""
+    by_id: dict[str, EvidenceRef] = {}
+    ordered: list[EvidenceRef] = []
     for assertion in getattr(contribution, "assertions", []) or []:
         for ref in getattr(assertion, "evidence_refs", []) or []:
-            if ref.evidence_ref_id in seen:
+            prior = by_id.get(ref.evidence_ref_id)
+            if prior is not None:
+                if model_fingerprint(prior) != model_fingerprint(ref):
+                    raise IdempotencyConflictError(
+                        f"contribution embeds conflicting evidence_ref "
+                        f"{ref.evidence_ref_id!r}"
+                    )
                 continue
-            seen.add(ref.evidence_ref_id)
-            refs.append(ref)
-    return refs
+            by_id[ref.evidence_ref_id] = ref
+            ordered.append(ref)
+    return ordered

@@ -8,10 +8,11 @@ from typing import Any
 from psycopg import sql
 
 from ...contracts.mind_turn import MindTurnRequest, MindTurnResponse
-from ...domain.canonical import canonical_json
+from ...domain.canonical import canonical_sha256
 from ...domain.errors import (
     DocumentNotFoundError,
     IdempotencyConflictError,
+    PersistenceIntegrityError,
     ThreadContextMismatchError,
 )
 from .database import SCHEMA, PostgresDatabase, jsonb
@@ -34,7 +35,7 @@ def _binding_fingerprint(
         "tenant_id": tenant_id,
         "created_at": created_at.isoformat(),
     }
-    return canonical_json(binding)
+    return canonical_sha256(binding)
 
 
 class PostgresMindThreadRepository:
@@ -61,23 +62,6 @@ class PostgresMindThreadRepository:
             created_at=created_at,
         )
         with self._db.transaction() as conn:
-            existing = conn.execute(
-                sql.SQL(
-                    """
-                    SELECT binding_fingerprint
-                    FROM {}.mind_threads
-                    WHERE thread_id = %s
-                    FOR UPDATE
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (thread_id,),
-            ).fetchone()
-            if existing is not None:
-                if existing["binding_fingerprint"] != fingerprint:
-                    raise IdempotencyConflictError(
-                        f"thread {thread_id!r} already bound with different context"
-                    )
-                return thread_id
             conn.execute(
                 sql.SQL(
                     """
@@ -90,6 +74,7 @@ class PostgresMindThreadRepository:
                         created_at,
                         binding_fingerprint
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (thread_id) DO NOTHING
                     """
                 ).format(sql.Identifier(SCHEMA)),
                 (
@@ -102,6 +87,24 @@ class PostgresMindThreadRepository:
                     fingerprint,
                 ),
             )
+            existing = conn.execute(
+                sql.SQL(
+                    """
+                    SELECT binding_fingerprint
+                    FROM {}.mind_threads
+                    WHERE thread_id = %s
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (thread_id,),
+            ).fetchone()
+            if existing is None:
+                raise PersistenceIntegrityError(
+                    f"thread {thread_id!r} missing after insert/reconcile"
+                )
+            if existing["binding_fingerprint"] != fingerprint:
+                raise IdempotencyConflictError(
+                    f"thread {thread_id!r} already bound with different context"
+                )
             return thread_id
 
     def append_turn(self, request: MindTurnRequest, response: MindTurnResponse) -> None:

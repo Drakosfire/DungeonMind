@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import struct
+from datetime import UTC, datetime
 from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
-from ...domain.canonical import canonical_json
+from ...domain.canonical import canonical_sha256
 from ...domain.errors import PersistenceIntegrityError
 
 T = TypeVar("T", bound=BaseModel)
@@ -25,12 +27,33 @@ _EMBEDDING_RUN_IMMUTABLE_FIELDS: set[str] = {
 }
 
 
+def _float32(value: float) -> float:
+    """Round-trip through IEEE-754 binary32 to match pgvector storage."""
+    return struct.unpack("!f", struct.pack("!f", float(value)))[0]
+
+
+def _fingerprint_dump(model: BaseModel, *, include: set[str] | None = None) -> dict[str, Any]:
+    dump = (
+        model.model_dump(mode="json", include=include)
+        if include is not None
+        else model.model_dump(mode="json")
+    )
+    embedding = dump.get("embedding")
+    if isinstance(embedding, list):
+        dump["embedding"] = [_float32(x) for x in embedding]
+    return dump
+
+
 def model_fingerprint(model: BaseModel) -> str:
-    return canonical_json(model.model_dump(mode="json"))
+    """SHA-256 digest of the model's canonical JSON (not the payload itself)."""
+    return canonical_sha256(_fingerprint_dump(model))
 
 
 def immutable_run_fingerprint(model: BaseModel) -> str:
-    return canonical_json(model.model_dump(mode="json", include=_EMBEDDING_RUN_IMMUTABLE_FIELDS))
+    """SHA-256 digest of immutable EmbeddingRun creation fields."""
+    return canonical_sha256(
+        _fingerprint_dump(model, include=_EMBEDDING_RUN_IMMUTABLE_FIELDS)
+    )
 
 
 def dump_payload(model: BaseModel, *, exclude: set[str] | None = None) -> dict[str, Any]:
@@ -68,8 +91,13 @@ def reconstruct(
 
 
 def _normalize(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.astimezone(UTC)
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+        except ValueError:
+            return value
     if hasattr(value, "value"):
         return value.value
-    if hasattr(value, "isoformat"):
-        return value.isoformat()
     return value

@@ -15,6 +15,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import TypeVar
 
+from ...application.repositories import normalize_semantic_document_batch
 from ...contracts.contribution import ContributionStatus, GraphContribution
 from ...contracts.evidence import SourceArtifact, SourceRevision
 from ...contracts.graph import (
@@ -672,6 +673,7 @@ class InMemorySemanticDocumentRepository:
         """All-or-nothing batch: preflight under lock, then insert only if every
         new document still belongs to a RUNNING run. Partial batches never stick.
         """
+        documents = normalize_semantic_document_batch(documents)
         with self._runs.materialization_lock:
             # Lock order matches PostgreSQL: deterministic run_id order.
             run_ids = sorted({doc.materialization_run_id for doc in documents})

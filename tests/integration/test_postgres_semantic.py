@@ -17,6 +17,7 @@ from dungeonmind.contracts import (
 from dungeonmind.domain.errors import (
     IdempotencyConflictError,
     InvalidLifecycleTransitionError,
+    PersistenceIntegrityError,
 )
 from dungeonmind.domain.fusion import reciprocal_rank_fusion
 
@@ -194,3 +195,61 @@ def test_channels_filters_and_fusion(pg) -> None:
     fused = reciprocal_rank_fusion([exact_ids, lexical_ids, dense_ids])
     assert fused
     assert fused[0][0] == "sdoc:astor"
+
+
+@pytest.mark.integration
+def test_visibility_column_drift_fails_closed_on_search(
+    migrated_database: str, pg
+) -> None:
+    from dungeonmind.infrastructure.postgres.database import SCHEMA, PostgresDatabase
+
+    runs, docs, search = pg.embedding_runs, pg.semantic_documents, pg.semantic_search
+    _begin(runs, run_id="erun:drift")
+    docs.upsert_batch(
+        [
+            _doc(
+                "sdoc:gm-only",
+                run_id="erun:drift",
+                visibility=Visibility.GM,
+                content="secret",
+                embedding=list(UNIT_VEC),
+            )
+        ]
+    )
+    runs.complete("erun:drift", completed_at=NOW)
+    runs.activate("erun:drift")
+
+    db = PostgresDatabase(migrated_database)
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE {SCHEMA}.semantic_documents SET visibility = 'player' "
+            "WHERE semantic_document_id = %s",
+            ("sdoc:gm-only",),
+        )
+
+    with pytest.raises(PersistenceIntegrityError, match="visibility"):
+        docs.get("sdoc:gm-only")
+
+    with pytest.raises(PersistenceIntegrityError):
+        search.search(
+            SemanticQuery(
+                world_id="world:demo",
+                visibility=Visibility.PLAYER,
+                embedding=list(UNIT_VEC),
+            )
+        )
+
+
+@pytest.mark.integration
+def test_batch_duplicate_ids_normalized(pg) -> None:
+    runs, docs = pg.embedding_runs, pg.semantic_documents
+    _begin(runs, run_id="erun:dup")
+    doc = _doc("sdoc:dup", run_id="erun:dup", content="once")
+    assert docs.upsert_batch([doc, doc]) == 1
+    with pytest.raises(IdempotencyConflictError):
+        docs.upsert_batch(
+            [
+                doc,
+                doc.model_copy(update={"content": "other", "content_sha256": "x"}),
+            ]
+        )

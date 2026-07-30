@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from datetime import UTC, datetime
 
 import pytest
@@ -10,7 +11,9 @@ import pytest
 from dungeonmind.contracts import (
     Admissibility,
     CallerScope,
+    ContributionSourceKind,
     EmbeddingRun,
+    GraphContribution,
     MindTurnRequest,
     MindTurnResponse,
     SemanticDocument,
@@ -20,6 +23,7 @@ from dungeonmind.contracts import (
     Visibility,
 )
 from dungeonmind.domain.errors import (
+    IdempotencyConflictError,
     InvalidLifecycleTransitionError,
     ScopeResolutionError,
     StaleParentRevisionError,
@@ -95,6 +99,7 @@ def test_two_publishers_same_parent(migrated_database: str, pg) -> None:
 
 @pytest.mark.integration
 def test_insert_vs_complete_race(migrated_database: str, pg) -> None:
+    """Pause after FOR UPDATE + RUNNING observe; prove complete blocks until insert ends."""
     from dungeonmind.infrastructure.postgres import (
         PostgresDatabase,
         PostgresEmbeddingRunRepository,
@@ -119,24 +124,41 @@ def test_insert_vs_complete_race(migrated_database: str, pg) -> None:
     )
     docs_a.upsert_batch([_doc("sdoc:seed")])
 
-    insert_started = threading.Event()
+    observed = threading.Event()
+    complete_attempted = threading.Event()
+    complete_finished = threading.Event()
     outcomes: list[str] = []
+    timestamps: dict[str, float] = {}
+
+    def after_observe() -> None:
+        observed.set()
+        assert complete_attempted.wait(timeout=5), "complete did not attempt"
+        # While insert holds the run lock, complete must block on FOR UPDATE.
+        time.sleep(0.2)
+        assert not complete_finished.is_set(), (
+            "complete finished while insert still held the run lock — "
+            "would allow an invalid insert-after-complete linearization"
+        )
+
+    docs_a._after_run_lock_observe = after_observe
 
     def do_insert() -> None:
-        insert_started.set()
         try:
             docs_a.upsert_batch([_doc("sdoc:late")])
             outcomes.append("inserted")
+            timestamps["insert"] = time.monotonic()
         except InvalidLifecycleTransitionError:
             outcomes.append("rejected")
+            timestamps["insert"] = time.monotonic()
 
     def do_complete() -> None:
-        assert insert_started.wait(timeout=5)
-        try:
-            runs_b.complete("erun:race", completed_at=NOW)
-            outcomes.append("completed")
-        except Exception as exc:
-            outcomes.append(f"complete-error:{type(exc).__name__}")
+        assert observed.wait(timeout=5)
+        complete_attempted.set()
+        # Blocks here on the run row lock until insert commits.
+        runs_b.complete("erun:race", completed_at=NOW)
+        timestamps["complete"] = time.monotonic()
+        complete_finished.set()
+        outcomes.append("completed")
 
     t_insert = threading.Thread(target=do_insert)
     t_complete = threading.Thread(target=do_complete)
@@ -146,18 +168,46 @@ def test_insert_vs_complete_race(migrated_database: str, pg) -> None:
     t_complete.join(timeout=15)
     assert not t_insert.is_alive() and not t_complete.is_alive()
 
+    assert "inserted" in outcomes
+    assert "completed" in outcomes
+    assert docs_a.get("sdoc:late") is not None
+    assert timestamps["complete"] >= timestamps["insert"]
     status = runs_a.get("erun:race")
     assert status is not None
-    if docs_a.get("sdoc:late") is not None:
-        assert status.status.value == "completed"
-    else:
-        assert "rejected" in outcomes or status.status.value == "completed"
-        if status.status.value == "completed":
-            assert docs_a.get("sdoc:late") is None
+    assert status.status.value == "completed"
+
+
+@pytest.mark.integration
+def test_insert_rejects_when_complete_wins_first(migrated_database: str, pg) -> None:
+    from dungeonmind.infrastructure.postgres import (
+        PostgresDatabase,
+        PostgresEmbeddingRunRepository,
+        PostgresSemanticDocumentRepository,
+    )
+
+    del pg
+    runs = PostgresEmbeddingRunRepository(PostgresDatabase(migrated_database))
+    docs = PostgresSemanticDocumentRepository(PostgresDatabase(migrated_database))
+    runs.begin(
+        EmbeddingRun(
+            run_id="erun:complete-first",
+            embedding_model="test-model",
+            embedding_model_revision="rev-1",
+            embedding_dimensions=8,
+            embedding_recipe="raw-v1",
+            world_id="world:demo",
+            created_at=NOW,
+        )
+    )
+    runs.complete("erun:complete-first", completed_at=NOW)
+    with pytest.raises(InvalidLifecycleTransitionError):
+        docs.upsert_batch([_doc("sdoc:too-late", run_id="erun:complete-first")])
+    assert docs.get("sdoc:too-late") is None
 
 
 @pytest.mark.integration
 def test_search_vs_supersede_race(migrated_database: str, pg) -> None:
+    """Pause after COMPLETED resolve under lock; prove supersede waits for snapshot."""
     from dungeonmind.infrastructure.postgres import (
         PostgresDatabase,
         PostgresEmbeddingRunRepository,
@@ -187,11 +237,23 @@ def test_search_vs_supersede_race(migrated_database: str, pg) -> None:
     runs.complete("erun:search", completed_at=NOW)
     runs.activate("erun:search")
 
-    barrier = threading.Barrier(2)
-    results: list[object] = []
+    observed = threading.Event()
+    supersede_attempted = threading.Event()
+    supersede_finished = threading.Event()
+    results: list[tuple[str, object]] = []
+    timestamps: dict[str, float] = {}
+
+    def after_observe() -> None:
+        observed.set()
+        assert supersede_attempted.wait(timeout=5)
+        time.sleep(0.2)
+        assert not supersede_finished.is_set(), (
+            "supersede finished while search still held the run lock"
+        )
+
+    search._after_run_lock_observe = after_observe
 
     def do_search() -> None:
-        barrier.wait(timeout=5)
         try:
             hits = search.search(
                 SemanticQuery(
@@ -201,12 +263,18 @@ def test_search_vs_supersede_race(migrated_database: str, pg) -> None:
                 )
             )
             results.append(("ok", len(hits)))
+            timestamps["search"] = time.monotonic()
         except ScopeResolutionError as exc:
             results.append(("scope", exc))
+            timestamps["search"] = time.monotonic()
 
     def do_supersede() -> None:
-        barrier.wait(timeout=5)
+        assert observed.wait(timeout=5)
+        supersede_attempted.set()
+        # Blocks on the run row lock until search commits its snapshot.
         runs_b.supersede("erun:search", completed_at=NOW)
+        timestamps["supersede"] = time.monotonic()
+        supersede_finished.set()
         results.append(("superseded", None))
 
     t1 = threading.Thread(target=do_search)
@@ -216,7 +284,9 @@ def test_search_vs_supersede_race(migrated_database: str, pg) -> None:
     t1.join(timeout=15)
     t2.join(timeout=15)
     assert not t1.is_alive() and not t2.is_alive()
+    assert any(kind == "ok" for kind, _ in results)
     assert any(kind == "superseded" for kind, _ in results)
+    assert timestamps["supersede"] >= timestamps["search"]
     assert runs.get_active_run_id("world:demo") is None
     with pytest.raises(ScopeResolutionError):
         search.search(
@@ -287,3 +357,122 @@ def test_two_exact_turn_retries_one_row(migrated_database: str, pg) -> None:
     assert not t1.is_alive() and not t2.is_alive()
     assert errors == []
     assert len(a.list_turns(thread_id)) == 1
+
+
+@pytest.mark.integration
+def test_concurrent_exact_contribution_create(migrated_database: str, pg) -> None:
+    from dungeonmind.infrastructure.postgres import (
+        PostgresContributionRepository,
+        PostgresDatabase,
+    )
+
+    del pg
+    a = PostgresContributionRepository(PostgresDatabase(migrated_database))
+    b = PostgresContributionRepository(PostgresDatabase(migrated_database))
+    contrib = GraphContribution(
+        contribution_id="contrib:race-exact",
+        world_id="world:demo",
+        source_kind=ContributionSourceKind.MANUAL_IMPORT,
+        produced_at=NOW,
+    )
+    barrier = threading.Barrier(2)
+    results: list[GraphContribution] = []
+    errors: list[BaseException] = []
+
+    def append(repo: PostgresContributionRepository) -> None:
+        try:
+            barrier.wait(timeout=5)
+            results.append(repo.append(contrib))
+        except BaseException as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=append, args=(a,))
+    t2 = threading.Thread(target=append, args=(b,))
+    t1.start()
+    t2.start()
+    t1.join(timeout=10)
+    t2.join(timeout=10)
+    assert errors == []
+    assert len(results) == 2
+    assert results[0] == results[1] == contrib
+    assert a.get("world:demo", "contrib:race-exact") == contrib
+
+
+@pytest.mark.integration
+def test_concurrent_conflicting_contribution_create(migrated_database: str, pg) -> None:
+    from dungeonmind.infrastructure.postgres import (
+        PostgresContributionRepository,
+        PostgresDatabase,
+    )
+
+    del pg
+    a = PostgresContributionRepository(PostgresDatabase(migrated_database))
+    b = PostgresContributionRepository(PostgresDatabase(migrated_database))
+    left = GraphContribution(
+        contribution_id="contrib:race-conflict",
+        world_id="world:demo",
+        source_kind=ContributionSourceKind.MANUAL_IMPORT,
+        produced_at=NOW,
+        authored_by="left",
+    )
+    right = left.model_copy(update={"authored_by": "right"})
+    barrier = threading.Barrier(2)
+    successes: list[str] = []
+    errors: list[BaseException] = []
+
+    def append(repo: PostgresContributionRepository, item: GraphContribution) -> None:
+        try:
+            barrier.wait(timeout=5)
+            repo.append(item)
+            successes.append(item.authored_by or "")
+        except BaseException as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=append, args=(a, left))
+    t2 = threading.Thread(target=append, args=(b, right))
+    t1.start()
+    t2.start()
+    t1.join(timeout=10)
+    t2.join(timeout=10)
+    assert len(successes) == 1
+    assert len(errors) == 1
+    assert isinstance(errors[0], IdempotencyConflictError)
+    stored = a.get("world:demo", "contrib:race-conflict")
+    assert stored is not None
+    assert stored.authored_by == successes[0]
+
+
+@pytest.mark.integration
+def test_concurrent_exact_thread_create(migrated_database: str, pg) -> None:
+    from dungeonmind.infrastructure.postgres import (
+        PostgresDatabase,
+        PostgresMindThreadRepository,
+    )
+
+    del pg
+    a = PostgresMindThreadRepository(PostgresDatabase(migrated_database))
+    b = PostgresMindThreadRepository(PostgresDatabase(migrated_database))
+    barrier = threading.Barrier(2)
+    errors: list[BaseException] = []
+
+    def create(repo: PostgresMindThreadRepository) -> None:
+        try:
+            barrier.wait(timeout=5)
+            repo.create_thread(
+                "thr:race-create",
+                world_id="world:demo",
+                campaign_id="camp:1",
+                caller_id="user:1",
+                tenant_id="tenant:a",
+                created_at=NOW,
+            )
+        except BaseException as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=create, args=(a,))
+    t2 = threading.Thread(target=create, args=(b,))
+    t1.start()
+    t2.start()
+    t1.join(timeout=10)
+    t2.join(timeout=10)
+    assert errors == []
