@@ -12,6 +12,7 @@ from dungeonmind.contracts import (
     ClaimAuthority,
     FocusKind,
     GraphContributionAssertion,
+    GraphScope,
     IdentityDecisionKind,
     IdentityDecisionRecord,
     MindTurnRequest,
@@ -47,6 +48,11 @@ def test_admissibility_required_on_mind_turn() -> None:
                 "message": "hello",
             }
         )
+
+
+def test_admissibility_required_on_graph_scope() -> None:
+    with pytest.raises(ValidationError):
+        GraphScope.model_validate({"world_id": "world:demo"})
 
 
 def test_visibility_required_on_semantic_query() -> None:
