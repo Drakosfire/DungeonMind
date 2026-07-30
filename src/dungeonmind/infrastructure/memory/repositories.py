@@ -669,8 +669,17 @@ class InMemorySemanticDocumentRepository:
         return run
 
     def upsert_batch(self, documents: list[SemanticDocument]) -> int:
-        stored = 0
+        """All-or-nothing batch: preflight under lock, then insert only if every
+        new document still belongs to a RUNNING run. Partial batches never stick.
+        """
         with self._runs.materialization_lock:
+            # Lock order matches PostgreSQL: deterministic run_id order.
+            run_ids = sorted({doc.materialization_run_id for doc in documents})
+            for run_id in run_ids:
+                if self._runs._peek(run_id) is None:
+                    raise DocumentNotFoundError(f"materialization run {run_id!r} not found")
+
+            to_insert: list[SemanticDocument] = []
             for doc in documents:
                 self._assert_run_compatible_unlocked(doc)
                 existing = self._docs.get(doc.semantic_document_id)
@@ -682,9 +691,6 @@ class InMemorySemanticDocumentRepository:
                             "document ids (ADR-0003)"
                         )
                     continue
-                # Observe RUNNING, optionally yield for concurrency tests, then
-                # re-read under the same UoW lock before insert (no check/use gap
-                # in production where the yield hook is unset).
                 run = self._runs._peek(doc.materialization_run_id)
                 if run is None:
                     raise DocumentNotFoundError(
@@ -701,7 +707,15 @@ class InMemorySemanticDocumentRepository:
                         current_status=run.status.value,
                         requested_status="accept_document",
                     )
-                self._runs._concurrency_yield_unlocked()
+                to_insert.append(doc)
+
+            if not to_insert:
+                return 0
+
+            # Optional concurrency yield after the batch RUNNING observation and
+            # before any insert — then re-confirm every run still RUNNING.
+            self._runs._concurrency_yield_unlocked()
+            for doc in to_insert:
                 run = self._runs._peek(doc.materialization_run_id)
                 if run is None:
                     raise DocumentNotFoundError(
@@ -718,9 +732,10 @@ class InMemorySemanticDocumentRepository:
                         current_status=run.status.value,
                         requested_status="accept_document",
                     )
+
+            for doc in to_insert:
                 self._docs[doc.semantic_document_id] = _copy(doc)
-                stored += 1
-        return stored
+            return len(to_insert)
 
     def get(self, semantic_document_id: str) -> SemanticDocument | None:
         with self._runs.materialization_lock:

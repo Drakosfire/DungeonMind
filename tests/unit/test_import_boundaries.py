@@ -4,22 +4,17 @@ Two guarantees:
 1. Layering: contracts ← domain ← application ← infrastructure/agents.
 2. Core stays light: nothing under src/ imports web frameworks, database
    drivers, model frameworks, Hermes, DungeonMindBuddy ``apps.*``, or any
-   sibling repository / UI package.
-
-When PR B adds ``infrastructure/postgres``, extend ALLOWED_EXTERNAL_PER_LAYER
-for that layer (e.g. psycopg/pgvector) — the test forces that choice to be
-explicit and reviewable.
+   sibling repository / UI package — except the explicit
+   ``infrastructure.postgres`` adapter layer, which may import psycopg/pgvector
+   and is never loaded by the core import path.
 """
 
 import ast
 import importlib
-import pkgutil
 import sys
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "dungeonmind"
-
-
 
 FORBIDDEN_ROOTS = {
     "apps",  # DungeonMindBuddy application layer
@@ -27,9 +22,7 @@ FORBIDDEN_ROOTS = {
     "uvicorn",
     "torch",
     "sentence_transformers",
-    "psycopg",
     "psycopg2",
-    "pgvector",
     "pymongo",
     "motor",
     "openai",
@@ -40,7 +33,12 @@ FORBIDDEN_ROOTS = {
     "statblockgenerator",
     "graph_memory",  # DungeonMindBuddy package: adapt, never import
     "retrieval_lab",  # RulesIngestion package: eval-only vendoring, never runtime import
+    "alembic",  # migration runner only; never under src/
+    "sqlalchemy",  # Alembic dependency; never under src/
 }
+
+# Allowed only inside dungeonmind.infrastructure.postgres.
+POSTGRES_ONLY_ROOTS = {"psycopg", "pgvector"}
 
 ALLOWED_EXTERNAL = {"pydantic"}
 
@@ -60,6 +58,11 @@ LAYER_RULES: dict[str, set[str]] = {
         "dungeonmind.application",
     },
     "dungeonmind.infrastructure.memory": {
+        "dungeonmind.contracts",
+        "dungeonmind.domain",
+        "dungeonmind.application",
+    },
+    "dungeonmind.infrastructure.postgres": {
         "dungeonmind.contracts",
         "dungeonmind.domain",
         "dungeonmind.application",
@@ -113,10 +116,15 @@ def test_no_forbidden_imports_anywhere() -> None:
     violations: list[str] = []
     for path in _all_source_files():
         module_name, is_init = _module_name(path)
+        layer = _layer(module_name)
         for module in _imports_of(path, module_name, is_init):
             root = module.split(".")[0]
             if root in FORBIDDEN_ROOTS:
                 violations.append(f"{path.relative_to(SRC)} imports {module}")
+            if root in POSTGRES_ONLY_ROOTS and layer != "dungeonmind.infrastructure.postgres":
+                violations.append(
+                    f"{path.relative_to(SRC)} imports {module} outside infrastructure.postgres"
+                )
     assert not violations, "forbidden imports:\n" + "\n".join(violations)
 
 
@@ -132,6 +140,10 @@ def test_layer_rules_hold() -> None:
             root = module.split(".")[0]
             if root in stdlib or root in ALLOWED_EXTERNAL:
                 continue
+            if root in POSTGRES_ONLY_ROOTS and importer_layer == (
+                "dungeonmind.infrastructure.postgres"
+            ):
+                continue
             if not module.startswith("dungeonmind"):
                 violations.append(f"{module_name} imports unvetted third-party {module}")
                 continue
@@ -142,9 +154,25 @@ def test_layer_rules_hold() -> None:
 
 
 def test_every_module_imports_cleanly_without_optional_extras() -> None:
-    import dungeonmind
+    # Import by source file so pkgutil.walk_packages cannot pull in the
+    # optional postgres package (which requires the postgres extra).
+    # Clear any prior optional-extra residue from collecting integration tests
+    # when the postgres extra is installed in the same pytest process.
+    for name in list(sys.modules):
+        if name == "dungeonmind.infrastructure.postgres" or name.startswith(
+            "dungeonmind.infrastructure.postgres."
+        ):
+            del sys.modules[name]
+        root = name.split(".", 1)[0]
+        if root in POSTGRES_ONLY_ROOTS:
+            del sys.modules[name]
 
-    for module_info in pkgutil.walk_packages(dungeonmind.__path__, prefix="dungeonmind."):
-        importlib.import_module(module_info.name)
-    for forbidden in FORBIDDEN_ROOTS:
+    for path in _all_source_files():
+        module_name, _is_init = _module_name(path)
+        if module_name == "dungeonmind.infrastructure.postgres" or module_name.startswith(
+            "dungeonmind.infrastructure.postgres."
+        ):
+            continue
+        importlib.import_module(module_name)
+    for forbidden in FORBIDDEN_ROOTS | POSTGRES_ONLY_ROOTS:
         assert forbidden not in sys.modules, f"{forbidden} imported as a side effect"

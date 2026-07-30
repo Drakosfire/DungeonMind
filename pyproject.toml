@@ -18,6 +18,8 @@ dependencies = [
 postgres = [
     "psycopg[binary]>=3.2",
     "pgvector>=0.3.6",
+    "alembic>=1.13",
+    "sqlalchemy>=2.0",
 ]
 # FastAPI service host (successor slice). Never required to import dungeonmind core.
 api = [
@@ -61,7 +63,9 @@ markers = [
 
 [tool.pyright]
 include = ["src"]
-exclude = ["**/__pycache__"]
+# PostgreSQL adapters require the optional ``postgres`` extra; typed in the
+# integration CI job after ``uv sync --extra postgres``.
+exclude = ["**/__pycache__", "src/dungeonmind/infrastructure/postgres"]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
 reportMissingImports = true

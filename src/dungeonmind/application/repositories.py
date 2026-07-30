@@ -144,6 +144,11 @@ class SemanticDocumentRepository(Protocol):
     be inserted only while the materialization run is ``RUNNING``; exact
     replays remain idempotent after the run becomes terminal.
 
+    ``upsert_batch`` is all-or-nothing: referenced runs are locked in
+    deterministic ``run_id`` order, every document is preflighted, then every
+    genuinely new document is inserted in one commit. If any document fails,
+    no new document from that batch remains.
+
     ``delete_run_documents`` is allowed only for ``FAILED`` or ``SUPERSEDED``
     runs — never for ``RUNNING`` or ``COMPLETED`` (active or otherwise).
     """
