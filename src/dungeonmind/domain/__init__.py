@@ -11,6 +11,7 @@ from .errors import (
     RevisionNotFoundError,
     ScopeResolutionError,
     StaleParentRevisionError,
+    ThreadContextMismatchError,
 )
 from .fusion import reciprocal_rank_fusion, weighted_minmax_fusion
 from .revision_ids import compute_revision_id
@@ -25,6 +26,7 @@ __all__ = [
     "RevisionNotFoundError",
     "ScopeResolutionError",
     "StaleParentRevisionError",
+    "ThreadContextMismatchError",
     "canonical_json",
     "canonical_sha256",
     "compute_revision_id",

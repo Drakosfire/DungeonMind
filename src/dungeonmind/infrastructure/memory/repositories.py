@@ -3,10 +3,12 @@
 These adapters exist for unit tests and local development, but they are not
 toys: they enforce the same invariants the PostgreSQL adapters must honor —
 immutable revisions, atomic head publication with stale-parent rejection,
-idempotent appends, and fail-closed scope/visibility filtering. Conformance
-between this module and the PostgreSQL adapter is what makes the ports real.
+canonical idempotent appends, deep-copied payloads, thread binding, and
+fail-closed scope/visibility filtering. Conformance between this module and
+the PostgreSQL adapter is what makes the ports real.
 """
 
+import copy
 import math
 import threading
 from datetime import datetime
@@ -39,6 +41,7 @@ from ...domain.errors import (
     ImmutableRevisionConflictError,
     RevisionNotFoundError,
     StaleParentRevisionError,
+    ThreadContextMismatchError,
 )
 from ...domain.revision_ids import compute_revision_id
 
@@ -78,6 +81,7 @@ class InMemoryWorldGraphRepository:
         return _copy(stored) if stored is not None else None
 
     def publish_revision(self, command: PublishRevisionCommand) -> WorldGraphRevision:
+        # Contract already requires parent == expected; CAS requires expected == head.
         payload_hash = canonical_sha256(command.graph_payload)
         revision_id = compute_revision_id(
             world_id=command.world_id,
@@ -93,6 +97,13 @@ class InMemoryWorldGraphRepository:
                 raise StaleParentRevisionError(
                     world_id=command.world_id,
                     expected_parent_revision_id=command.expected_parent_revision_id,
+                    actual_head_revision_id=current_head_id,
+                )
+            # Defense in depth: declared lineage must also equal current head.
+            if command.parent_revision_id != current_head_id:
+                raise StaleParentRevisionError(
+                    world_id=command.world_id,
+                    expected_parent_revision_id=command.parent_revision_id,
                     actual_head_revision_id=current_head_id,
                 )
             existing = self._revisions.get((command.world_id, revision_id))
@@ -118,8 +129,10 @@ class InMemoryWorldGraphRepository:
                 graph_schema=command.graph_schema,
                 graph_payload_sha256=payload_hash,
             )
+            # Deep canonical copy — caller must not mutate stored "immutable" payload.
+            frozen_payload = copy.deepcopy(command.graph_payload)
             self._revisions[(command.world_id, revision_id)] = StoredGraphRevision(
-                revision=envelope, graph_payload=dict(command.graph_payload)
+                revision=envelope, graph_payload=frozen_payload
             )
             self._heads[command.world_id] = WorldGraphHead(
                 world_id=command.world_id,
@@ -235,6 +248,14 @@ class InMemorySourceRepository:
 
     def put_artifact(self, artifact: SourceArtifact) -> SourceArtifact:
         with self._lock:
+            existing = self._artifacts.get(artifact.source_artifact_id)
+            if existing is not None:
+                if _fingerprint(existing) != _fingerprint(artifact):
+                    raise IdempotencyConflictError(
+                        f"source artifact {artifact.source_artifact_id!r} replayed with "
+                        "different payload; mutable lifecycle needs a typed operation"
+                    )
+                return _copy(existing)
             self._artifacts[artifact.source_artifact_id] = _copy(artifact)
             return _copy(artifact)
 
@@ -244,6 +265,14 @@ class InMemorySourceRepository:
 
     def put_revision(self, revision: SourceRevision) -> SourceRevision:
         with self._lock:
+            existing = self._revisions.get(revision.source_revision_id)
+            if existing is not None:
+                if _fingerprint(existing) != _fingerprint(revision):
+                    raise IdempotencyConflictError(
+                        f"source revision {revision.source_revision_id!r} replayed with "
+                        "different payload"
+                    )
+                return _copy(existing)
             self._revisions[revision.source_revision_id] = _copy(revision)
             return _copy(revision)
 
@@ -300,22 +329,69 @@ class InMemoryMindThreadRepository:
         campaign_id: str | None,
         surface_id: str,
         created_at: datetime,
+        tenant_id: str | None = None,
     ) -> str:
+        binding = {
+            "world_id": world_id,
+            "campaign_id": campaign_id,
+            "surface_id": surface_id,
+            "tenant_id": tenant_id,
+            "created_at": created_at.isoformat(),
+        }
         with self._lock:
-            if thread_id not in self._threads:
-                self._threads[thread_id] = {
-                    "world_id": world_id,
-                    "campaign_id": campaign_id,
-                    "surface_id": surface_id,
-                    "created_at": created_at.isoformat(),
-                }
-                self._turns[thread_id] = []
+            existing = self._threads.get(thread_id)
+            if existing is not None:
+                # Idempotent only for identical binding (ignore created_at drift).
+                for key in ("world_id", "campaign_id", "surface_id", "tenant_id"):
+                    if existing[key] != binding[key]:
+                        raise IdempotencyConflictError(
+                            f"thread {thread_id!r} already bound with different context"
+                        )
+                return thread_id
+            self._threads[thread_id] = binding
+            self._turns[thread_id] = []
             return thread_id
 
     def append_turn(self, request: MindTurnRequest, response: MindTurnResponse) -> None:
         with self._lock:
-            if request.thread_id not in self._threads:
+            binding = self._threads.get(request.thread_id)
+            if binding is None:
                 raise DocumentNotFoundError(f"thread {request.thread_id!r} not found")
+            if request.world_id != binding["world_id"]:
+                raise ThreadContextMismatchError(
+                    f"request world_id {request.world_id!r} != thread world "
+                    f"{binding['world_id']!r}"
+                )
+            if request.campaign_id != binding["campaign_id"]:
+                raise ThreadContextMismatchError(
+                    f"request campaign_id {request.campaign_id!r} != thread campaign "
+                    f"{binding['campaign_id']!r}"
+                )
+            if request.caller_scope.tenant_id != binding["tenant_id"]:
+                raise ThreadContextMismatchError(
+                    f"request tenant_id {request.caller_scope.tenant_id!r} != thread tenant "
+                    f"{binding['tenant_id']!r}"
+                )
+            if response.request_id != request.request_id:
+                raise ThreadContextMismatchError(
+                    f"response.request_id {response.request_id!r} != "
+                    f"request.request_id {request.request_id!r}"
+                )
+            if response.thread_id != request.thread_id:
+                raise ThreadContextMismatchError(
+                    f"response.thread_id {response.thread_id!r} != "
+                    f"request.thread_id {request.thread_id!r}"
+                )
+            if response.world_id != request.world_id:
+                raise ThreadContextMismatchError(
+                    f"response.world_id {response.world_id!r} != "
+                    f"request.world_id {request.world_id!r}"
+                )
+            if response.campaign_id != request.campaign_id:
+                raise ThreadContextMismatchError(
+                    f"response.campaign_id {response.campaign_id!r} != "
+                    f"request.campaign_id {request.campaign_id!r}"
+                )
             self._turns[request.thread_id].append((_copy(request), _copy(response)))
 
     def list_turns(self, thread_id: str) -> list[tuple[MindTurnRequest, MindTurnResponse]]:
@@ -333,13 +409,10 @@ class InMemorySemanticDocumentRepository:
             for doc in documents:
                 existing = self._docs.get(doc.semantic_document_id)
                 if existing is not None:
-                    if (
-                        existing.content_sha256 != doc.content_sha256
-                        or existing.materialization_run_id != doc.materialization_run_id
-                    ):
+                    if _fingerprint(existing) != _fingerprint(doc):
                         raise IdempotencyConflictError(
                             f"semantic document {doc.semantic_document_id!r} re-ingested with "
-                            "different provenance; re-embedding must create a new run and new "
+                            "different payload; re-embedding must create a new run and new "
                             "document ids (ADR-0003)"
                         )
                     continue
@@ -435,7 +508,7 @@ class InMemorySemanticSearch:
     - ``world_id`` is mandatory and exact.
     - a campaign-scoped query sees that campaign's docs plus world-universal docs;
       a world-level query (no campaign_scope) sees only world-universal docs.
-    - visibility filter ``player`` sees player docs only; ``gm`` (or unset) sees all.
+    - ``visibility`` is required: ``player`` sees player docs only; ``gm`` sees all.
     """
 
     def __init__(self, documents: InMemorySemanticDocumentRepository) -> None:

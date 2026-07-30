@@ -16,9 +16,10 @@ Deviations from the handoff's conceptual target, recorded deliberately:
   a graph projection share one scope vocabulary.
 - Sub-records (claims, evidence, source reads, coverage) reuse the retrieval
   session contracts so the session ledger and the wire response cannot drift.
+- ``admissibility`` is required with no default (PR A.1): absence never means GM.
 """
 
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from pydantic import Field
 
@@ -57,10 +58,40 @@ class MindTurnRequest(DungeonMindModel):
     campaign_id: str | None = Field(default=None, min_length=1)
     # None resolves to the head at read time; the response reports the winner.
     requested_revision_id: str | None = None
-    admissibility: Admissibility = Admissibility.GM
-    focus: ProjectionFocus = ProjectionFocus()
+    # Required. No default — absence must never mean GM.
+    admissibility: Admissibility
+    focus: ProjectionFocus = Field(default_factory=ProjectionFocus)
     surface_context: SurfaceContext
     message: str
+
+    @classmethod
+    def for_authorized(
+        cls,
+        *,
+        request_id: str,
+        thread_id: str,
+        caller_scope: CallerScope,
+        world_id: str,
+        admissibility: Admissibility,
+        surface_context: SurfaceContext,
+        message: str,
+        campaign_id: str | None = None,
+        requested_revision_id: str | None = None,
+        focus: ProjectionFocus | None = None,
+    ) -> Self:
+        """Trusted constructor for orchestration after caller authorization."""
+        return cls(
+            request_id=request_id,
+            thread_id=thread_id,
+            caller_scope=caller_scope,
+            world_id=world_id,
+            campaign_id=campaign_id,
+            requested_revision_id=requested_revision_id,
+            admissibility=admissibility,
+            focus=focus or ProjectionFocus(),
+            surface_context=surface_context,
+            message=message,
+        )
 
 
 class SemanticProjection(DungeonMindModel):
@@ -104,5 +135,5 @@ class MindTurnResponse(DungeonMindModel):
     semantic_projections: list[SemanticProjection] = []
     suggested_actions: list[SuggestedAction] = []
     context_changes: list[ContextChange] = []
-    coverage: Coverage = Coverage()
+    coverage: Coverage = Field(default_factory=Coverage)
     diagnostics: list[DiagnosticEntry] = []

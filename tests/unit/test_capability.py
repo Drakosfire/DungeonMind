@@ -3,6 +3,7 @@
 import pytest
 
 from dungeonmind.contracts import (
+    Admissibility,
     CapabilityCategory,
     CapabilityEffect,
     CapabilityPolicy,
@@ -16,7 +17,9 @@ from dungeonmind.domain.capability import evaluate_capability
 def make_policy(**overrides: object) -> CapabilityPolicy:
     base: dict[str, object] = {
         "policy_id": "pol:test",
-        "graph_scope": GraphScope(world_id="world:demo"),
+        "graph_scope": GraphScope(
+            world_id="world:demo", admissibility=Admissibility.GM
+        ),
         "enabled_tools": ["graph.search", "graph.read_source", "contrib.commit"],
         "tool_rules": [
             ToolCapabilityRule(

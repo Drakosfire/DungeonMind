@@ -82,3 +82,9 @@ class ScopeResolutionError(DungeonMindError):
 
 class DocumentNotFoundError(DungeonMindError):
     code = "document_not_found"
+
+
+class ThreadContextMismatchError(DungeonMindError):
+    """Thread binding or turn correlation violated (world/campaign/tenant/ids)."""
+
+    code = "thread_context_mismatch"

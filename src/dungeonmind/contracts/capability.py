@@ -10,6 +10,8 @@ read_only | draft_only | preview_write | confirm_commit | admin_diagnostic.
 from enum import StrEnum
 from typing import Literal
 
+from pydantic import Field
+
 from .base import DungeonMindModel
 from .projection import Admissibility, ProjectionFocus
 
@@ -33,12 +35,15 @@ class CapabilityEffect(StrEnum):
 
 
 class GraphScope(DungeonMindModel):
-    """The scope a policy is bound to. Required for any graph-touching tool."""
+    """The scope a policy is bound to. Required for any graph-touching tool.
+
+    ``admissibility`` is required with no default — absence never means GM.
+    """
 
     world_id: str
     campaign_id: str | None = None
-    focus: ProjectionFocus = ProjectionFocus()
-    admissibility: Admissibility = Admissibility.GM
+    focus: ProjectionFocus = Field(default_factory=ProjectionFocus)
+    admissibility: Admissibility
     revision_pin: str | None = None
 
 

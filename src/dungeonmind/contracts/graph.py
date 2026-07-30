@@ -10,9 +10,9 @@ benchmark-gated optimization.
 """
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .base import DungeonMindModel
 
@@ -46,12 +46,14 @@ class WorldGraphHead(DungeonMindModel):
 
 
 class PublishRevisionCommand(DungeonMindModel):
-    """Atomic publish request.
+    """Atomic publish request for linear head advancement.
 
-    ``parent_revision_id`` declares the revision's lineage (recorded in the
-    envelope). ``expected_parent_revision_id`` is the compare-and-swap token:
-    publication fails with ``StaleParentRevisionError`` unless it equals the
-    current head (both may be None for a world's first revision).
+    Normal publication requires
+    ``parent_revision_id == expected_parent_revision_id == current_head``.
+    The contract enforces ``parent_revision_id == expected_parent_revision_id``;
+    the repository enforces equality with the current head (CAS). Rollback is
+    the explicit mechanism for repointing a head; there is no branch-publication
+    operation in v1.
     """
 
     world_id: str
@@ -61,6 +63,15 @@ class PublishRevisionCommand(DungeonMindModel):
     graph_schema: str
     graph_payload: dict[str, Any]
     created_at: datetime
+
+    @model_validator(mode="after")
+    def _lineage_matches_cas_token(self) -> Self:
+        if self.parent_revision_id != self.expected_parent_revision_id:
+            raise ValueError(
+                "parent_revision_id must equal expected_parent_revision_id for "
+                "normal publication; use rollback_head to repoint without lineage"
+            )
+        return self
 
 
 class StoredGraphRevision(DungeonMindModel):

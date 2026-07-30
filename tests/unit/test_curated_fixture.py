@@ -81,7 +81,6 @@ def test_publish_read_and_search(fixture: dict[str, object]) -> None:
                 source_artifact_id=artifact["source_artifact_id"],
                 source_domain=SourceDomain(artifact["source_domain"]),
                 world_id=artifact["world_id"],
-                content_sha256=sha256_text(artifact["source_artifact_id"]),
                 created_at=FIXED_NOW,
             )
         )
@@ -96,6 +95,7 @@ def test_publish_read_and_search(fixture: dict[str, object]) -> None:
         results = search.search(
             SemanticQuery(
                 world_id=str(fixture["world_id"]),
+                visibility=Visibility.GM,
                 embedding=[float(v) for v in query["embedding"]],
             )
         )
@@ -125,6 +125,7 @@ def test_publish_read_and_search(fixture: dict[str, object]) -> None:
         SemanticQuery(
             world_id=str(fixture["world_id"]),
             campaign_scope="camp:demo",
+            visibility=Visibility.GM,
             embedding=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         )
     )

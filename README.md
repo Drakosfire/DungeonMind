@@ -39,22 +39,24 @@ Source-of-truth precedence: [`Docs/Architecture/AUTHORITY.md`](Docs/Architecture
 
 ## Status
 
-**Founding (PR A).** What exists today:
+**Founding (PR A + A.1).** What exists today:
 
-- versioned public contracts (graph revisions, contributions, evidence,
-  identity decisions, projections, retrieval sessions, semantic documents,
-  capability policy, the Mind Turn);
-- repository protocols (ports) with in-memory adapters, including atomic head
-  publication with stale-parent rejection;
+- versioned public contracts with cross-field invariant validators
+  (fail-closed admissibility/visibility; kind-dependent evidence, source,
+  semantic, identity, claim, and focus rules);
+- repository protocols (ports) with in-memory adapters: atomic head CAS with
+  parent==expected==head, deep-copied immutable payloads, canonical
+  idempotency, thread binding + turn correlation;
+- sanitized agent-adapter input (auth/tenancy stay in orchestration);
 - deterministic canonical hashing, revision identity, and rank fusion;
-- import-boundary enforcement tests (core imports with no FastAPI, PostgreSQL
-  driver, Torch, or Hermes);
-- the founding decision record (ADRs) and the PR ladder.
+- import-boundary enforcement + Pyright in CI;
+- the founding decision record (ADRs) and the amended PR ladder
+  (demo immediately after minimal PostgreSQL).
 
 What deliberately does **not** exist yet: PostgreSQL adapters and migrations
-(PR B), the retrieval benchmark backend (PR C), the embedding bakeoff (PR D),
-the FastAPI service host, any agent adapter, and any durable write path beyond
-graph revision publication. See [`Docs/Roadmaps/ROADMAP.md`](Docs/Roadmaps/ROADMAP.md).
+(PR B), the Mind Turn demo host (PR B.1), the retrieval benchmark backend
+(PR C), the embedding bakeoff (PR D), and any durable write path beyond graph
+revision publication. See [`Docs/Roadmaps/ROADMAP.md`](Docs/Roadmaps/ROADMAP.md).
 
 ## Quickstart
 
@@ -62,6 +64,7 @@ graph revision publication. See [`Docs/Roadmaps/ROADMAP.md`](Docs/Roadmaps/ROADM
 uv sync                 # installs package + dev tools (no heavy deps)
 uv run pytest           # unit tests (in-memory; no services required)
 uv run ruff check .     # lint
+uv run pyright          # static type check (src/)
 ```
 
 PostgreSQL integration tests (PR B+) are opt-in locally and active in CI:

@@ -32,6 +32,7 @@ def make_doc(
     content: str = "placeholder",
     embedding: list[float] | None = None,
     run_id: str = "erun:1",
+    graph_object_id: str | None = None,
 ) -> SemanticDocument:
     vector = embedding or [0.0] * 8
     return SemanticDocument(
@@ -39,6 +40,7 @@ def make_doc(
         document_kind=SemanticDocumentKind.GRAPH_OBJECT,
         world_id=world_id,
         campaign_scope=campaign_scope,
+        graph_object_id=graph_object_id or f"obj:{doc_id}",
         visibility=visibility,
         content=content,
         content_sha256=f"{doc_id}-sha256",
@@ -57,7 +59,7 @@ def store() -> InMemorySemanticDocumentRepository:
     return InMemorySemanticDocumentRepository()
 
 
-def test_upsert_idempotent_but_provenance_strict(
+def test_upsert_idempotent_but_canonical_strict(
     store: InMemorySemanticDocumentRepository,
 ) -> None:
     doc = make_doc("sdoc:1")
@@ -67,6 +69,11 @@ def test_upsert_idempotent_but_provenance_strict(
     changed = doc.model_copy(update={"content_sha256": "different", "content": "changed"})
     with pytest.raises(IdempotencyConflictError):
         store.upsert_batch([changed])
+
+    # Visibility / scope drift with matching content+run must also conflict.
+    visibility_drift = doc.model_copy(update={"visibility": Visibility.PLAYER})
+    with pytest.raises(IdempotencyConflictError):
+        store.upsert_batch([visibility_drift])
 
 
 def test_reembedding_creates_new_run_not_overwrite(
@@ -88,7 +95,11 @@ def test_dense_search_orders_by_cosine(store: InMemorySemanticDocumentRepository
     )
     search = InMemorySemanticSearch(store)
     results = search.search(
-        SemanticQuery(world_id="world:demo", embedding=[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        SemanticQuery(
+            world_id="world:demo",
+            visibility=Visibility.GM,
+            embedding=[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        )
     )
     dense = [c for c in results if c.channel is CandidateChannel.DENSE]
     assert [c.semantic_document_id for c in dense] == ["sdoc:near", "sdoc:far"]
@@ -128,11 +139,20 @@ def test_scope_and_visibility_filters_fail_closed(
             if c.channel is CandidateChannel.DENSE
         ]
 
-    world_level = dense_ids(SemanticQuery(world_id="world:demo", embedding=list(UNIT_VEC)))
+    world_level = dense_ids(
+        SemanticQuery(
+            world_id="world:demo", visibility=Visibility.GM, embedding=list(UNIT_VEC)
+        )
+    )
     assert set(world_level) == {"sdoc:universal", "sdoc:player"}
 
     campaign_a = dense_ids(
-        SemanticQuery(world_id="world:demo", campaign_scope="camp:a", embedding=list(UNIT_VEC))
+        SemanticQuery(
+            world_id="world:demo",
+            campaign_scope="camp:a",
+            visibility=Visibility.GM,
+            embedding=list(UNIT_VEC),
+        )
     )
     assert set(campaign_a) == {"sdoc:universal", "sdoc:camp-a", "sdoc:player"}
 
@@ -152,7 +172,11 @@ def test_exact_and_lexical_channels(store: InMemorySemanticDocumentRepository) -
         ]
     )
     search = InMemorySemanticSearch(store)
-    results = search.search(SemanticQuery(world_id="world:demo", text="Sun Ledger", top_k=5))
+    results = search.search(
+        SemanticQuery(
+            world_id="world:demo", visibility=Visibility.GM, text="Sun Ledger", top_k=5
+        )
+    )
     exact = [c for c in results if c.channel is CandidateChannel.EXACT]
     lexical = [c for c in results if c.channel is CandidateChannel.LEXICAL]
     assert [c.semantic_document_id for c in exact] == ["sdoc:astor"]

@@ -49,7 +49,9 @@ Supporting invariants (closed — see `AUTHORITY.md` §3):
    disposable retrieval indexes.
 2. Source artifacts and admitted evidence remain the basis for factual support.
 3. Every read operates against one explicit world, campaign scope,
-   admissibility policy, and coherent graph revision.
+   admissibility policy, and coherent graph revision. Admissibility and
+   query visibility are required fields with no defaults — absence never
+   means GM (PR A.1).
 4. Surfaces publish context and consume semantic results; they do not assemble
    graph queries or prompts.
 5. Hermes is the first agent adapter, not the definition of DungeonMind.

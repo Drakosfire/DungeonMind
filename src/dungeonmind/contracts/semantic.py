@@ -10,9 +10,9 @@ A similarity score is a candidate-retrieval signal, never factual support.
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .base import DungeonMindModel
 from .vocabulary import Visibility
@@ -79,14 +79,34 @@ class SemanticDocument(DungeonMindModel):
     # Optional at the contract level so stores can separate row vs. index storage.
     embedding: list[float] | None = None
 
+    @model_validator(mode="after")
+    def _kind_and_embedding_invariants(self) -> Self:
+        if self.document_kind is SemanticDocumentKind.GRAPH_OBJECT and not self.graph_object_id:
+            raise ValueError("graph_object documents require graph_object_id")
+        if self.document_kind is SemanticDocumentKind.SOURCE_CHUNK and not (
+            self.source_artifact_id or self.source_revision_id
+        ):
+            raise ValueError(
+                "source_chunk documents require source_artifact_id or source_revision_id"
+            )
+        if self.embedding is not None and len(self.embedding) != self.embedding_dimensions:
+            raise ValueError(
+                "embedding_dimensions must equal len(embedding) when embedding is present"
+            )
+        return self
+
 
 class SemanticQuery(DungeonMindModel):
-    """A bounded, metadata-filtered semantic search request."""
+    """A bounded, metadata-filtered semantic search request.
+
+    ``visibility`` is required with no default. Absence never means unrestricted
+    GM access — callers must state the reader class explicitly.
+    """
 
     world_id: str
     campaign_scope: str | None = None
     document_kind: SemanticDocumentKind | None = None
-    visibility: Visibility | None = None
+    visibility: Visibility
     graph_revision_id: str | None = None
     text: str | None = None
     # Precomputed by the caller's embedding provider; adapters never embed.

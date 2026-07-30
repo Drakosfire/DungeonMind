@@ -110,7 +110,12 @@ class RetrievalSessionRepository(Protocol):
 
 
 class MindThreadRepository(Protocol):
-    """Conversation threads for continuity. Threads are context, never truth."""
+    """Conversation threads for continuity. Threads are context, never truth.
+
+    ``create_thread`` is idempotent only for an identical binding
+    (world/campaign/surface/tenant). ``append_turn`` enforces thread, request,
+    response, world, campaign, and tenant/caller consistency.
+    """
 
     def create_thread(
         self,
@@ -120,6 +125,7 @@ class MindThreadRepository(Protocol):
         campaign_id: str | None,
         surface_id: str,
         created_at: datetime,
+        tenant_id: str | None = None,
     ) -> str: ...
 
     def append_turn(self, request: MindTurnRequest, response: MindTurnResponse) -> None: ...

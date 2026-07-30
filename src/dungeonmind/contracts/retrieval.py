@@ -9,7 +9,9 @@ fallback to arbitrary file search. Vector similarity is never evidence.
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, Self
+
+from pydantic import Field, model_validator
 
 from .base import DungeonMindModel
 from .identity import IdentityOutcome
@@ -37,6 +39,12 @@ class Claim(DungeonMindModel):
     status: ClaimStatus = ClaimStatus.PENDING
     evidence_ref_ids: list[str] = []
     source_anchor_ids: list[str] = []
+
+    @model_validator(mode="after")
+    def _graph_fact_requires_evidence(self) -> Self:
+        if self.authority is ClaimAuthority.GRAPH_FACT and not self.evidence_ref_ids:
+            raise ValueError("graph_fact claims require at least one evidence_ref_id")
+        return self
 
 
 class ResolvedReferent(DungeonMindModel):
@@ -125,7 +133,7 @@ class GraphRetrievalSession(DungeonMindModel):
     claims: list[Claim] = []
     source_anchors: list[SourceAnchor] = []
     source_reads: list[SourceRead] = []
-    coverage: Coverage = Coverage()
+    coverage: Coverage = Field(default_factory=Coverage)
     diagnostics: list[DiagnosticEntry] = []
     preflight_candidate_ids: list[str] = []
     created_at: datetime

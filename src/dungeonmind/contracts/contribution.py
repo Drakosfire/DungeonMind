@@ -14,9 +14,9 @@ pin equivalence against Buddy behavior.
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .base import DungeonMindModel
 from .evidence import EvidenceRef
@@ -67,6 +67,18 @@ class GraphContributionAssertion(DungeonMindModel):
     epistemic_kind: EpistemicKind = EpistemicKind.ASSERTED
     acceptance_state: AcceptanceState = AcceptanceState.CANDIDATE
     identity_resolution_outcome: IdentityOutcome | None = None
+
+    @model_validator(mode="after")
+    def _accepted_requires_evidentiary_basis(self) -> Self:
+        if self.acceptance_state is AcceptanceState.ACCEPTED:
+            has_evidence = bool(self.evidence_refs)
+            has_source = bool(self.source_artifact_id or self.source_revision_id)
+            if not has_evidence and not has_source:
+                raise ValueError(
+                    "accepted assertions require evidence_refs or a source "
+                    "artifact/revision identity"
+                )
+        return self
 
 
 class GraphContribution(DungeonMindModel):
