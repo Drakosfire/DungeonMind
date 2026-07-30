@@ -17,16 +17,25 @@ Deviations from the handoff's conceptual target, recorded deliberately:
 - Sub-records (claims, evidence, source reads, coverage) reuse the retrieval
   session contracts so the session ledger and the wire response cannot drift.
 - ``admissibility`` is required with no default (PR A.1): absence never means GM.
+- Response ledgers validate closed-envelope referential integrity.
 """
 
 from typing import Any, Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .base import DungeonMindModel
 from .evidence import EvidenceRef
-from .projection import Admissibility, ProjectionFocus
-from .retrieval import Claim, Coverage, DiagnosticEntry, ResolvedReferent, SourceRead
+from .projection import Admissibility, FocusKind, ProjectionFocus
+from .retrieval import (
+    Claim,
+    Coverage,
+    DiagnosticEntry,
+    ResolvedReferent,
+    SourceAnchor,
+    SourceRead,
+    validate_admitted_evidence_ledger,
+)
 
 MIND_TURN_SCHEMA = "mind_turn_v1"
 
@@ -63,6 +72,12 @@ class MindTurnRequest(DungeonMindModel):
     focus: ProjectionFocus = Field(default_factory=ProjectionFocus)
     surface_context: SurfaceContext
     message: str
+
+    @model_validator(mode="after")
+    def _session_focus_requires_campaign(self) -> Self:
+        if self.focus.kind is FocusKind.SESSION and not self.campaign_id:
+            raise ValueError("session focus requires campaign_id on MindTurnRequest")
+        return self
 
     @classmethod
     def for_authorized(
@@ -131,9 +146,20 @@ class MindTurnResponse(DungeonMindModel):
     resolved_referents: list[ResolvedReferent] = []
     claims: list[Claim] = []
     evidence: list[EvidenceRef] = []
+    source_anchors: list[SourceAnchor] = []
     source_reads: list[SourceRead] = []
     semantic_projections: list[SemanticProjection] = []
     suggested_actions: list[SuggestedAction] = []
     context_changes: list[ContextChange] = []
     coverage: Coverage = Field(default_factory=Coverage)
     diagnostics: list[DiagnosticEntry] = []
+
+    @model_validator(mode="after")
+    def _admitted_ledger_integrity(self) -> Self:
+        validate_admitted_evidence_ledger(
+            evidence=self.evidence,
+            source_anchors=self.source_anchors,
+            source_reads=self.source_reads,
+            claims=self.claims,
+        )
+        return self

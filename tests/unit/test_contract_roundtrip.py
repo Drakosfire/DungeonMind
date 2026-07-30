@@ -141,6 +141,7 @@ def _instances() -> list[object]:
             document_kind=SemanticDocumentKind.GRAPH_OBJECT,
             world_id="world:demo",
             graph_object_id="obj:1",
+            graph_revision_id=revision.revision_id,
             visibility=Visibility.GM,
             content="Mere Astor, factor of Vael",
             content_sha256="12" * 32,

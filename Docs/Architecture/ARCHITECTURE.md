@@ -1,6 +1,6 @@
 # DungeonMind — Architecture and Ownership
 
-**Status:** founding (v0.1.0, PR A)
+**Status:** founding (v0.1.0, PR A / A.1)
 **Authority:** this document + `AUTHORITY.md` + ADRs. Where this disagrees with
 any other source, see `AUTHORITY.md` precedence.
 
@@ -51,10 +51,12 @@ Supporting invariants (closed — see `AUTHORITY.md` §3):
 3. Every read operates against one explicit world, campaign scope,
    admissibility policy, and coherent graph revision. Admissibility and
    query visibility are required fields with no defaults — absence never
-   means GM (PR A.1).
+   means GM (PR A.1). Campaign ownership lives on the request/scope only;
+   focus is chronology and never a second campaign authority.
 4. Surfaces publish context and consume semantic results; they do not assemble
    graph queries or prompts.
 5. Hermes is the first agent adapter, not the definition of DungeonMind.
+   ``CapabilityPolicy`` is the sole authority for the agent-visible tool set.
 6. DungeonMindServer may host consumers and existing product APIs; it never
    owns DungeonMind's graph or retrieval semantics.
 7. No agent or surface receives silent durable write authority.
@@ -144,6 +146,23 @@ Recorded deviations from the founding handoff's conceptual target are in the
 contract module docstring (explicit `caller_scope`; shared projection
 vocabulary; shared retrieval-session sub-records).
 
+Contract closures that PostgreSQL adapters must reproduce (PR A.1):
+
+- **Admitted evidence ledger.** `GraphRetrievalSession` and `MindTurnResponse`
+  validate closed-envelope referential integrity among evidence, anchors,
+  source reads, and claims. Invented evidence IDs cannot ground a graph fact.
+- **Embedding-run lifecycle.** `RUNNING → COMPLETED|FAILED`;
+  `COMPLETED|FAILED → SUPERSEDED`. Terminal retries do not rewrite timestamps.
+- **Exact semantic provenance.** Source chunks require `source_revision_id`;
+  graph-object documents require `graph_object_id` and `graph_revision_id`.
+  Document model metadata must match the materialization run.
+- **v1 threads.** Caller-private and cross-surface. Immutable binding is
+  `(thread_id, tenant_id, caller_id, world_id, campaign_id)`. Surface is
+  per-turn. Append is retry-safe by `turn_id`. Shared multi-user threads are
+  out of scope.
+- **One capability policy.** Permitted tools are derived from
+  `CapabilityPolicy` only; callers cannot inject a second tool list.
+
 The retrieval sequence inside a turn (ADR-0003):
 
 ```text
@@ -175,8 +194,8 @@ A similarity score is never surfaced as factual support.
 ## 8. What does not exist yet (and where it lands)
 
 See `Docs/Roadmaps/ROADMAP.md`. In short: PostgreSQL adapters + migrations
-(PR B), pgvector benchmark backend via RulesIngestion Option B (PR C),
-embedding bakeoff (PR D), DungeonMindServer retrieval seam (PR E), production
-IaC integration (PR F), then the first read-only Mind Turn demo (named
-successor). Conversation/chat history is never authoritative anywhere in this
+(PR B), thin read-only Mind Turn demo (PR B.1), then pgvector benchmark
+backend via RulesIngestion Option B (PR C), embedding bakeoff (PR D),
+DungeonMindServer retrieval seam (PR E), and production IaC integration
+(PR F). Conversation/chat history is never authoritative anywhere in this
 target state.

@@ -7,6 +7,10 @@ It never receives durable write authority, never assembles graph queries
 itself, and never sees unfiltered scope. Hermes will be the first adapter
 (``agents/hermes/``, optional extra, successor slice); replacing Hermes must
 mean writing a new adapter, not changing DungeonMind.
+
+``CapabilityPolicy`` on ``AgentTurnContext`` is the sole authority for tools.
+Adapters that need a serialized tool list must derive it via
+``domain.capability.permitted_tool_names`` — never from caller-supplied names.
 """
 
 from typing import Protocol
@@ -36,7 +40,6 @@ class AgentTurnInput(DungeonMindModel):
     admissibility: Admissibility
     surface: AdmittedSurfaceContext
     assembled_context: str
-    permitted_tool_names: list[str] = []
     revision_id: str
 
 
@@ -44,8 +47,7 @@ class AgentTurnContext(DungeonMindModel):
     """Everything an adapter may see for one turn — assembled, bounded, explicit."""
 
     input: AgentTurnInput
-    # Capability policy for fail-closed tool evaluation inside the adapter.
-    # Does not include caller/tenant identity.
+    # Sole tool authority. Derive permitted names from this policy.
     capability_policy: CapabilityPolicy
 
 
@@ -79,10 +81,13 @@ def sanitize_agent_input(
     surface_mode: str | None,
     selected_object_ids: list[str],
     assembled_context: str,
-    permitted_tool_names: list[str],
     revision_id: str,
 ) -> AgentTurnInput:
-    """Build agent input from orchestration state without auth/tenancy fields."""
+    """Build agent input from orchestration state without auth/tenancy fields.
+
+    Does not accept a permitted-tool list — tools are derived from
+    ``CapabilityPolicy`` on ``AgentTurnContext``.
+    """
     return AgentTurnInput(
         message=message,
         world_id=world_id,
@@ -96,6 +101,5 @@ def sanitize_agent_input(
             selected_object_ids=list(selected_object_ids),
         ),
         assembled_context=assembled_context,
-        permitted_tool_names=list(permitted_tool_names),
         revision_id=revision_id,
     )

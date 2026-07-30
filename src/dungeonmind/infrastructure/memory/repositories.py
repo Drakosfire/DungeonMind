@@ -39,16 +39,35 @@ from ...domain.errors import (
     DocumentNotFoundError,
     IdempotencyConflictError,
     ImmutableRevisionConflictError,
+    InvalidLifecycleTransitionError,
     RevisionNotFoundError,
     StaleParentRevisionError,
     ThreadContextMismatchError,
 )
 from ...domain.revision_ids import compute_revision_id
 
+_EMBEDDING_RUN_IMMUTABLE_FIELDS: set[str] = {
+    "run_id",
+    "embedding_model",
+    "embedding_model_revision",
+    "embedding_dimensions",
+    "embedding_recipe",
+    "corpus_fingerprint",
+    "benchmark_projection_id",
+    "world_id",
+    "created_at",
+    "schema_version",
+}
+
 
 def _fingerprint(model: object) -> str:
     """Canonical JSON fingerprint of a pydantic model for idempotency checks."""
     dump = model.model_dump(mode="json")  # type: ignore[attr-defined]
+    return canonical_json(dump)
+
+
+def _immutable_run_fingerprint(run: EmbeddingRun) -> str:
+    dump = run.model_dump(mode="json", include=_EMBEDDING_RUN_IMMUTABLE_FIELDS)
     return canonical_json(dump)
 
 
@@ -316,6 +335,8 @@ class InMemoryRetrievalSessionRepository:
 
 
 class InMemoryMindThreadRepository:
+    """v1: caller-private, cross-surface threads. Surface is per-turn only."""
+
     def __init__(self) -> None:
         self._threads: dict[str, dict[str, str | None]] = {}
         self._turns: dict[str, list[tuple[MindTurnRequest, MindTurnResponse]]] = {}
@@ -327,22 +348,21 @@ class InMemoryMindThreadRepository:
         *,
         world_id: str,
         campaign_id: str | None,
-        surface_id: str,
+        caller_id: str,
+        tenant_id: str | None,
         created_at: datetime,
-        tenant_id: str | None = None,
     ) -> str:
         binding = {
             "world_id": world_id,
             "campaign_id": campaign_id,
-            "surface_id": surface_id,
+            "caller_id": caller_id,
             "tenant_id": tenant_id,
             "created_at": created_at.isoformat(),
         }
         with self._lock:
             existing = self._threads.get(thread_id)
             if existing is not None:
-                # Idempotent only for identical binding (ignore created_at drift).
-                for key in ("world_id", "campaign_id", "surface_id", "tenant_id"):
+                for key in ("world_id", "campaign_id", "caller_id", "tenant_id"):
                     if existing[key] != binding[key]:
                         raise IdempotencyConflictError(
                             f"thread {thread_id!r} already bound with different context"
@@ -372,6 +392,11 @@ class InMemoryMindThreadRepository:
                     f"request tenant_id {request.caller_scope.tenant_id!r} != thread tenant "
                     f"{binding['tenant_id']!r}"
                 )
+            if request.caller_scope.caller_id != binding["caller_id"]:
+                raise ThreadContextMismatchError(
+                    f"request caller_id {request.caller_scope.caller_id!r} != thread caller "
+                    f"{binding['caller_id']!r}"
+                )
             if response.request_id != request.request_id:
                 raise ThreadContextMismatchError(
                     f"response.request_id {response.request_id!r} != "
@@ -392,21 +417,70 @@ class InMemoryMindThreadRepository:
                     f"response.campaign_id {response.campaign_id!r} != "
                     f"request.campaign_id {request.campaign_id!r}"
                 )
-            self._turns[request.thread_id].append((_copy(request), _copy(response)))
+
+            turns = self._turns[request.thread_id]
+            for existing_req, existing_resp in turns:
+                if existing_resp.turn_id == response.turn_id:
+                    if (
+                        _fingerprint(existing_req) == _fingerprint(request)
+                        and _fingerprint(existing_resp) == _fingerprint(response)
+                    ):
+                        return  # exact replay; no duplicate
+                    raise IdempotencyConflictError(
+                        f"turn_id {response.turn_id!r} replayed with different payload"
+                    )
+                if existing_req.request_id == request.request_id:
+                    raise IdempotencyConflictError(
+                        f"request_id {request.request_id!r} already bound to a different turn"
+                    )
+
+            turns.append((_copy(request), _copy(response)))
 
     def list_turns(self, thread_id: str) -> list[tuple[MindTurnRequest, MindTurnResponse]]:
         return [(_copy(req), _copy(resp)) for req, resp in self._turns.get(thread_id, [])]
 
 
 class InMemorySemanticDocumentRepository:
-    def __init__(self) -> None:
+    """Requires an embedding-run repository so provenance cannot drift."""
+
+    def __init__(self, embedding_runs: "InMemoryEmbeddingRunRepository") -> None:
         self._docs: dict[str, SemanticDocument] = {}
+        self._runs = embedding_runs
         self._lock = threading.Lock()
+
+    def _assert_run_compatible(self, doc: SemanticDocument) -> None:
+        run = self._runs.get(doc.materialization_run_id)
+        if run is None:
+            raise DocumentNotFoundError(
+                f"materialization run {doc.materialization_run_id!r} not found"
+            )
+        if doc.embedding_model != run.embedding_model:
+            raise IdempotencyConflictError(
+                f"document {doc.semantic_document_id!r} embedding_model mismatches run"
+            )
+        if doc.embedding_model_revision != run.embedding_model_revision:
+            raise IdempotencyConflictError(
+                f"document {doc.semantic_document_id!r} embedding_model_revision "
+                "mismatches run"
+            )
+        if doc.embedding_dimensions != run.embedding_dimensions:
+            raise IdempotencyConflictError(
+                f"document {doc.semantic_document_id!r} embedding_dimensions mismatches run"
+            )
+        if doc.embedding_recipe != run.embedding_recipe:
+            raise IdempotencyConflictError(
+                f"document {doc.semantic_document_id!r} embedding_recipe mismatches run"
+            )
+        if run.world_id is not None and doc.world_id != run.world_id:
+            raise IdempotencyConflictError(
+                f"document {doc.semantic_document_id!r} world_id incompatible with run"
+            )
 
     def upsert_batch(self, documents: list[SemanticDocument]) -> int:
         stored = 0
         with self._lock:
             for doc in documents:
+                self._assert_run_compatible(doc)
                 existing = self._docs.get(doc.semantic_document_id)
                 if existing is not None:
                     if _fingerprint(existing) != _fingerprint(doc):
@@ -446,40 +520,114 @@ class InMemorySemanticDocumentRepository:
 
 
 class InMemoryEmbeddingRunRepository:
+    """Monotonic lifecycle: RUNNING→COMPLETED|FAILED; COMPLETED|FAILED→SUPERSEDED."""
+
     def __init__(self) -> None:
         self._runs: dict[str, EmbeddingRun] = {}
         self._lock = threading.Lock()
 
     def begin(self, run: EmbeddingRun) -> EmbeddingRun:
+        if run.status is not EmbeddingRunStatus.RUNNING:
+            raise InvalidLifecycleTransitionError(
+                record_type="embedding_run",
+                record_id=run.run_id,
+                current_status=run.status.value,
+                requested_status=EmbeddingRunStatus.RUNNING.value,
+            )
+        if run.completed_at is not None:
+            raise InvalidLifecycleTransitionError(
+                "begin rejects terminal timestamps on input",
+                record_type="embedding_run",
+                record_id=run.run_id,
+                current_status=run.status.value,
+                requested_status=EmbeddingRunStatus.RUNNING.value,
+            )
         with self._lock:
             existing = self._runs.get(run.run_id)
             if existing is not None:
-                if _fingerprint(existing) != _fingerprint(run):
+                if _immutable_run_fingerprint(existing) != _immutable_run_fingerprint(run):
                     raise IdempotencyConflictError(
-                        f"embedding run {run.run_id!r} replayed with different metadata"
+                        f"embedding run {run.run_id!r} replayed with different "
+                        "immutable creation metadata"
                     )
                 return _copy(existing)
             self._runs[run.run_id] = _copy(run)
             return _copy(run)
 
-    def _finish(
-        self, run_id: str, status: EmbeddingRunStatus, *, completed_at: datetime
-    ) -> EmbeddingRun:
+    def complete(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun:
         with self._lock:
             existing = self._runs.get(run_id)
             if existing is None:
                 raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
-            updated = existing.model_copy(deep=True)
-            updated.status = status
-            updated.completed_at = completed_at
+            if existing.status is EmbeddingRunStatus.COMPLETED:
+                return _copy(existing)
+            if existing.status is not EmbeddingRunStatus.RUNNING:
+                raise InvalidLifecycleTransitionError(
+                    record_type="embedding_run",
+                    record_id=run_id,
+                    current_status=existing.status.value,
+                    requested_status=EmbeddingRunStatus.COMPLETED.value,
+                )
+            updated = existing.model_copy(
+                deep=True,
+                update={
+                    "status": EmbeddingRunStatus.COMPLETED,
+                    "completed_at": completed_at,
+                },
+            )
             self._runs[run_id] = updated
             return _copy(updated)
 
-    def complete(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun:
-        return self._finish(run_id, EmbeddingRunStatus.COMPLETED, completed_at=completed_at)
-
     def fail(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun:
-        return self._finish(run_id, EmbeddingRunStatus.FAILED, completed_at=completed_at)
+        with self._lock:
+            existing = self._runs.get(run_id)
+            if existing is None:
+                raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
+            if existing.status is EmbeddingRunStatus.FAILED:
+                return _copy(existing)
+            if existing.status is not EmbeddingRunStatus.RUNNING:
+                raise InvalidLifecycleTransitionError(
+                    record_type="embedding_run",
+                    record_id=run_id,
+                    current_status=existing.status.value,
+                    requested_status=EmbeddingRunStatus.FAILED.value,
+                )
+            updated = existing.model_copy(
+                deep=True,
+                update={
+                    "status": EmbeddingRunStatus.FAILED,
+                    "completed_at": completed_at,
+                },
+            )
+            self._runs[run_id] = updated
+            return _copy(updated)
+
+    def supersede(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun:
+        with self._lock:
+            existing = self._runs.get(run_id)
+            if existing is None:
+                raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
+            if existing.status is EmbeddingRunStatus.SUPERSEDED:
+                return _copy(existing)
+            if existing.status not in (
+                EmbeddingRunStatus.COMPLETED,
+                EmbeddingRunStatus.FAILED,
+            ):
+                raise InvalidLifecycleTransitionError(
+                    record_type="embedding_run",
+                    record_id=run_id,
+                    current_status=existing.status.value,
+                    requested_status=EmbeddingRunStatus.SUPERSEDED.value,
+                )
+            updated = existing.model_copy(
+                deep=True,
+                update={
+                    "status": EmbeddingRunStatus.SUPERSEDED,
+                    "completed_at": completed_at,
+                },
+            )
+            self._runs[run_id] = updated
+            return _copy(updated)
 
     def get(self, run_id: str) -> EmbeddingRun | None:
         item = self._runs.get(run_id)

@@ -6,6 +6,9 @@ from durable source and graph records (ADR-0003). Every document carries full
 provenance — model identity and revision, recipe, dimensions, materialization
 run — and re-embedding creates a new run rather than overwriting provenance.
 A similarity score is a candidate-retrieval signal, never factual support.
+
+``EmbeddingRun.completed_at`` is the lifecycle terminal timestamp for every
+terminal status (COMPLETED, FAILED, SUPERSEDED), not only successful completion.
 """
 
 from datetime import datetime
@@ -35,7 +38,12 @@ class EmbeddingRunStatus(StrEnum):
 
 
 class EmbeddingRun(DungeonMindModel):
-    """Provenance for one materialization of embeddings."""
+    """Provenance for one materialization of embeddings.
+
+    Immutable creation fields (``run_id``, model identity, recipe, dimensions,
+    corpus/projection fingerprints, ``world_id``, ``created_at``) are separate
+    from mutable lifecycle (``status``, ``completed_at``).
+    """
 
     schema_version: Literal["dm_embedding_run_v1"] = EMBEDDING_RUN_SCHEMA
     run_id: str
@@ -49,11 +57,33 @@ class EmbeddingRun(DungeonMindModel):
     world_id: str | None = None
     status: EmbeddingRunStatus = EmbeddingRunStatus.RUNNING
     created_at: datetime
+    # Terminal timestamp for COMPLETED / FAILED / SUPERSEDED. Absent while RUNNING.
     completed_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _lifecycle_timestamps(self) -> Self:
+        terminal = {
+            EmbeddingRunStatus.COMPLETED,
+            EmbeddingRunStatus.FAILED,
+            EmbeddingRunStatus.SUPERSEDED,
+        }
+        if self.status is EmbeddingRunStatus.RUNNING and self.completed_at is not None:
+            raise ValueError("RUNNING embedding runs must not have completed_at")
+        if self.status in terminal and self.completed_at is None:
+            raise ValueError(
+                f"{self.status.value} embedding runs require completed_at "
+                "(lifecycle terminal timestamp)"
+            )
+        return self
 
 
 class SemanticDocument(DungeonMindModel):
-    """One embeddable, retrievable unit with complete provenance."""
+    """One embeddable, retrievable unit with complete provenance.
+
+    Kind-specific immutable input identity:
+    - ``SOURCE_CHUNK`` requires ``source_revision_id`` (exact body revision).
+    - ``GRAPH_OBJECT`` requires ``graph_object_id`` and ``graph_revision_id``.
+    """
 
     schema_version: Literal["dm_semantic_document_v1"] = SEMANTIC_DOCUMENT_SCHEMA
     semantic_document_id: str
@@ -81,13 +111,18 @@ class SemanticDocument(DungeonMindModel):
 
     @model_validator(mode="after")
     def _kind_and_embedding_invariants(self) -> Self:
-        if self.document_kind is SemanticDocumentKind.GRAPH_OBJECT and not self.graph_object_id:
-            raise ValueError("graph_object documents require graph_object_id")
-        if self.document_kind is SemanticDocumentKind.SOURCE_CHUNK and not (
-            self.source_artifact_id or self.source_revision_id
+        if self.document_kind is SemanticDocumentKind.GRAPH_OBJECT:
+            if not self.graph_object_id:
+                raise ValueError("graph_object documents require graph_object_id")
+            if not self.graph_revision_id:
+                raise ValueError("graph_object documents require graph_revision_id")
+        if (
+            self.document_kind is SemanticDocumentKind.SOURCE_CHUNK
+            and not self.source_revision_id
         ):
             raise ValueError(
-                "source_chunk documents require source_artifact_id or source_revision_id"
+                "source_chunk documents require source_revision_id "
+                "(exact immutable source body identity)"
             )
         if self.embedding is not None and len(self.embedding) != self.embedding_dimensions:
             raise ValueError(

@@ -38,7 +38,7 @@ recon report, handoff template).
 
 **Repository:** DungeonMind
 
-Exit proof:
+Exit proof (initial hardening + contract-blocker closure):
 
 - Explicit, fail-closed admissibility/visibility on all request contracts
   (absence never means GM).
@@ -49,7 +49,17 @@ Exit proof:
   records.
 - Cross-field validators for evidence, source types, semantic documents,
   identity decisions, focus, scope, claims, and accepted assertions.
-- Thread binding and turn-correlation enforcement.
+- Closed admitted-evidence ledger on retrieval sessions and Mind Turn
+  responses (no invented evidence/anchor grounding).
+- Embedding-run monotonic lifecycle with typed transition errors and
+  non-rewriting terminal retries.
+- Exact semantic-document provenance (`source_revision_id` /
+  `graph_revision_id`) plus materialization-run metadata compatibility.
+- v1 threads: caller-private, cross-surface; immutable
+  world/campaign/caller/tenant binding; retry-safe `turn_id` append.
+- One capability policy authority; permitted tools derived, never caller-supplied.
+- Unambiguous campaign/focus scope (no `campaign_id` on focus; world/campaign
+  modes cannot contradict).
 - Sanitized agent-adapter input (no caller/tenant auth metadata).
 - Static type checking (Pyright) in CI.
 - This roadmap update placing the curated demo after PR B.

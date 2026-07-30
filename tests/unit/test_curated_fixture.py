@@ -8,6 +8,7 @@ import pytest
 
 from dungeonmind.contracts import (
     CandidateChannel,
+    EmbeddingRun,
     SemanticDocument,
     SemanticDocumentKind,
     SemanticQuery,
@@ -17,6 +18,7 @@ from dungeonmind.contracts import (
 )
 from dungeonmind.domain import canonical_sha256, sha256_text
 from dungeonmind.infrastructure.memory import (
+    InMemoryEmbeddingRunRepository,
     InMemorySemanticDocumentRepository,
     InMemorySemanticSearch,
     InMemorySourceRepository,
@@ -33,7 +35,7 @@ def fixture() -> dict[str, object]:
     return json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
 
 
-def _to_document(entry: dict[str, object]) -> SemanticDocument:
+def _to_document(entry: dict[str, object], *, graph_revision_id: str) -> SemanticDocument:
     content = str(entry["content"])
     embedding = [float(v) for v in entry["embedding"]]  # type: ignore[index]
     return SemanticDocument(
@@ -42,6 +44,7 @@ def _to_document(entry: dict[str, object]) -> SemanticDocument:
         world_id="world:demo-atlas",
         campaign_scope=entry["campaign_scope"],  # type: ignore[arg-type]
         graph_object_id=str(entry["graph_object_id"]),
+        graph_revision_id=graph_revision_id,
         visibility=Visibility(str(entry["visibility"])),
         content=content,
         content_sha256=sha256_text(content),
@@ -86,8 +89,23 @@ def test_publish_read_and_search(fixture: dict[str, object]) -> None:
         )
     assert source_repo.get_artifact("src:atlas-notes") is not None
 
-    doc_repo = InMemorySemanticDocumentRepository()
-    docs = [_to_document(entry) for entry in fixture["semantic_documents"]]  # type: ignore[union-attr]
+    run_repo = InMemoryEmbeddingRunRepository()
+    run_repo.begin(
+        EmbeddingRun(
+            run_id="erun:fixture-1",
+            embedding_model="fixture-8dim",
+            embedding_model_revision="v1",
+            embedding_dimensions=8,
+            embedding_recipe="fixture-raw",
+            world_id=str(fixture["world_id"]),
+            created_at=FIXED_NOW,
+        )
+    )
+    doc_repo = InMemorySemanticDocumentRepository(run_repo)
+    docs = [
+        _to_document(entry, graph_revision_id=envelope.revision_id)
+        for entry in fixture["semantic_documents"]  # type: ignore[union-attr]
+    ]
     assert doc_repo.upsert_batch(docs) == len(docs)
 
     search = InMemorySemanticSearch(doc_repo)

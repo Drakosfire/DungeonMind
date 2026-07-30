@@ -112,9 +112,11 @@ class RetrievalSessionRepository(Protocol):
 class MindThreadRepository(Protocol):
     """Conversation threads for continuity. Threads are context, never truth.
 
-    ``create_thread`` is idempotent only for an identical binding
-    (world/campaign/surface/tenant). ``append_turn`` enforces thread, request,
-    response, world, campaign, and tenant/caller consistency.
+    v1 policy: caller-private and cross-surface. ``create_thread`` binds
+    (thread_id, tenant_id, caller_id, world_id, campaign_id, created_at) and is
+    idempotent only for an identical binding. Surface is per-turn, not bound.
+    ``append_turn`` is retry-safe by ``turn_id`` and enforces caller/world/
+    campaign/tenant correlation.
     """
 
     def create_thread(
@@ -123,9 +125,9 @@ class MindThreadRepository(Protocol):
         *,
         world_id: str,
         campaign_id: str | None,
-        surface_id: str,
+        caller_id: str,
+        tenant_id: str | None,
         created_at: datetime,
-        tenant_id: str | None = None,
     ) -> str: ...
 
     def append_turn(self, request: MindTurnRequest, response: MindTurnResponse) -> None: ...
@@ -134,7 +136,11 @@ class MindThreadRepository(Protocol):
 
 
 class SemanticDocumentRepository(Protocol):
-    """Provenance-complete store for derived semantic documents."""
+    """Provenance-complete store for derived semantic documents.
+
+    Insertions must verify materialization-run compatibility (model, revision,
+    dimensions, recipe, world) before accepting a document.
+    """
 
     def upsert_batch(self, documents: list[SemanticDocument]) -> int: ...
 
@@ -152,12 +158,19 @@ class SemanticSearchPort(Protocol):
 
 
 class EmbeddingRunRepository(Protocol):
-    """Materialization run provenance. Begin is idempotent by run_id."""
+    """Materialization run provenance with a monotonic lifecycle state machine.
+
+    ``begin`` is idempotent on immutable creation fields. Lifecycle transitions:
+    RUNNING → COMPLETED | FAILED; COMPLETED | FAILED → SUPERSEDED.
+    Terminal retries do not rewrite timestamps.
+    """
 
     def begin(self, run: EmbeddingRun) -> EmbeddingRun: ...
 
     def complete(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun: ...
 
     def fail(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun: ...
+
+    def supersede(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun: ...
 
     def get(self, run_id: str) -> EmbeddingRun | None: ...

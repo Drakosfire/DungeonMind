@@ -5,6 +5,10 @@ referents, the append-only operation log, the claim ledger, admitted source
 anchors and reads, coverage, and diagnostics — all pinned to one coherent
 graph revision. A graph miss produces coverage/abstention, never a silent
 fallback to arbitrary file search. Vector similarity is never evidence.
+
+Admitted evidence, anchors, reads, and claims form one closed ledger.
+Reference integrity is validated against that envelope — not by repository
+lookup from Pydantic validators.
 """
 
 from datetime import datetime
@@ -14,6 +18,7 @@ from typing import Any, Literal, Self
 from pydantic import Field, model_validator
 
 from .base import DungeonMindModel
+from .evidence import EvidenceRef
 from .identity import IdentityOutcome
 from .projection import ProjectionSnapshot
 
@@ -121,6 +126,66 @@ class DiagnosticEntry(DungeonMindModel):
     data: dict[str, Any] = {}
 
 
+def validate_admitted_evidence_ledger(
+    *,
+    evidence: list[EvidenceRef],
+    source_anchors: list[SourceAnchor],
+    source_reads: list[SourceRead],
+    claims: list[Claim],
+) -> None:
+    """Validate closed-envelope referential integrity for an admitted ledger."""
+    evidence_ids = [item.evidence_ref_id for item in evidence]
+    if len(evidence_ids) != len(set(evidence_ids)):
+        raise ValueError("duplicate evidence_ref_id in admitted evidence ledger")
+    evidence_set = set(evidence_ids)
+
+    anchor_ids = [item.anchor_id for item in source_anchors]
+    if len(anchor_ids) != len(set(anchor_ids)):
+        raise ValueError("duplicate anchor_id in admitted anchor ledger")
+    anchor_set = set(anchor_ids)
+
+    claim_ids = [item.claim_id for item in claims]
+    if len(claim_ids) != len(set(claim_ids)):
+        raise ValueError("duplicate claim_id in claim ledger")
+
+    for anchor in source_anchors:
+        if anchor.evidence_ref_id is not None and anchor.evidence_ref_id not in evidence_set:
+            raise ValueError(
+                f"source anchor {anchor.anchor_id!r} references unknown "
+                f"evidence_ref_id {anchor.evidence_ref_id!r}"
+            )
+
+    for read in source_reads:
+        if read.source_anchor_id not in anchor_set:
+            raise ValueError(
+                f"source read references unknown source_anchor_id "
+                f"{read.source_anchor_id!r}"
+            )
+
+    for claim in claims:
+        if (
+            claim.authority is ClaimAuthority.UNGROUNDED
+            and claim.status is ClaimStatus.ACCEPTED
+        ):
+            raise ValueError("ungrounded claim must not be accepted")
+        for evidence_ref_id in claim.evidence_ref_ids:
+            if evidence_ref_id not in evidence_set:
+                raise ValueError(
+                    f"claim {claim.claim_id!r} references unknown "
+                    f"evidence_ref_id {evidence_ref_id!r}"
+                )
+        for source_anchor_id in claim.source_anchor_ids:
+            if source_anchor_id not in anchor_set:
+                raise ValueError(
+                    f"claim {claim.claim_id!r} references unknown "
+                    f"source_anchor_id {source_anchor_id!r}"
+                )
+        if claim.authority is ClaimAuthority.GRAPH_FACT and not claim.evidence_ref_ids:
+            raise ValueError(
+                f"graph_fact claim {claim.claim_id!r} requires admitted evidence"
+            )
+
+
 class GraphRetrievalSession(DungeonMindModel):
     schema_version: Literal["dm_retrieval_session_v1"] = RETRIEVAL_SESSION_SCHEMA
     session_id: str
@@ -130,6 +195,7 @@ class GraphRetrievalSession(DungeonMindModel):
     intent_hint: str | None = None
     referents: list[ResolvedReferent] = []
     operations: list[RetrievalOperation] = []
+    evidence: list[EvidenceRef] = []
     claims: list[Claim] = []
     source_anchors: list[SourceAnchor] = []
     source_reads: list[SourceRead] = []
@@ -138,3 +204,13 @@ class GraphRetrievalSession(DungeonMindModel):
     preflight_candidate_ids: list[str] = []
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def _admitted_ledger_integrity(self) -> Self:
+        validate_admitted_evidence_ledger(
+            evidence=self.evidence,
+            source_anchors=self.source_anchors,
+            source_reads=self.source_reads,
+            claims=self.claims,
+        )
+        return self

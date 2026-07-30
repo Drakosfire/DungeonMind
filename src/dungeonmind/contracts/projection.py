@@ -8,6 +8,10 @@ snapshot. Projections never mutate identity and never become a store.
 
 Admissibility is required on every externally constructed request. Absence
 never means GM — that would broaden access when a caller forgets a field.
+
+Campaign ownership lives only on the request/snapshot/scope (``campaign_id`` +
+``scope_mode``). ``ProjectionFocus`` narrows chronology or salience; it is not
+a second campaign authority.
 """
 
 from datetime import datetime
@@ -35,14 +39,17 @@ class FocusKind(StrEnum):
 
 
 class ProjectionFocus(DungeonMindModel):
-    """A focus overlay narrows chronology/salience; it is not an ownership boundary."""
+    """A focus overlay narrows chronology/salience; it is not an ownership boundary.
+
+    Campaign scope is never carried here — use the enclosing request's
+    ``campaign_id`` so there is exactly one campaign authority.
+    """
 
     kind: FocusKind = FocusKind.NONE
     session_id: str | None = None
-    campaign_id: str | None = None
 
     @model_validator(mode="after")
-    def _session_focus_requires_session_id(self) -> Self:
+    def _focus_kind_invariants(self) -> Self:
         if self.kind is FocusKind.SESSION and not self.session_id:
             raise ValueError("session focus requires session_id")
         if self.kind is FocusKind.NONE and self.session_id is not None:
@@ -53,6 +60,23 @@ class ProjectionFocus(DungeonMindModel):
 class ScopeMode(StrEnum):
     CAMPAIGN = "campaign"
     WORLD = "world"
+
+
+def _validate_campaign_and_focus_scope(
+    *,
+    scope_mode: ScopeMode,
+    campaign_id: str | None,
+    focus: ProjectionFocus,
+) -> None:
+    if scope_mode is ScopeMode.WORLD and campaign_id is not None:
+        raise ValueError("world scope_mode requires campaign_id to be None")
+    if scope_mode is ScopeMode.CAMPAIGN and not campaign_id:
+        raise ValueError("campaign scope_mode requires campaign_id")
+    if focus.kind is FocusKind.SESSION:
+        if not campaign_id:
+            raise ValueError("session focus requires campaign_id on the enclosing scope")
+        if not focus.session_id:
+            raise ValueError("session focus requires session_id")
 
 
 class WorldGraphProjectionRequest(DungeonMindModel):
@@ -68,9 +92,12 @@ class WorldGraphProjectionRequest(DungeonMindModel):
     scope_mode: ScopeMode = ScopeMode.WORLD
 
     @model_validator(mode="after")
-    def _campaign_scope_requires_campaign_id(self) -> Self:
-        if self.scope_mode is ScopeMode.CAMPAIGN and not self.campaign_id:
-            raise ValueError("campaign scope_mode requires campaign_id")
+    def _scope_and_focus_invariants(self) -> Self:
+        _validate_campaign_and_focus_scope(
+            scope_mode=self.scope_mode,
+            campaign_id=self.campaign_id,
+            focus=self.focus,
+        )
         return self
 
     @classmethod
@@ -110,3 +137,12 @@ class ProjectionSnapshot(DungeonMindModel):
     head_revision_id: str
     is_head: bool
     projected_at: datetime
+
+    @model_validator(mode="after")
+    def _resolved_scope_invariants(self) -> Self:
+        _validate_campaign_and_focus_scope(
+            scope_mode=self.scope_mode,
+            campaign_id=self.campaign_id,
+            focus=self.focus,
+        )
+        return self
