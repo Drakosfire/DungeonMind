@@ -1,6 +1,6 @@
 """Thread binding and turn-correlation enforcement (caller-private, cross-surface)."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -102,6 +102,20 @@ def test_create_thread_rejects_caller_rebinding() -> None:
     _create(repo)
     with pytest.raises(IdempotencyConflictError):
         _create(repo, caller_id="user:other")
+
+
+def test_create_thread_rejects_created_at_drift() -> None:
+    repo = InMemoryMindThreadRepository()
+    _create(repo)
+    with pytest.raises(IdempotencyConflictError):
+        repo.create_thread(
+            "thr:1",
+            world_id="world:demo",
+            campaign_id="camp:1",
+            caller_id="user:1",
+            tenant_id="tenant:a",
+            created_at=NOW + timedelta(seconds=1),
+        )
 
 
 def test_surface_may_change_between_turns() -> None:

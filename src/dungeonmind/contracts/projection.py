@@ -145,4 +145,8 @@ class ProjectionSnapshot(DungeonMindModel):
             campaign_id=self.campaign_id,
             focus=self.focus,
         )
+        if self.is_head != (self.revision_id == self.head_revision_id):
+            raise ValueError(
+                "is_head must equal (revision_id == head_revision_id)"
+            )
         return self

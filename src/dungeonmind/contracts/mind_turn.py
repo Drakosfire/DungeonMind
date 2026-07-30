@@ -161,5 +161,6 @@ class MindTurnResponse(DungeonMindModel):
             source_anchors=self.source_anchors,
             source_reads=self.source_reads,
             claims=self.claims,
+            pinned_revision_id=self.revision_id,
         )
         return self

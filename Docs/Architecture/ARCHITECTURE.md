@@ -149,8 +149,10 @@ vocabulary; shared retrieval-session sub-records).
 Contract closures that PostgreSQL adapters must reproduce (PR A.1):
 
 - **Admitted evidence ledger.** `GraphRetrievalSession` and `MindTurnResponse`
-  validate closed-envelope referential integrity among evidence, anchors,
-  source reads, and claims. Invented evidence IDs cannot ground a graph fact.
+  validate closed-envelope evidentiary integrity among evidence, anchors,
+  source reads, and claims. Accepted graph facts require SUPPORT evidence;
+  anchors must agree with linked evidence provenance; operations and anchors
+  must match the pinned revision. Invented evidence IDs cannot ground a fact.
 - **Embedding-run lifecycle.** `RUNNING → COMPLETED|FAILED`;
   `COMPLETED|FAILED → SUPERSEDED`. Terminal retries do not rewrite timestamps.
 - **Exact semantic provenance.** Source chunks require `source_revision_id`;

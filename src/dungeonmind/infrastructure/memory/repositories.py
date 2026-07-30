@@ -362,7 +362,14 @@ class InMemoryMindThreadRepository:
         with self._lock:
             existing = self._threads.get(thread_id)
             if existing is not None:
-                for key in ("world_id", "campaign_id", "caller_id", "tenant_id"):
+                # created_at is part of the immutable caller-provided binding.
+                for key in (
+                    "world_id",
+                    "campaign_id",
+                    "caller_id",
+                    "tenant_id",
+                    "created_at",
+                ):
                     if existing[key] != binding[key]:
                         raise IdempotencyConflictError(
                             f"thread {thread_id!r} already bound with different context"

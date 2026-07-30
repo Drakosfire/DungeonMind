@@ -61,7 +61,7 @@ class ToolCapabilityRule(DungeonMindModel):
     tool_name: str
     category: CapabilityCategory
     require_graph_scope: bool = True
-    allowed_effects: list[CapabilityEffect]
+    allowed_effects: list[CapabilityEffect] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _unique_allowed_effects(self) -> Self:

@@ -114,9 +114,10 @@ class MindThreadRepository(Protocol):
 
     v1 policy: caller-private and cross-surface. ``create_thread`` binds
     (thread_id, tenant_id, caller_id, world_id, campaign_id, created_at) and is
-    idempotent only for an identical binding. Surface is per-turn, not bound.
-    ``append_turn`` is retry-safe by ``turn_id`` and enforces caller/world/
-    campaign/tenant correlation.
+    idempotent only for an identical binding — including ``created_at``
+    (immutable caller-provided timestamp; drift is conflict). Surface is
+    per-turn, not bound. ``append_turn`` is retry-safe by ``turn_id`` and
+    enforces caller/world/campaign/tenant correlation.
     """
 
     def create_thread(

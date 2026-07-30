@@ -18,7 +18,7 @@ from typing import Any, Literal, Self
 from pydantic import Field, model_validator
 
 from .base import DungeonMindModel
-from .evidence import EvidenceRef
+from .evidence import EvidenceRef, EvidenceRole
 from .identity import IdentityOutcome
 from .projection import ProjectionSnapshot
 
@@ -132,12 +132,20 @@ def validate_admitted_evidence_ledger(
     source_anchors: list[SourceAnchor],
     source_reads: list[SourceRead],
     claims: list[Claim],
+    pinned_revision_id: str,
+    operations: list[RetrievalOperation] | None = None,
 ) -> None:
-    """Validate closed-envelope referential integrity for an admitted ledger."""
+    """Validate closed-envelope evidentiary integrity for an admitted ledger.
+
+    Membership alone is insufficient: accepted graph facts must cite SUPPORT
+    evidence, anchors must agree with referenced evidence provenance, and every
+    operation/anchor must match the envelope's pinned graph revision.
+    """
     evidence_ids = [item.evidence_ref_id for item in evidence]
     if len(evidence_ids) != len(set(evidence_ids)):
         raise ValueError("duplicate evidence_ref_id in admitted evidence ledger")
-    evidence_set = set(evidence_ids)
+    evidence_by_id = {item.evidence_ref_id: item for item in evidence}
+    evidence_set = set(evidence_by_id)
 
     anchor_ids = [item.anchor_id for item in source_anchors]
     if len(anchor_ids) != len(set(anchor_ids)):
@@ -149,10 +157,37 @@ def validate_admitted_evidence_ledger(
         raise ValueError("duplicate claim_id in claim ledger")
 
     for anchor in source_anchors:
-        if anchor.evidence_ref_id is not None and anchor.evidence_ref_id not in evidence_set:
+        if anchor.revision_id != pinned_revision_id:
+            raise ValueError(
+                f"source anchor {anchor.anchor_id!r} revision_id "
+                f"{anchor.revision_id!r} != pinned revision {pinned_revision_id!r}"
+            )
+        if anchor.evidence_ref_id is None:
+            continue
+        if anchor.evidence_ref_id not in evidence_by_id:
             raise ValueError(
                 f"source anchor {anchor.anchor_id!r} references unknown "
                 f"evidence_ref_id {anchor.evidence_ref_id!r}"
+            )
+        linked = evidence_by_id[anchor.evidence_ref_id]
+        if linked.source_artifact_id != anchor.source_artifact_id:
+            raise ValueError(
+                f"source anchor {anchor.anchor_id!r} source_artifact_id "
+                f"{anchor.source_artifact_id!r} disagrees with evidence "
+                f"{linked.evidence_ref_id!r} artifact {linked.source_artifact_id!r}"
+            )
+        if linked.source_domain.value != anchor.source_domain:
+            raise ValueError(
+                f"source anchor {anchor.anchor_id!r} source_domain "
+                f"{anchor.source_domain!r} disagrees with evidence "
+                f"{linked.evidence_ref_id!r} domain {linked.source_domain.value!r}"
+            )
+
+    for operation in operations or []:
+        if operation.revision_id != pinned_revision_id:
+            raise ValueError(
+                f"retrieval operation {operation.operation_id!r} revision_id "
+                f"{operation.revision_id!r} != pinned revision {pinned_revision_id!r}"
             )
 
     for read in source_reads:
@@ -161,6 +196,12 @@ def validate_admitted_evidence_ledger(
                 f"source read references unknown source_anchor_id "
                 f"{read.source_anchor_id!r}"
             )
+
+    support_ids = {
+        item.evidence_ref_id
+        for item in evidence
+        if item.evidence_role is EvidenceRole.SUPPORT
+    }
 
     for claim in claims:
         if (
@@ -183,6 +224,15 @@ def validate_admitted_evidence_ledger(
         if claim.authority is ClaimAuthority.GRAPH_FACT and not claim.evidence_ref_ids:
             raise ValueError(
                 f"graph_fact claim {claim.claim_id!r} requires admitted evidence"
+            )
+        if (
+            claim.authority is ClaimAuthority.GRAPH_FACT
+            and claim.status is ClaimStatus.ACCEPTED
+            and not any(eid in support_ids for eid in claim.evidence_ref_ids)
+        ):
+            raise ValueError(
+                f"accepted graph_fact claim {claim.claim_id!r} requires at least "
+                "one admitted SUPPORT evidence_ref_id"
             )
 
 
@@ -212,5 +262,7 @@ class GraphRetrievalSession(DungeonMindModel):
             source_anchors=self.source_anchors,
             source_reads=self.source_reads,
             claims=self.claims,
+            pinned_revision_id=self.snapshot.revision_id,
+            operations=self.operations,
         )
         return self

@@ -99,6 +99,15 @@ def test_duplicate_tool_rule_rejected() -> None:
         )
 
 
+def test_empty_allowed_effects_rejected() -> None:
+    with pytest.raises(ValidationError):
+        ToolCapabilityRule(
+            tool_name="graph.search",
+            category=CapabilityCategory.READ_ONLY,
+            allowed_effects=[],
+        )
+
+
 def test_undeclared_effect_denied() -> None:
     with pytest.raises(CapabilityDeniedError):
         evaluate_capability(make_policy(), tool_name="graph.search", effect=CapabilityEffect.DRAFT)

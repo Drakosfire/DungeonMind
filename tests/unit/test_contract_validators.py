@@ -147,6 +147,27 @@ def test_projection_snapshot_rejects_contradictory_scope() -> None:
         )
 
 
+def test_projection_snapshot_is_head_must_match_revision_ids() -> None:
+    with pytest.raises(ValidationError):
+        ProjectionSnapshot(
+            world_id="world:demo",
+            revision_id="rev:old" + "a" * 25,
+            head_revision_id="rev:new" + "b" * 25,
+            is_head=True,
+            projected_at=NOW,
+            admissibility=Admissibility.GM,
+        )
+    snap = ProjectionSnapshot(
+        world_id="world:demo",
+        revision_id=REV,
+        head_revision_id="rev:other" + "c" * 23,
+        is_head=False,
+        projected_at=NOW,
+        admissibility=Admissibility.GM,
+    )
+    assert snap.is_head is False
+
+
 def test_mind_turn_session_focus_requires_campaign() -> None:
     with pytest.raises(ValidationError):
         MindTurnRequest(
