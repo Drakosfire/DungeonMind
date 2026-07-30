@@ -11,6 +11,7 @@ the PostgreSQL adapter is what makes the ports real.
 import copy
 import math
 import threading
+from collections.abc import Callable
 from datetime import datetime
 from typing import TypeVar
 
@@ -448,108 +449,44 @@ class InMemoryMindThreadRepository:
         return [(_copy(req), _copy(resp)) for req, resp in self._turns.get(thread_id, [])]
 
 
-class InMemorySemanticDocumentRepository:
-    """Requires an embedding-run repository so provenance cannot drift."""
-
-    def __init__(self, embedding_runs: "InMemoryEmbeddingRunRepository") -> None:
-        self._docs: dict[str, SemanticDocument] = {}
-        self._runs = embedding_runs
-        self._lock = threading.Lock()
-
-    def _assert_run_compatible(self, doc: SemanticDocument) -> EmbeddingRun:
-        run = self._runs.get(doc.materialization_run_id)
-        if run is None:
-            raise DocumentNotFoundError(
-                f"materialization run {doc.materialization_run_id!r} not found"
-            )
-        if doc.embedding_model != run.embedding_model:
-            raise IdempotencyConflictError(
-                f"document {doc.semantic_document_id!r} embedding_model mismatches run"
-            )
-        if doc.embedding_model_revision != run.embedding_model_revision:
-            raise IdempotencyConflictError(
-                f"document {doc.semantic_document_id!r} embedding_model_revision "
-                "mismatches run"
-            )
-        if doc.embedding_dimensions != run.embedding_dimensions:
-            raise IdempotencyConflictError(
-                f"document {doc.semantic_document_id!r} embedding_dimensions mismatches run"
-            )
-        if doc.embedding_recipe != run.embedding_recipe:
-            raise IdempotencyConflictError(
-                f"document {doc.semantic_document_id!r} embedding_recipe mismatches run"
-            )
-        if run.world_id is not None and doc.world_id != run.world_id:
-            raise IdempotencyConflictError(
-                f"document {doc.semantic_document_id!r} world_id incompatible with run"
-            )
-        return run
-
-    def upsert_batch(self, documents: list[SemanticDocument]) -> int:
-        stored = 0
-        with self._lock:
-            for doc in documents:
-                run = self._assert_run_compatible(doc)
-                existing = self._docs.get(doc.semantic_document_id)
-                if existing is not None:
-                    if _fingerprint(existing) != _fingerprint(doc):
-                        raise IdempotencyConflictError(
-                            f"semantic document {doc.semantic_document_id!r} re-ingested with "
-                            "different payload; re-embedding must create a new run and new "
-                            "document ids (ADR-0003)"
-                        )
-                    continue
-                if run.status is not EmbeddingRunStatus.RUNNING:
-                    raise InvalidLifecycleTransitionError(
-                        (
-                            "new semantic documents require a RUNNING materialization "
-                            f"run; {run.run_id!r} is {run.status.value}"
-                        ),
-                        record_type="embedding_run",
-                        record_id=run.run_id,
-                        current_status=run.status.value,
-                        requested_status="accept_document",
-                    )
-                self._docs[doc.semantic_document_id] = _copy(doc)
-                stored += 1
-        return stored
-
-    def get(self, semantic_document_id: str) -> SemanticDocument | None:
-        item = self._docs.get(semantic_document_id)
-        return _copy(item) if item is not None else None
-
-    def delete_run_documents(self, materialization_run_id: str) -> int:
-        with self._lock:
-            doomed = [
-                doc_id
-                for doc_id, doc in self._docs.items()
-                if doc.materialization_run_id == materialization_run_id
-            ]
-            for doc_id in doomed:
-                del self._docs[doc_id]
-            return len(doomed)
-
-    def count(self, *, world_id: str | None = None) -> int:
-        if world_id is None:
-            return len(self._docs)
-        return sum(1 for doc in self._docs.values() if doc.world_id == world_id)
-
-    def list_ids(self) -> list[str]:
-        """Memory-adapter helper (not part of the port): all document ids, sorted."""
-        return sorted(self._docs)
-
-
 class InMemoryEmbeddingRunRepository:
     """Monotonic lifecycle: RUNNING→COMPLETED|FAILED; COMPLETED|FAILED→SUPERSEDED.
 
     ``activate`` binds one COMPLETED run per world for retrieval when a query
     omits ``materialization_run_id``. Superseding an active run clears it.
+
+    ``materialization_lock`` is the shared unit-of-work lock for run transitions,
+    document insert/delete, active-pointer changes, and retrieval eligibility
+    snapshots. Document and search adapters must use this same lock.
     """
 
     def __init__(self) -> None:
         self._runs: dict[str, EmbeddingRun] = {}
         self._active_by_world: dict[str, str] = {}
-        self._lock = threading.Lock()
+        self.materialization_lock = threading.RLock()
+        # Test-only: when set, released/reacquired around the callback so a
+        # racing thread can mutate run state; production paths leave this None
+        # and hold the UoW lock continuously across check+use.
+        self._concurrency_yield: Callable[[], None] | None = None
+
+    def _peek(self, run_id: str) -> EmbeddingRun | None:
+        """Return a copy of the run. Caller must hold ``materialization_lock``."""
+        item = self._runs.get(run_id)
+        return _copy(item) if item is not None else None
+
+    def _active_run_id_unlocked(self, world_id: str) -> str | None:
+        return self._active_by_world.get(world_id)
+
+    def _concurrency_yield_unlocked(self) -> None:
+        """Test hook: drop the UoW lock so a racer can mutate, then reacquire."""
+        gate = self._concurrency_yield
+        if gate is None:
+            return
+        self.materialization_lock.release()
+        try:
+            gate()
+        finally:
+            self.materialization_lock.acquire()
 
     def begin(self, run: EmbeddingRun) -> EmbeddingRun:
         if run.status is not EmbeddingRunStatus.RUNNING:
@@ -567,7 +504,7 @@ class InMemoryEmbeddingRunRepository:
                 current_status=run.status.value,
                 requested_status=EmbeddingRunStatus.RUNNING.value,
             )
-        with self._lock:
+        with self.materialization_lock:
             existing = self._runs.get(run.run_id)
             if existing is not None:
                 if _immutable_run_fingerprint(existing) != _immutable_run_fingerprint(run):
@@ -580,7 +517,7 @@ class InMemoryEmbeddingRunRepository:
             return _copy(run)
 
     def complete(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun:
-        with self._lock:
+        with self.materialization_lock:
             existing = self._runs.get(run_id)
             if existing is None:
                 raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
@@ -604,7 +541,7 @@ class InMemoryEmbeddingRunRepository:
             return _copy(updated)
 
     def fail(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun:
-        with self._lock:
+        with self.materialization_lock:
             existing = self._runs.get(run_id)
             if existing is None:
                 raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
@@ -628,7 +565,7 @@ class InMemoryEmbeddingRunRepository:
             return _copy(updated)
 
     def supersede(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun:
-        with self._lock:
+        with self.materialization_lock:
             existing = self._runs.get(run_id)
             if existing is None:
                 raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
@@ -659,7 +596,7 @@ class InMemoryEmbeddingRunRepository:
             return _copy(updated)
 
     def activate(self, run_id: str) -> EmbeddingRun:
-        with self._lock:
+        with self.materialization_lock:
             existing = self._runs.get(run_id)
             if existing is None:
                 raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
@@ -683,11 +620,157 @@ class InMemoryEmbeddingRunRepository:
             return _copy(existing)
 
     def get_active_run_id(self, world_id: str) -> str | None:
-        return self._active_by_world.get(world_id)
+        with self.materialization_lock:
+            return self._active_by_world.get(world_id)
 
     def get(self, run_id: str) -> EmbeddingRun | None:
-        item = self._runs.get(run_id)
-        return _copy(item) if item is not None else None
+        with self.materialization_lock:
+            return self._peek(run_id)
+
+
+class InMemorySemanticDocumentRepository:
+    """Requires an embedding-run repository so provenance cannot drift.
+
+    All mutate paths share ``embedding_runs.materialization_lock`` with run
+    transitions and search eligibility (one materialization unit of work).
+    """
+
+    def __init__(self, embedding_runs: InMemoryEmbeddingRunRepository) -> None:
+        self._docs: dict[str, SemanticDocument] = {}
+        self._runs = embedding_runs
+
+    def _assert_run_compatible_unlocked(self, doc: SemanticDocument) -> EmbeddingRun:
+        run = self._runs._peek(doc.materialization_run_id)
+        if run is None:
+            raise DocumentNotFoundError(
+                f"materialization run {doc.materialization_run_id!r} not found"
+            )
+        if doc.embedding_model != run.embedding_model:
+            raise IdempotencyConflictError(
+                f"document {doc.semantic_document_id!r} embedding_model mismatches run"
+            )
+        if doc.embedding_model_revision != run.embedding_model_revision:
+            raise IdempotencyConflictError(
+                f"document {doc.semantic_document_id!r} embedding_model_revision "
+                "mismatches run"
+            )
+        if doc.embedding_dimensions != run.embedding_dimensions:
+            raise IdempotencyConflictError(
+                f"document {doc.semantic_document_id!r} embedding_dimensions mismatches run"
+            )
+        if doc.embedding_recipe != run.embedding_recipe:
+            raise IdempotencyConflictError(
+                f"document {doc.semantic_document_id!r} embedding_recipe mismatches run"
+            )
+        if run.world_id is not None and doc.world_id != run.world_id:
+            raise IdempotencyConflictError(
+                f"document {doc.semantic_document_id!r} world_id incompatible with run"
+            )
+        return run
+
+    def upsert_batch(self, documents: list[SemanticDocument]) -> int:
+        stored = 0
+        with self._runs.materialization_lock:
+            for doc in documents:
+                self._assert_run_compatible_unlocked(doc)
+                existing = self._docs.get(doc.semantic_document_id)
+                if existing is not None:
+                    if _fingerprint(existing) != _fingerprint(doc):
+                        raise IdempotencyConflictError(
+                            f"semantic document {doc.semantic_document_id!r} re-ingested with "
+                            "different payload; re-embedding must create a new run and new "
+                            "document ids (ADR-0003)"
+                        )
+                    continue
+                # Observe RUNNING, optionally yield for concurrency tests, then
+                # re-read under the same UoW lock before insert (no check/use gap
+                # in production where the yield hook is unset).
+                run = self._runs._peek(doc.materialization_run_id)
+                if run is None:
+                    raise DocumentNotFoundError(
+                        f"materialization run {doc.materialization_run_id!r} not found"
+                    )
+                if run.status is not EmbeddingRunStatus.RUNNING:
+                    raise InvalidLifecycleTransitionError(
+                        (
+                            "new semantic documents require a RUNNING materialization "
+                            f"run; {run.run_id!r} is {run.status.value}"
+                        ),
+                        record_type="embedding_run",
+                        record_id=run.run_id,
+                        current_status=run.status.value,
+                        requested_status="accept_document",
+                    )
+                self._runs._concurrency_yield_unlocked()
+                run = self._runs._peek(doc.materialization_run_id)
+                if run is None:
+                    raise DocumentNotFoundError(
+                        f"materialization run {doc.materialization_run_id!r} not found"
+                    )
+                if run.status is not EmbeddingRunStatus.RUNNING:
+                    raise InvalidLifecycleTransitionError(
+                        (
+                            "new semantic documents require a RUNNING materialization "
+                            f"run; {run.run_id!r} is {run.status.value}"
+                        ),
+                        record_type="embedding_run",
+                        record_id=run.run_id,
+                        current_status=run.status.value,
+                        requested_status="accept_document",
+                    )
+                self._docs[doc.semantic_document_id] = _copy(doc)
+                stored += 1
+        return stored
+
+    def get(self, semantic_document_id: str) -> SemanticDocument | None:
+        with self._runs.materialization_lock:
+            item = self._docs.get(semantic_document_id)
+            return _copy(item) if item is not None else None
+
+    def delete_run_documents(self, materialization_run_id: str) -> int:
+        with self._runs.materialization_lock:
+            run = self._runs._peek(materialization_run_id)
+            if run is None:
+                raise DocumentNotFoundError(
+                    f"embedding run {materialization_run_id!r} not found"
+                )
+            if run.status not in (
+                EmbeddingRunStatus.FAILED,
+                EmbeddingRunStatus.SUPERSEDED,
+            ):
+                raise InvalidLifecycleTransitionError(
+                    (
+                        "delete_run_documents requires a FAILED or SUPERSEDED "
+                        f"run; {materialization_run_id!r} is {run.status.value}"
+                    ),
+                    record_type="embedding_run",
+                    record_id=materialization_run_id,
+                    current_status=run.status.value,
+                    requested_status="delete_documents",
+                )
+            doomed = [
+                doc_id
+                for doc_id, doc in self._docs.items()
+                if doc.materialization_run_id == materialization_run_id
+            ]
+            for doc_id in doomed:
+                del self._docs[doc_id]
+            return len(doomed)
+
+    def count(self, *, world_id: str | None = None) -> int:
+        with self._runs.materialization_lock:
+            if world_id is None:
+                return len(self._docs)
+            return sum(1 for doc in self._docs.values() if doc.world_id == world_id)
+
+    def list_ids(self) -> list[str]:
+        """Memory-adapter helper (not part of the port): all document ids, sorted."""
+        with self._runs.materialization_lock:
+            return sorted(self._docs)
+
+    def _snapshot_docs_unlocked(self) -> list[SemanticDocument]:
+        """Caller must hold ``materialization_lock``."""
+        return [_copy(doc) for doc in self._docs.values()]
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -713,6 +796,8 @@ class InMemorySemanticSearch:
     - retrieval is bound to one COMPLETED materialization run (explicit query
       pin or the world's active-run pointer); failed/superseded/running runs
       never contribute candidates.
+    - eligibility resolve + document snapshot happen under the shared
+      materialization unit-of-work lock.
     - a campaign-scoped query sees that campaign's docs plus world-universal docs;
       a world-level query (no campaign_scope) sees only world-universal docs.
     - ``visibility`` is required: ``player`` sees player docs only; ``gm`` sees all.
@@ -726,10 +811,10 @@ class InMemorySemanticSearch:
         self._documents = documents
         self._runs = embedding_runs
 
-    def _resolve_retrieval_run(self, query: SemanticQuery) -> str:
+    def _resolve_retrieval_run_unlocked(self, query: SemanticQuery) -> str:
         run_id = query.materialization_run_id
         if run_id is None:
-            run_id = self._runs.get_active_run_id(query.world_id)
+            run_id = self._runs._active_run_id_unlocked(query.world_id)
         if run_id is None:
             raise ScopeResolutionError(
                 f"no materialization run bound for world {query.world_id!r}",
@@ -738,7 +823,7 @@ class InMemorySemanticSearch:
                     "reason": "missing_active_materialization_run",
                 },
             )
-        run = self._runs.get(run_id)
+        run = self._runs._peek(run_id)
         if run is None:
             raise DocumentNotFoundError(f"embedding run {run_id!r} not found")
         if run.status is not EmbeddingRunStatus.COMPLETED:
@@ -769,13 +854,11 @@ class InMemorySemanticSearch:
             )
         return run_id
 
-    def _eligible(self, query: SemanticQuery) -> list[SemanticDocument]:
-        run_id = self._resolve_retrieval_run(query)
+    def _eligible_unlocked(
+        self, query: SemanticQuery, *, run_id: str
+    ) -> list[SemanticDocument]:
         result: list[SemanticDocument] = []
-        for doc_id in self._documents.list_ids():
-            doc = self._documents.get(doc_id)
-            if doc is None:  # pragma: no cover - defensive
-                continue
+        for doc in self._documents._snapshot_docs_unlocked():
             if doc.materialization_run_id != run_id:
                 continue
             if doc.world_id != query.world_id:
@@ -798,46 +881,57 @@ class InMemorySemanticSearch:
         return result
 
     def search(self, query: SemanticQuery) -> list[SemanticCandidate]:
-        docs = self._eligible(query)
-        candidates: list[SemanticCandidate] = []
-
-        if query.text:
-            exact = [
-                (doc.semantic_document_id, 1.0)
-                for doc in docs
-                if query.text.casefold() in doc.content.casefold()
-                or query.text == doc.semantic_document_id
-                or query.text == doc.graph_object_id
-            ]
-            candidates.extend(
-                self._ranked(exact, CandidateChannel.EXACT, query.top_k)
+        with self._runs.materialization_lock:
+            run_id = self._resolve_retrieval_run_unlocked(query)
+            docs = self._eligible_unlocked(query, run_id=run_id)
+            self._runs._concurrency_yield_unlocked()
+            # Re-resolve after any test yield; production holds the lock and
+            # sees a stable COMPLETED run through the whole eligibility snapshot.
+            self._resolve_retrieval_run_unlocked(
+                query.model_copy(update={"materialization_run_id": run_id})
             )
+            candidates: list[SemanticCandidate] = []
 
-        if query.text:
-            query_tokens = _tokenize(query.text)
-            lexical = []
-            for doc in docs:
-                doc_tokens = _tokenize(doc.content)
-                if not query_tokens:
-                    break
-                overlap = len(query_tokens & doc_tokens)
-                if overlap:
-                    lexical.append((doc.semantic_document_id, overlap / len(query_tokens)))
-            candidates.extend(
-                self._ranked(lexical, CandidateChannel.LEXICAL, query.top_k)
-            )
+            if query.text:
+                exact = [
+                    (doc.semantic_document_id, 1.0)
+                    for doc in docs
+                    if query.text.casefold() in doc.content.casefold()
+                    or query.text == doc.semantic_document_id
+                    or query.text == doc.graph_object_id
+                ]
+                candidates.extend(
+                    self._ranked(exact, CandidateChannel.EXACT, query.top_k)
+                )
 
-        if query.embedding:
-            dense = [
-                (doc.semantic_document_id, _cosine(query.embedding, doc.embedding))
-                for doc in docs
-                if doc.embedding is not None and len(doc.embedding) == len(query.embedding)
-            ]
-            candidates.extend(
-                self._ranked(dense, CandidateChannel.DENSE, query.top_k)
-            )
+            if query.text:
+                query_tokens = _tokenize(query.text)
+                lexical = []
+                for doc in docs:
+                    doc_tokens = _tokenize(doc.content)
+                    if not query_tokens:
+                        break
+                    overlap = len(query_tokens & doc_tokens)
+                    if overlap:
+                        lexical.append(
+                            (doc.semantic_document_id, overlap / len(query_tokens))
+                        )
+                candidates.extend(
+                    self._ranked(lexical, CandidateChannel.LEXICAL, query.top_k)
+                )
 
-        return candidates
+            if query.embedding:
+                dense = [
+                    (doc.semantic_document_id, _cosine(query.embedding, doc.embedding))
+                    for doc in docs
+                    if doc.embedding is not None
+                    and len(doc.embedding) == len(query.embedding)
+                ]
+                candidates.extend(
+                    self._ranked(dense, CandidateChannel.DENSE, query.top_k)
+                )
+
+            return candidates
 
     @staticmethod
     def _ranked(

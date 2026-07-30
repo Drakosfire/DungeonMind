@@ -16,6 +16,10 @@ Active-materialization semantics (PR A.1):
 - Candidate retrieval uses only a ``COMPLETED``, non-superseded run, bound
   either by ``SemanticQuery.materialization_run_id`` or by the world's
   active-run pointer set during query planning.
+- Document deletion is allowed only for ``FAILED`` or ``SUPERSEDED`` runs.
+- In-memory adapters serialize run transitions, document mutate/delete,
+  active-pointer changes, and retrieval eligibility under one materialization
+  unit-of-work lock (PostgreSQL reproduces this with transactions / row locks).
 """
 
 from datetime import datetime

@@ -143,6 +143,9 @@ class SemanticDocumentRepository(Protocol):
     dimensions, recipe, world) before accepting a document. New documents may
     be inserted only while the materialization run is ``RUNNING``; exact
     replays remain idempotent after the run becomes terminal.
+
+    ``delete_run_documents`` is allowed only for ``FAILED`` or ``SUPERSEDED``
+    runs — never for ``RUNNING`` or ``COMPLETED`` (active or otherwise).
     """
 
     def upsert_batch(self, documents: list[SemanticDocument]) -> int: ...

@@ -19,11 +19,11 @@ otherwise the turn is split-brain and rejected.
 
 from typing import Protocol, Self
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 
 from ..contracts.base import DungeonMindModel
 from ..contracts.capability import CapabilityPolicy
-from ..contracts.projection import Admissibility, FocusKind
+from ..contracts.projection import Admissibility, FocusKind, ProjectionFocus
 from ..contracts.retrieval import Claim, DiagnosticEntry
 
 
@@ -36,17 +36,26 @@ class AdmittedSurfaceContext(DungeonMindModel):
 
 
 class AgentTurnInput(DungeonMindModel):
-    """Sanitized agent input. Auth/tenancy stay in the orchestration layer."""
+    """Sanitized agent input. Auth/tenancy stay in the orchestration layer.
+
+    Focus uses ``ProjectionFocus`` so NONE/SESSION invariants are not duplicated
+    as loose ``focus_kind`` / ``focus_session_id`` fields.
+    """
 
     message: str
     world_id: str
     campaign_id: str | None = None
-    focus_kind: FocusKind = FocusKind.NONE
-    focus_session_id: str | None = None
+    focus: ProjectionFocus = Field(default_factory=ProjectionFocus)
     admissibility: Admissibility
     surface: AdmittedSurfaceContext
     assembled_context: str
     revision_id: str
+
+    @model_validator(mode="after")
+    def _session_focus_requires_campaign(self) -> Self:
+        if self.focus.kind is FocusKind.SESSION and not self.campaign_id:
+            raise ValueError("session focus requires campaign_id on AgentTurnInput")
+        return self
 
 
 class AgentTurnContext(DungeonMindModel):
@@ -79,10 +88,8 @@ class AgentTurnContext(DungeonMindModel):
             mismatches.append("campaign_id")
         if inp.admissibility != scope.admissibility:
             mismatches.append("admissibility")
-        if inp.focus_kind != scope.focus.kind:
-            mismatches.append("focus.kind")
-        if inp.focus_session_id != scope.focus.session_id:
-            mismatches.append("focus.session_id")
+        if inp.focus != scope.focus:
+            mismatches.append("focus")
         if inp.revision_id != scope.revision_pin:
             mismatches.append("revision_id/revision_pin")
         if mismatches:
@@ -134,8 +141,7 @@ def sanitize_agent_input(
         message=message,
         world_id=world_id,
         campaign_id=campaign_id,
-        focus_kind=focus_kind,
-        focus_session_id=focus_session_id,
+        focus=ProjectionFocus(kind=focus_kind, session_id=focus_session_id),
         admissibility=admissibility,
         surface=AdmittedSurfaceContext(
             surface_id=surface_id,

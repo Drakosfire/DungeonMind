@@ -149,8 +149,48 @@ def test_reembedding_creates_new_run_not_overwrite(
     store.upsert_batch([make_doc("sdoc:1", run_id="erun:1")])
     store.upsert_batch([make_doc("sdoc:2", run_id="erun:2")])
     assert store.count() == 2
+    runs.fail("erun:1", completed_at=NOW)
     assert store.delete_run_documents("erun:1") == 1
     assert store.get("sdoc:2") is not None
+
+
+def test_delete_run_documents_rejects_completed_and_active_runs(
+    runs: InMemoryEmbeddingRunRepository,
+    store: InMemorySemanticDocumentRepository,
+) -> None:
+    store.upsert_batch([make_doc("sdoc:1")])
+    with pytest.raises(InvalidLifecycleTransitionError) as running:
+        store.delete_run_documents("erun:1")
+    assert running.value.details["current_status"] == "running"
+
+    runs.complete("erun:1", completed_at=NOW)
+    with pytest.raises(InvalidLifecycleTransitionError) as completed:
+        store.delete_run_documents("erun:1")
+    assert completed.value.details["current_status"] == "completed"
+
+    runs.activate("erun:1")
+    with pytest.raises(InvalidLifecycleTransitionError) as active:
+        store.delete_run_documents("erun:1")
+    assert active.value.details["current_status"] == "completed"
+    assert store.get("sdoc:1") is not None
+    assert runs.get_active_run_id("world:demo") == "erun:1"
+
+
+def test_delete_run_documents_allows_failed_and_superseded(
+    runs: InMemoryEmbeddingRunRepository,
+    store: InMemorySemanticDocumentRepository,
+) -> None:
+    store.upsert_batch([make_doc("sdoc:failed")])
+    runs.fail("erun:1", completed_at=NOW)
+    assert store.delete_run_documents("erun:1") == 1
+    assert store.get("sdoc:failed") is None
+
+    _begin_run(runs, run_id="erun:2")
+    store.upsert_batch([make_doc("sdoc:old", run_id="erun:2")])
+    runs.complete("erun:2", completed_at=NOW)
+    runs.supersede("erun:2", completed_at=NOW)
+    assert store.delete_run_documents("erun:2") == 1
+    assert store.get("sdoc:old") is None
 
 
 def test_source_chunk_requires_exact_source_revision() -> None:

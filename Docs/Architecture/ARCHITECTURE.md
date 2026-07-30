@@ -158,7 +158,10 @@ Contract closures that PostgreSQL adapters must reproduce (PR A.1):
   New semantic documents insert only into `RUNNING` runs; exact replays remain
   idempotent after terminal. Candidate retrieval binds one `COMPLETED`
   non-superseded run (explicit query pin or per-world active-run pointer).
-  Failed and superseded runs never contribute candidates.
+  Failed and superseded runs never contribute candidates. Document deletion
+  is allowed only after failure or supersession. In-memory adapters serialize
+  run transitions, document mutate/delete, active-pointer changes, and
+  retrieval eligibility under one materialization unit-of-work lock.
 - **Exact semantic provenance.** Source chunks require `source_revision_id`;
   graph-object documents require `graph_object_id` and `graph_revision_id`.
   Document model metadata must match the materialization run.

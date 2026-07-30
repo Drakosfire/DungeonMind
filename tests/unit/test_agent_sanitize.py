@@ -3,7 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from dungeonmind.agents import AgentTurnContext, sanitize_agent_input
+from dungeonmind.agents import AgentTurnContext, AgentTurnInput, sanitize_agent_input
+from dungeonmind.agents.protocol import AdmittedSurfaceContext
 from dungeonmind.contracts import (
     Admissibility,
     CapabilityCategory,
@@ -63,8 +64,11 @@ def test_sanitize_agent_input_omits_auth_fields() -> None:
     assert "selected_document_ref" not in dumped
     assert "active_artifact_refs" not in dumped
     assert "permitted_tool_names" not in dumped
+    assert "focus_kind" not in dumped
+    assert "focus_session_id" not in dumped
     assert agent_input.message.startswith("Where")
     assert agent_input.admissibility is Admissibility.PLAYER
+    assert agent_input.focus.kind is FocusKind.NONE
     assert agent_input.surface.selected_object_ids == ["obj:1"]
 
 
@@ -153,4 +157,30 @@ def test_agent_turn_context_rejects_world_and_revision_mismatch() -> None:
         AgentTurnContext(
             input=agent_input,
             capability_policy=_player_policy(revision_pin="rev:" + "cd" * 16),
+        )
+
+
+def test_agent_turn_input_rejects_invalid_focus_combinations() -> None:
+    surface = AdmittedSurfaceContext(surface_id="surface:plan")
+    with pytest.raises(ValidationError):
+        AgentTurnInput(
+            message="hi",
+            world_id="world:demo",
+            campaign_id="camp:1",
+            focus=ProjectionFocus(kind=FocusKind.NONE, session_id="ses:1"),
+            admissibility=Admissibility.PLAYER,
+            surface=surface,
+            assembled_context="",
+            revision_id=REVISION,
+        )
+    with pytest.raises(ValidationError):
+        AgentTurnInput(
+            message="hi",
+            world_id="world:demo",
+            campaign_id=None,
+            focus=ProjectionFocus(kind=FocusKind.SESSION, session_id="ses:1"),
+            admissibility=Admissibility.PLAYER,
+            surface=surface,
+            assembled_context="",
+            revision_id=REVISION,
         )
