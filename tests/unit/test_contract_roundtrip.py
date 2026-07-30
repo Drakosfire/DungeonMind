@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from dungeonmind.contracts import (
+    Admissibility,
     CapabilityCategory,
     CapabilityEffect,
     CapabilityPolicy,
@@ -54,6 +55,7 @@ def _instances() -> list[object]:
         head_revision_id=revision.revision_id,
         is_head=True,
         projected_at=NOW,
+        admissibility=Admissibility.GM,
     )
     return [
         revision,
@@ -103,7 +105,6 @@ def _instances() -> list[object]:
             world_id="world:demo",
             campaign_id="camp:1",
             session_id="ses-recap:1",
-            content_sha256="ef" * 32,
             created_at=NOW,
         ),
         SourceRevision(
@@ -121,7 +122,12 @@ def _instances() -> list[object]:
             target_object_ids=["obj:1"],
             created_at=NOW,
         ),
-        WorldGraphProjectionRequest(world_id="world:demo", campaign_id="camp:1"),
+        WorldGraphProjectionRequest(
+            world_id="world:demo",
+            campaign_id="camp:1",
+            admissibility=Admissibility.GM,
+            scope_mode="campaign",
+        ),
         snapshot,
         GraphRetrievalSession(
             session_id="ses:1",
@@ -135,6 +141,7 @@ def _instances() -> list[object]:
             document_kind=SemanticDocumentKind.GRAPH_OBJECT,
             world_id="world:demo",
             graph_object_id="obj:1",
+            graph_revision_id=revision.revision_id,
             visibility=Visibility.GM,
             content="Mere Astor, factor of Vael",
             content_sha256="12" * 32,
@@ -146,10 +153,12 @@ def _instances() -> list[object]:
             created_at=NOW,
             embedding=[0.0] * 8,
         ),
-        SemanticQuery(world_id="world:demo", text="Mere Astor", top_k=5),
+        SemanticQuery(
+            world_id="world:demo", visibility=Visibility.GM, text="Mere Astor", top_k=5
+        ),
         CapabilityPolicy(
             policy_id="pol:1",
-            graph_scope=GraphScope(world_id="world:demo"),
+            graph_scope=GraphScope(world_id="world:demo", admissibility=Admissibility.GM),
             enabled_tools=["graph.search"],
             tool_rules=[
                 ToolCapabilityRule(
@@ -164,6 +173,7 @@ def _instances() -> list[object]:
             thread_id="thr:1",
             caller_scope={"caller_id": "user:1"},
             world_id="world:demo",
+            admissibility=Admissibility.GM,
             surface_context={"surface_id": "surface:test"},
             message="Where does Mere Astor live?",
         ),

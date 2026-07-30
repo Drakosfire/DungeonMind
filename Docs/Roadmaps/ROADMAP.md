@@ -1,23 +1,70 @@
 # DungeonMind — Roadmap and PR ladder
 
-**Status:** founding (PR A landed). Ladder confirmed after recon with no
-amendment to the charter's decomposition (§11); ownership per ADR-0002.
+**Status:** PR A landed; PR A.1 (invariant hardening) in flight. Ladder
+amended after founding review: the curated read-only Mind Turn demo moves
+immediately after the minimal PostgreSQL substrate, before cross-repo
+benchmarking and production IaC. Ownership per ADR-0002.
 
 Each PR is independently reviewable, in its named repository. Cross-repo work
 is never one PR.
 
-## PR A — DungeonMind repository foundation ✅ (this PR)
+## Sequence (amended)
+
+```text
+A   repository foundation ✅
+A.1 foundational invariant hardening   ← current
+B   minimal PostgreSQL/pgvector substrate
+B.1 thin read-only Mind Turn API + LandingPage demo (curated fixture)
+C   RulesIngestion pgvector benchmark backend
+D   embedding model bakeoff
+E   DungeonMindServer retrieval seam
+F   production infrastructure hardening (DungeonOverMind)
+```
+
+The demo may use deterministic fixture embeddings or the benchmark baseline.
+It proves the replaceable UI-to-Mind seam before several PRs optimize and
+operationalize retrieval.
+
+## PR A — DungeonMind repository foundation ✅
 
 **Repository:** DungeonMind
 
-Delivered: package scaffold (`uv`, Pydantic v2); contract families
-(vocabulary, evidence, identity, graph, contribution, projection, retrieval,
-semantic, capability, mind_turn); domain logic (canonical hashing,
-revision ids, fusion, capability evaluator, typed errors); application
-repository ports; in-memory adapters; curated fixture + builder; unit tests
-(round-trip, revision ids, memory repos, fusion, capability, import
-boundaries, curated fixture); lint+CI config; founding docs (architecture,
-authority, ADRs 0001–0003, recon report, this roadmap, handoff template).
+Delivered: package scaffold (`uv`, Pydantic v2); contract families; domain
+logic; application repository ports; in-memory adapters; curated fixture;
+unit tests; lint+CI; founding docs (architecture, authority, ADRs 0001–0003,
+recon report, handoff template).
+
+## PR A.1 — Foundational invariant hardening
+
+**Repository:** DungeonMind
+
+Exit proof (initial hardening + contract-blocker closure):
+
+- Explicit, fail-closed admissibility/visibility on all request contracts
+  (absence never means GM).
+- Parent/head lineage equality on normal graph publication
+  (`parent == expected == current_head`).
+- Deep-copy immutability for stored graph payloads.
+- Canonical idempotency conflicts for source, semantic, thread, and embedding
+  records.
+- Cross-field validators for evidence, source types, semantic documents,
+  identity decisions, focus, scope, claims, and accepted assertions.
+- Closed admitted-evidence ledger on retrieval sessions and Mind Turn
+  responses (no invented evidence/anchor grounding).
+- Embedding-run monotonic lifecycle with typed transition errors and
+  non-rewriting terminal retries; active-materialization semantics so only
+  COMPLETED non-superseded runs participate in retrieval.
+- Exact semantic-document provenance (`source_revision_id` /
+  `graph_revision_id`) plus materialization-run metadata compatibility.
+- v1 threads: caller-private, cross-surface; immutable
+  world/campaign/caller/tenant binding; retry-safe `turn_id` append.
+- One capability policy authority; permitted tools derived, never caller-supplied;
+  `AgentTurnContext` rejects input/policy graph-scope disagreement.
+- Unambiguous campaign/focus scope (no `campaign_id` on focus; world/campaign
+  modes cannot contradict).
+- Sanitized agent-adapter input (no caller/tenant auth metadata).
+- Static type checking (Pyright) in CI.
+- This roadmap update placing the curated demo after PR B.
 
 ## PR B — PostgreSQL/pgvector development substrate
 
@@ -36,6 +83,28 @@ Outcome:
 - semantic documents inserted and exactly searched (dense + full-text +
   exact + fusion + filters);
 - integration tests opt-in locally, required in CI.
+
+## PR B.1 — Thin read-only Mind Turn demo
+
+**Repositories:** DungeonMind (API host) + LandingPage (static route)
+
+Outcome:
+
+```text
+static LandingPage route
+→ surface context and user question
+→ DungeonMind Mind Turn API (mind_turn_v1)
+→ exact graph revision
+→ hybrid candidate retrieval (fixture embeddings acceptable)
+→ graph traversal and admitted evidence
+→ agent adapter answer (Hermes or stub)
+→ semantic UI projections
+```
+
+Curated, read-only fixture first (`tests/fixtures/curated_world_v1.json` is
+the seed); no live graph writes or broad ingestion. Does **not** require a
+production embedding-model decision, RulesLawyer migration, production
+backup wiring, or completed cross-repository retrieval benchmarking.
 
 ## PR C — pgvector retrieval benchmark backend
 
@@ -74,7 +143,7 @@ benchmark only — no silent production switch); disabled RulesLawyer
 capability must not load the model; readiness distinguishes model-unavailable
 from database-unavailable; Mongo env-var naming reconciled; privacy-safe
 diagnostics; API contract unchanged. No DungeonMind domain ownership moves
-(charter §10.3).
+(charter §10.3). Can start in parallel with B.1.
 
 ## PR F — deployment/IaC integration
 
@@ -85,19 +154,3 @@ persistent volume; dedicated `dungeonmind` database and least-privilege role
 (no generic/example credentials); backups + restore expectations documented;
 resource limits + health checks; production/development configuration cannot
 be confused accidentally.
-
-## Named successor — first Mind Turn demo (after PRs A–F land)
-
-```text
-static LandingPage route
-→ surface context and user question
-→ DungeonMind Mind Turn API (mind_turn_v1)
-→ exact graph revision
-→ hybrid candidate retrieval
-→ graph traversal and admitted evidence
-→ Hermes answer (agent adapter)
-→ semantic UI projections
-```
-
-Curated, read-only fixture first (`tests/fixtures/curated_world_v1.json` is
-the seed); no live graph writes or broad ingestion in this slice.

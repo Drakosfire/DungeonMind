@@ -110,7 +110,15 @@ class RetrievalSessionRepository(Protocol):
 
 
 class MindThreadRepository(Protocol):
-    """Conversation threads for continuity. Threads are context, never truth."""
+    """Conversation threads for continuity. Threads are context, never truth.
+
+    v1 policy: caller-private and cross-surface. ``create_thread`` binds
+    (thread_id, tenant_id, caller_id, world_id, campaign_id, created_at) and is
+    idempotent only for an identical binding — including ``created_at``
+    (immutable caller-provided timestamp; drift is conflict). Surface is
+    per-turn, not bound. ``append_turn`` is retry-safe by ``turn_id`` and
+    enforces caller/world/campaign/tenant correlation.
+    """
 
     def create_thread(
         self,
@@ -118,7 +126,8 @@ class MindThreadRepository(Protocol):
         *,
         world_id: str,
         campaign_id: str | None,
-        surface_id: str,
+        caller_id: str,
+        tenant_id: str | None,
         created_at: datetime,
     ) -> str: ...
 
@@ -128,7 +137,16 @@ class MindThreadRepository(Protocol):
 
 
 class SemanticDocumentRepository(Protocol):
-    """Provenance-complete store for derived semantic documents."""
+    """Provenance-complete store for derived semantic documents.
+
+    Insertions must verify materialization-run compatibility (model, revision,
+    dimensions, recipe, world) before accepting a document. New documents may
+    be inserted only while the materialization run is ``RUNNING``; exact
+    replays remain idempotent after the run becomes terminal.
+
+    ``delete_run_documents`` is allowed only for ``FAILED`` or ``SUPERSEDED``
+    runs — never for ``RUNNING`` or ``COMPLETED`` (active or otherwise).
+    """
 
     def upsert_batch(self, documents: list[SemanticDocument]) -> int: ...
 
@@ -140,18 +158,37 @@ class SemanticDocumentRepository(Protocol):
 
 
 class SemanticSearchPort(Protocol):
-    """Candidate retrieval over semantic documents. Never evidence; never truth."""
+    """Candidate retrieval over semantic documents. Never evidence; never truth.
+
+    Retrieval is bound to one ``COMPLETED``, non-superseded materialization
+    run (explicit ``SemanticQuery.materialization_run_id`` or the world's
+    active-run pointer). Failed and superseded runs never contribute candidates.
+    """
 
     def search(self, query: SemanticQuery) -> list[SemanticCandidate]: ...
 
 
 class EmbeddingRunRepository(Protocol):
-    """Materialization run provenance. Begin is idempotent by run_id."""
+    """Materialization run provenance with a monotonic lifecycle state machine.
+
+    ``begin`` is idempotent on immutable creation fields. Lifecycle transitions:
+    RUNNING → COMPLETED | FAILED; COMPLETED | FAILED → SUPERSEDED.
+    Terminal retries do not rewrite timestamps.
+
+    ``activate`` marks a ``COMPLETED`` run as the world's active retrieval
+    profile. Superseding an active run clears the pointer.
+    """
 
     def begin(self, run: EmbeddingRun) -> EmbeddingRun: ...
 
     def complete(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun: ...
 
     def fail(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun: ...
+
+    def supersede(self, run_id: str, *, completed_at: datetime) -> EmbeddingRun: ...
+
+    def activate(self, run_id: str) -> EmbeddingRun: ...
+
+    def get_active_run_id(self, world_id: str) -> str | None: ...
 
     def get(self, run_id: str) -> EmbeddingRun | None: ...

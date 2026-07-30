@@ -6,6 +6,9 @@ missing required graph scope all deny. Commit effects additionally require a
 ``confirm_commit`` category rule — read-scoped policies can never authorize
 durable writes, which is the enforcement point for "no agent is a privileged
 writer".
+
+``CapabilityPolicy`` is the sole authority for the agent-visible tool set.
+Derive names with ``permitted_tool_names``; never accept a caller-supplied list.
 """
 
 from ..contracts.capability import (
@@ -14,6 +17,25 @@ from ..contracts.capability import (
     CapabilityPolicy,
 )
 from .errors import CapabilityDeniedError
+
+
+def permitted_tool_names(policy: CapabilityPolicy) -> list[str]:
+    """Derive the model-visible tool set from the sole authority: ``CapabilityPolicy``.
+
+    Fail-closed: enabled + matching rule required; graph-touching tools that
+    require scope are excluded when the policy has no graph scope. Order follows
+    ``enabled_tools``.
+    """
+    names: list[str] = []
+    rules_by_name = {rule.tool_name: rule for rule in policy.tool_rules}
+    for tool_name in policy.enabled_tools:
+        rule = rules_by_name.get(tool_name)
+        if rule is None:
+            continue
+        if rule.require_graph_scope and policy.graph_scope is None:
+            continue
+        names.append(tool_name)
+    return names
 
 
 def evaluate_capability(

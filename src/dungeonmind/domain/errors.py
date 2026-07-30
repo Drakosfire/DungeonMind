@@ -75,10 +75,53 @@ class CapabilityDeniedError(DungeonMindError):
 
 
 class ScopeResolutionError(DungeonMindError):
-    """A read could not resolve one explicit world/revision scope."""
+    """A read could not resolve one explicit world/revision/campaign scope.
+
+    Application-layer session-to-campaign membership uses details such as
+    ``{"campaign_id": ..., "session_id": ..., "reason": "session_not_in_campaign"}``.
+    """
 
     code = "scope_resolution_error"
 
 
 class DocumentNotFoundError(DungeonMindError):
     code = "document_not_found"
+
+
+class ThreadContextMismatchError(DungeonMindError):
+    """Thread binding or turn correlation violated (world/campaign/tenant/caller/ids)."""
+
+    code = "thread_context_mismatch"
+
+
+class InvalidLifecycleTransitionError(DungeonMindError):
+    """A durable record rejected an illegal lifecycle transition."""
+
+    code = "invalid_lifecycle_transition"
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        record_type: str,
+        record_id: str,
+        current_status: str,
+        requested_status: str,
+    ) -> None:
+        super().__init__(
+            message
+            or (
+                f"invalid {record_type} lifecycle transition for {record_id!r}: "
+                f"{current_status!r} → {requested_status!r}"
+            ),
+            details={
+                "record_type": record_type,
+                "record_id": record_id,
+                "current_status": current_status,
+                "requested_status": requested_status,
+            },
+        )
+        self.record_type = record_type
+        self.record_id = record_id
+        self.current_status = current_status
+        self.requested_status = requested_status

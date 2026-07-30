@@ -7,7 +7,9 @@ durable, replayable decisions. Confidence scores are never authority.
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, Self
+
+from pydantic import model_validator
 
 from .base import DungeonMindModel
 
@@ -57,3 +59,27 @@ class IdentityDecisionRecord(DungeonMindModel):
     supersedes_decision_ids: list[str] = []
     status: IdentityDecisionStatus = IdentityDecisionStatus.ACTIVE
     created_at: datetime
+
+    @model_validator(mode="after")
+    def _kind_requires_fields(self) -> Self:
+        kind = self.decision_kind
+        subjects = self.subject_object_ids
+        targets = self.target_object_ids
+        if not subjects:
+            raise ValueError("subject_object_ids must be non-empty")
+        if kind in (IdentityDecisionKind.ALIAS_ADD, IdentityDecisionKind.ALIAS_REMOVE):
+            if not self.alias:
+                raise ValueError(f"{kind.value} requires alias")
+        elif kind is IdentityDecisionKind.MERGE:
+            if len(subjects) < 2:
+                raise ValueError("merge requires at least two subject_object_ids")
+            if len(targets) != 1:
+                raise ValueError("merge requires exactly one target_object_id")
+        elif kind is IdentityDecisionKind.SPLIT:
+            if len(subjects) != 1:
+                raise ValueError("split requires exactly one subject_object_id")
+            if len(targets) < 2:
+                raise ValueError("split requires at least two target_object_ids")
+        elif kind is IdentityDecisionKind.UNMERGE and not targets:
+            raise ValueError("unmerge requires target_object_ids")
+        return self

@@ -100,3 +100,62 @@ def test_timestamp_is_never_head_authority(repo: InMemoryWorldGraphRepository) -
     repo.rollback_head(WORLD_ID, rev1.revision_id, updated_at=FIXED_LATER)
     head = repo.get_head(WORLD_ID)
     assert head.head_revision_id == rev1.revision_id  # type: ignore[union-attr]
+
+
+def test_published_payload_is_deep_copied(repo: InMemoryWorldGraphRepository) -> None:
+    payload: dict[str, object] = {
+        "world_id": WORLD_ID,
+        "nodes": [{"object_id": "obj:1", "tags": ["a"]}],
+    }
+    envelope = repo.publish_revision(make_publish(payload=payload))
+    # Mutate the original command payload after publication.
+    nodes = payload["nodes"]
+    assert isinstance(nodes, list)
+    first = nodes[0]
+    assert isinstance(first, dict)
+    tags = first["tags"]
+    assert isinstance(tags, list)
+    tags.append("mutated")
+    first["object_id"] = "obj:mutated"
+
+    stored = repo.get_revision(WORLD_ID, envelope.revision_id)
+    assert stored is not None
+    assert stored.graph_payload == {
+        "world_id": WORLD_ID,
+        "nodes": [{"object_id": "obj:1", "tags": ["a"]}],
+    }
+    assert stored.revision.graph_payload_sha256 == canonical_sha256(
+        {"world_id": WORLD_ID, "nodes": [{"object_id": "obj:1", "tags": ["a"]}]}
+    )
+
+
+def test_source_put_is_canonical_idempotent() -> None:
+    from dungeonmind.contracts import SourceArtifact, SourceDomain, SourceRevision
+    from dungeonmind.domain.errors import IdempotencyConflictError
+    from dungeonmind.infrastructure.memory import InMemorySourceRepository
+
+    sources = InMemorySourceRepository()
+    artifact = SourceArtifact(
+        source_artifact_id="src:1",
+        source_domain=SourceDomain.WORLDBUILDING,
+        world_id=WORLD_ID,
+        created_at=FIXED_NOW,
+    )
+    sources.put_artifact(artifact)
+    sources.put_artifact(artifact)
+    from dungeonmind.contracts import Visibility
+
+    with pytest.raises(IdempotencyConflictError):
+        sources.put_artifact(artifact.model_copy(update={"visibility": Visibility.PLAYER}))
+
+    revision = SourceRevision(
+        source_revision_id="srev:1",
+        source_artifact_id="src:1",
+        content_sha256="ab" * 32,
+        locator="r2://bucket/key",
+        created_at=FIXED_NOW,
+    )
+    sources.put_revision(revision)
+    sources.put_revision(revision)
+    with pytest.raises(IdempotencyConflictError):
+        sources.put_revision(revision.model_copy(update={"content_sha256": "cd" * 32}))

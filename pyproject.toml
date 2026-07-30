@@ -29,6 +29,7 @@ api = [
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
+    "pyright>=1.1.390",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -57,3 +58,13 @@ markers = [
     "integration: requires a live PostgreSQL+pgvector instance (opt-in; skipped by default)",
     "conformance: behavior pinned against DungeonMindBuddy-derived fixtures",
 ]
+
+[tool.pyright]
+include = ["src"]
+exclude = ["**/__pycache__"]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false
+venvPath = "."
+venv = ".venv"

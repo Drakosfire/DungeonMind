@@ -11,6 +11,7 @@ uv run pytest           # unit tests (no services required)
 uv run pytest -m integration   # opt-in: requires DUNGEONMIND_DATABASE_URL (PR B+)
 uv run pytest -m conformance   # behavior pinned to DungeonMindBuddy-derived fixtures
 uv run ruff check .
+uv run pyright          # static type check over src/
 ```
 
 ## Engineering rules

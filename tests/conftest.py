@@ -20,11 +20,19 @@ def make_publish(
     payload: dict[str, object] | None = None,
     created_at: datetime = FIXED_NOW,
 ) -> PublishRevisionCommand:
-    """Build a publish command. ``expected`` defaults to ``parent`` (the common case)."""
+    """Build a publish command.
+
+    Normal publication requires parent == expected. If only one of ``parent`` /
+    ``expected`` is provided, the other is mirrored so the command is valid.
+    """
+    if parent is not None and expected is None:
+        expected = parent
+    elif expected is not None and parent is None:
+        parent = expected
     return PublishRevisionCommand(
         world_id=world_id,
         parent_revision_id=parent,
-        expected_parent_revision_id=expected if expected is not None or parent is None else parent,
+        expected_parent_revision_id=expected,
         operation_ids=operation_ids or ["op:bootstrap"],
         graph_schema=GRAPH_SCHEMA,
         graph_payload=payload if payload is not None else {"world_id": world_id, "nodes": []},
