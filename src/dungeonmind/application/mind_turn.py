@@ -44,9 +44,12 @@ from ..domain.errors import (
 from ..domain.fusion import reciprocal_rank_fusion
 from .context_assembly import assemble_agent_context
 from .graph_scope import (
+    STORED_PROVENANCE_INVALID,
+    EvidenceScopeVerdict,
     ProvenanceRejection,
     ValidatedProvenance,
     project_scoped_snapshot,
+    public_coverage_gaps_for_exclusion,
     resolve_evidence_provenance,
 )
 from .graph_snapshot import (
@@ -236,8 +239,8 @@ class MindTurnService:
             campaign_id=request.campaign_id,
             admissibility=request.admissibility,
         )
+        object_exclusions = dict(scoped.object_exclusions)
         parsed = scoped.snapshot
-        provenance_rejections = list(scoped.rejections)
 
         diagnostics: list[DiagnosticEntry] = [
             _fingerprint_diagnostic(request),
@@ -312,9 +315,7 @@ class MindTurnService:
 
         candidate_object_ids: list[str] = []
         coverage = Coverage()
-        for rejection in provenance_rejections:
-            coverage.gap_codes.append(rejection.gap_code)
-            coverage.missing.append(rejection.missing_id)
+        targeted_excluded_ids: list[str] = []
         for doc_id in preflight_ids:
             doc = self._semantic_documents.get(doc_id)
             if doc is None or not doc.graph_object_id:
@@ -324,8 +325,23 @@ class MindTurnService:
             if self._graph_reader.get_object(parsed, doc.graph_object_id) is None:
                 coverage.gap_codes.append("candidate_graph_object_missing")
                 coverage.missing.append(doc.graph_object_id)
+                targeted_excluded_ids.append(doc.graph_object_id)
                 continue
             candidate_object_ids.append(doc.graph_object_id)
+
+        # Selected IDs that fail scoping are request-targeted; surface only
+        # sanitized / in-scope gaps for those objects — never graph-global dumps.
+        for selected_id in request.surface_context.selected_object_ids:
+            if self._graph_reader.get_object(parsed, selected_id) is None:
+                targeted_excluded_ids.append(selected_id)
+
+        for object_id in dict.fromkeys(targeted_excluded_ids):
+            exclusion = object_exclusions.get(object_id)
+            if exclusion is None:
+                continue
+            gap_codes, missing = public_coverage_gaps_for_exclusion(exclusion)
+            coverage.gap_codes.extend(gap_codes)
+            coverage.missing.extend(missing)
 
         referents = self._graph_reader.resolve_mentions(
             parsed,
@@ -800,6 +816,11 @@ class MindTurnService:
                 admissibility=request.admissibility,
             )
             if resolved is None:
+                # Out-of-scope: silent (should not occur on retained objects).
+                return
+            if resolved is EvidenceScopeVerdict.SCOPE_UNKNOWN:
+                # Scope unestablishable — never echo hidden source identities.
+                coverage.gap_codes.append(STORED_PROVENANCE_INVALID)
                 return
             if isinstance(resolved, ProvenanceRejection):
                 coverage.gap_codes.append(resolved.gap_code)

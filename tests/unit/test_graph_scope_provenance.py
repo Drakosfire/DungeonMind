@@ -331,6 +331,179 @@ def test_one_valid_and_one_invalid_evidence_hides_object_and_records_gap() -> No
     )
 
 
+def test_player_retracted_gm_artifact_does_not_leak_source_identity() -> None:
+    """PLAYER + GM-only retracted artifact: no IDs or lifecycle gaps in coverage."""
+    payload = {
+        "world_id": "world:demo-atlas",
+        "nodes": [
+            {
+                "object_id": "obj:item-sun-ledger",
+                "kind": "artifact",
+                "label": "The Sun Ledger",
+                "aliases": ["Sun Ledger"],
+                "evidence_ref_ids": ["ev:ledger"],
+                "summary": "player-visible ledger",
+            },
+            {
+                "object_id": "obj:siege-plan",
+                "kind": "document",
+                "label": "Siege Plan",
+                "aliases": [],
+                "evidence_ref_ids": ["ev:gm-siege"],
+                "summary": "GM-only siege footnotes",
+            },
+        ],
+        "relationships": [],
+        "evidence_refs": [
+            {
+                "evidence_ref_id": "ev:ledger",
+                "source_artifact_id": "src:player-notes",
+                "source_revision_id": "srcrev:player-v1",
+                "source_domain": "worldbuilding",
+                "evidence_role": "support",
+            },
+            {
+                "evidence_ref_id": "ev:gm-siege",
+                "source_artifact_id": "src:gm-secret-siege-plan",
+                "source_revision_id": "srcrev:gm-siege-v1",
+                "source_domain": "worldbuilding",
+                "evidence_role": "support",
+            },
+        ],
+    }
+    sources = InMemorySourceRepository()
+    sources.put_artifact(
+        SourceArtifact(
+            source_artifact_id="src:player-notes",
+            source_domain=SourceDomain.WORLDBUILDING,
+            world_id="world:demo-atlas",
+            visibility=Visibility.PLAYER,
+            status=SourceStatus.ACTIVE,
+            created_at=FIXED_NOW,
+        )
+    )
+    sources.put_artifact(
+        SourceArtifact(
+            source_artifact_id="src:gm-secret-siege-plan",
+            source_domain=SourceDomain.WORLDBUILDING,
+            world_id="world:demo-atlas",
+            visibility=Visibility.GM,
+            status=SourceStatus.RETRACTED,
+            created_at=FIXED_NOW,
+        )
+    )
+    sources.put_revision(
+        SourceRevision(
+            source_revision_id="srcrev:player-v1",
+            source_artifact_id="src:player-notes",
+            content_sha256="bb" * 32,
+            body_storage="external",
+            locator="fixture://player",
+            created_at=FIXED_NOW,
+        )
+    )
+    sources.put_revision(
+        SourceRevision(
+            source_revision_id="srcrev:gm-siege-v1",
+            source_artifact_id="src:gm-secret-siege-plan",
+            content_sha256="cc" * 32,
+            body_storage="external",
+            locator="fixture://gm-siege",
+            created_at=FIXED_NOW,
+        )
+    )
+    snapshot = READER.parse(graph_schema="dm_union_graph_v1", graph_payload=payload)
+    scoped = project_scoped_snapshot(
+        snapshot,
+        sources=sources,
+        world_id="world:demo-atlas",
+        campaign_id="camp:demo",
+        admissibility=Admissibility.PLAYER,
+    )
+    assert "obj:item-sun-ledger" in scoped.snapshot.objects
+    assert "obj:siege-plan" not in scoped.snapshot.objects
+    # Out-of-scope GM artifact: silent — no lifecycle rejection identity.
+    assert scoped.rejections == []
+    exclusion = scoped.object_exclusions["obj:siege-plan"]
+    assert exclusion.out_of_scope is True
+    assert exclusion.rejections == []
+    assert exclusion.scope_unknown is False
+
+
+def test_player_missing_gm_artifact_id_absent_from_projection_diagnostics() -> None:
+    """Missing GM artifact must not emit its identifier as a provenance gap."""
+    payload = _base_payload()
+    payload["nodes"].append(
+        {
+            "object_id": "obj:siege-plan",
+            "kind": "document",
+            "label": "Siege Plan",
+            "aliases": [],
+            "evidence_ref_ids": ["ev:gm-siege"],
+        }
+    )
+    payload["evidence_refs"].append(
+        {
+            "evidence_ref_id": "ev:gm-siege",
+            "source_artifact_id": "src:gm-secret-siege-plan",
+            "source_revision_id": "srcrev:missing",
+            "source_domain": "worldbuilding",
+            "evidence_role": "support",
+        }
+    )
+    # Player-visible ledger source only — siege artifact intentionally absent.
+    sources = InMemorySourceRepository()
+    sources.put_artifact(
+        SourceArtifact(
+            source_artifact_id="src:atlas-notes",
+            source_domain=SourceDomain.WORLDBUILDING,
+            world_id="world:demo-atlas",
+            visibility=Visibility.PLAYER,
+            status=SourceStatus.ACTIVE,
+            created_at=FIXED_NOW,
+        )
+    )
+    sources.put_revision(
+        SourceRevision(
+            source_revision_id="srcrev:atlas-notes-v1",
+            source_artifact_id="src:atlas-notes",
+            content_sha256="aa" * 32,
+            body_storage="external",
+            locator="fixture://atlas-notes",
+            created_at=FIXED_NOW,
+        )
+    )
+    snapshot = READER.parse(graph_schema="dm_union_graph_v1", graph_payload=payload)
+    scoped = project_scoped_snapshot(
+        snapshot,
+        sources=sources,
+        world_id="world:demo-atlas",
+        campaign_id="camp:demo",
+        admissibility=Admissibility.PLAYER,
+    )
+    assert "obj:siege-plan" not in scoped.snapshot.objects
+    assert scoped.rejections == []
+    assert scoped.object_exclusions["obj:siege-plan"].scope_unknown is True
+    rendered = str(
+        {
+            "rejections": [
+                (r.gap_code, r.missing_id) for r in scoped.rejections
+            ],
+            "exclusions": {
+                oid: {
+                    "out_of_scope": ex.out_of_scope,
+                    "scope_unknown": ex.scope_unknown,
+                    "rejections": [(r.gap_code, r.missing_id) for r in ex.rejections],
+                }
+                for oid, ex in scoped.object_exclusions.items()
+            },
+        }
+    )
+    # Flat public-facing rejection list must not name the missing artifact.
+    assert "src:gm-secret-siege-plan" not in rendered
+    assert "ev:gm-siege" not in str([(r.gap_code, r.missing_id) for r in scoped.rejections])
+
+
 def test_broken_revision_ownership_does_not_reach_agent_as_inference() -> None:
     fixture = load_curated_mind_turn_fixture()
     world_graph = InMemoryWorldGraphRepository()
@@ -400,6 +573,389 @@ def test_broken_revision_ownership_does_not_reach_agent_as_inference() -> None:
         if proj.kind == "entity_brief"
     }
     assert "evidence_source_revision_artifact_mismatch" in response.coverage.gap_codes
+    # Untargeted graph corruption elsewhere must not be required for this proof;
+    # the ledger is request-targeted via semantic candidates.
+
+
+def test_player_unrelated_question_hides_retracted_gm_source_identity() -> None:
+    """End-to-end: PLAYER ask unrelated; retracted GM source IDs stay out of response."""
+    fixture = load_curated_mind_turn_fixture()
+    world_graph = InMemoryWorldGraphRepository()
+    sources = InMemorySourceRepository()
+    embedding_runs = InMemoryEmbeddingRunRepository()
+    semantic_documents = InMemorySemanticDocumentRepository(embedding_runs)
+    threads = InMemoryMindThreadRepository()
+    retrieval_sessions = InMemoryRetrievalSessionRepository()
+    seed = seed_curated_mind_turn(
+        world_graph=world_graph,
+        sources=sources,
+        embedding_runs=embedding_runs,
+        semantic_documents=semantic_documents,
+        threads=threads,
+        fixture=fixture,
+    )
+    stored = world_graph.get_revision(fixture.world_id, seed.revision_id)
+    assert stored is not None
+    payload = dict(stored.graph_payload)
+    payload["nodes"] = [
+        *list(payload["nodes"]),
+        {
+            "object_id": "obj:siege-plan",
+            "kind": "document",
+            "label": "Siege Plan",
+            "aliases": [],
+            "evidence_ref_ids": ["ev:gm-siege"],
+            "summary": "hidden siege prose",
+        },
+    ]
+    payload["evidence_refs"] = [
+        *list(payload["evidence_refs"]),
+        {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": "ev:gm-siege",
+            "source_artifact_id": "src:gm-secret-siege-plan",
+            "source_revision_id": "srcrev:gm-siege-v1",
+            "source_domain": "worldbuilding",
+            "evidence_role": "support",
+            "can_open_source": True,
+            "locator": "fixture://gm-siege",
+        },
+    ]
+    from dungeonmind.contracts.graph import PublishRevisionCommand
+
+    published = world_graph.publish_revision(
+        PublishRevisionCommand(
+            world_id=fixture.world_id,
+            parent_revision_id=seed.revision_id,
+            expected_parent_revision_id=seed.revision_id,
+            operation_ids=["op:inject-gm-siege"],
+            graph_schema=stored.revision.graph_schema,
+            graph_payload=payload,
+            created_at=FIXED_NOW,
+        )
+    )
+    sources.put_artifact(
+        SourceArtifact(
+            source_artifact_id="src:gm-secret-siege-plan",
+            source_domain=SourceDomain.WORLDBUILDING,
+            world_id=fixture.world_id,
+            visibility=Visibility.GM,
+            status=SourceStatus.RETRACTED,
+            created_at=FIXED_NOW,
+        )
+    )
+    sources.put_revision(
+        SourceRevision(
+            source_revision_id="srcrev:gm-siege-v1",
+            source_artifact_id="src:gm-secret-siege-plan",
+            content_sha256="dd" * 32,
+            body_storage="external",
+            locator="fixture://gm-siege",
+            created_at=FIXED_NOW,
+        )
+    )
+    binding = fixture.authorized_demo_binding
+    threads.create_thread(
+        "thr:player-siege",
+        world_id=fixture.world_id,
+        campaign_id=binding.get("campaign_id"),
+        caller_id="caller:player",
+        tenant_id=None,
+        created_at=FIXED_NOW,
+    )
+    service = MindTurnService(
+        world_graph=world_graph,
+        retrieval_sessions=retrieval_sessions,
+        threads=threads,
+        semantic_documents=semantic_documents,
+        semantic_search=InMemorySemanticSearch(semantic_documents, embedding_runs),
+        sources=sources,
+        query_embedder=fixture.query_embedder,
+        agent_adapter=FixtureGroundedAgentAdapter(),
+        clock=FixedClock(FIXED_NOW),
+    )
+    response = service.execute(
+        MindTurnRequest(
+            request_id="req:player-unrelated-siege",
+            thread_id="thr:player-siege",
+            caller_scope=CallerScope(caller_id="caller:player", roles=["player"]),
+            world_id=fixture.world_id,
+            campaign_id=binding.get("campaign_id"),
+            requested_revision_id=published.revision_id,
+            admissibility=Admissibility.PLAYER,
+            focus=ProjectionFocus(),
+            surface_context=SurfaceContext(surface_id="landingpage:player"),
+            message="What is the Sun Ledger?",
+        )
+    )
+    rendered = str(response.model_dump(mode="json"))
+    assert "src:gm-secret-siege-plan" not in rendered
+    assert "ev:gm-siege" not in rendered
+    assert "evidence_source_inactive" not in response.coverage.gap_codes
+    assert "retracted" not in rendered.casefold()
+
+
+def test_player_missing_secret_artifact_absent_everywhere_in_response() -> None:
+    """End-to-end: missing src:gm-secret-siege-plan must not appear in the response."""
+    fixture = load_curated_mind_turn_fixture()
+    world_graph = InMemoryWorldGraphRepository()
+    sources = InMemorySourceRepository()
+    embedding_runs = InMemoryEmbeddingRunRepository()
+    semantic_documents = InMemorySemanticDocumentRepository(embedding_runs)
+    threads = InMemoryMindThreadRepository()
+    retrieval_sessions = InMemoryRetrievalSessionRepository()
+    seed = seed_curated_mind_turn(
+        world_graph=world_graph,
+        sources=sources,
+        embedding_runs=embedding_runs,
+        semantic_documents=semantic_documents,
+        threads=threads,
+        fixture=fixture,
+    )
+    stored = world_graph.get_revision(fixture.world_id, seed.revision_id)
+    assert stored is not None
+    payload = dict(stored.graph_payload)
+    payload["nodes"] = [
+        *list(payload["nodes"]),
+        {
+            "object_id": "obj:siege-plan",
+            "kind": "document",
+            "label": "Siege Plan",
+            "aliases": [],
+            "evidence_ref_ids": ["ev:gm-siege"],
+        },
+    ]
+    payload["evidence_refs"] = [
+        *list(payload["evidence_refs"]),
+        {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": "ev:gm-siege",
+            "source_artifact_id": "src:gm-secret-siege-plan",
+            "source_revision_id": "srcrev:gm-siege-v1",
+            "source_domain": "worldbuilding",
+            "evidence_role": "support",
+            "can_open_source": True,
+            "locator": "fixture://gm-siege",
+        },
+    ]
+    from dungeonmind.contracts.graph import PublishRevisionCommand
+
+    published = world_graph.publish_revision(
+        PublishRevisionCommand(
+            world_id=fixture.world_id,
+            parent_revision_id=seed.revision_id,
+            expected_parent_revision_id=seed.revision_id,
+            operation_ids=["op:inject-missing-gm-siege"],
+            graph_schema=stored.revision.graph_schema,
+            graph_payload=payload,
+            created_at=FIXED_NOW,
+        )
+    )
+    # Deliberately do not insert src:gm-secret-siege-plan.
+    binding = fixture.authorized_demo_binding
+    threads.create_thread(
+        "thr:player-missing-siege",
+        world_id=fixture.world_id,
+        campaign_id=binding.get("campaign_id"),
+        caller_id="caller:player",
+        tenant_id=None,
+        created_at=FIXED_NOW,
+    )
+    service = MindTurnService(
+        world_graph=world_graph,
+        retrieval_sessions=retrieval_sessions,
+        threads=threads,
+        semantic_documents=semantic_documents,
+        semantic_search=InMemorySemanticSearch(semantic_documents, embedding_runs),
+        sources=sources,
+        query_embedder=fixture.query_embedder,
+        agent_adapter=FixtureGroundedAgentAdapter(),
+        clock=FixedClock(FIXED_NOW),
+    )
+    response = service.execute(
+        MindTurnRequest(
+            request_id="req:player-missing-siege",
+            thread_id="thr:player-missing-siege",
+            caller_scope=CallerScope(caller_id="caller:player", roles=["player"]),
+            world_id=fixture.world_id,
+            campaign_id=binding.get("campaign_id"),
+            requested_revision_id=published.revision_id,
+            admissibility=Admissibility.PLAYER,
+            focus=ProjectionFocus(),
+            surface_context=SurfaceContext(surface_id="landingpage:player"),
+            message="What is the Sun Ledger?",
+        )
+    )
+    rendered = str(response.model_dump(mode="json"))
+    assert "src:gm-secret-siege-plan" not in rendered
+    assert "ev:gm-siege" not in rendered
+    assert "evidence_source_artifact_missing" not in response.coverage.gap_codes
+    assert "stored_provenance_invalid" not in response.coverage.gap_codes
+
+
+def test_gm_targeted_broken_provenance_surfaces_selected_gap() -> None:
+    """GM targeting an object with broken in-scope provenance gets a detailed gap."""
+    fixture = load_curated_mind_turn_fixture()
+    world_graph = InMemoryWorldGraphRepository()
+    sources = InMemorySourceRepository()
+    embedding_runs = InMemoryEmbeddingRunRepository()
+    semantic_documents = InMemorySemanticDocumentRepository(embedding_runs)
+    threads = InMemoryMindThreadRepository()
+    retrieval_sessions = InMemoryRetrievalSessionRepository()
+    seed = seed_curated_mind_turn(
+        world_graph=world_graph,
+        sources=sources,
+        embedding_runs=embedding_runs,
+        semantic_documents=semantic_documents,
+        threads=threads,
+        fixture=fixture,
+    )
+    # Corrupt revision ownership after seed.
+    existing = sources._revisions["srcrev:atlas-notes-v1"]
+    sources._revisions["srcrev:atlas-notes-v1"] = existing.model_copy(
+        update={"source_artifact_id": "src:other-notes"}
+    )
+    sources.put_artifact(
+        SourceArtifact(
+            source_artifact_id="src:other-notes",
+            source_domain=SourceDomain.WORLDBUILDING,
+            world_id=fixture.world_id,
+            visibility=Visibility.GM,
+            status=SourceStatus.ACTIVE,
+            created_at=FIXED_NOW,
+        )
+    )
+    service = MindTurnService(
+        world_graph=world_graph,
+        retrieval_sessions=retrieval_sessions,
+        threads=threads,
+        semantic_documents=semantic_documents,
+        semantic_search=InMemorySemanticSearch(semantic_documents, embedding_runs),
+        sources=sources,
+        query_embedder=fixture.query_embedder,
+        agent_adapter=FixtureGroundedAgentAdapter(),
+        clock=FixedClock(FIXED_NOW),
+    )
+    binding = fixture.authorized_demo_binding
+    response = service.execute(
+        MindTurnRequest(
+            request_id="req:gm-targeted-broken",
+            thread_id=str(binding["thread_id"]),
+            caller_scope=CallerScope(
+                caller_id=str(binding["caller_id"]),
+                tenant_id=binding.get("tenant_id"),
+                roles=list(binding["roles"]),
+            ),
+            world_id=str(binding["world_id"]),
+            campaign_id=binding.get("campaign_id"),
+            requested_revision_id=seed.revision_id,
+            admissibility=Admissibility.GM,
+            focus=ProjectionFocus(),
+            surface_context=SurfaceContext(
+                surface_id=str(binding["surface_id"]),
+                selected_object_ids=["obj:item-sun-ledger"],
+            ),
+            message="Inspect the selected object.",
+        )
+    )
+    assert "evidence_source_revision_artifact_mismatch" in response.coverage.gap_codes
+    assert "obj:item-sun-ledger" not in {
+        proj.payload.get("object_id")
+        for proj in response.semantic_projections
+        if proj.kind == "entity_brief"
+    }
+
+
+def test_graph_global_broken_provenance_not_copied_into_unrelated_response() -> None:
+    """In-scope broken provenance on an untargeted object must not enter coverage."""
+    fixture = load_curated_mind_turn_fixture()
+    world_graph = InMemoryWorldGraphRepository()
+    sources = InMemorySourceRepository()
+    embedding_runs = InMemoryEmbeddingRunRepository()
+    semantic_documents = InMemorySemanticDocumentRepository(embedding_runs)
+    threads = InMemoryMindThreadRepository()
+    retrieval_sessions = InMemoryRetrievalSessionRepository()
+    seed = seed_curated_mind_turn(
+        world_graph=world_graph,
+        sources=sources,
+        embedding_runs=embedding_runs,
+        semantic_documents=semantic_documents,
+        threads=threads,
+        fixture=fixture,
+    )
+    stored = world_graph.get_revision(fixture.world_id, seed.revision_id)
+    assert stored is not None
+    payload = dict(stored.graph_payload)
+    # Add a separate GM object with broken revision pointer; leave Sun Ledger intact.
+    payload["nodes"] = [
+        *list(payload["nodes"]),
+        {
+            "object_id": "obj:broken-side",
+            "kind": "document",
+            "label": "Broken Side Note",
+            "aliases": [],
+            "evidence_ref_ids": ["ev:broken-side"],
+        },
+    ]
+    payload["evidence_refs"] = [
+        *list(payload["evidence_refs"]),
+        {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": "ev:broken-side",
+            "source_artifact_id": "src:atlas-notes",
+            "source_revision_id": "srcrev:missing-side",
+            "source_domain": "worldbuilding",
+            "evidence_role": "support",
+            "can_open_source": True,
+            "locator": "fixture://broken-side",
+        },
+    ]
+    from dungeonmind.contracts.graph import PublishRevisionCommand
+
+    published = world_graph.publish_revision(
+        PublishRevisionCommand(
+            world_id=fixture.world_id,
+            parent_revision_id=seed.revision_id,
+            expected_parent_revision_id=seed.revision_id,
+            operation_ids=["op:inject-broken-side"],
+            graph_schema=stored.revision.graph_schema,
+            graph_payload=payload,
+            created_at=FIXED_NOW,
+        )
+    )
+    service = MindTurnService(
+        world_graph=world_graph,
+        retrieval_sessions=retrieval_sessions,
+        threads=threads,
+        semantic_documents=semantic_documents,
+        semantic_search=InMemorySemanticSearch(semantic_documents, embedding_runs),
+        sources=sources,
+        query_embedder=fixture.query_embedder,
+        agent_adapter=FixtureGroundedAgentAdapter(),
+        clock=FixedClock(FIXED_NOW),
+    )
+    binding = fixture.authorized_demo_binding
+    response = service.execute(
+        MindTurnRequest(
+            request_id="req:gm-unrelated-global",
+            thread_id=str(binding["thread_id"]),
+            caller_scope=CallerScope(
+                caller_id=str(binding["caller_id"]),
+                tenant_id=binding.get("tenant_id"),
+                roles=list(binding["roles"]),
+            ),
+            world_id=str(binding["world_id"]),
+            campaign_id=binding.get("campaign_id"),
+            requested_revision_id=published.revision_id,
+            admissibility=Admissibility.GM,
+            focus=ProjectionFocus(),
+            surface_context=SurfaceContext(surface_id=str(binding["surface_id"])),
+            message="What is the Sun Ledger?",
+        )
+    )
+    assert "evidence_source_revision_missing" not in response.coverage.gap_codes
+    assert "srcrev:missing-side" not in response.coverage.missing
+    assert "brass-bound" in response.answer.casefold()
 
 
 def test_player_cannot_resolve_or_inspect_mixed_provenance_gm_fields() -> None:
