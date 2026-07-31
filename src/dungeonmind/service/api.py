@@ -9,6 +9,7 @@ from collections.abc import Callable
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -60,18 +61,24 @@ def create_app(
     async def _dungeonmind_error(_request: Request, exc: DungeonMindError) -> JSONResponse:
         return JSONResponse(status_code=http_status_for(exc), content=error_envelope(exc))
 
+    def _validation_envelope(errors: list[Any]) -> dict[str, Any]:
+        return {
+            "error": {
+                "code": "request_validation_error",
+                "message": "Request validation failed.",
+                "details": {"errors": errors},
+            }
+        }
+
+    @app.exception_handler(RequestValidationError)
+    async def _request_validation_error(
+        _request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=422, content=_validation_envelope(exc.errors()))
+
     @app.exception_handler(ValidationError)
     async def _validation_error(_request: Request, exc: ValidationError) -> JSONResponse:
-        return JSONResponse(
-            status_code=422,
-            content={
-                "error": {
-                    "code": "request_validation_error",
-                    "message": "Request validation failed.",
-                    "details": {"errors": exc.errors()},
-                }
-            },
-        )
+        return JSONResponse(status_code=422, content=_validation_envelope(exc.errors()))
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:

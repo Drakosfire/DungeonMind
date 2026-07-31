@@ -62,6 +62,7 @@ def _ledger_context(*, evidence_role: str = "support") -> str:
                 "label": "The Sun Ledger",
                 "aliases": [],
                 "evidence_ref_ids": ["ev:ledger"],
+                "summary": "a brass-bound account of every dawn debt owed in Vael",
             },
         ],
         "relationships": [
@@ -147,3 +148,64 @@ def test_adapter_executes_without_repository_args() -> None:
     result = adapter.execute_turn(_context(_ledger_context()))
     assert result.answer
     assert adapter.adapter_id == "fixture-grounded-agent-v1"
+
+
+def test_ledger_answer_follows_context_summary_not_compiled_in_prose() -> None:
+    adapter = FixtureGroundedAgentAdapter()
+    altered = {
+        "revision_id": REVISION,
+        "objects": [
+            {
+                "object_id": "obj:item-sun-ledger",
+                "kind": "artifact",
+                "label": "The Sun Ledger",
+                "aliases": [],
+                "evidence_ref_ids": ["ev:ledger"],
+                "summary": "a silver daybook of harbor tithes",
+            }
+        ],
+        "relationships": [],
+        "evidence": [
+            {
+                "evidence_ref_id": "ev:ledger",
+                "source_artifact_id": "src:atlas-notes",
+                "source_domain": "worldbuilding",
+                "evidence_role": "support",
+                "can_open_source": True,
+            }
+        ],
+        "coverage": {"known": [], "missing": [], "gap_codes": []},
+    }
+    result = adapter.execute_turn(
+        _context(canonical_json(altered), message="What is the Sun Ledger?")
+    )
+    assert "silver daybook" in result.answer
+    assert "brass-bound" not in result.answer.casefold()
+    assert result.claims[0].authority is ClaimAuthority.GRAPH_FACT
+
+    no_summary = {
+        "revision_id": REVISION,
+        "objects": [
+            {
+                "object_id": "obj:item-sun-ledger",
+                "kind": "artifact",
+                "label": "The Sun Ledger",
+                "aliases": [],
+                "evidence_ref_ids": ["ev:ledger"],
+            }
+        ],
+        "relationships": [],
+        "evidence": [
+            {
+                "evidence_ref_id": "ev:ledger",
+                "source_artifact_id": "src:atlas-notes",
+                "source_domain": "worldbuilding",
+                "evidence_role": "support",
+            }
+        ],
+        "coverage": {"known": [], "missing": [], "gap_codes": []},
+    }
+    kind_only = adapter.execute_turn(
+        _context(canonical_json(no_summary), message="What is the Sun Ledger?")
+    )
+    assert kind_only.answer == "The Sun Ledger is an artifact."

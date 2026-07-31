@@ -39,7 +39,8 @@
         "kind": "artifact",
         "label": "The Sun Ledger",
         "aliases": ["Sun Ledger"],
-        "evidence_ref_ids": ["ev:ledger"]
+        "evidence_ref_ids": ["ev:ledger"],
+        "summary": "a brass-bound account of every dawn debt owed in Vael"
       }
     ],
     "relationships": [
@@ -209,7 +210,7 @@
     {
       "name": "what_is_sun_ledger",
       "message": "What is the Sun Ledger?",
-      "expect_answer_contains": ["Sun Ledger"],
+      "expect_answer_contains": ["Sun Ledger", "brass-bound"],
       "expect_object_ids": ["obj:item-sun-ledger"],
       "expect_relationship_ids": [],
       "expect_evidence_ref_ids": ["ev:ledger"],

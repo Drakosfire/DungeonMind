@@ -7,12 +7,14 @@ closed via ``PersistenceIntegrityError``.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, Self
 
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, model_validator
 
 from ..contracts.base import DungeonMindModel
+from ..contracts.evidence import EVIDENCE_REF_SCHEMA, EvidenceRole, SourceDomain
 from ..contracts.identity import IdentityOutcome
 from ..contracts.retrieval import ResolvedReferent
 from ..domain.errors import PersistenceIntegrityError
@@ -26,6 +28,7 @@ class GraphNodeRecord(DungeonMindModel):
     label: str
     aliases: list[str] = Field(default_factory=list)
     evidence_ref_ids: list[str] = Field(default_factory=list)
+    summary: str | None = None
 
 
 class GraphRelationshipRecord(DungeonMindModel):
@@ -37,7 +40,7 @@ class GraphRelationshipRecord(DungeonMindModel):
 
 
 class GraphEvidenceRecord(DungeonMindModel):
-    schema_version: str = "dm_evidence_ref_v1"
+    schema_version: str = EVIDENCE_REF_SCHEMA
     evidence_ref_id: str
     source_artifact_id: str
     source_revision_id: str | None = None
@@ -48,6 +51,22 @@ class GraphEvidenceRecord(DungeonMindModel):
     locator: str | None = None
     uri: str | None = None
 
+    @model_validator(mode="after")
+    def _approved_contract_values(self) -> Self:
+        if self.schema_version != EVIDENCE_REF_SCHEMA:
+            raise ValueError(
+                f"unsupported evidence schema_version {self.schema_version!r}; "
+                f"expected {EVIDENCE_REF_SCHEMA!r}"
+            )
+        try:
+            SourceDomain(self.source_domain)
+            EvidenceRole(self.evidence_role)
+        except ValueError as exc:
+            raise ValueError(
+                "evidence_ref must use approved source_domain and evidence_role values"
+            ) from exc
+        return self
+
 
 class GraphObjectView(DungeonMindModel):
     object_id: str
@@ -55,6 +74,7 @@ class GraphObjectView(DungeonMindModel):
     label: str
     aliases: list[str] = Field(default_factory=list)
     evidence_ref_ids: list[str] = Field(default_factory=list)
+    summary: str | None = None
 
 
 class GraphRelationshipView(DungeonMindModel):
@@ -108,6 +128,18 @@ class GraphSnapshotReader(Protocol):
 
 def _norm(text: str) -> str:
     return text.casefold().strip()
+
+
+def contains_exact_phrase(haystack: str, needle: str) -> bool:
+    """Boundary-aware exact phrase match (case-sensitive on the supplied strings).
+
+    Prevents ``Astor`` from matching inside ``Astoria`` and ``obj:x`` from
+    matching inside ``obj:xyz``.
+    """
+    if not needle:
+        return False
+    pattern = rf"(?<![A-Za-z0-9_:]){re.escape(needle)}(?![A-Za-z0-9_:])"
+    return re.search(pattern, haystack) is not None
 
 
 class UnionGraphV1SnapshotReader:
@@ -169,6 +201,7 @@ class UnionGraphV1SnapshotReader:
                 label=node.label,
                 aliases=list(node.aliases),
                 evidence_ref_ids=list(node.evidence_ref_ids),
+                summary=node.summary,
             )
 
         evidence: dict[str, GraphEvidenceRecord] = {}
@@ -294,6 +327,8 @@ class UnionGraphV1SnapshotReader:
                 )
             )
 
+        normalized_message = _norm(message)
+
         for object_id in selected_object_ids:
             if object_id in snapshot.objects:
                 _emit(object_id, IdentityOutcome.RESOLVED_EXISTING, object_id)
@@ -301,11 +336,11 @@ class UnionGraphV1SnapshotReader:
                 _emit(object_id, IdentityOutcome.REJECTED, None)
 
         for object_id in sorted(snapshot.objects):
-            if object_id in message:
+            if contains_exact_phrase(message, object_id):
                 _emit(object_id, IdentityOutcome.RESOLVED_EXISTING, object_id)
 
         for label, object_ids in sorted(snapshot.label_index.items()):
-            if label and label in _norm(message):
+            if label and contains_exact_phrase(normalized_message, label):
                 if len(object_ids) == 1:
                     obj = snapshot.objects[object_ids[0]]
                     _emit(obj.label, IdentityOutcome.RESOLVED_EXISTING, object_ids[0])
@@ -317,7 +352,7 @@ class UnionGraphV1SnapshotReader:
                     )
 
         for alias, object_ids in sorted(snapshot.alias_index.items()):
-            if alias and alias in _norm(message):
+            if alias and contains_exact_phrase(normalized_message, alias):
                 if len(object_ids) == 1:
                     _emit(alias, IdentityOutcome.RESOLVED_EXISTING, object_ids[0])
                 else:

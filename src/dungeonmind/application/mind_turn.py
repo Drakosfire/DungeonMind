@@ -6,12 +6,13 @@ Transport-neutral: no FastAPI, Psycopg, fixture paths, or Uvicorn imports.
 from __future__ import annotations
 
 import hashlib
+import threading
 from datetime import datetime
 from typing import Protocol
 
 from ..agents.protocol import AgentAdapter, AgentTurnContext, sanitize_agent_input
 from ..contracts.capability import CapabilityPolicy, GraphScope
-from ..contracts.evidence import EvidenceRef, EvidenceRole, SourceDomain
+from ..contracts.evidence import EvidenceRef, EvidenceRole, SourceDomain, SourceStatus
 from ..contracts.graph import StoredGraphRevision
 from ..contracts.mind_turn import (
     ContextChange,
@@ -32,7 +33,7 @@ from ..contracts.retrieval import (
 )
 from ..contracts.semantic import CandidateChannel, SemanticQuery
 from ..contracts.vocabulary import Visibility
-from ..domain.canonical import canonical_json
+from ..domain.canonical import canonical_json, canonical_sha256
 from ..domain.errors import (
     HeadNotFoundError,
     IdempotencyConflictError,
@@ -41,6 +42,7 @@ from ..domain.errors import (
 )
 from ..domain.fusion import reciprocal_rank_fusion
 from .context_assembly import assemble_agent_context
+from .graph_scope import project_scoped_snapshot, source_artifact_in_scope
 from .graph_snapshot import (
     GraphObjectView,
     GraphRelationshipView,
@@ -60,6 +62,7 @@ from .repositories import (
 )
 
 TOP_K_PER_CHANNEL = 5
+REQUEST_FINGERPRINT_DIAGNOSTIC = "authorized_request_fingerprint"
 
 
 class Clock(Protocol):
@@ -90,6 +93,29 @@ def _admissibility_to_visibility(admissibility: Admissibility) -> Visibility:
     return Visibility.GM if admissibility is Admissibility.GM else Visibility.PLAYER
 
 
+
+def request_fingerprint(request: MindTurnRequest) -> str:
+    """Canonical fingerprint of the complete authorized request."""
+    return canonical_sha256(request.model_dump(mode="json"))
+
+
+def _fingerprint_diagnostic(request: MindTurnRequest) -> DiagnosticEntry:
+    return DiagnosticEntry(
+        code=REQUEST_FINGERPRINT_DIAGNOSTIC,
+        severity="info",
+        message="Canonical fingerprint of the authorized MindTurnRequest.",
+        data={"fingerprint": request_fingerprint(request)},
+    )
+
+
+def _session_request_fingerprint(session: GraphRetrievalSession) -> str | None:
+    for entry in session.diagnostics:
+        if entry.code == REQUEST_FINGERPRINT_DIAGNOSTIC:
+            value = entry.data.get("fingerprint")
+            return str(value) if isinstance(value, str) else None
+    return None
+
+
 class MindTurnService:
     def __init__(
         self,
@@ -116,12 +142,23 @@ class MindTurnService:
         self._agent_adapter = agent_adapter
         self._clock = clock
         self._agent_invocation_count = 0
+        self._request_locks_guard = threading.Lock()
+        self._request_locks: dict[tuple[str, str], threading.Lock] = {}
 
     @property
     def agent_invocation_count(self) -> int:
         return self._agent_invocation_count
 
+    def _lock_for(self, thread_id: str, request_id: str) -> threading.Lock:
+        key = (thread_id, request_id)
+        with self._request_locks_guard:
+            return self._request_locks.setdefault(key, threading.Lock())
+
     def execute(self, request: MindTurnRequest) -> MindTurnResponse:
+        with self._lock_for(request.thread_id, request.request_id):
+            return self._execute_unlocked(request)
+
+    def _execute_unlocked(self, request: MindTurnRequest) -> MindTurnResponse:
         replay = self._find_replay(request)
         if replay is not None:
             return replay
@@ -155,8 +192,16 @@ class MindTurnService:
         )
         if parsed.world_id != request.world_id:
             raise PersistenceWorldMismatch(parsed.world_id, request.world_id)
+        parsed = project_scoped_snapshot(
+            parsed,
+            sources=self._sources,
+            world_id=request.world_id,
+            campaign_id=request.campaign_id,
+            admissibility=request.admissibility,
+        )
 
         diagnostics: list[DiagnosticEntry] = [
+            _fingerprint_diagnostic(request),
             DiagnosticEntry(
                 code="fixture_embedding_provider",
                 severity="info",
@@ -488,6 +533,49 @@ class MindTurnService:
             return prior_response
         return None
 
+    def _assert_session_matches_request(
+        self,
+        request: MindTurnRequest,
+        session: GraphRetrievalSession,
+    ) -> None:
+        """Fail closed when a persisted session is not the originating request."""
+        stored_fingerprint = _session_request_fingerprint(session)
+        actual_fingerprint = request_fingerprint(request)
+        if stored_fingerprint is None or stored_fingerprint != actual_fingerprint:
+            raise IdempotencyConflictError(
+                f"request_id {request.request_id!r} already used with a different payload",
+                details={"reason": "retrieval_session_fingerprint_mismatch"},
+            )
+        if session.thread_id != request.thread_id:
+            raise IdempotencyConflictError(
+                f"request_id {request.request_id!r} already used with a different payload",
+                details={"reason": "retrieval_session_thread_mismatch"},
+            )
+        if session.question != request.message:
+            raise IdempotencyConflictError(
+                f"request_id {request.request_id!r} already used with a different payload",
+                details={"reason": "retrieval_session_question_mismatch"},
+            )
+        snap = session.snapshot
+        if (
+            snap.world_id != request.world_id
+            or snap.campaign_id != request.campaign_id
+            or snap.focus != request.focus
+            or snap.admissibility != request.admissibility
+        ):
+            raise IdempotencyConflictError(
+                f"request_id {request.request_id!r} already used with a different payload",
+                details={"reason": "retrieval_session_scope_mismatch"},
+            )
+        if (
+            request.requested_revision_id is not None
+            and snap.revision_id != request.requested_revision_id
+        ):
+            raise IdempotencyConflictError(
+                f"request_id {request.request_id!r} already used with a different payload",
+                details={"reason": "retrieval_session_revision_mismatch"},
+            )
+
     def _response_from_session(
         self,
         request: MindTurnRequest,
@@ -499,6 +587,8 @@ class MindTurnService:
         revision using persisted preflight candidates and referents, without
         re-invoking the agent.
         """
+        self._assert_session_matches_request(request, session)
+
         objects: list[GraphObjectView] = []
         relationships: list[GraphRelationshipView] = []
         seed_ids: list[str] = sorted(
@@ -507,31 +597,42 @@ class MindTurnService:
         stored = self._world_graph.get_revision(
             request.world_id, session.snapshot.revision_id
         )
-        if stored is not None:
-            parsed = self._graph_reader.parse(
-                graph_schema=stored.revision.graph_schema,
-                graph_payload=stored.graph_payload,
+        if stored is None:
+            raise RevisionNotFoundError(
+                f"revision {session.snapshot.revision_id!r} not found for world "
+                f"{request.world_id!r} during session recovery"
             )
-            candidate_object_ids: list[str] = []
-            for doc_id in session.preflight_candidate_ids:
-                doc = self._semantic_documents.get(doc_id)
-                if doc is None or not doc.graph_object_id:
-                    continue
-                if self._graph_reader.get_object(parsed, doc.graph_object_id) is None:
-                    continue
-                candidate_object_ids.append(doc.graph_object_id)
-            seed_ids = sorted(
-                {
-                    *(r.object_id for r in session.referents if r.object_id),
-                    *candidate_object_ids,
-                }
-            )
-            focus_ids = collect_one_hop_object_ids(parsed, seed_ids)
-            for object_id in focus_ids:
-                obj = self._graph_reader.get_object(parsed, object_id)
-                if obj is not None:
-                    objects.append(obj)
-            relationships = self._graph_reader.list_relationships(parsed, seed_ids)
+        parsed = self._graph_reader.parse(
+            graph_schema=stored.revision.graph_schema,
+            graph_payload=stored.graph_payload,
+        )
+        parsed = project_scoped_snapshot(
+            parsed,
+            sources=self._sources,
+            world_id=request.world_id,
+            campaign_id=request.campaign_id,
+            admissibility=request.admissibility,
+        )
+        candidate_object_ids: list[str] = []
+        for doc_id in session.preflight_candidate_ids:
+            doc = self._semantic_documents.get(doc_id)
+            if doc is None or not doc.graph_object_id:
+                continue
+            if self._graph_reader.get_object(parsed, doc.graph_object_id) is None:
+                continue
+            candidate_object_ids.append(doc.graph_object_id)
+        seed_ids = sorted(
+            {
+                *(r.object_id for r in session.referents if r.object_id),
+                *candidate_object_ids,
+            }
+        )
+        focus_ids = collect_one_hop_object_ids(parsed, seed_ids)
+        for object_id in focus_ids:
+            obj = self._graph_reader.get_object(parsed, object_id)
+            if obj is not None:
+                objects.append(obj)
+        relationships = self._graph_reader.list_relationships(parsed, seed_ids)
 
         projections = self._build_projections(
             request_id=request.request_id,
@@ -652,24 +753,41 @@ class MindTurnService:
                 coverage.gap_codes.append("missing_support_evidence")
                 coverage.missing.append(evidence_ref_id)
                 return
+            try:
+                source_domain = SourceDomain(record.source_domain)
+                evidence_role = EvidenceRole(record.evidence_role)
+            except ValueError:
+                coverage.gap_codes.append("evidence_contract_invalid")
+                coverage.missing.append(evidence_ref_id)
+                return
             artifact = self._sources.get_artifact(record.source_artifact_id)
             if artifact is None:
                 coverage.gap_codes.append("evidence_source_artifact_missing")
                 coverage.missing.append(record.source_artifact_id)
                 return
-            if (
-                request.admissibility is Admissibility.PLAYER
-                and artifact.visibility is Visibility.GM
-            ):
+            if artifact.status is not SourceStatus.ACTIVE:
+                coverage.gap_codes.append("evidence_source_inactive")
+                coverage.missing.append(record.source_artifact_id)
                 return
-            if artifact.world_id != request.world_id:
-                coverage.gap_codes.append("evidence_world_mismatch")
+            if artifact.source_domain is not source_domain:
+                coverage.gap_codes.append("evidence_source_domain_mismatch")
                 coverage.missing.append(evidence_ref_id)
+                return
+            if not source_artifact_in_scope(
+                artifact,
+                world_id=request.world_id,
+                campaign_id=request.campaign_id,
+                admissibility=request.admissibility,
+            ):
                 return
             if record.source_revision_id:
                 revision = self._sources.get_revision(record.source_revision_id)
                 if revision is None:
                     coverage.gap_codes.append("evidence_source_revision_missing")
+                    coverage.missing.append(record.source_revision_id)
+                    return
+                if revision.source_artifact_id != record.source_artifact_id:
+                    coverage.gap_codes.append("evidence_source_revision_artifact_mismatch")
                     coverage.missing.append(record.source_revision_id)
                     return
             if evidence_ref_id not in seen_evidence:
@@ -679,8 +797,8 @@ class MindTurnService:
                         evidence_ref_id=record.evidence_ref_id,
                         source_artifact_id=record.source_artifact_id,
                         source_revision_id=record.source_revision_id,
-                        source_domain=SourceDomain(record.source_domain),
-                        evidence_role=EvidenceRole(record.evidence_role),
+                        source_domain=source_domain,
+                        evidence_role=evidence_role,
                         can_open_source=record.can_open_source,
                         can_highlight_span=record.can_highlight_span,
                         locator=record.locator,
@@ -756,6 +874,7 @@ class MindTurnService:
                         "label": obj.label,
                         "kind": obj.kind,
                         "aliases": list(obj.aliases),
+                        **({"summary": obj.summary} if obj.summary else {}),
                     },
                 )
             )

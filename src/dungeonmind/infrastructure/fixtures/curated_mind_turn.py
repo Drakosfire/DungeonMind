@@ -24,14 +24,16 @@ from ...contracts.semantic import (
     SemanticDocumentKind,
 )
 from ...contracts.vocabulary import Visibility
-from ...domain.canonical import sha256_text
+from ...domain.canonical import canonical_sha256, sha256_text
 from ...domain.errors import IdempotencyConflictError
+from ...domain.revision_ids import compute_revision_id
 from .query_embedding import FixtureQueryEmbeddingProvider
 
 FIXTURE_FILENAME = "curated_mind_turn_v1.json"
 DEFAULT_FIXTURE_PATH = (
     Path(__file__).resolve().parents[4] / "tests" / "fixtures" / FIXTURE_FILENAME
 )
+SEED_OPERATION_IDS = ["op:curated-mind-turn-seed"]
 
 
 @dataclass(frozen=True)
@@ -110,6 +112,131 @@ def load_curated_mind_turn_fixture(
     return CuratedMindTurnFixture(raw=raw, path=fixture_path)
 
 
+def _build_source_artifacts(
+    loaded: CuratedMindTurnFixture, *, created_at: datetime
+) -> list[SourceArtifact]:
+    artifacts: list[SourceArtifact] = []
+    for artifact in loaded.raw["source_artifacts"]:
+        artifacts.append(
+            SourceArtifact(
+                source_artifact_id=str(artifact["source_artifact_id"]),
+                source_domain=SourceDomain(str(artifact["source_domain"])),
+                world_id=str(artifact["world_id"]),
+                campaign_id=artifact.get("campaign_id"),
+                session_id=artifact.get("session_id"),
+                current_revision_id=artifact.get("current_revision_id"),
+                authority=str(artifact.get("authority") or "primary"),
+                visibility=Visibility(str(artifact.get("visibility") or "gm")),
+                status=SourceStatus(str(artifact.get("status") or "active")),
+                created_at=created_at,
+            )
+        )
+    return artifacts
+
+
+def _build_source_revisions(
+    loaded: CuratedMindTurnFixture, *, created_at: datetime
+) -> list[SourceRevision]:
+    revisions: list[SourceRevision] = []
+    for revision in loaded.raw["source_revisions"]:
+        revisions.append(
+            SourceRevision(
+                source_revision_id=str(revision["source_revision_id"]),
+                source_artifact_id=str(revision["source_artifact_id"]),
+                content_sha256=str(revision["content_sha256"]),
+                body_storage=revision.get("body_storage") or "external",  # type: ignore[arg-type]
+                locator=revision.get("locator"),
+                created_at=created_at,
+            )
+        )
+    return revisions
+
+
+def _build_embedding_run(
+    loaded: CuratedMindTurnFixture, *, created_at: datetime
+) -> EmbeddingRun:
+    run_meta = loaded.raw["embedding_run"]
+    return EmbeddingRun(
+        run_id=str(run_meta["run_id"]),
+        embedding_model=str(run_meta["embedding_model"]),
+        embedding_model_revision=str(run_meta["embedding_model_revision"]),
+        embedding_dimensions=int(run_meta["embedding_dimensions"]),
+        embedding_recipe=str(run_meta["embedding_recipe"]),
+        world_id=loaded.world_id,
+        created_at=created_at,
+    )
+
+
+def _build_semantic_documents(
+    loaded: CuratedMindTurnFixture,
+    *,
+    revision_id: str,
+    run: EmbeddingRun,
+    created_at: datetime,
+) -> list[SemanticDocument]:
+    docs: list[SemanticDocument] = []
+    for entry in loaded.raw["semantic_documents"]:
+        content = str(entry["content"])
+        embedding = [float(v) for v in entry["embedding"]]
+        docs.append(
+            SemanticDocument(
+                semantic_document_id=str(entry["semantic_document_id"]),
+                document_kind=SemanticDocumentKind(str(entry["document_kind"])),
+                world_id=loaded.world_id,
+                campaign_scope=entry.get("campaign_scope"),
+                graph_object_id=str(entry["graph_object_id"]),
+                graph_revision_id=revision_id,
+                visibility=Visibility(str(entry["visibility"])),
+                content=content,
+                content_sha256=sha256_text(content),
+                embedding_model=run.embedding_model,
+                embedding_model_revision=run.embedding_model_revision,
+                embedding_dimensions=run.embedding_dimensions,
+                embedding_recipe=run.embedding_recipe,
+                materialization_run_id=run.run_id,
+                created_at=created_at,
+                embedding=embedding,
+            )
+        )
+    return docs
+
+
+def _resolve_seed_revision(
+    *,
+    world_graph: WorldGraphRepository,
+    loaded: CuratedMindTurnFixture,
+) -> tuple[str, str]:
+    """Return ``(revision_id, status)`` after preflighting head compatibility.
+
+    Performs no writes.
+    """
+    world_id = loaded.world_id
+    expected_revision_id = compute_revision_id(
+        world_id=world_id,
+        parent_revision_id=None,
+        operation_ids=SEED_OPERATION_IDS,
+        graph_schema=loaded.graph_schema,
+        graph_payload_sha256=canonical_sha256(loaded.graph_payload),
+    )
+    head = world_graph.get_head(world_id)
+    if head is None:
+        return expected_revision_id, "published"
+    stored = world_graph.get_revision(world_id, head.head_revision_id)
+    if stored is None:
+        raise IdempotencyConflictError(
+            f"world {world_id!r} head {head.head_revision_id!r} is unreadable"
+        )
+    if (
+        stored.revision.graph_schema != loaded.graph_schema
+        or stored.graph_payload != loaded.graph_payload
+    ):
+        raise IdempotencyConflictError(
+            f"world {world_id!r} already has a different graph head; "
+            "refusing to replace or roll back"
+        )
+    return head.head_revision_id, "reused"
+
+
 def seed_curated_mind_turn(
     *,
     world_graph: WorldGraphRepository,
@@ -125,11 +252,23 @@ def seed_curated_mind_turn(
     world_id = loaded.world_id
     created_at = loaded.created_at()
     completed_at = loaded.completed_at()
-    run_meta = loaded.raw["embedding_run"]
-    run_id = str(run_meta["run_id"])
+    thread_id = str(binding["thread_id"])
 
+    # Preconstruct/validate every contract model and preflight conflicts first.
+    artifacts = _build_source_artifacts(loaded, created_at=created_at)
+    revisions = _build_source_revisions(loaded, created_at=created_at)
+    run = _build_embedding_run(loaded, created_at=created_at)
+    revision_id, status = _resolve_seed_revision(world_graph=world_graph, loaded=loaded)
+    docs = _build_semantic_documents(
+        loaded,
+        revision_id=revision_id,
+        run=run,
+        created_at=created_at,
+    )
+
+    # Writes begin only after validation and conflict preflight succeed.
     threads.create_thread(
-        str(binding["thread_id"]),
+        thread_id,
         world_id=world_id,
         campaign_id=binding.get("campaign_id"),
         caller_id=str(binding["caller_id"]),
@@ -137,117 +276,49 @@ def seed_curated_mind_turn(
         created_at=loaded.thread_created_at(),
     )
 
-    head = world_graph.get_head(world_id)
-    if head is None:
+    if status == "published":
         published = world_graph.publish_revision(
             PublishRevisionCommand(
                 world_id=world_id,
                 parent_revision_id=None,
                 expected_parent_revision_id=None,
-                operation_ids=["op:curated-mind-turn-seed"],
+                operation_ids=list(SEED_OPERATION_IDS),
                 graph_schema=loaded.graph_schema,
                 graph_payload=loaded.graph_payload,
                 created_at=created_at,
             )
         )
-        revision_id = published.revision_id
-        status = "published"
-    else:
-        stored = world_graph.get_revision(world_id, head.head_revision_id)
-        if stored is None:
+        if published.revision_id != revision_id:
             raise IdempotencyConflictError(
-                f"world {world_id!r} head {head.head_revision_id!r} is unreadable"
+                "published revision_id disagreed with precomputed fixture revision",
+                details={
+                    "expected": revision_id,
+                    "actual": published.revision_id,
+                },
             )
-        if (
-            stored.revision.graph_schema != loaded.graph_schema
-            or stored.graph_payload != loaded.graph_payload
-        ):
-            raise IdempotencyConflictError(
-                f"world {world_id!r} already has a different graph head; "
-                "refusing to replace or roll back"
-            )
-        revision_id = head.head_revision_id
-        status = "reused"
 
-    for artifact in loaded.raw["source_artifacts"]:
-        sources.put_artifact(
-            SourceArtifact(
-                source_artifact_id=str(artifact["source_artifact_id"]),
-                source_domain=SourceDomain(str(artifact["source_domain"])),
-                world_id=str(artifact["world_id"]),
-                campaign_id=artifact.get("campaign_id"),
-                session_id=artifact.get("session_id"),
-                current_revision_id=artifact.get("current_revision_id"),
-                authority=str(artifact.get("authority") or "primary"),
-                visibility=Visibility(str(artifact.get("visibility") or "gm")),
-                status=SourceStatus(str(artifact.get("status") or "active")),
-                created_at=created_at,
-            )
-        )
-    for revision in loaded.raw["source_revisions"]:
-        sources.put_revision(
-            SourceRevision(
-                source_revision_id=str(revision["source_revision_id"]),
-                source_artifact_id=str(revision["source_artifact_id"]),
-                content_sha256=str(revision["content_sha256"]),
-                body_storage=revision.get("body_storage") or "external",  # type: ignore[arg-type]
-                locator=revision.get("locator"),
-                created_at=created_at,
-            )
-        )
+    for artifact in artifacts:
+        sources.put_artifact(artifact)
+    for revision in revisions:
+        sources.put_revision(revision)
 
-    existing_run = embedding_runs.get(run_id)
+    existing_run = embedding_runs.get(run.run_id)
     if existing_run is None:
-        embedding_runs.begin(
-            EmbeddingRun(
-                run_id=run_id,
-                embedding_model=str(run_meta["embedding_model"]),
-                embedding_model_revision=str(run_meta["embedding_model_revision"]),
-                embedding_dimensions=int(run_meta["embedding_dimensions"]),
-                embedding_recipe=str(run_meta["embedding_recipe"]),
-                world_id=world_id,
-                created_at=created_at,
-            )
-        )
-    docs: list[SemanticDocument] = []
-    for entry in loaded.raw["semantic_documents"]:
-        content = str(entry["content"])
-        embedding = [float(v) for v in entry["embedding"]]
-        docs.append(
-            SemanticDocument(
-                semantic_document_id=str(entry["semantic_document_id"]),
-                document_kind=SemanticDocumentKind(str(entry["document_kind"])),
-                world_id=world_id,
-                campaign_scope=entry.get("campaign_scope"),
-                graph_object_id=str(entry["graph_object_id"]),
-                graph_revision_id=revision_id,
-                visibility=Visibility(str(entry["visibility"])),
-                content=content,
-                content_sha256=sha256_text(content),
-                embedding_model=str(run_meta["embedding_model"]),
-                embedding_model_revision=str(run_meta["embedding_model_revision"]),
-                embedding_dimensions=int(run_meta["embedding_dimensions"]),
-                embedding_recipe=str(run_meta["embedding_recipe"]),
-                materialization_run_id=run_id,
-                created_at=created_at,
-                embedding=embedding,
-            )
-        )
-    # Documents may only insert while RUNNING; exact replays after terminal are OK.
-    current = embedding_runs.get(run_id)
+        embedding_runs.begin(run)
+
+    current = embedding_runs.get(run.run_id)
     assert current is not None
     if current.status.value == "running":
         semantic_documents.upsert_batch(docs)
-        embedding_runs.complete(run_id, completed_at=completed_at)
+        embedding_runs.complete(run.run_id, completed_at=completed_at)
     else:
-        # Idempotent replay of document upserts against a completed run.
         semantic_documents.upsert_batch(docs)
-    embedding_runs.activate(run_id)
+    embedding_runs.activate(run.run_id)
 
     return CuratedMindTurnSeedResult(
         world_id=world_id,
         revision_id=revision_id,
-        embedding_run_id=run_id,
-        thread_id=str(binding["thread_id"]),
+        embedding_run_id=run.run_id,
+        thread_id=thread_id,
         status=status,
     )

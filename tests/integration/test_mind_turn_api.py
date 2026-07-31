@@ -172,6 +172,66 @@ def test_invalid_payload_422(seeded_client) -> None:
     client, _fixture, _service = seeded_client
     response = client.post("/v1/mind-turn", json={"schema_version": "mind_turn_v1"})
     assert response.status_code == 422
+    body = response.json()
+    assert set(body.keys()) == {"error"}
+    assert body["error"]["code"] == "request_validation_error"
+    assert body["error"]["message"] == "Request validation failed."
+    assert isinstance(body["error"]["details"].get("errors"), list)
+
+
+def test_persistence_errors_are_sanitized(seeded_client) -> None:
+    from dungeonmind.domain.errors import (
+        PersistenceIntegrityError,
+        PersistenceUnavailableError,
+    )
+    from dungeonmind.service.error_mapping import error_envelope
+
+    leak = (
+        'connection to host "db.internal" port 5432 failed: '
+        "password=super-secret "
+        'DETAIL: Key (thread_id)=(thr:x) already exists in table "mind_threads". '
+        "SQL: SELECT * FROM dungeonmind.mind_threads WHERE caller_id = 'x'"
+    )
+    unavailable = error_envelope(PersistenceUnavailableError(leak, details={"reason": "connect"}))
+    integrity = error_envelope(
+        PersistenceIntegrityError(leak, details={"reason": "constraint", "sql": leak})
+    )
+    for envelope in (unavailable, integrity):
+        rendered = str(envelope)
+        assert "super-secret" not in rendered
+        assert "db.internal" not in rendered
+        assert "mind_threads" not in rendered
+        assert "SELECT *" not in rendered
+        assert "password=" not in rendered
+        assert set(envelope.keys()) == {"error"}
+        assert envelope["error"]["code"] in {
+            "persistence_unavailable",
+            "persistence_integrity_error",
+        }
+        assert envelope["error"]["details"].get("sql") is None
+
+    client, fixture, service = seeded_client
+
+    def _boom(_request):
+        raise PersistenceUnavailableError(leak)
+
+    service.execute = _boom  # type: ignore[method-assign]
+    response = client.post(
+        "/v1/mind-turn",
+        json=_request_body(
+            fixture,
+            request_id="req:api-sanitize",
+            message="Who safeguards the Sun Ledger?",
+        ),
+    )
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["error"]["code"] == "persistence_unavailable"
+    assert payload["error"]["message"] == "Persistence backend is temporarily unavailable."
+    rendered = response.text
+    assert "super-secret" not in rendered
+    assert "mind_threads" not in rendered
+    assert "SELECT *" not in rendered
 
 
 def test_openapi_only_intended_endpoints(seeded_client) -> None:

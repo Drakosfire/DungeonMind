@@ -147,6 +147,10 @@ def _claim(
     )
 
 
+def object_id_fallback(obj: dict[str, Any]) -> str:
+    return str(obj.get("object_id") or "unknown")
+
+
 def _answer_from_context(
     *,
     message: str,
@@ -223,11 +227,15 @@ def _answer_from_context(
         None,
     )
     if ledger is not None and "what" in folded and "ledger" in folded:
-        label = str(ledger.get("label") or "The Sun Ledger")
+        label = str(ledger.get("label") or object_id_fallback(ledger))
+        kind = str(ledger.get("kind") or "artifact")
+        summary = ledger.get("summary")
         evidence_ids = _support_for(ledger, support_ids)
-        text = (
-            f"{label} is a brass-bound account of every dawn debt owed in Vael."
-        )
+        if isinstance(summary, str) and summary.strip():
+            text = f"{label}: {summary.strip()}"
+        else:
+            article = "an" if kind[:1].casefold() in {"a", "e", "i", "o", "u"} else "a"
+            text = f"{label} is {article} {kind}."
         claims.append(
             _claim(
                 claim_id="claim:fixture-ledger",

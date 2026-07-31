@@ -218,3 +218,60 @@ def test_traversal_never_exceeds_one_hop() -> None:
     expanded = collect_one_hop_object_ids(snapshot, ["obj:item-sun-ledger"])
     # Ledger ↔ Astor is one hop; Vael is two hops from the ledger and must stay out.
     assert expanded == ["obj:item-sun-ledger", "obj:npc-mere-astor"]
+
+
+def test_substring_labels_and_ids_do_not_resolve() -> None:
+    snapshot = READER.parse(graph_schema="dm_union_graph_v1", graph_payload=_payload())
+    referents = READER.resolve_mentions(
+        snapshot,
+        message="Astoria visited Vaelian markets near obj:xyz",
+        selected_object_ids=[],
+    )
+    resolved_ids = {r.object_id for r in referents if r.object_id}
+    assert "obj:npc-mere-astor" not in resolved_ids
+    assert "obj:city-vael" not in resolved_ids
+
+    # Short object id must not match inside a longer id token.
+    tiny = {
+        "world_id": "world:demo-atlas",
+        "nodes": [
+            {
+                "object_id": "obj:x",
+                "kind": "npc",
+                "label": "X",
+                "aliases": [],
+                "evidence_ref_ids": ["ev:x"],
+            },
+            {
+                "object_id": "obj:xyz",
+                "kind": "npc",
+                "label": "XYZ",
+                "aliases": [],
+                "evidence_ref_ids": ["ev:xyz"],
+            },
+        ],
+        "relationships": [],
+        "evidence_refs": [
+            {
+                "evidence_ref_id": "ev:x",
+                "source_artifact_id": "src:atlas-notes",
+                "source_revision_id": "srcrev:atlas-notes-v1",
+                "source_domain": "worldbuilding",
+                "evidence_role": "support",
+            },
+            {
+                "evidence_ref_id": "ev:xyz",
+                "source_artifact_id": "src:atlas-notes",
+                "source_revision_id": "srcrev:atlas-notes-v1",
+                "source_domain": "worldbuilding",
+                "evidence_role": "support",
+            },
+        ],
+    }
+    tiny_snap = READER.parse(graph_schema="dm_union_graph_v1", graph_payload=tiny)
+    tiny_refs = READER.resolve_mentions(
+        tiny_snap,
+        message="please inspect obj:xyz carefully",
+        selected_object_ids=[],
+    )
+    assert {r.object_id for r in tiny_refs if r.object_id} == {"obj:xyz"}

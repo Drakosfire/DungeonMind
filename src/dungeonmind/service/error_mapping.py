@@ -31,6 +31,28 @@ _STATUS_BY_TYPE: dict[type[BaseException], int] = {
     PersistenceIntegrityError: 500,
 }
 
+_PUBLIC_MESSAGES: dict[type[BaseException], str] = {
+    PersistenceUnavailableError: "Persistence backend is temporarily unavailable.",
+    PersistenceIntegrityError: "Stored data failed an integrity check.",
+}
+
+_DETAIL_ALLOWLIST = frozenset(
+    {
+        "reason",
+        "world_id",
+        "revision_id",
+        "thread_id",
+        "request_id",
+        "expected",
+        "actual",
+        "embedding_run_id",
+        "record_type",
+        "record_id",
+        "current_status",
+        "requested_status",
+    }
+)
+
 
 def http_status_for(error: BaseException) -> int:
     for cls, status in _STATUS_BY_TYPE.items():
@@ -41,13 +63,30 @@ def http_status_for(error: BaseException) -> int:
     return 500
 
 
+def _public_details(error: DungeonMindError) -> dict[str, Any]:
+    if isinstance(error, (PersistenceUnavailableError, PersistenceIntegrityError)):
+        details = error.details or {}
+        return {
+            key: details[key]
+            for key in _DETAIL_ALLOWLIST
+            if key in details and isinstance(details[key], (str, int, float, bool, type(None)))
+        }
+    return dict(error.details or {})
+
+
 def error_envelope(error: BaseException) -> dict[str, Any]:
     if isinstance(error, DungeonMindError):
+        message = _PUBLIC_MESSAGES.get(type(error))
+        if message is None:
+            for cls, public in _PUBLIC_MESSAGES.items():
+                if isinstance(error, cls):
+                    message = public
+                    break
         return {
             "error": {
                 "code": error.code,
-                "message": str(error),
-                "details": dict(error.details or {}),
+                "message": message if message is not None else str(error),
+                "details": _public_details(error),
             }
         }
     return {

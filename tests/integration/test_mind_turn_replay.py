@@ -104,3 +104,23 @@ def test_changed_payload_same_request_id_conflicts(seeded) -> None:
     response = client.post("/v1/mind-turn", json=changed)
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "idempotency_conflict"
+
+
+def test_concurrent_identical_http_calls_invoke_agent_once(seeded) -> None:
+    import concurrent.futures
+
+    client, fixture, service, pg = seeded
+    body = _body(fixture, "req:concurrent-1", "Who safeguards the Sun Ledger?")
+
+    def _post() -> int:
+        response = client.post("/v1/mind-turn", json=body)
+        return response.status_code
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        statuses = list(pool.map(lambda _: _post(), range(2)))
+
+    assert statuses == [200, 200]
+    assert service.agent_invocation_count == 1
+    turns = pg.threads.list_turns(fixture.authorized_demo_binding["thread_id"])
+    matching = [t for t in turns if t[0].request_id == "req:concurrent-1"]
+    assert len(matching) == 1
