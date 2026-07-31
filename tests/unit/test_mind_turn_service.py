@@ -312,8 +312,10 @@ def test_append_failure_recovery_reuses_session_without_reinvoking_agent() -> No
 
     recovered = service.execute(request)
     assert service.agent_invocation_count == 1
-    assert recovered.answer == first.answer
     assert recovered.request_id == first.request_id
+    assert canonical_json(recovered.model_dump(mode="json")) == canonical_json(
+        first.model_dump(mode="json")
+    )
     assert len(threads.list_turns(binding.thread_id)) == 1
 
 

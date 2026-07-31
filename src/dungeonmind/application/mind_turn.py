@@ -493,16 +493,53 @@ class MindTurnService:
         request: MindTurnRequest,
         session: GraphRetrievalSession,
     ) -> MindTurnResponse:
-        """Reconstruct a deterministic response from an existing retrieval session."""
+        """Reconstruct a deterministic response from an existing retrieval session.
+
+        Replays the same seed → one-hop → projection path against the pinned
+        revision using persisted preflight candidates and referents, without
+        re-invoking the agent.
+        """
+        objects: list[GraphObjectView] = []
+        relationships: list[GraphRelationshipView] = []
+        seed_ids: list[str] = sorted(
+            {r.object_id for r in session.referents if r.object_id}
+        )
+        stored = self._world_graph.get_revision(
+            request.world_id, session.snapshot.revision_id
+        )
+        if stored is not None:
+            parsed = self._graph_reader.parse(
+                graph_schema=stored.revision.graph_schema,
+                graph_payload=stored.graph_payload,
+            )
+            candidate_object_ids: list[str] = []
+            for doc_id in session.preflight_candidate_ids:
+                doc = self._semantic_documents.get(doc_id)
+                if doc is None or not doc.graph_object_id:
+                    continue
+                if self._graph_reader.get_object(parsed, doc.graph_object_id) is None:
+                    continue
+                candidate_object_ids.append(doc.graph_object_id)
+            seed_ids = sorted(
+                {
+                    *(r.object_id for r in session.referents if r.object_id),
+                    *candidate_object_ids,
+                }
+            )
+            focus_ids = collect_one_hop_object_ids(parsed, seed_ids)
+            for object_id in focus_ids:
+                obj = self._graph_reader.get_object(parsed, object_id)
+                if obj is not None:
+                    objects.append(obj)
+            relationships = self._graph_reader.list_relationships(parsed, seed_ids)
+
         projections = self._build_projections(
             request_id=request.request_id,
-            objects=[],  # projections rebuilt below from session ledger only when empty
-            relationships=[],
+            objects=objects,
+            relationships=relationships,
             evidence=session.evidence,
-            seed_ids=[r.object_id for r in session.referents if r.object_id],
+            seed_ids=seed_ids,
         )
-        # Prefer empty projections on recovery unless we can rebuild from diagnostics;
-        # use evidence_summary at minimum.
         if not projections and session.evidence:
             projections = [
                 SemanticProjection(
@@ -525,7 +562,9 @@ class MindTurnService:
         ]
         answer = "I do not have grounded knowledge for that question in the admitted graph context."
         for entry in session.diagnostics:
-            if entry.code == "persisted_turn_answer" and isinstance(entry.data.get("answer"), str):
+            if entry.code == "persisted_turn_answer" and isinstance(
+                entry.data.get("answer"), str
+            ):
                 answer = str(entry.data["answer"])
                 break
         else:
@@ -533,6 +572,21 @@ class MindTurnService:
                 if claim.status.value == "accepted":
                     answer = claim.text
                     break
+        context_changes = [
+            ContextChange(
+                change_id=_stable_id("ctx", request.request_id, "thread"),
+                kind="thread_continued",
+                payload={"thread_id": request.thread_id},
+            )
+        ]
+        if seed_ids:
+            context_changes.append(
+                ContextChange(
+                    change_id=_stable_id("ctx", request.request_id, "selection"),
+                    kind="selection_resolved",
+                    payload={"object_ids": seed_ids},
+                )
+            )
         return MindTurnResponse(
             request_id=request.request_id,
             turn_id=_stable_id("turn", request.request_id),
@@ -548,13 +602,7 @@ class MindTurnService:
             source_reads=session.source_reads,
             semantic_projections=projections,
             suggested_actions=actions,
-            context_changes=[
-                ContextChange(
-                    change_id=_stable_id("ctx", request.request_id, "thread"),
-                    kind="thread_continued",
-                    payload={"thread_id": request.thread_id},
-                )
-            ],
+            context_changes=context_changes,
             coverage=session.coverage,
             diagnostics=session.diagnostics,
         )
