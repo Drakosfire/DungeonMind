@@ -354,3 +354,114 @@ def test_request_lock_entries_are_released_after_execute() -> None:
     )
     service.execute(request)
     assert (binding.thread_id, request.request_id) not in service._request_locks
+
+
+def test_concurrent_identical_requests_invoke_agent_once() -> None:
+    import concurrent.futures
+
+    service, threads, binding, _revision_id = _build_service()
+    request = _authorized_request(
+        binding,
+        request_id="req:concurrent-3",
+        message="Who safeguards the Sun Ledger?",
+    )
+
+    def _run() -> str:
+        return service.execute(request).answer
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        answers = list(pool.map(lambda _: _run(), range(3)))
+
+    assert len(set(answers)) == 1
+    assert service.agent_invocation_count == 1
+    turns = threads.list_turns(binding.thread_id)
+    assert len([t for t in turns if t[0].request_id == request.request_id]) == 1
+    assert (binding.thread_id, request.request_id) not in service._request_locks
+
+
+def test_request_lock_survives_exception_and_retry_is_coordinated() -> None:
+    service, _threads, binding, _revision_id = _build_service()
+    request = _authorized_request(
+        binding,
+        request_id="req:lock-exception",
+        message="Who safeguards the Sun Ledger?",
+    )
+    original = service._execute_unlocked
+
+    def _boom(req):
+        raise RuntimeError("simulated failure before persistence")
+
+    service._execute_unlocked = _boom  # type: ignore[method-assign]
+    try:
+        service.execute(request)
+        raise AssertionError("expected RuntimeError")
+    except RuntimeError:
+        pass
+    # finally must release the refcount entry
+    assert (binding.thread_id, request.request_id) not in service._request_locks
+
+    service._execute_unlocked = original  # type: ignore[method-assign]
+    response = service.execute(request)
+    assert "Mere Astor" in response.answer
+    assert service.agent_invocation_count == 1
+    assert (binding.thread_id, request.request_id) not in service._request_locks
+
+
+def test_waiting_requester_keeps_shared_lock_during_cleanup() -> None:
+    """A waiter increments users before the holder finishes; cleanup must not split locks."""
+    import threading
+    import time
+
+    service, _threads, binding, _revision_id = _build_service()
+    request = _authorized_request(
+        binding,
+        request_id="req:lock-waiter",
+        message="Who safeguards the Sun Ledger?",
+    )
+    original = service._execute_unlocked
+    holder_entered = threading.Event()
+    release_holder = threading.Event()
+    waiter_acquired_ref = threading.Event()
+    observed_keys: list[object] = []
+
+    def _slow(req):
+        holder_entered.set()
+        assert release_holder.wait(timeout=2)
+        return original(req)
+
+    service._execute_unlocked = _slow  # type: ignore[method-assign]
+
+    def _holder():
+        service.execute(request)
+
+    def _waiter():
+        assert holder_entered.wait(timeout=2)
+        # Acquire refcount while holder still inside execute (users >= 2).
+        key, lock = service._acquire_request_lock(request.thread_id, request.request_id)
+        observed_keys.append(key)
+        waiter_acquired_ref.set()
+        # Holder may now finish and attempt cleanup; entry must remain.
+        time.sleep(0.05)
+        with service._request_locks_guard:
+            entry = service._request_locks.get(key)
+            assert entry is not None
+            assert entry.users >= 1
+            shared_lock = entry.lock
+        with lock:
+            # Same lock object the holder used.
+            assert shared_lock is lock
+        service._release_request_lock(key)
+
+    t1 = threading.Thread(target=_holder)
+    t2 = threading.Thread(target=_waiter)
+    t1.start()
+    assert holder_entered.wait(timeout=2)
+    t2.start()
+    assert waiter_acquired_ref.wait(timeout=2)
+    release_holder.set()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
+    assert not t1.is_alive() and not t2.is_alive()
+    assert service.agent_invocation_count == 1
+    assert (binding.thread_id, request.request_id) not in service._request_locks
+    service._execute_unlocked = original  # type: ignore[method-assign]

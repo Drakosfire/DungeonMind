@@ -1,13 +1,17 @@
 """Project pinned graph snapshots through validated provenance scope.
 
 Exact graph labels, aliases, selected IDs, and one-hop traversal must not
-bypass visibility, campaign, or provenance checks applied to evidence. Object
-and relationship visibility is derived only from fully validated source chains.
+bypass visibility, campaign, or provenance checks applied to evidence.
+
+B.1a uses a coarse-object policy: an object or relationship is exposed only
+when every attached evidence reference is fully validated and in scope. Mixed
+provenance therefore hides the entire object rather than leaking GM-backed
+aliases, summaries, or other descriptive fields.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..contracts.evidence import (
     EvidenceRef,
@@ -42,6 +46,14 @@ class ValidatedProvenance:
     record: GraphEvidenceRecord
     evidence: EvidenceRef
     artifact: SourceArtifact
+
+
+@dataclass(frozen=True)
+class ScopedGraphProjection:
+    """Scoped snapshot plus broken-chain rejections collected during projection."""
+
+    snapshot: ParsedGraphSnapshot
+    rejections: list[ProvenanceRejection] = field(default_factory=list)
 
 
 def source_artifact_in_scope(
@@ -147,7 +159,7 @@ def resolve_evidence_provenance(
     )
 
 
-def _validated_evidence_ids(
+def _classify_evidence_ids(
     evidence_ref_ids: list[str],
     *,
     snapshot: ParsedGraphSnapshot,
@@ -155,8 +167,14 @@ def _validated_evidence_ids(
     world_id: str,
     campaign_id: str | None,
     admissibility: Admissibility,
-) -> list[str]:
-    admitted: list[str] = []
+) -> tuple[bool, list[ProvenanceRejection]]:
+    """Return whether every evidence ID is in-scope+valid, plus any rejections.
+
+    Out-of-scope evidence (``None``) fails the coarse-object check silently.
+    Broken chains fail the check and contribute ``ProvenanceRejection`` values.
+    """
+    rejections: list[ProvenanceRejection] = []
+    all_valid_in_scope = True
     for evidence_ref_id in evidence_ref_ids:
         resolved = resolve_evidence_provenance(
             evidence_ref_id,
@@ -167,8 +185,11 @@ def _validated_evidence_ids(
             admissibility=admissibility,
         )
         if isinstance(resolved, ValidatedProvenance):
-            admitted.append(evidence_ref_id)
-    return admitted
+            continue
+        all_valid_in_scope = False
+        if isinstance(resolved, ProvenanceRejection):
+            rejections.append(resolved)
+    return all_valid_in_scope, rejections
 
 
 def project_scoped_snapshot(
@@ -178,18 +199,20 @@ def project_scoped_snapshot(
     world_id: str,
     campaign_id: str | None,
     admissibility: Admissibility,
-) -> ParsedGraphSnapshot:
-    """Return scoped copies containing only fully validated provenance.
+) -> ScopedGraphProjection:
+    """Return a coarse-scoped snapshot and broken-provenance rejections.
 
-    Objects and relationships are retained only when at least one attached
-    evidence reference validates the complete provenance chain. Scoped copies
-    keep only those validated evidence IDs — hidden or broken references never
-    reach mention resolution, projections, or agent context.
+    Coarse-object policy (B.1a): retain an object/relationship only when every
+    attached evidence reference is fully validated and in scope. Mixed
+    player/GM provenance therefore hides the entire object — including labels,
+    aliases, and summaries — rather than leaking GM-backed descriptive fields.
+    Out-of-scope evidence is filtered silently; malformed stored provenance is
+    recorded as rejections for coverage.
     """
-
+    rejections: list[ProvenanceRejection] = []
     objects: dict[str, GraphObjectView] = {}
     for object_id, obj in snapshot.objects.items():
-        validated_ids = _validated_evidence_ids(
+        all_valid, object_rejections = _classify_evidence_ids(
             obj.evidence_ref_ids,
             snapshot=snapshot,
             sources=sources,
@@ -197,15 +220,16 @@ def project_scoped_snapshot(
             campaign_id=campaign_id,
             admissibility=admissibility,
         )
-        if not validated_ids:
+        rejections.extend(object_rejections)
+        if not all_valid or not obj.evidence_ref_ids:
             continue
-        objects[object_id] = obj.model_copy(update={"evidence_ref_ids": validated_ids})
+        objects[object_id] = obj
 
     relationships: dict[str, GraphRelationshipView] = {}
     for rel_id, rel in snapshot.relationships.items():
         if rel.subject_object_id not in objects or rel.object_object_id not in objects:
             continue
-        validated_ids = _validated_evidence_ids(
+        all_valid, rel_rejections = _classify_evidence_ids(
             rel.evidence_ref_ids,
             snapshot=snapshot,
             sources=sources,
@@ -213,11 +237,10 @@ def project_scoped_snapshot(
             campaign_id=campaign_id,
             admissibility=admissibility,
         )
-        if not validated_ids:
+        rejections.extend(rel_rejections)
+        if not all_valid or not rel.evidence_ref_ids:
             continue
-        relationships[rel_id] = rel.model_copy(
-            update={"evidence_ref_ids": validated_ids}
-        )
+        relationships[rel_id] = rel
 
     retained_evidence_ids = {
         evidence_ref_id
@@ -245,12 +268,25 @@ def project_scoped_snapshot(
     for key, ids in alias_index.items():
         alias_index[key] = sorted(set(ids))
 
-    return ParsedGraphSnapshot(
-        world_id=snapshot.world_id,
-        graph_schema=snapshot.graph_schema,
-        objects=objects,
-        relationships=relationships,
-        evidence=evidence,
-        label_index=label_index,
-        alias_index=alias_index,
+    # Deduplicate rejections while preserving first-seen order.
+    deduped: list[ProvenanceRejection] = []
+    seen: set[tuple[str, str]] = set()
+    for rejection in rejections:
+        key = (rejection.gap_code, rejection.missing_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(rejection)
+
+    return ScopedGraphProjection(
+        snapshot=ParsedGraphSnapshot(
+            world_id=snapshot.world_id,
+            graph_schema=snapshot.graph_schema,
+            objects=objects,
+            relationships=relationships,
+            evidence=evidence,
+            label_index=label_index,
+            alias_index=alias_index,
+        ),
+        rejections=deduped,
     )

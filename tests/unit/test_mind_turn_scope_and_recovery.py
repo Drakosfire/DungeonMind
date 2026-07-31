@@ -261,7 +261,7 @@ def test_cross_campaign_and_world_scope_exclude_foreign_sources() -> None:
         campaign_id=None,
         admissibility=Admissibility.GM,
     )
-    assert "obj:item-sun-ledger" not in world_projected.objects
+    assert "obj:item-sun-ledger" not in world_projected.snapshot.objects
 
     response = service.execute(
         _gm_request(

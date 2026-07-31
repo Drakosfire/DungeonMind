@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
@@ -68,6 +69,14 @@ from .repositories import (
 
 TOP_K_PER_CHANNEL = 5
 REQUEST_FINGERPRINT_DIAGNOSTIC = "authorized_request_fingerprint"
+
+
+@dataclass
+class _RequestLockEntry:
+    """Reference-counted process-local lock for identical in-flight requests."""
+
+    lock: threading.Lock
+    users: int = 0
 
 
 class Clock(Protocol):
@@ -148,41 +157,43 @@ class MindTurnService:
         self._clock = clock
         self._agent_invocation_count = 0
         self._request_locks_guard = threading.Lock()
-        self._request_locks: dict[tuple[str, str], threading.Lock] = {}
+        self._request_locks: dict[tuple[str, str], _RequestLockEntry] = {}
 
     @property
     def agent_invocation_count(self) -> int:
         return self._agent_invocation_count
 
-    def _lock_for(self, thread_id: str, request_id: str) -> threading.Lock:
+    def _acquire_request_lock(
+        self, thread_id: str, request_id: str
+    ) -> tuple[tuple[str, str], threading.Lock]:
+        """Increment the user count and return the shared lock for this request."""
         key = (thread_id, request_id)
         with self._request_locks_guard:
-            return self._request_locks.setdefault(key, threading.Lock())
+            entry = self._request_locks.get(key)
+            if entry is None:
+                entry = _RequestLockEntry(lock=threading.Lock(), users=0)
+                self._request_locks[key] = entry
+            entry.users += 1
+            return key, entry.lock
 
-    def _release_lock_if_idle(
-        self,
-        thread_id: str,
-        request_id: str,
-        lock: threading.Lock,
-    ) -> None:
-        """Drop completed process-local lock entries to avoid unbounded growth.
-
-        B.1a retry coordination is intentionally single-process / single-worker.
-        Cross-worker uniqueness relies on repository idempotency, not this map.
-        """
-        key = (thread_id, request_id)
+    def _release_request_lock(self, key: tuple[str, str]) -> None:
+        """Decrement users; remove the entry only when no waiters/holders remain."""
         with self._request_locks_guard:
-            current = self._request_locks.get(key)
-            if current is lock and not lock.locked():
+            entry = self._request_locks.get(key)
+            if entry is None:
+                return
+            entry.users -= 1
+            if entry.users <= 0:
                 self._request_locks.pop(key, None)
 
     def execute(self, request: MindTurnRequest) -> MindTurnResponse:
         # Process-local coordination only. Run the demo host as a single worker.
-        lock = self._lock_for(request.thread_id, request.request_id)
-        with lock:
-            response = self._execute_unlocked(request)
-        self._release_lock_if_idle(request.thread_id, request.request_id, lock)
-        return response
+        key, lock = self._acquire_request_lock(request.thread_id, request.request_id)
+        try:
+            with lock:
+                return self._execute_unlocked(request)
+        finally:
+            self._release_request_lock(key)
 
     def _execute_unlocked(self, request: MindTurnRequest) -> MindTurnResponse:
         replay = self._find_replay(request)
@@ -218,13 +229,15 @@ class MindTurnService:
         )
         if parsed.world_id != request.world_id:
             raise PersistenceWorldMismatch(parsed.world_id, request.world_id)
-        parsed = project_scoped_snapshot(
+        scoped = project_scoped_snapshot(
             parsed,
             sources=self._sources,
             world_id=request.world_id,
             campaign_id=request.campaign_id,
             admissibility=request.admissibility,
         )
+        parsed = scoped.snapshot
+        provenance_rejections = list(scoped.rejections)
 
         diagnostics: list[DiagnosticEntry] = [
             _fingerprint_diagnostic(request),
@@ -299,6 +312,9 @@ class MindTurnService:
 
         candidate_object_ids: list[str] = []
         coverage = Coverage()
+        for rejection in provenance_rejections:
+            coverage.gap_codes.append(rejection.gap_code)
+            coverage.missing.append(rejection.missing_id)
         for doc_id in preflight_ids:
             doc = self._semantic_documents.get(doc_id)
             if doc is None or not doc.graph_object_id:
@@ -632,13 +648,14 @@ class MindTurnService:
             graph_schema=stored.revision.graph_schema,
             graph_payload=stored.graph_payload,
         )
-        parsed = project_scoped_snapshot(
+        scoped = project_scoped_snapshot(
             parsed,
             sources=self._sources,
             world_id=request.world_id,
             campaign_id=request.campaign_id,
             admissibility=request.admissibility,
         )
+        parsed = scoped.snapshot
         candidate_object_ids: list[str] = []
         for doc_id in session.preflight_candidate_ids:
             doc = self._semantic_documents.get(doc_id)
