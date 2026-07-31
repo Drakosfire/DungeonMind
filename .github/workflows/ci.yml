@@ -64,11 +64,14 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Sync dependencies (locked, postgres extra)
-        run: uv sync --locked --extra postgres
+      - name: Sync dependencies (locked, postgres + api extras)
+        run: uv sync --locked --extra postgres --extra api
 
       - name: Type check PostgreSQL adapters
         run: uv run pyright src/dungeonmind/infrastructure/postgres
+
+      - name: Type check service host
+        run: uv run pyright src/dungeonmind/service
 
       - name: Migrate
         run: uv run alembic upgrade head

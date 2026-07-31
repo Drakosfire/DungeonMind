@@ -1,0 +1,261 @@
+{
+  "fixture_version": "curated_mind_turn_v1",
+  "fixed_timestamps": {
+    "created_at": "2026-07-29T12:00:00Z",
+    "completed_at": "2026-07-29T12:05:00Z",
+    "thread_created_at": "2026-07-29T11:00:00Z"
+  },
+  "authorized_demo_binding": {
+    "caller_id": "caller:landing-demo",
+    "tenant_id": null,
+    "roles": ["landing-demo"],
+    "world_id": "world:demo-atlas",
+    "campaign_id": "camp:demo",
+    "thread_id": "thr:landing-demo",
+    "admissibility": "gm",
+    "surface_id": "landingpage:mind-turn-demo"
+  },
+  "world_id": "world:demo-atlas",
+  "graph_schema": "dm_union_graph_v1",
+  "graph_payload": {
+    "world_id": "world:demo-atlas",
+    "nodes": [
+      {
+        "object_id": "obj:city-vael",
+        "kind": "location",
+        "label": "Vael",
+        "aliases": ["Vael City"],
+        "evidence_ref_ids": ["ev:vael"]
+      },
+      {
+        "object_id": "obj:npc-mere-astor",
+        "kind": "npc",
+        "label": "Mere Astor",
+        "aliases": ["Astor"],
+        "evidence_ref_ids": ["ev:astor"]
+      },
+      {
+        "object_id": "obj:item-sun-ledger",
+        "kind": "artifact",
+        "label": "The Sun Ledger",
+        "aliases": ["Sun Ledger"],
+        "evidence_ref_ids": ["ev:ledger"]
+      }
+    ],
+    "relationships": [
+      {
+        "relationship_id": "rel:astor-resides-vael",
+        "subject_object_id": "obj:npc-mere-astor",
+        "predicate": "resides_in",
+        "object_object_id": "obj:city-vael",
+        "evidence_ref_ids": ["ev:astor-vael"]
+      },
+      {
+        "relationship_id": "rel:astor-safeguards-ledger",
+        "subject_object_id": "obj:npc-mere-astor",
+        "predicate": "safeguards",
+        "object_object_id": "obj:item-sun-ledger",
+        "evidence_ref_ids": ["ev:astor-ledger"]
+      }
+    ],
+    "evidence_refs": [
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:vael",
+        "source_artifact_id": "src:atlas-notes",
+        "source_revision_id": "srcrev:atlas-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://atlas-notes#vael"
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:astor",
+        "source_artifact_id": "src:atlas-notes",
+        "source_revision_id": "srcrev:atlas-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://atlas-notes#astor"
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:ledger",
+        "source_artifact_id": "src:atlas-notes",
+        "source_revision_id": "srcrev:atlas-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://atlas-notes#sun-ledger"
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:astor-vael",
+        "source_artifact_id": "src:atlas-notes",
+        "source_revision_id": "srcrev:atlas-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://atlas-notes#astor-vael"
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:astor-ledger",
+        "source_artifact_id": "src:atlas-notes",
+        "source_revision_id": "srcrev:atlas-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://atlas-notes#astor-ledger"
+      }
+    ]
+  },
+  "source_artifacts": [
+    {
+      "source_artifact_id": "src:atlas-notes",
+      "source_domain": "worldbuilding",
+      "world_id": "world:demo-atlas",
+      "campaign_id": null,
+      "session_id": null,
+      "visibility": "gm",
+      "current_revision_id": "srcrev:atlas-notes-v1",
+      "authority": "primary",
+      "status": "active"
+    }
+  ],
+  "source_revisions": [
+    {
+      "source_revision_id": "srcrev:atlas-notes-v1",
+      "source_artifact_id": "src:atlas-notes",
+      "content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "body_storage": "external",
+      "locator": "fixture://curated-mind-turn-v1/atlas-notes"
+    }
+  ],
+  "embedding_run": {
+    "run_id": "erun:curated-mind-turn-v1",
+    "embedding_model": "fixture-8dim",
+    "embedding_model_revision": "v1",
+    "embedding_dimensions": 8,
+    "embedding_recipe": "fixture-raw",
+    "world_id": "world:demo-atlas"
+  },
+  "semantic_documents": [
+    {
+      "semantic_document_id": "sdoc:obj-city-vael",
+      "document_kind": "graph_object",
+      "campaign_scope": null,
+      "graph_object_id": "obj:city-vael",
+      "visibility": "gm",
+      "content": "Vael: a terraced harbor city ruled by its tide-courts and lantern ward.",
+      "embedding": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    },
+    {
+      "semantic_document_id": "sdoc:obj-npc-mere-astor",
+      "document_kind": "graph_object",
+      "campaign_scope": null,
+      "graph_object_id": "obj:npc-mere-astor",
+      "visibility": "gm",
+      "content": "Mere Astor: the Sun Ledger's keeper, a soft-spoken factor of Vael.",
+      "embedding": [0.8, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    },
+    {
+      "semantic_document_id": "sdoc:obj-item-sun-ledger",
+      "document_kind": "graph_object",
+      "campaign_scope": null,
+      "graph_object_id": "obj:item-sun-ledger",
+      "visibility": "gm",
+      "content": "The Sun Ledger: a brass-bound account of every dawn debt owed in Vael.",
+      "embedding": [0.0, 0.05, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0]
+    },
+    {
+      "semantic_document_id": "sdoc:rumor-tide-courts",
+      "document_kind": "graph_object",
+      "campaign_scope": "camp:demo",
+      "graph_object_id": "obj:city-vael",
+      "visibility": "player",
+      "content": "Street rumor: the tide-courts of Vael vote at dawn and forget by dusk.",
+      "embedding": [0.6, 0.1, 0.3, 0.0, 0.0, 0.0, 0.0, 0.0]
+    }
+  ],
+  "query_embeddings": {
+    "Who safeguards the Sun Ledger?": [0.7, 0.15, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "Where does Mere Astor live?": [0.85, 0.15, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "What is the Sun Ledger?": [0.0, 0.05, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "How is Mere Astor connected to Vael?": [0.9, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  },
+  "curated_question_cases": [
+    {
+      "name": "who_safeguards_ledger",
+      "message": "Who safeguards the Sun Ledger?",
+      "expect_answer_contains": ["Mere Astor"],
+      "expect_object_ids": ["obj:npc-mere-astor", "obj:item-sun-ledger"],
+      "expect_relationship_ids": ["rel:astor-safeguards-ledger"],
+      "expect_evidence_ref_ids": ["ev:astor-ledger"],
+      "expect_projection_kinds": ["entity_brief", "relationship_list", "evidence_summary"],
+      "expect_abstention": false
+    },
+    {
+      "name": "where_astor_lives",
+      "message": "Where does Mere Astor live?",
+      "expect_answer_contains": ["Vael"],
+      "expect_object_ids": ["obj:npc-mere-astor", "obj:city-vael"],
+      "expect_relationship_ids": ["rel:astor-resides-vael"],
+      "expect_evidence_ref_ids": ["ev:astor-vael"],
+      "expect_projection_kinds": ["entity_brief", "relationship_list", "evidence_summary"],
+      "expect_abstention": false
+    },
+    {
+      "name": "what_is_sun_ledger",
+      "message": "What is the Sun Ledger?",
+      "expect_answer_contains": ["Sun Ledger"],
+      "expect_object_ids": ["obj:item-sun-ledger"],
+      "expect_relationship_ids": [],
+      "expect_evidence_ref_ids": ["ev:ledger"],
+      "expect_projection_kinds": ["entity_brief", "evidence_summary"],
+      "expect_abstention": false
+    },
+    {
+      "name": "astor_connected_to_vael",
+      "message": "How is Mere Astor connected to Vael?",
+      "expect_answer_contains": ["resides_in", "Vael"],
+      "expect_object_ids": ["obj:npc-mere-astor", "obj:city-vael"],
+      "expect_relationship_ids": ["rel:astor-resides-vael"],
+      "expect_evidence_ref_ids": ["ev:astor-vael"],
+      "expect_projection_kinds": ["entity_brief", "relationship_list", "evidence_summary"],
+      "expect_abstention": false
+    },
+    {
+      "name": "moon_king_miss",
+      "message": "Who is the Moon King?",
+      "expect_answer_contains": [],
+      "expect_object_ids": [],
+      "expect_relationship_ids": [],
+      "expect_evidence_ref_ids": [],
+      "expect_projection_kinds": [],
+      "expect_abstention": true
+    }
+  ],
+  "expected_resolved_objects": [
+    "obj:city-vael",
+    "obj:npc-mere-astor",
+    "obj:item-sun-ledger"
+  ],
+  "expected_relationships": [
+    "rel:astor-resides-vael",
+    "rel:astor-safeguards-ledger"
+  ],
+  "expected_evidence": [
+    "ev:vael",
+    "ev:astor",
+    "ev:ledger",
+    "ev:astor-vael",
+    "ev:astor-ledger"
+  ],
+  "expected_projection_kinds": [
+    "entity_brief",
+    "relationship_list",
+    "evidence_summary"
+  ]
+}
