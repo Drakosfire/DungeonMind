@@ -18,8 +18,6 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "dungeonmind"
 
 FORBIDDEN_ROOTS = {
     "apps",  # DungeonMindBuddy application layer
-    "fastapi",
-    "uvicorn",
     "torch",
     "sentence_transformers",
     "psycopg2",
@@ -40,13 +38,22 @@ FORBIDDEN_ROOTS = {
 # Allowed only inside dungeonmind.infrastructure.postgres.
 POSTGRES_ONLY_ROOTS = {"psycopg", "pgvector"}
 
+# Allowed only inside dungeonmind.service (optional ``api`` extra).
+API_ONLY_ROOTS = {"fastapi", "uvicorn", "starlette"}
+
 ALLOWED_EXTERNAL = {"pydantic"}
 
 LAYER_RULES: dict[str, set[str]] = {
     "dungeonmind": set(),
     "dungeonmind.contracts": set(),
     "dungeonmind.domain": {"dungeonmind.contracts"},
-    "dungeonmind.application": {"dungeonmind.contracts", "dungeonmind.domain"},
+    "dungeonmind.application": {
+        "dungeonmind.contracts",
+        "dungeonmind.domain",
+        # AgentAdapter / sanitize_agent_input are application-facing ports hosted
+        # under agents/ until a later extraction; MindTurnService depends on them.
+        "dungeonmind.agents",
+    },
     "dungeonmind.agents": {
         "dungeonmind.contracts",
         "dungeonmind.domain",
@@ -66,6 +73,21 @@ LAYER_RULES: dict[str, set[str]] = {
         "dungeonmind.contracts",
         "dungeonmind.domain",
         "dungeonmind.application",
+    },
+    "dungeonmind.infrastructure.fixtures": {
+        "dungeonmind.contracts",
+        "dungeonmind.domain",
+        "dungeonmind.application",
+    },
+    "dungeonmind.service": {
+        "dungeonmind.contracts",
+        "dungeonmind.domain",
+        "dungeonmind.application",
+        "dungeonmind.agents",
+        "dungeonmind.infrastructure",
+        "dungeonmind.infrastructure.fixtures",
+        "dungeonmind.infrastructure.postgres",
+        "dungeonmind.infrastructure.memory",
     },
 }
 
@@ -125,6 +147,10 @@ def test_no_forbidden_imports_anywhere() -> None:
                 violations.append(
                     f"{path.relative_to(SRC)} imports {module} outside infrastructure.postgres"
                 )
+            if root in API_ONLY_ROOTS and layer != "dungeonmind.service":
+                violations.append(
+                    f"{path.relative_to(SRC)} imports {module} outside service"
+                )
     assert not violations, "forbidden imports:\n" + "\n".join(violations)
 
 
@@ -143,6 +169,8 @@ def test_layer_rules_hold() -> None:
             if root in POSTGRES_ONLY_ROOTS and importer_layer == (
                 "dungeonmind.infrastructure.postgres"
             ):
+                continue
+            if root in API_ONLY_ROOTS and importer_layer == "dungeonmind.service":
                 continue
             if not module.startswith("dungeonmind"):
                 violations.append(f"{module_name} imports unvetted third-party {module}")
@@ -163,8 +191,10 @@ def test_every_module_imports_cleanly_without_optional_extras() -> None:
             "dungeonmind.infrastructure.postgres."
         ):
             del sys.modules[name]
+        if name == "dungeonmind.service.api" or name == "dungeonmind.service.bootstrap":
+            del sys.modules[name]
         root = name.split(".", 1)[0]
-        if root in POSTGRES_ONLY_ROOTS:
+        if root in POSTGRES_ONLY_ROOTS or root in API_ONLY_ROOTS:
             del sys.modules[name]
 
     for path in _all_source_files():
@@ -173,6 +203,10 @@ def test_every_module_imports_cleanly_without_optional_extras() -> None:
             "dungeonmind.infrastructure.postgres."
         ):
             continue
+        # Optional FastAPI host modules require the ``api`` (and for bootstrap,
+        # ``postgres``) extras; they must not load on the core import path.
+        if module_name in {"dungeonmind.service.api", "dungeonmind.service.bootstrap"}:
+            continue
         importlib.import_module(module_name)
-    for forbidden in FORBIDDEN_ROOTS | POSTGRES_ONLY_ROOTS:
+    for forbidden in FORBIDDEN_ROOTS | POSTGRES_ONLY_ROOTS | API_ONLY_ROOTS:
         assert forbidden not in sys.modules, f"{forbidden} imported as a side effect"

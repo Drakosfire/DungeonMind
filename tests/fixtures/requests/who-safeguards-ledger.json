@@ -1,0 +1,19 @@
+{
+  "schema_version": "mind_turn_v1",
+  "request_id": "req:who-safeguards-ledger",
+  "thread_id": "thr:landing-demo",
+  "caller_scope": {
+    "caller_id": "caller:landing-demo",
+    "tenant_id": null,
+    "roles": [
+      "landing-demo"
+    ]
+  },
+  "world_id": "world:demo-atlas",
+  "campaign_id": "camp:demo",
+  "admissibility": "gm",
+  "surface_context": {
+    "surface_id": "landingpage:mind-turn-demo"
+  },
+  "message": "Who safeguards the Sun Ledger?"
+}
