@@ -110,7 +110,11 @@ def build_readiness_probe(
 
 
 def create_demo_app() -> FastAPI:
-    """Uvicorn factory: ``uvicorn dungeonmind.service.bootstrap:create_demo_app --factory``."""
+    """Uvicorn factory: ``uvicorn dungeonmind.service.bootstrap:create_demo_app --factory``.
+
+    B.1a retry coordination is process-local. Run a single Uvicorn worker for the
+    demo host; cross-worker uniqueness relies on repository idempotency only.
+    """
     fixture = load_curated_mind_turn_fixture()
     binding = DemoAccessBinding.from_mapping(fixture.authorized_demo_binding)
     database = PostgresDatabase(_require_database_url())

@@ -130,15 +130,25 @@ def _norm(text: str) -> str:
     return text.casefold().strip()
 
 
-def contains_exact_phrase(haystack: str, needle: str) -> bool:
-    """Boundary-aware exact phrase match (case-sensitive on the supplied strings).
+# Opaque DungeonMind IDs commonly include hyphens (e.g. obj:npc-mere-astor).
+# Hyphen is last in the class so it is literal.
+_TOKEN_CONTINUATION = r"A-Za-z0-9_:-"
 
-    Prevents ``Astor`` from matching inside ``Astoria`` and ``obj:x`` from
-    matching inside ``obj:xyz``.
+
+def contains_exact_phrase(haystack: str, needle: str) -> bool:
+    """Boundary-aware exact phrase/token match (case-sensitive on supplied strings).
+
+    Prevents ``Astor`` from matching inside ``Astoria``, ``obj:x`` from matching
+    inside ``obj:xyz``, and ``obj:npc-mere-astor`` from matching inside
+    ``obj:npc-mere-astor-impostor``.
     """
     if not needle:
         return False
-    pattern = rf"(?<![A-Za-z0-9_:]){re.escape(needle)}(?![A-Za-z0-9_:])"
+    pattern = (
+        rf"(?<![{_TOKEN_CONTINUATION}])"
+        rf"{re.escape(needle)}"
+        rf"(?![{_TOKEN_CONTINUATION}])"
+    )
     return re.search(pattern, haystack) is not None
 
 

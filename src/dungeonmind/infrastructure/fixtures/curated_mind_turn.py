@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import struct
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -18,13 +19,14 @@ from ...application.repositories import (
 )
 from ...contracts.evidence import SourceArtifact, SourceDomain, SourceRevision, SourceStatus
 from ...contracts.graph import PublishRevisionCommand
+from ...contracts.projection import Admissibility
 from ...contracts.semantic import (
     EmbeddingRun,
     SemanticDocument,
     SemanticDocumentKind,
 )
 from ...contracts.vocabulary import Visibility
-from ...domain.canonical import canonical_sha256, sha256_text
+from ...domain.canonical import canonical_json, canonical_sha256, sha256_text
 from ...domain.errors import IdempotencyConflictError
 from ...domain.revision_ids import compute_revision_id
 from .query_embedding import FixtureQueryEmbeddingProvider
@@ -237,6 +239,175 @@ def _resolve_seed_revision(
     return head.head_revision_id, "reused"
 
 
+
+def _preflight_fixture_consistency(
+    loaded: CuratedMindTurnFixture,
+    *,
+    artifacts: list[SourceArtifact],
+    revisions: list[SourceRevision],
+    run: EmbeddingRun,
+    docs: list[SemanticDocument],
+) -> None:
+    """Validate cross-record fixture consistency before any write."""
+    binding = loaded.authorized_demo_binding
+    for key in ("caller_id", "world_id", "thread_id", "admissibility", "surface_id"):
+        if key not in binding or binding[key] in (None, ""):
+            raise ValueError(f"authorized_demo_binding missing required field {key!r}")
+    Admissibility(str(binding["admissibility"]))
+    if binding.get("world_id") != loaded.world_id:
+        raise ValueError("authorized_demo_binding.world_id disagrees with fixture world_id")
+
+    parsed = UnionGraphV1SnapshotReader().parse(
+        graph_schema=loaded.graph_schema,
+        graph_payload=loaded.graph_payload,
+    )
+    artifact_ids = {item.source_artifact_id for item in artifacts}
+    revision_by_id = {item.source_revision_id: item for item in revisions}
+    for revision in revisions:
+        if revision.source_artifact_id not in artifact_ids:
+            raise ValueError(
+                f"source revision {revision.source_revision_id!r} references "
+                f"undeclared artifact {revision.source_artifact_id!r}"
+            )
+    for evidence in parsed.evidence.values():
+        if evidence.source_artifact_id not in artifact_ids:
+            raise ValueError(
+                f"graph evidence {evidence.evidence_ref_id!r} references "
+                f"undeclared artifact {evidence.source_artifact_id!r}"
+            )
+        if evidence.source_revision_id:
+            revision = revision_by_id.get(evidence.source_revision_id)
+            if revision is None:
+                raise ValueError(
+                    f"graph evidence {evidence.evidence_ref_id!r} references "
+                    f"undeclared source revision {evidence.source_revision_id!r}"
+                )
+            if revision.source_artifact_id != evidence.source_artifact_id:
+                raise ValueError(
+                    f"graph evidence {evidence.evidence_ref_id!r} revision "
+                    f"{evidence.source_revision_id!r} belongs to a different artifact"
+                )
+    object_ids = set(parsed.objects)
+    for doc in docs:
+        if doc.graph_object_id not in object_ids:
+            raise ValueError(
+                f"semantic document {doc.semantic_document_id!r} references "
+                f"unknown graph object {doc.graph_object_id!r}"
+            )
+        if len(doc.embedding or []) != run.embedding_dimensions:
+            raise ValueError(
+                f"semantic document {doc.semantic_document_id!r} embedding length "
+                f"disagrees with run dimensions {run.embedding_dimensions}"
+            )
+    for query, vector in (loaded.raw.get("query_embeddings") or {}).items():
+        if len(vector) != run.embedding_dimensions:
+            raise ValueError(
+                f"query embedding for {query!r} length disagrees with run dimensions "
+                f"{run.embedding_dimensions}"
+            )
+
+
+def _preflight_existing_record_conflicts(
+    *,
+    sources: SourceRepository,
+    embedding_runs: EmbeddingRunRepository,
+    semantic_documents: SemanticDocumentRepository,
+    artifacts: list[SourceArtifact],
+    revisions: list[SourceRevision],
+    run: EmbeddingRun,
+    docs: list[SemanticDocument],
+) -> None:
+    """Reject conflicting durable records before the first seed write."""
+    for artifact in artifacts:
+        existing = sources.get_artifact(artifact.source_artifact_id)
+        if existing is not None and canonical_json(
+            existing.model_dump(mode="json")
+        ) != canonical_json(artifact.model_dump(mode="json")):
+            raise IdempotencyConflictError(
+                f"source artifact {artifact.source_artifact_id!r} already exists "
+                "with a different payload"
+            )
+    for revision in revisions:
+        existing = sources.get_revision(revision.source_revision_id)
+        if existing is not None and canonical_json(
+            existing.model_dump(mode="json")
+        ) != canonical_json(revision.model_dump(mode="json")):
+            raise IdempotencyConflictError(
+                f"source revision {revision.source_revision_id!r} already exists "
+                "with a different payload"
+            )
+    existing_run = embedding_runs.get(run.run_id)
+    if existing_run is not None:
+        comparable = {
+            "run_id": existing_run.run_id,
+            "embedding_model": existing_run.embedding_model,
+            "embedding_model_revision": existing_run.embedding_model_revision,
+            "embedding_dimensions": existing_run.embedding_dimensions,
+            "embedding_recipe": existing_run.embedding_recipe,
+            "world_id": existing_run.world_id,
+        }
+        expected = {
+            "run_id": run.run_id,
+            "embedding_model": run.embedding_model,
+            "embedding_model_revision": run.embedding_model_revision,
+            "embedding_dimensions": run.embedding_dimensions,
+            "embedding_recipe": run.embedding_recipe,
+            "world_id": run.world_id,
+        }
+        if comparable != expected:
+            raise IdempotencyConflictError(
+                f"embedding run {run.run_id!r} already exists with a different identity"
+            )
+    for doc in docs:
+        existing = semantic_documents.get(doc.semantic_document_id)
+        if existing is None:
+            continue
+        # Compare durable identity without raw float drift from pgvector float32.
+        existing_identity = {
+            "semantic_document_id": existing.semantic_document_id,
+            "document_kind": existing.document_kind.value,
+            "world_id": existing.world_id,
+            "campaign_scope": existing.campaign_scope,
+            "graph_object_id": existing.graph_object_id,
+            "graph_revision_id": existing.graph_revision_id,
+            "visibility": existing.visibility.value,
+            "content_sha256": existing.content_sha256,
+            "embedding_model": existing.embedding_model,
+            "embedding_model_revision": existing.embedding_model_revision,
+            "embedding_dimensions": existing.embedding_dimensions,
+            "embedding_recipe": existing.embedding_recipe,
+            "materialization_run_id": existing.materialization_run_id,
+            "embedding_f32": [
+                float(struct.unpack("f", struct.pack("f", float(v)))[0])
+                for v in (existing.embedding or [])
+            ],
+        }
+        expected_identity = {
+            "semantic_document_id": doc.semantic_document_id,
+            "document_kind": doc.document_kind.value,
+            "world_id": doc.world_id,
+            "campaign_scope": doc.campaign_scope,
+            "graph_object_id": doc.graph_object_id,
+            "graph_revision_id": doc.graph_revision_id,
+            "visibility": doc.visibility.value,
+            "content_sha256": doc.content_sha256,
+            "embedding_model": doc.embedding_model,
+            "embedding_model_revision": doc.embedding_model_revision,
+            "embedding_dimensions": doc.embedding_dimensions,
+            "embedding_recipe": doc.embedding_recipe,
+            "materialization_run_id": doc.materialization_run_id,
+            "embedding_f32": [
+                float(struct.unpack("f", struct.pack("f", float(v)))[0])
+                for v in (doc.embedding or [])
+            ],
+        }
+        if existing_identity != expected_identity:
+            raise IdempotencyConflictError(
+                f"semantic document {doc.semantic_document_id!r} already exists "
+                "with a different payload"
+            )
+
+
 def seed_curated_mind_turn(
     *,
     world_graph: WorldGraphRepository,
@@ -264,6 +435,22 @@ def seed_curated_mind_turn(
         revision_id=revision_id,
         run=run,
         created_at=created_at,
+    )
+    _preflight_fixture_consistency(
+        loaded,
+        artifacts=artifacts,
+        revisions=revisions,
+        run=run,
+        docs=docs,
+    )
+    _preflight_existing_record_conflicts(
+        sources=sources,
+        embedding_runs=embedding_runs,
+        semantic_documents=semantic_documents,
+        artifacts=artifacts,
+        revisions=revisions,
+        run=run,
+        docs=docs,
     )
 
     # Writes begin only after validation and conflict preflight succeed.

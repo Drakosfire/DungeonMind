@@ -54,3 +54,32 @@ def test_divergent_head_without_thread_rejects_before_writes() -> None:
             fixture=fixture,
         )
     assert thread_id not in threads._threads
+
+
+def test_seed_preflight_rejects_query_embedding_dimension_mismatch() -> None:
+    fixture = load_curated_mind_turn_fixture()
+    raw = dict(fixture.raw)
+    vectors = dict(raw["query_embeddings"])
+    key = next(iter(vectors))
+    vectors[key] = [0.0, 1.0]
+    raw["query_embeddings"] = vectors
+
+    class _Broken(type(fixture)):
+        pass
+
+    broken = fixture.__class__(raw=raw, path=fixture.path)
+    world_graph = InMemoryWorldGraphRepository()
+    sources = InMemorySourceRepository()
+    embedding_runs = InMemoryEmbeddingRunRepository()
+    semantic_documents = InMemorySemanticDocumentRepository(embedding_runs)
+    threads = InMemoryMindThreadRepository()
+    with pytest.raises(ValueError, match="query embedding"):
+        seed_curated_mind_turn(
+            world_graph=world_graph,
+            sources=sources,
+            embedding_runs=embedding_runs,
+            semantic_documents=semantic_documents,
+            threads=threads,
+            fixture=broken,
+        )
+    assert str(fixture.authorized_demo_binding["thread_id"]) not in threads._threads

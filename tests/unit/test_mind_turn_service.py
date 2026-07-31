@@ -343,3 +343,14 @@ def test_projections_actions_source_reads_and_no_similarity() -> None:
 
     _assert_no_similarity_scores(_dump_tree(response.evidence))
     _assert_no_similarity_scores(_dump_tree(response.claims))
+
+
+def test_request_lock_entries_are_released_after_execute() -> None:
+    service, _threads, binding, _revision_id = _build_service()
+    request = _authorized_request(
+        binding,
+        request_id="req:lock-cleanup",
+        message="Who safeguards the Sun Ledger?",
+    )
+    service.execute(request)
+    assert (binding.thread_id, request.request_id) not in service._request_locks

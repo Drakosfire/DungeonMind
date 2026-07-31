@@ -249,6 +249,20 @@ def test_substring_labels_and_ids_do_not_resolve() -> None:
                 "aliases": [],
                 "evidence_ref_ids": ["ev:xyz"],
             },
+            {
+                "object_id": "obj:npc-mere-astor",
+                "kind": "npc",
+                "label": "Mere Astor",
+                "aliases": [],
+                "evidence_ref_ids": ["ev:astor"],
+            },
+            {
+                "object_id": "obj:npc-mere-astor-impostor",
+                "kind": "npc",
+                "label": "Impostor",
+                "aliases": [],
+                "evidence_ref_ids": ["ev:impostor"],
+            },
         ],
         "relationships": [],
         "evidence_refs": [
@@ -266,6 +280,20 @@ def test_substring_labels_and_ids_do_not_resolve() -> None:
                 "source_domain": "worldbuilding",
                 "evidence_role": "support",
             },
+            {
+                "evidence_ref_id": "ev:astor",
+                "source_artifact_id": "src:atlas-notes",
+                "source_revision_id": "srcrev:atlas-notes-v1",
+                "source_domain": "worldbuilding",
+                "evidence_role": "support",
+            },
+            {
+                "evidence_ref_id": "ev:impostor",
+                "source_artifact_id": "src:atlas-notes",
+                "source_revision_id": "srcrev:atlas-notes-v1",
+                "source_domain": "worldbuilding",
+                "evidence_role": "support",
+            },
         ],
     }
     tiny_snap = READER.parse(graph_schema="dm_union_graph_v1", graph_payload=tiny)
@@ -275,3 +303,13 @@ def test_substring_labels_and_ids_do_not_resolve() -> None:
         selected_object_ids=[],
     )
     assert {r.object_id for r in tiny_refs if r.object_id} == {"obj:xyz"}
+
+    hyphenated = READER.resolve_mentions(
+        tiny_snap,
+        message="investigate obj:npc-mere-astor-impostor only",
+        selected_object_ids=[],
+    )
+    assert {r.object_id for r in hyphenated if r.object_id} == {
+        "obj:npc-mere-astor-impostor"
+    }
+    assert "obj:npc-mere-astor" not in {r.object_id for r in hyphenated if r.object_id}

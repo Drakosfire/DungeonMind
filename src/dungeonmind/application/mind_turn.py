@@ -12,7 +12,7 @@ from typing import Protocol
 
 from ..agents.protocol import AgentAdapter, AgentTurnContext, sanitize_agent_input
 from ..contracts.capability import CapabilityPolicy, GraphScope
-from ..contracts.evidence import EvidenceRef, EvidenceRole, SourceDomain, SourceStatus
+from ..contracts.evidence import EvidenceRef, EvidenceRole
 from ..contracts.graph import StoredGraphRevision
 from ..contracts.mind_turn import (
     ContextChange,
@@ -42,7 +42,12 @@ from ..domain.errors import (
 )
 from ..domain.fusion import reciprocal_rank_fusion
 from .context_assembly import assemble_agent_context
-from .graph_scope import project_scoped_snapshot, source_artifact_in_scope
+from .graph_scope import (
+    ProvenanceRejection,
+    ValidatedProvenance,
+    project_scoped_snapshot,
+    resolve_evidence_provenance,
+)
 from .graph_snapshot import (
     GraphObjectView,
     GraphRelationshipView,
@@ -154,9 +159,30 @@ class MindTurnService:
         with self._request_locks_guard:
             return self._request_locks.setdefault(key, threading.Lock())
 
+    def _release_lock_if_idle(
+        self,
+        thread_id: str,
+        request_id: str,
+        lock: threading.Lock,
+    ) -> None:
+        """Drop completed process-local lock entries to avoid unbounded growth.
+
+        B.1a retry coordination is intentionally single-process / single-worker.
+        Cross-worker uniqueness relies on repository idempotency, not this map.
+        """
+        key = (thread_id, request_id)
+        with self._request_locks_guard:
+            current = self._request_locks.get(key)
+            if current is lock and not lock.locked():
+                self._request_locks.pop(key, None)
+
     def execute(self, request: MindTurnRequest) -> MindTurnResponse:
-        with self._lock_for(request.thread_id, request.request_id):
-            return self._execute_unlocked(request)
+        # Process-local coordination only. Run the demo host as a single worker.
+        lock = self._lock_for(request.thread_id, request.request_id)
+        with lock:
+            response = self._execute_unlocked(request)
+        self._release_lock_if_idle(request.thread_id, request.request_id, lock)
+        return response
 
     def _execute_unlocked(self, request: MindTurnRequest) -> MindTurnResponse:
         replay = self._find_replay(request)
@@ -748,63 +774,25 @@ class MindTurnService:
             supporting_object_ids: list[str],
             owner_id: str,
         ) -> None:
-            record = parsed.evidence.get(evidence_ref_id)
-            if record is None:
-                coverage.gap_codes.append("missing_support_evidence")
-                coverage.missing.append(evidence_ref_id)
-                return
-            try:
-                source_domain = SourceDomain(record.source_domain)
-                evidence_role = EvidenceRole(record.evidence_role)
-            except ValueError:
-                coverage.gap_codes.append("evidence_contract_invalid")
-                coverage.missing.append(evidence_ref_id)
-                return
-            artifact = self._sources.get_artifact(record.source_artifact_id)
-            if artifact is None:
-                coverage.gap_codes.append("evidence_source_artifact_missing")
-                coverage.missing.append(record.source_artifact_id)
-                return
-            if artifact.status is not SourceStatus.ACTIVE:
-                coverage.gap_codes.append("evidence_source_inactive")
-                coverage.missing.append(record.source_artifact_id)
-                return
-            if artifact.source_domain is not source_domain:
-                coverage.gap_codes.append("evidence_source_domain_mismatch")
-                coverage.missing.append(evidence_ref_id)
-                return
-            if not source_artifact_in_scope(
-                artifact,
+            resolved = resolve_evidence_provenance(
+                evidence_ref_id,
+                snapshot=parsed,
+                sources=self._sources,
                 world_id=request.world_id,
                 campaign_id=request.campaign_id,
                 admissibility=request.admissibility,
-            ):
+            )
+            if resolved is None:
                 return
-            if record.source_revision_id:
-                revision = self._sources.get_revision(record.source_revision_id)
-                if revision is None:
-                    coverage.gap_codes.append("evidence_source_revision_missing")
-                    coverage.missing.append(record.source_revision_id)
-                    return
-                if revision.source_artifact_id != record.source_artifact_id:
-                    coverage.gap_codes.append("evidence_source_revision_artifact_mismatch")
-                    coverage.missing.append(record.source_revision_id)
-                    return
+            if isinstance(resolved, ProvenanceRejection):
+                coverage.gap_codes.append(resolved.gap_code)
+                coverage.missing.append(resolved.missing_id)
+                return
+            assert isinstance(resolved, ValidatedProvenance)
+            record = resolved.record
             if evidence_ref_id not in seen_evidence:
                 seen_evidence.add(evidence_ref_id)
-                evidence.append(
-                    EvidenceRef(
-                        evidence_ref_id=record.evidence_ref_id,
-                        source_artifact_id=record.source_artifact_id,
-                        source_revision_id=record.source_revision_id,
-                        source_domain=source_domain,
-                        evidence_role=evidence_role,
-                        can_open_source=record.can_open_source,
-                        can_highlight_span=record.can_highlight_span,
-                        locator=record.locator,
-                        uri=record.uri,
-                    )
-                )
+                evidence.append(resolved.evidence)
             anchor_id = _stable_id(
                 "anchor",
                 request.request_id,
