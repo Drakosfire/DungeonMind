@@ -31,6 +31,34 @@ from ..contracts.semantic import (
     SemanticDocument,
     SemanticQuery,
 )
+from ..domain.canonical import canonical_json
+from ..domain.errors import IdempotencyConflictError
+
+
+def normalize_semantic_document_batch(
+    documents: list[SemanticDocument],
+) -> list[SemanticDocument]:
+    """Collapse duplicate ``semantic_document_id`` entries within one batch.
+
+    Identical duplicates count as one document. Differing duplicates raise
+    ``IdempotencyConflictError``. Order of first occurrence is preserved.
+    """
+    seen: dict[str, SemanticDocument] = {}
+    ordered: list[SemanticDocument] = []
+    for doc in documents:
+        prior = seen.get(doc.semantic_document_id)
+        if prior is not None:
+            if canonical_json(prior.model_dump(mode="json")) != canonical_json(
+                doc.model_dump(mode="json")
+            ):
+                raise IdempotencyConflictError(
+                    f"semantic document {doc.semantic_document_id!r} appears in the "
+                    "same batch with conflicting payloads"
+                )
+            continue
+        seen[doc.semantic_document_id] = doc
+        ordered.append(doc)
+    return ordered
 
 
 class WorldGraphRepository(Protocol):
@@ -143,6 +171,12 @@ class SemanticDocumentRepository(Protocol):
     dimensions, recipe, world) before accepting a document. New documents may
     be inserted only while the materialization run is ``RUNNING``; exact
     replays remain idempotent after the run becomes terminal.
+
+    ``upsert_batch`` is all-or-nothing: duplicate IDs inside the batch are
+    normalized first (identical → one; conflicting → ``IdempotencyConflictError``),
+    referenced runs are locked in deterministic ``run_id`` order, every document
+    is preflighted, then every genuinely new document is inserted in one commit.
+    If any document fails, no new document from that batch remains.
 
     ``delete_run_documents`` is allowed only for ``FAILED`` or ``SUPERSEDED``
     runs — never for ``RUNNING`` or ``COMPLETED`` (active or otherwise).

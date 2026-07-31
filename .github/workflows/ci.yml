@@ -35,25 +35,43 @@ jobs:
       - name: Unit tests
         run: uv run pytest -m "not integration"
 
-  # PostgreSQL integration job activates in PR B (migrations + pgvector
-  # substrate). Kept as a commented scaffold so the wiring is reviewable here.
-  # integration:
-  #   runs-on: ubuntu-latest
-  #   services:
-  #     postgres:
-  #       image: pgvector/pgvector:pg16
-  #       env:
-  #         POSTGRES_DB: dungeonmind
-  #         POSTGRES_USER: dungeonmind
-  #         POSTGRES_PASSWORD: dungeonmind-ci
-  #       ports: ["5432:5432"]
-  #       options: >-
-  #         --health-cmd "pg_isready -U dungeonmind -d dungeonmind"
-  #         --health-interval 5s --health-timeout 5s --health-retries 10
-  #   env:
-  #     DUNGEONMIND_PG_DSN: postgresql://dungeonmind:dungeonmind-ci@localhost:5432/dungeonmind
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: astral-sh/setup-uv@v5
-  #     - run: uv sync --locked --extra postgres
-  #     - run: uv run pytest -m integration
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.6-pg16@sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b
+        env:
+          POSTGRES_DB: dungeonmind
+          POSTGRES_USER: dungeonmind
+          POSTGRES_PASSWORD: dungeonmind-ci
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U dungeonmind -d dungeonmind"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DUNGEONMIND_DATABASE_URL: postgresql://dungeonmind:dungeonmind-ci@localhost:5432/dungeonmind
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies (locked, postgres extra)
+        run: uv sync --locked --extra postgres
+
+      - name: Type check PostgreSQL adapters
+        run: uv run pyright src/dungeonmind/infrastructure/postgres
+
+      - name: Migrate
+        run: uv run alembic upgrade head
+
+      - name: Integration tests
+        run: uv run pytest -m integration

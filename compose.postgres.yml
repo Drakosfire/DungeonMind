@@ -1,0 +1,29 @@
+# Development-only PostgreSQL 16 + pgvector substrate for DungeonMind.
+# Not a production durability, backup, or secrets contract (see PR F / ADR-0002).
+#
+# Image is pinned by digest. Tag is documentation only.
+#   pgvector 0.8.6 / PostgreSQL 16
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg16@sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b
+    container_name: dungeonmind-postgres-dev
+    environment:
+      POSTGRES_DB: dungeonmind
+      POSTGRES_USER: dungeonmind
+      POSTGRES_PASSWORD: dungeonmind-dev
+    ports:
+      - "127.0.0.1:54329:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U dungeonmind -d dungeonmind && psql -U dungeonmind -d dungeonmind -tAc \"SELECT 1 FROM pg_available_extensions WHERE name = 'vector'\" | grep -q 1",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    # Dev-only ephemeral storage; do not treat as durable.
+    tmpfs:
+      - /var/lib/postgresql/data

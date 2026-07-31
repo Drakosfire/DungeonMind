@@ -125,3 +125,15 @@ class InvalidLifecycleTransitionError(DungeonMindError):
         self.record_id = record_id
         self.current_status = current_status
         self.requested_status = requested_status
+
+
+class PersistenceUnavailableError(DungeonMindError):
+    """The persistence backend refused or lost the connection before a known commit."""
+
+    code = "persistence_unavailable"
+
+
+class PersistenceIntegrityError(DungeonMindError):
+    """Stored rows disagree with reconstructed contracts or schema constraints."""
+
+    code = "persistence_integrity_error"
