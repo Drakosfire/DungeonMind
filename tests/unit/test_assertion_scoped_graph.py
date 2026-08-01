@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -33,6 +34,7 @@ from dungeonmind.contracts.projection import Admissibility, ProjectionFocus
 from dungeonmind.contracts.vocabulary import Visibility
 from dungeonmind.domain.errors import PersistenceIntegrityError
 from dungeonmind.infrastructure.fixtures.curated_mind_turn import (
+    CuratedMindTurnFixture,
     load_curated_mind_turn_fixture,
     seed_curated_mind_turn,
 )
@@ -384,21 +386,22 @@ def test_admitted_alias_ambiguity_not_overridden_by_candidates() -> None:
         campaign_id="camp:assertion-scope",
         admissibility=Admissibility.PLAYER,
     )
+    message = f"Tell me about the {PLAYER_ALIAS}"
+    filtered = filter_candidate_object_ids(
+        ["obj:item-sun-ledger", "obj:item-dawn-copy"],
+        message=message,
+        omitted_alias_index=scoped.omitted_alias_index,
+        alias_index=scoped.snapshot.alias_index,
+    )
+    assert filtered == []
     referents = VERSIONED.resolve_mentions(
         scoped.snapshot,
-        message=f"Tell me about the {PLAYER_ALIAS}",
+        message=message,
         selected_object_ids=[],
-        candidate_object_ids=["obj:item-sun-ledger", "obj:item-dawn-copy"],
+        candidate_object_ids=filtered,
     )
     assert any(ref.outcome is IdentityOutcome.AMBIGUOUS for ref in referents)
-    assert all(
-        not (
-            ref.outcome is IdentityOutcome.RESOLVED_EXISTING
-            and ref.object_id
-            in {"obj:item-sun-ledger", "obj:item-dawn-copy"}
-        )
-        for ref in referents
-    )
+    assert all(ref.object_id is None for ref in referents)
 
 
 def test_hidden_text_absent_from_scoped_snapshot_and_dumps() -> None:
@@ -533,6 +536,170 @@ def test_fixture_loader_accepts_assertion_scope_version() -> None:
     )
     assert fixture.graph_schema == GRAPH_SCHEMA_V2
     assert fixture.world_id == "world:assertion-scope-demo"
+
+
+def _ambiguous_dawn_fixture() -> CuratedMindTurnFixture:
+    """Two player-visible objects sharing the admitted Dawn Ledger alias."""
+    base = load_curated_mind_turn_fixture(
+        FIXTURE_PATH,
+        expected_fixture_version="curated_assertion_scope_v1",
+    )
+    raw = copy.deepcopy(base.raw)
+    raw["graph_payload"]["nodes"].append(
+        {
+            "object_id": "obj:item-dawn-copy",
+            "kind": "artifact",
+            "label": "The Dawn Copy",
+            "evidence_ref_ids": ["ev:ledger-core-player"],
+            "alias_assertions": [
+                {
+                    "assertion_id": "asrt:copy-alias-dawn",
+                    "alias": PLAYER_ALIAS,
+                    "evidence_ref_ids": ["ev:ledger-alias-player"],
+                }
+            ],
+        }
+    )
+    raw["semantic_documents"].append(
+        {
+            "semantic_document_id": "sdoc:assertion-dawn-copy-player",
+            "document_kind": "graph_object",
+            "campaign_scope": "camp:assertion-scope",
+            "graph_object_id": "obj:item-dawn-copy",
+            "visibility": "player",
+            "content": "The Dawn Copy is also called Dawn Ledger among scribes.",
+            "embedding": [0.0, 0.055, 0.945, 0.0, 0.0, 0.0, 0.0, 0.0],
+        }
+    )
+    return CuratedMindTurnFixture(raw=raw, path=base.path)
+
+
+def _assert_no_ambiguous_candidate_leak(response, *, agent_context: str) -> None:
+    ambiguous_ids = {"obj:item-sun-ledger", "obj:item-dawn-copy"}
+    assert any(ref.outcome is IdentityOutcome.AMBIGUOUS for ref in response.resolved_referents)
+    assert all(ref.object_id is None for ref in response.resolved_referents)
+    assert not any(
+        p.payload.get("object_id") in ambiguous_ids for p in response.semantic_projections
+    )
+    assert response.evidence == []
+    assert response.source_anchors == []
+    assert not any(
+        change.kind == "selection_resolved" for change in response.context_changes
+    )
+    dumped = response.model_dump_json()
+    for object_id in ambiguous_ids:
+        assert object_id not in dumped
+        assert object_id not in agent_context
+    assert "Sun Ledger" not in response.answer
+    assert "Dawn Copy" not in response.answer
+    assert "Sun Ledger" not in agent_context
+    assert "Dawn Copy" not in agent_context
+
+
+def test_mind_turn_ambiguous_alias_does_not_seed_candidates() -> None:
+    fixture = _ambiguous_dawn_fixture()
+    world_graph = InMemoryWorldGraphRepository()
+    sources = InMemorySourceRepository()
+    embedding_runs = InMemoryEmbeddingRunRepository()
+    semantic_documents = InMemorySemanticDocumentRepository(embedding_runs)
+    threads = InMemoryMindThreadRepository()
+    retrieval_sessions = InMemoryRetrievalSessionRepository()
+    semantic_search = InMemorySemanticSearch(semantic_documents, embedding_runs)
+    seed_curated_mind_turn(
+        world_graph=world_graph,
+        sources=sources,
+        embedding_runs=embedding_runs,
+        semantic_documents=semantic_documents,
+        threads=threads,
+        fixture=fixture,
+    )
+    binding = DemoAccessBinding.from_mapping(fixture.authorized_demo_binding)
+    capturing = CapturingFixtureAgentAdapter()
+    service = MindTurnService(
+        world_graph=world_graph,
+        retrieval_sessions=retrieval_sessions,
+        threads=threads,
+        semantic_documents=semantic_documents,
+        semantic_search=semantic_search,
+        sources=sources,
+        query_embedder=fixture.query_embedder,
+        agent_adapter=capturing,
+        clock=FixedClock(FIXED_NOW),
+    )
+
+    def _req(
+        request_id: str,
+        *,
+        message: str,
+        selected_object_ids: list[str] | None = None,
+    ) -> MindTurnRequest:
+        return MindTurnRequest.for_authorized(
+            request_id=request_id,
+            thread_id=binding.thread_id,
+            caller_scope=CallerScope(
+                caller_id=binding.caller_id,
+                tenant_id=binding.tenant_id,
+                roles=list(binding.roles),
+            ),
+            world_id=binding.world_id,
+            campaign_id=binding.campaign_id,
+            admissibility=Admissibility.PLAYER,
+            focus=ProjectionFocus(),
+            surface_context=SurfaceContext(
+                surface_id=binding.surface_id,
+                selected_object_ids=list(selected_object_ids or []),
+            ),
+            message=message,
+        )
+
+    ambiguous = service.execute(
+        _req("req:assert-ambiguous-dawn", message=f"What is the {PLAYER_ALIAS}?")
+    )
+    assert capturing.assembled_contexts
+    _assert_no_ambiguous_candidate_leak(
+        ambiguous, agent_context=capturing.assembled_contexts[-1]
+    )
+
+    # Persisted-session reconstruction must apply the same candidate filter.
+    replay = service.execute(
+        _req("req:assert-ambiguous-dawn", message=f"What is the {PLAYER_ALIAS}?")
+    )
+    assert replay.model_dump() == ambiguous.model_dump()
+    _assert_no_ambiguous_candidate_leak(
+        replay, agent_context=capturing.assembled_contexts[-1]
+    )
+
+    # Explicit selected IDs still resolve even when the shared alias is ambiguous.
+    selected = service.execute(
+        _req(
+            "req:assert-ambiguous-selected",
+            message=f"What is the {PLAYER_ALIAS}?",
+            selected_object_ids=["obj:item-sun-ledger"],
+        )
+    )
+    assert any(
+        ref.object_id == "obj:item-sun-ledger"
+        and ref.outcome is IdentityOutcome.RESOLVED_EXISTING
+        for ref in selected.resolved_referents
+    )
+    assert any(
+        p.kind == "entity_brief" and p.payload.get("object_id") == "obj:item-sun-ledger"
+        for p in selected.semantic_projections
+    )
+    assert "obj:item-dawn-copy" not in selected.model_dump_json()
+
+    # Exact object IDs in the message still resolve normally.
+    by_id = service.execute(
+        _req(
+            "req:assert-ambiguous-by-id",
+            message="Describe obj:item-dawn-copy please",
+        )
+    )
+    assert any(
+        ref.object_id == "obj:item-dawn-copy"
+        and ref.outcome is IdentityOutcome.RESOLVED_EXISTING
+        for ref in by_id.resolved_referents
+    )
 
 
 def test_mind_turn_player_leak_audit_and_gm_fields() -> None:

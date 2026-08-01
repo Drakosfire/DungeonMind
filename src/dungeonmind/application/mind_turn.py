@@ -331,12 +331,13 @@ class MindTurnService:
                 continue
             candidate_object_ids.append(doc.graph_object_id)
 
-        # Exact omitted-alias matches must not be recovered through semantic
-        # candidates (dense ranks even at zero similarity).
+        # Exact omitted-alias matches and admitted multi-object alias ambiguity
+        # must not be recovered through semantic candidate seeding.
         candidate_object_ids = filter_candidate_object_ids(
             candidate_object_ids,
             message=request.message,
             omitted_alias_index=omitted_alias_index,
+            alias_index=parsed.alias_index,
         )
 
         # Selected IDs that fail scoping are request-targeted; surface only
@@ -694,6 +695,7 @@ class MindTurnService:
             candidate_object_ids,
             message=request.message,
             omitted_alias_index=dict(scoped.omitted_alias_index),
+            alias_index=parsed.alias_index,
         )
         seed_ids = sorted(
             {

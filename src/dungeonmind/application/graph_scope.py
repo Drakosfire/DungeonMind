@@ -152,14 +152,36 @@ def objects_blocked_by_omitted_aliases(
     return blocked
 
 
+def objects_blocked_by_ambiguous_aliases(
+    message: str,
+    alias_index: dict[str, list[str]],
+) -> set[str]:
+    """Object IDs blocked when the message matches an admitted multi-object alias.
+
+    Exact alias ambiguity must stay AMBIGUOUS: semantic candidates must not seed
+    either object into projections, evidence, or agent context.
+    """
+    if not alias_index:
+        return set()
+    normalized = _norm_alias(message)
+    blocked: set[str] = set()
+    for alias, object_ids in alias_index.items():
+        if alias and contains_exact_phrase(normalized, alias) and len(object_ids) > 1:
+            blocked.update(object_ids)
+    return blocked
+
+
 def filter_candidate_object_ids(
     candidate_object_ids: list[str],
     *,
     message: str,
     omitted_alias_index: dict[str, list[str]],
+    alias_index: dict[str, list[str]] | None = None,
 ) -> list[str]:
-    """Drop candidate object IDs blocked by an exact omitted-alias match."""
+    """Drop candidate IDs blocked by omitted-alias or admitted-alias ambiguity."""
     blocked = objects_blocked_by_omitted_aliases(message, omitted_alias_index)
+    if alias_index is not None:
+        blocked |= objects_blocked_by_ambiguous_aliases(message, alias_index)
     if not blocked:
         return list(candidate_object_ids)
     return [object_id for object_id in candidate_object_ids if object_id not in blocked]
