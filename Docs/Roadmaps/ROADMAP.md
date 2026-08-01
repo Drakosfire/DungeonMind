@@ -1,9 +1,10 @@
 # DungeonMind — Roadmap and PR ladder
 
-**Status:** PR A / A.1 / B / B.1a landed. PR B.1b (DungeonMind-owned curated
-browser consumer proof) is the current DungeonMind slice. External
-product-surface adoption of `mind_turn_v1` remains a separate, still-false
-successor outside this repository. Ownership per ADR-0002.
+**Status:** PR A / A.1 / B / B.1a / B.1b landed. PR B.2a (assertion-scoped
+alias and summary read projection for `dm_union_graph_v2`) is the current
+DungeonMind-owned slice. External RulesIngestion PR C and product-surface
+adoption of `mind_turn_v1` remain independent successors. Ownership per
+ADR-0002.
 
 Each PR is independently reviewable, in its named repository. Cross-repo work
 is never one PR.
@@ -15,7 +16,8 @@ A     repository foundation ✅
 A.1   foundational invariant hardening ✅
 B     minimal PostgreSQL/pgvector substrate ✅
 B.1a  thin read-only Mind Turn API host ✅
-B.1b  DungeonMind-owned curated browser consumer proof   ← current
+B.1b  DungeonMind-owned curated browser consumer proof ✅
+B.2a  assertion-scoped alias/summary read projection   ← current
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
 D     embedding model bakeoff
@@ -23,8 +25,8 @@ E     DungeonMindServer retrieval seam
 F     production infrastructure hardening (DungeonOverMind)
 ```
 
-\* B.1c is named only as an external successor. It is not claimed by B.1b and
-must land as a separate PR in the owning product repository.
+\* B.1c is named only as an external successor. It is not claimed by B.1b/B.2a
+and must land as a separate PR in the owning product repository.
 
 The demo may use deterministic fixture embeddings or the benchmark baseline.
 It proves the replaceable UI-to-Mind seam before several PRs optimize and
@@ -107,7 +109,7 @@ Public endpoints remain exactly `/healthz`, `/readyz`, `/v1/mind-turn`.
 Single-worker demo host; process-local request coordination is not claimed as
 cross-worker exactly-once execution.
 
-## PR B.1b — Curated browser surface consumer proof
+## PR B.1b — Curated browser surface consumer proof ✅
 
 **Repository:** DungeonMind only
 
@@ -130,6 +132,27 @@ Canonical handoff:
 [`Docs/Handoffs/HANDOFF-b1b-curated-browser-surface.md`](../Handoffs/HANDOFF-b1b-curated-browser-surface.md).
 Runbook:
 [`Docs/Runbooks/RUNBOOK-b1b-curated-browser-surface.md`](../Runbooks/RUNBOOK-b1b-curated-browser-surface.md).
+
+## PR B.2a — Assertion-scoped alias and summary read projection
+
+**Repository:** DungeonMind only
+
+Outcome:
+
+```text
+dm_union_graph_v2 revision
+→ core object evidence remains coarse
+→ each alias / summary admitted independently from its evidence
+→ player and GM receive different safe field projections
+→ same exact revision; v1 coarse behavior unchanged
+```
+
+Adds a second stored graph schema. Does **not** introduce a generic assertion
+framework, assertion authoring, migrations, public contract changes, source
+opening, Hermes, or product-surface adoption. Relationships remain coarse.
+
+Canonical handoff:
+[`Docs/Handoffs/HANDOFF-b2a-assertion-scoped-alias-summary.md`](../Handoffs/HANDOFF-b2a-assertion-scoped-alias-summary.md).
 
 ## External successor — product-surface adoption (still false)
 
@@ -176,7 +199,7 @@ benchmark only — no silent production switch); disabled RulesLawyer
 capability must not load the model; readiness distinguishes model-unavailable
 from database-unavailable; Mongo env-var naming reconciled; privacy-safe
 diagnostics; API contract unchanged. No DungeonMind domain ownership moves
-(charter §10.3). Can start in parallel with B.1b.
+(charter §10.3). Can start in parallel with B.2a.
 
 ## PR F — deployment/IaC integration
 

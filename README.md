@@ -39,7 +39,8 @@ Source-of-truth precedence: [`Docs/Architecture/AUTHORITY.md`](Docs/Architecture
 
 ## Status
 
-**Founding through B.1a landed; B.1b DungeonMind-owned browser consumer in flight.**
+**Founding through B.1b landed; B.2a assertion-scoped alias/summary projection
+in flight.**
 
 What exists today:
 
@@ -53,13 +54,19 @@ What exists today:
 - a repository-local static browser example under
   `examples/curated_mind_turn_surface/` that consumes the live API on a second
   origin (acceptance consumer — **not** a product surface and **not**
-  LandingPage).
+  LandingPage);
+- `dm_union_graph_v1` coarse-object read projection (unchanged) plus
+  `dm_union_graph_v2` assertion-scoped aliases and summary for read projection
+  only (no generic world-object / assertion authoring model).
 
-What deliberately does **not** exist yet: LandingPage or other product-surface
-adoption of `mind_turn_v1`, source-body opening, Hermes, production auth,
-multi-worker exactly-once adapter execution, the retrieval benchmark backend
-(PR C), the embedding bakeoff (PR D), or production deployment hardening
-(PR F). See [`Docs/Roadmaps/ROADMAP.md`](Docs/Roadmaps/ROADMAP.md).
+What deliberately does **not** exist yet: generic field/property assertion
+models, assertion-scoped relationships, assertion authoring or graph writes,
+field-level semantic-document materialization, LandingPage or other
+product-surface adoption of `mind_turn_v1`, source-body opening, Hermes,
+production auth, multi-worker exactly-once adapter execution, the retrieval
+benchmark backend (PR C), the embedding bakeoff (PR D), or production
+deployment hardening (PR F). See
+[`Docs/Roadmaps/ROADMAP.md`](Docs/Roadmaps/ROADMAP.md).
 
 ## Quickstart
 

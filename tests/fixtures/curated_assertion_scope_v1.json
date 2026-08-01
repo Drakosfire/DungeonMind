@@ -1,0 +1,187 @@
+{
+  "fixture_version": "curated_assertion_scope_v1",
+  "fixed_timestamps": {
+    "created_at": "2026-07-31T12:00:00Z",
+    "completed_at": "2026-07-31T12:05:00Z",
+    "thread_created_at": "2026-07-31T11:00:00Z"
+  },
+  "authorized_demo_binding": {
+    "caller_id": "caller:assertion-scope-demo",
+    "tenant_id": null,
+    "roles": ["assertion-scope-demo"],
+    "world_id": "world:assertion-scope-demo",
+    "campaign_id": "camp:assertion-scope",
+    "thread_id": "thr:assertion-scope-demo",
+    "admissibility": "gm",
+    "surface_id": "test:assertion-scope"
+  },
+  "world_id": "world:assertion-scope-demo",
+  "graph_schema": "dm_union_graph_v2",
+  "graph_payload": {
+    "world_id": "world:assertion-scope-demo",
+    "nodes": [
+      {
+        "object_id": "obj:item-sun-ledger",
+        "kind": "artifact",
+        "label": "The Sun Ledger",
+        "evidence_ref_ids": ["ev:ledger-core-player"],
+        "alias_assertions": [
+          {
+            "assertion_id": "asrt:ledger-alias-dawn",
+            "alias": "Dawn Ledger",
+            "evidence_ref_ids": ["ev:ledger-alias-player"]
+          },
+          {
+            "assertion_id": "asrt:ledger-alias-debtbook",
+            "alias": "Debtbook of the First Light",
+            "evidence_ref_ids": ["ev:ledger-alias-gm"]
+          }
+        ],
+        "summary_assertion": {
+          "assertion_id": "asrt:ledger-summary-secret",
+          "summary": "a brass-bound account that records the names owed to the buried sun",
+          "evidence_ref_ids": ["ev:ledger-summary-gm"]
+        }
+      }
+    ],
+    "relationships": [],
+    "evidence_refs": [
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:ledger-core-player",
+        "source_artifact_id": "src:assertion-player-notes",
+        "source_revision_id": "srcrev:assertion-player-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://assertion-scope/player#ledger-core"
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:ledger-alias-player",
+        "source_artifact_id": "src:assertion-player-notes",
+        "source_revision_id": "srcrev:assertion-player-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://assertion-scope/player#ledger-alias-dawn"
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:ledger-alias-gm",
+        "source_artifact_id": "src:assertion-gm-notes",
+        "source_revision_id": "srcrev:assertion-gm-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://assertion-scope/gm#ledger-alias-debtbook"
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:ledger-summary-gm",
+        "source_artifact_id": "src:assertion-gm-notes",
+        "source_revision_id": "srcrev:assertion-gm-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://assertion-scope/gm#ledger-summary-secret"
+      }
+    ]
+  },
+  "source_artifacts": [
+    {
+      "source_artifact_id": "src:assertion-player-notes",
+      "source_domain": "worldbuilding",
+      "world_id": "world:assertion-scope-demo",
+      "campaign_id": "camp:assertion-scope",
+      "session_id": null,
+      "visibility": "player",
+      "current_revision_id": "srcrev:assertion-player-notes-v1",
+      "authority": "primary",
+      "status": "active"
+    },
+    {
+      "source_artifact_id": "src:assertion-gm-notes",
+      "source_domain": "worldbuilding",
+      "world_id": "world:assertion-scope-demo",
+      "campaign_id": "camp:assertion-scope",
+      "session_id": null,
+      "visibility": "gm",
+      "current_revision_id": "srcrev:assertion-gm-notes-v1",
+      "authority": "primary",
+      "status": "active"
+    }
+  ],
+  "source_revisions": [
+    {
+      "source_revision_id": "srcrev:assertion-player-notes-v1",
+      "source_artifact_id": "src:assertion-player-notes",
+      "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "body_storage": "external",
+      "locator": "fixture://curated-assertion-scope-v1/player-notes"
+    },
+    {
+      "source_revision_id": "srcrev:assertion-gm-notes-v1",
+      "source_artifact_id": "src:assertion-gm-notes",
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "body_storage": "external",
+      "locator": "fixture://curated-assertion-scope-v1/gm-notes"
+    }
+  ],
+  "embedding_run": {
+    "run_id": "erun:curated-assertion-scope-v1",
+    "embedding_model": "fixture-8dim",
+    "embedding_model_revision": "v1",
+    "embedding_dimensions": 8,
+    "embedding_recipe": "fixture-raw",
+    "world_id": "world:assertion-scope-demo"
+  },
+  "semantic_documents": [
+    {
+      "semantic_document_id": "sdoc:assertion-ledger-player",
+      "document_kind": "graph_object",
+      "campaign_scope": "camp:assertion-scope",
+      "graph_object_id": "obj:item-sun-ledger",
+      "visibility": "player",
+      "content": "The Sun Ledger, also called Dawn Ledger, is a known artifact of the campaign.",
+      "embedding": [0.0, 0.05, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0]
+    },
+    {
+      "semantic_document_id": "sdoc:assertion-ledger-gm",
+      "document_kind": "graph_object",
+      "campaign_scope": "camp:assertion-scope",
+      "graph_object_id": "obj:item-sun-ledger",
+      "visibility": "gm",
+      "content": "The Sun Ledger, Debtbook of the First Light: a brass-bound account that records the names owed to the buried sun.",
+      "embedding": [0.0, 0.1, 0.9, 0.0, 0.0, 0.0, 0.0, 0.0]
+    }
+  ],
+  "query_embeddings": {
+    "What is the Sun Ledger?": [0.0, 0.05, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "What is the Dawn Ledger?": [0.0, 0.06, 0.94, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "What is the Debtbook of the First Light?": [0.0, 0.05, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0]
+  },
+  "leak_sentinels": {
+    "gm_alias": "Debtbook of the First Light",
+    "gm_summary": "a brass-bound account that records the names owed to the buried sun",
+    "gm_assertion_ids": [
+      "asrt:ledger-alias-debtbook",
+      "asrt:ledger-summary-secret"
+    ],
+    "gm_evidence_ids": [
+      "ev:ledger-alias-gm",
+      "ev:ledger-summary-gm"
+    ],
+    "gm_source_artifact_ids": [
+      "src:assertion-gm-notes"
+    ],
+    "gm_source_revision_ids": [
+      "srcrev:assertion-gm-notes-v1"
+    ],
+    "gm_locators": [
+      "fixture://assertion-scope/gm#ledger-alias-debtbook",
+      "fixture://assertion-scope/gm#ledger-summary-secret",
+      "fixture://curated-assertion-scope-v1/gm-notes"
+    ]
+  }
+}

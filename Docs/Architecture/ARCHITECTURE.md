@@ -191,6 +191,34 @@ exact ID / explicit selection
 
 A similarity score is never surfaced as factual support.
 
+### 6.1 Stored graph schemas and field admission
+
+Published graph schemas are exact and versioned. Readers dispatch by
+`graph_schema` and never reinterpret an older revision under newer rules.
+
+- **`dm_union_graph_v1`** — coarse object projection. Aliases and summary share
+  the object's evidence set. If any attached evidence is missing, broken, or
+  out of scope, the entire object is hidden. Existing v1 revisions retain this
+  behavior byte-for-byte.
+- **`dm_union_graph_v2`** — assertion-scoped aliases and one optional summary
+  for **read projection only**. Object existence and the primary label remain
+  coarse (node-level evidence). Each alias assertion and the summary assertion
+  are retained only when every evidence reference attached to that field is
+  independently valid and in scope. Omitted fields must not participate in
+  identity resolution, agent context, semantic projections, evidence, anchors,
+  coverage, or diagnostics.   Semantic candidate seeding must not override an
+  exact omitted-alias match (recovering the object via a player-visible
+  document would reveal the hidden alias→object association), nor seed
+  objects that share an exact admitted alias marked AMBIGUOUS. Relationships
+  remain coarse in v2.
+
+Scope is derived from admitted evidence provenance. Assertions carry no direct
+visibility, campaign, confidence, or authority fields. There is no public
+generic assertion / world-object contract in this slice; schema-local records
+live with the graph reader. Additive semantic projection
+`entity_field_provenance` exposes only admitted alias/summary mappings;
+`entity_brief` remains surface-compatible with admitted field values.
+
 ## 7. Persistence strategy (summary of ADR-0001/0002/0003)
 
 - PostgreSQL + JSONB + pgvector. Relational identity/lifecycle columns;
@@ -207,8 +235,11 @@ A similarity score is never surfaced as factual support.
 ## 8. What does not exist yet (and where it lands)
 
 See `Docs/Roadmaps/ROADMAP.md`. In short: PostgreSQL adapters + migrations
-(PR B), thin read-only Mind Turn demo (PR B.1), then pgvector benchmark
-backend via RulesIngestion Option B (PR C), embedding bakeoff (PR D),
-DungeonMindServer retrieval seam (PR E), and production IaC integration
-(PR F). Conversation/chat history is never authoritative anywhere in this
-target state.
+(PR B), thin read-only Mind Turn host + curated browser consumer (PR B.1a/B.1b),
+assertion-scoped alias/summary read projection (PR B.2a), then pgvector
+benchmark backend via RulesIngestion Option B (PR C), embedding bakeoff
+(PR D), DungeonMindServer retrieval seam (PR E), and production IaC
+integration (PR F). Conversation/chat history is never authoritative anywhere
+in this target state. Still false after B.2a: generic assertion frameworks,
+assertion-scoped relationships, assertion authoring, source opening, Hermes,
+and external product-surface adoption.
