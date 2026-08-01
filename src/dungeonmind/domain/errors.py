@@ -137,3 +137,21 @@ class PersistenceIntegrityError(DungeonMindError):
     """Stored rows disagree with reconstructed contracts or schema constraints."""
 
     code = "persistence_integrity_error"
+
+
+class SemanticProfileNotFoundError(PersistenceIntegrityError):
+    """Pinned profile identity is absent from the configured registry."""
+
+    code = "semantic_profile_not_found"
+
+
+class SemanticProfileIntegrityError(PersistenceIntegrityError):
+    """Profile descriptor/config failed validation or digest verification."""
+
+    code = "semantic_profile_integrity_error"
+
+
+class SemanticTermValidationError(PersistenceIntegrityError):
+    """A graph term is malformed or not admitted by the pinned profile."""
+
+    code = "semantic_term_validation_error"

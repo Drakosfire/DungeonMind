@@ -41,6 +41,26 @@ uv run pyright          # static type check over src/
    revision publication with stale-parent rejection).
 8. **Type hints required** (ruff `ANN` rules active for `src/` and `scripts/`).
 
+## Semantic profile boundary (hard rules, ADR-0004)
+
+- **No code under `src/dungeonmind` imports `dungeonmind_dnd`** — enforced by
+  `tests/unit/test_import_boundaries.py`. `dungeonmind_dnd` also stays
+  data-only: no kernel layer imports, no registration side effects.
+- **No unqualified new semantic kinds/predicates in `dm_union_graph_v3`
+  fixtures.** Every v3 `kind` and `predicate` is a qualified
+  `namespace:local` term admitted by the fixture's pinned profile.
+- **No D&D mechanics contract lands under `src/dungeonmind`.** Game meaning
+  belongs to profile packages; the kernel owns admission, never
+  interpretation.
+- **Changing a profile descriptor requires a new immutable profile
+  revision** — a new `profile_revision` pin and a new digest. Never edit a
+  published descriptor in place; old revisions stay loadable for as long as
+  graphs pinned to them must remain readable.
+- **Config paths are never stored in graph payloads or public responses**
+  (nor in error details). Durable identity is the pinned `profile_id` +
+  `profile_revision` + `descriptor_sha256`; registry config paths are
+  deployment-local locators only.
+
 ## Data hygiene (hard rules)
 
 - Never commit secrets, `.env` files, credentials, or connection strings with

@@ -1,0 +1,6 @@
+{
+  "schema_version": "dm_semantic_profile_v1",
+  "profile_id": "test.narrative",
+  "profile_revision": "narrative-profile-v1",
+  "term_namespaces": ["narrative"]
+}

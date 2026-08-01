@@ -36,6 +36,7 @@ from ..contracts.projection import Admissibility
 from ..contracts.vocabulary import Visibility
 from .graph_snapshot import (
     GRAPH_SCHEMA_V2,
+    GRAPH_SCHEMA_V3,
     AdmittedAliasAssertion,
     AdmittedSummaryAssertion,
     GraphEvidenceRecord,
@@ -517,8 +518,8 @@ def project_scoped_snapshot(
 ) -> ScopedGraphProjection:
     """Return a scoped snapshot and exclusion diagnostics.
 
-    V1 keeps the B.1a coarse-object policy. V2 retains the object shell when
-    core evidence is admitted, then filters each alias and summary independently.
+    V1 keeps the B.1a coarse-object policy. V2/V3 retain the object shell when
+    core evidence is admitted, then filter each alias and summary independently.
 
     Graph-global exclusions are retained per object/relationship/assertion for
     callers that need targeted diagnostics. They must not be copied wholesale
@@ -526,7 +527,7 @@ def project_scoped_snapshot(
     """
     assertion_exclusions: dict[str, ObjectScopeExclusion] = {}
     omitted_alias_index: dict[str, list[str]] = {}
-    if snapshot.graph_schema == GRAPH_SCHEMA_V2:
+    if snapshot.graph_schema in (GRAPH_SCHEMA_V2, GRAPH_SCHEMA_V3):
         (
             objects,
             object_exclusions,
@@ -598,6 +599,8 @@ def project_scoped_snapshot(
             evidence=evidence,
             label_index=label_index,
             alias_index=alias_index,
+            semantic_profile_ref=snapshot.semantic_profile_ref,
+            semantic_profile_descriptor=snapshot.semantic_profile_descriptor,
         ),
         object_exclusions=object_exclusions,
         relationship_exclusions=relationship_exclusions,

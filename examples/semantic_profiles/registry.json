@@ -1,0 +1,10 @@
+{
+  "schema_version": "dm_semantic_profile_registry_config_v1",
+  "profiles": [
+    {
+      "profile_id": "dungeonmind.dnd5e",
+      "profile_revision": "dnd5e-profile-v1",
+      "descriptor_path": "../../src/dungeonmind_dnd/profiles/dnd5e-v1.json"
+    }
+  ]
+}

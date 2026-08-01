@@ -14,7 +14,11 @@ import importlib
 import sys
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[2] / "src" / "dungeonmind"
+import pytest
+
+SRC_ROOT = Path(__file__).resolve().parents[2] / "src"
+SRC = SRC_ROOT / "dungeonmind"
+DND_SRC = SRC_ROOT / "dungeonmind_dnd"
 
 FORBIDDEN_ROOTS = {
     "apps",  # DungeonMindBuddy application layer
@@ -79,6 +83,11 @@ LAYER_RULES: dict[str, set[str]] = {
         "dungeonmind.domain",
         "dungeonmind.application",
     },
+    "dungeonmind.infrastructure.semantic_profiles": {
+        "dungeonmind.contracts",
+        "dungeonmind.domain",
+        "dungeonmind.application",
+    },
     "dungeonmind.service": {
         "dungeonmind.contracts",
         "dungeonmind.domain",
@@ -88,6 +97,7 @@ LAYER_RULES: dict[str, set[str]] = {
         "dungeonmind.infrastructure.fixtures",
         "dungeonmind.infrastructure.postgres",
         "dungeonmind.infrastructure.memory",
+        "dungeonmind.infrastructure.semantic_profiles",
     },
 }
 
@@ -179,6 +189,49 @@ def test_layer_rules_hold() -> None:
             if target_layer != importer_layer and target_layer not in allowed:
                 violations.append(f"{module_name} illegally imports {module}")
     assert not violations, "layer violations:\n" + "\n".join(violations)
+
+
+def test_dungeonmind_does_not_import_dungeonmind_dnd() -> None:
+    violations: list[str] = []
+    for path in _all_source_files():
+        module_name, is_init = _module_name(path)
+        for module in _imports_of(path, module_name, is_init):
+            if module == "dungeonmind_dnd" or module.startswith("dungeonmind_dnd."):
+                violations.append(f"{module_name} imports {module}")
+    assert not violations, "kernel imported dungeonmind_dnd:\n" + "\n".join(violations)
+
+
+def test_dungeonmind_dnd_stays_data_only() -> None:
+    """Sibling package may not import application/infrastructure/service layers."""
+    if not DND_SRC.exists():
+        pytest.skip("dungeonmind_dnd package missing")
+    forbidden_prefixes = (
+        "dungeonmind.application",
+        "dungeonmind.infrastructure",
+        "dungeonmind.service",
+        "dungeonmind.agents",
+    )
+    violations: list[str] = []
+    for path in sorted(DND_SRC.rglob("*.py")):
+        is_init = path.name == "__init__.py"
+        dotted = ".".join(path.relative_to(DND_SRC).with_suffix("").parts)
+        module_name = (
+            "dungeonmind_dnd"
+            if is_init and dotted in {"", "__init__"}
+            else f"dungeonmind_dnd.{dotted.removesuffix('.__init__')}"
+        )
+        if module_name.endswith("."):
+            module_name = "dungeonmind_dnd"
+        for module in _imports_of(path, module_name, is_init):
+            blocked = any(
+                module == prefix or module.startswith(f"{prefix}.")
+                for prefix in forbidden_prefixes
+            )
+            if blocked:
+                violations.append(f"{module_name} imports {module}")
+    assert not violations, "dungeonmind_dnd layer violations:\n" + "\n".join(
+        violations
+    )
 
 
 def test_every_module_imports_cleanly_without_optional_extras() -> None:
