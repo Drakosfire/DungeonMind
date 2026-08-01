@@ -1,7 +1,9 @@
 """Filesystem and static adapters for :class:`SemanticProfileRegistry`.
 
 Neither adapter imports ``dungeonmind_dnd``. Error messages and details never
-include local filesystem paths.
+include local filesystem paths, and every wrapped failure uses ``from None``
+so chained causes/contexts (which carry OS messages with absolute paths or
+pydantic input dumps with local content) never surface in startup tracebacks.
 """
 
 from __future__ import annotations
@@ -25,6 +27,17 @@ ENV_SEMANTIC_PROFILE_REGISTRY_PATH = "DUNGEONMIND_SEMANTIC_PROFILE_REGISTRY_PATH
 
 def _integrity(message: str, *, details: dict[str, Any] | None = None) -> None:
     raise SemanticProfileIntegrityError(message, details=details)
+
+
+def _validation_messages(exc: ValidationError) -> list[str]:
+    """Sanitized pydantic failure messages.
+
+    ``err["msg"]`` strings are static templates (plus our own constant
+    validator messages) — never the rejected input values, which are what
+    could carry local paths or file content.
+    """
+    messages = [str(err.get("msg", "invalid")) for err in exc.errors()]
+    return list(dict.fromkeys(messages))
 
 
 class StaticSemanticProfileRegistry:
@@ -80,11 +93,10 @@ class FilesystemSemanticProfileRegistry:
         try:
             raw_text = config_path.read_text(encoding="utf-8")
         except OSError as exc:
-            _integrity(
+            raise SemanticProfileIntegrityError(
                 "semantic profile registry config could not be read",
                 details={"reason": type(exc).__name__},
-            )
-            return  # pragma: no cover — _integrity always raises
+            ) from None
 
         try:
             raw: Any = json.loads(raw_text)
@@ -92,15 +104,17 @@ class FilesystemSemanticProfileRegistry:
             raise SemanticProfileIntegrityError(
                 "semantic profile registry config is not valid JSON",
                 details={"reason": type(exc).__name__},
-            ) from exc
+            ) from None
 
         try:
             config = SemanticProfileRegistryConfig.model_validate(raw)
         except ValidationError as exc:
+            messages = _validation_messages(exc)
             raise SemanticProfileIntegrityError(
-                "semantic profile registry config failed validation",
-                details={"reason": "ValidationError"},
-            ) from exc
+                "semantic profile registry config failed validation: "
+                + "; ".join(messages),
+                details={"reason": "ValidationError", "messages": messages},
+            ) from None
 
         base_dir = config_path.parent
         for entry in config.profiles:
@@ -147,7 +161,7 @@ class FilesystemSemanticProfileRegistry:
                     "profile_revision": expected_profile_revision,
                     "reason": type(exc).__name__,
                 },
-            ) from exc
+            ) from None
 
         try:
             payload: Mapping[str, Any] = json.loads(text)
@@ -159,19 +173,22 @@ class FilesystemSemanticProfileRegistry:
                     "profile_revision": expected_profile_revision,
                     "reason": type(exc).__name__,
                 },
-            ) from exc
+            ) from None
 
         try:
             descriptor = SemanticProfileDescriptor.model_validate(payload)
         except ValidationError as exc:
+            messages = _validation_messages(exc)
             raise SemanticProfileIntegrityError(
-                "semantic profile descriptor failed validation",
+                "semantic profile descriptor failed validation: "
+                + "; ".join(messages),
                 details={
                     "profile_id": expected_profile_id,
                     "profile_revision": expected_profile_revision,
                     "reason": "ValidationError",
+                    "messages": messages,
                 },
-            ) from exc
+            ) from None
 
         if (
             descriptor.profile_id != expected_profile_id

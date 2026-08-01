@@ -56,10 +56,12 @@ def load_configured_profile_registry() -> SemanticProfileRegistry:
     except SemanticProfileIntegrityError:
         raise
     except OSError as exc:
+        # ``from None``: OS errors carry absolute paths in their messages, and
+        # startup tracebacks must never surface local filesystem layout.
         raise SemanticProfileIntegrityError(
             "semantic profile registry could not be loaded",
             details={"reason": type(exc).__name__},
-        ) from exc
+        ) from None
 
 
 def build_configured_graph_reader(
