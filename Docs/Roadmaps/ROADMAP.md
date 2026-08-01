@@ -1,9 +1,9 @@
 # DungeonMind — Roadmap and PR ladder
 
-**Status:** PR A landed; PR A.1 (invariant hardening) in flight. Ladder
-amended after founding review: the curated read-only Mind Turn demo moves
-immediately after the minimal PostgreSQL substrate, before cross-repo
-benchmarking and production IaC. Ownership per ADR-0002.
+**Status:** PR A / A.1 / B / B.1a landed. PR B.1b (DungeonMind-owned curated
+browser consumer proof) is the current DungeonMind slice. External
+product-surface adoption of `mind_turn_v1` remains a separate, still-false
+successor outside this repository. Ownership per ADR-0002.
 
 Each PR is independently reviewable, in its named repository. Cross-repo work
 is never one PR.
@@ -11,15 +11,20 @@ is never one PR.
 ## Sequence (amended)
 
 ```text
-A   repository foundation ✅
-A.1 foundational invariant hardening   ← current
-B   minimal PostgreSQL/pgvector substrate
-B.1 thin read-only Mind Turn API + LandingPage demo (curated fixture)
-C   RulesIngestion pgvector benchmark backend
-D   embedding model bakeoff
-E   DungeonMindServer retrieval seam
-F   production infrastructure hardening (DungeonOverMind)
+A     repository foundation ✅
+A.1   foundational invariant hardening ✅
+B     minimal PostgreSQL/pgvector substrate ✅
+B.1a  thin read-only Mind Turn API host ✅
+B.1b  DungeonMind-owned curated browser consumer proof   ← current
+B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
+C     RulesIngestion pgvector benchmark backend
+D     embedding model bakeoff
+E     DungeonMindServer retrieval seam
+F     production infrastructure hardening (DungeonOverMind)
 ```
+
+\* B.1c is named only as an external successor. It is not claimed by B.1b and
+must land as a separate PR in the owning product repository.
 
 The demo may use deterministic fixture embeddings or the benchmark baseline.
 It proves the replaceable UI-to-Mind seam before several PRs optimize and
@@ -34,7 +39,7 @@ logic; application repository ports; in-memory adapters; curated fixture;
 unit tests; lint+CI; founding docs (architecture, authority, ADRs 0001–0003,
 recon report, handoff template).
 
-## PR A.1 — Foundational invariant hardening
+## PR A.1 — Foundational invariant hardening ✅
 
 **Repository:** DungeonMind
 
@@ -64,47 +69,75 @@ Exit proof (initial hardening + contract-blocker closure):
   modes cannot contradict).
 - Sanitized agent-adapter input (no caller/tenant auth metadata).
 - Static type checking (Pyright) in CI.
-- This roadmap update placing the curated demo after PR B.
 
-## PR B — PostgreSQL/pgvector development substrate
+## PR B — PostgreSQL/pgvector development substrate ✅
 
 **Repository:** DungeonMind (+ deployment owner only if dev/CI wiring needs it)
 
-Outcome:
+Delivered:
 
-- `migrations/` (Alembic) implementing the minimum schema families
-  (charter §7.2) with relational identity/lifecycle columns + JSONB payloads;
+- `migrations/` (Alembic) implementing the minimum schema families with
+  relational identity/lifecycle columns + JSONB payloads;
 - pinned dev/CI pgvector image + compose; health check verifies PostgreSQL
   and the pgvector extension;
 - `infrastructure/postgres/` adapters for the repository ports, behind the
   `postgres` extra;
-- graph revision/head CAS proven against real PostgreSQL (row-lock,
-  stale-parent rejection, failed-write readability, auditable rollback);
+- graph revision/head CAS proven against real PostgreSQL;
 - semantic documents inserted and exactly searched (dense + full-text +
   exact + fusion + filters);
 - integration tests opt-in locally, required in CI.
 
-## PR B.1 — Thin read-only Mind Turn demo
+## PR B.1a — Thin read-only Mind Turn API host ✅
 
-**Repositories:** DungeonMind (API host) + LandingPage (static route)
+**Repository:** DungeonMind
+
+Delivered:
+
+```text
+MindTurnRequest
+→ trusted demo-access authorization
+→ exact graph revision pin
+→ hybrid candidates + deterministic fusion
+→ scoped graph resolution + evidence admission
+→ context assembly + read-only fixture agent
+→ MindTurnResponse + retrieval-session / thread persistence
+```
+
+Public endpoints remain exactly `/healthz`, `/readyz`, `/v1/mind-turn`.
+Single-worker demo host; process-local request coordination is not claimed as
+cross-worker exactly-once execution.
+
+## PR B.1b — Curated browser surface consumer proof
+
+**Repository:** DungeonMind only
 
 Outcome:
 
 ```text
-static LandingPage route
-→ surface context and user question
-→ DungeonMind Mind Turn API (mind_turn_v1)
-→ exact graph revision
-→ hybrid candidate retrieval (fixture embeddings acceptable)
-→ graph traversal and admitted evidence
-→ agent adapter answer (Hermes or stub)
-→ semantic UI projections
+stdlib static example (examples/curated_mind_turn_surface)
+→ second-origin browser
+→ existing Mind Turn API (mind_turn_v1)
+→ readiness, grounded answer, projections, abstention, exact replay,
+  sanitized failure
 ```
 
-Curated, read-only fixture first (`tests/fixtures/curated_world_v1.json` is
-the seed); no live graph writes or broad ingestion. Does **not** require a
-production embedding-model decision, RulesLawyer migration, production
-backup wiring, or completed cross-repository retrieval benchmarking.
+Framework-free HTML/CSS/JS acceptance consumer. Proves cross-origin CORS
+against the existing single configured origin. Does **not** move product UI
+ownership into DungeonMind, add endpoints, expand contracts, open sources,
+or adopt Hermes.
+
+Canonical handoff:
+[`Docs/Handoffs/HANDOFF-b1b-curated-browser-surface.md`](../Handoffs/HANDOFF-b1b-curated-browser-surface.md).
+Runbook:
+[`Docs/Runbooks/RUNBOOK-b1b-curated-browser-surface.md`](../Runbooks/RUNBOOK-b1b-curated-browser-surface.md).
+
+## External successor — product-surface adoption (still false)
+
+**Repository:** LandingPage or another product owner (not DungeonMind)
+
+A future product route may consume `mind_turn_v1` the same way the B.1b
+example does. That work is independently useful and must not be smuggled into
+DungeonMind PRs.
 
 ## PR C — pgvector retrieval benchmark backend
 
@@ -143,7 +176,7 @@ benchmark only — no silent production switch); disabled RulesLawyer
 capability must not load the model; readiness distinguishes model-unavailable
 from database-unavailable; Mongo env-var naming reconciled; privacy-safe
 diagnostics; API contract unchanged. No DungeonMind domain ownership moves
-(charter §10.3). Can start in parallel with B.1.
+(charter §10.3). Can start in parallel with B.1b.
 
 ## PR F — deployment/IaC integration
 

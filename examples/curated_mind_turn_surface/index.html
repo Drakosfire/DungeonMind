@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DungeonMind curated Mind Turn consumer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="intro">
+        <p class="eyebrow">DungeonMind acceptance consumer</p>
+        <h1>Curated Mind Turn surface</h1>
+        <p class="lede">
+          Read-only browser proof of the live Mind Turn API. This page renders
+          only what the host returns; it does not resolve graph identity,
+          admit evidence, or open sources.
+        </p>
+      </header>
+
+      <section class="controls" aria-label="Request controls">
+        <label class="field">
+          <span>API base</span>
+          <input id="api-base" type="url" value="http://127.0.0.1:8000" autocomplete="off" />
+        </label>
+        <label class="field grow">
+          <span>Message</span>
+          <input
+            id="message"
+            type="text"
+            value="Who safeguards the Sun Ledger?"
+            autocomplete="off"
+          />
+        </label>
+        <div class="actions">
+          <button id="check-ready" type="button">Check readiness</button>
+          <button id="ask" type="button" disabled>Ask</button>
+          <button id="replay" type="button" disabled>Replay exact request</button>
+        </div>
+      </section>
+
+      <section class="status-panel" aria-live="polite">
+        <div>
+          <h2>Readiness</h2>
+          <p id="ready-status" class="status pending">Template and readiness not loaded.</p>
+          <p id="ready-revision" class="meta"></p>
+        </div>
+        <div>
+          <h2>Request state</h2>
+          <p id="request-status" class="status pending">Idle.</p>
+          <p id="replay-status" class="meta"></p>
+        </div>
+      </section>
+
+      <section id="result" class="result hidden" aria-live="polite">
+        <div class="result-head">
+          <h2>Current result</h2>
+          <p id="result-badge" class="badge"></p>
+        </div>
+        <p id="answer" class="answer"></p>
+        <p id="revision" class="meta"></p>
+
+        <div id="entities-block" class="block hidden">
+          <h3>Entity briefs</h3>
+          <ul id="entities" class="plain-list"></ul>
+        </div>
+
+        <div id="relationships-block" class="block hidden">
+          <h3>Relationships</h3>
+          <ul id="relationships" class="plain-list"></ul>
+        </div>
+
+        <div id="evidence-block" class="block hidden">
+          <h3>Evidence summary</h3>
+          <p id="evidence-count" class="meta"></p>
+          <ul id="evidence" class="plain-list"></ul>
+        </div>
+
+        <div id="empty-grounding" class="block hidden">
+          <p class="empty">No grounded objects returned</p>
+        </div>
+
+        <div id="suggested-actions" class="block hidden">
+          <h3>Suggested actions</h3>
+          <ul id="actions-list" class="plain-list"></ul>
+        </div>
+      </section>
+
+      <section id="error" class="error hidden" aria-live="assertive">
+        <h2>Error</h2>
+        <p id="error-status" class="meta"></p>
+        <p id="error-code"></p>
+        <p id="error-message"></p>
+        <pre id="error-details" class="details"></pre>
+      </section>
+
+      <details class="devtools">
+        <summary>Developer detail</summary>
+        <h3>Coverage / diagnostics</h3>
+        <pre id="coverage-detail" class="details"></pre>
+        <h3>Unknown projections</h3>
+        <pre id="unknown-projections" class="details"></pre>
+        <h3>Raw JSON</h3>
+        <pre id="raw-json" class="details"></pre>
+      </details>
+
+      <section id="history" class="history hidden">
+        <h2>Prior result (stale)</h2>
+        <p id="history-summary" class="meta"></p>
+      </section>
+    </main>
+    <script src="./app.js" defer></script>
+  </body>
+</html>
