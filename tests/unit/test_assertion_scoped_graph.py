@@ -8,7 +8,11 @@ from pathlib import Path
 import pytest
 
 from dungeonmind.agents.fixture import FixtureGroundedAgentAdapter
-from dungeonmind.application.graph_scope import project_scoped_snapshot
+from dungeonmind.agents.protocol import AgentTurnContext, AgentTurnResult
+from dungeonmind.application.graph_scope import (
+    filter_candidate_object_ids,
+    project_scoped_snapshot,
+)
 from dungeonmind.application.graph_snapshot import (
     GRAPH_SCHEMA_V1,
     GRAPH_SCHEMA_V2,
@@ -23,6 +27,7 @@ from dungeonmind.contracts.evidence import (
     SourceRevision,
     SourceStatus,
 )
+from dungeonmind.contracts.identity import IdentityOutcome
 from dungeonmind.contracts.mind_turn import CallerScope, MindTurnRequest, SurfaceContext
 from dungeonmind.contracts.projection import Admissibility, ProjectionFocus
 from dungeonmind.contracts.vocabulary import Visibility
@@ -41,6 +46,40 @@ from dungeonmind.infrastructure.memory import (
     InMemoryWorldGraphRepository,
 )
 from dungeonmind.service.demo_access import DemoAccessBinding
+
+
+class CapturingFixtureAgentAdapter:
+    """Records assembled agent context while delegating to the fixture agent."""
+
+    def __init__(self) -> None:
+        self._inner = FixtureGroundedAgentAdapter()
+        self.assembled_contexts: list[str] = []
+
+    @property
+    def adapter_id(self) -> str:
+        return self._inner.adapter_id
+
+    def execute_turn(self, context: AgentTurnContext) -> AgentTurnResult:
+        self.assembled_contexts.append(context.input.assembled_context)
+        return self._inner.execute_turn(context)
+
+
+def _gm_sentinel_values(fixture) -> list[str]:
+    sentinels = fixture.raw["leak_sentinels"]
+    return [
+        sentinels["gm_alias"],
+        sentinels["gm_summary"],
+        *sentinels["gm_assertion_ids"],
+        *sentinels["gm_evidence_ids"],
+        *sentinels["gm_source_artifact_ids"],
+        *sentinels["gm_source_revision_ids"],
+        *sentinels["gm_locators"],
+    ]
+
+
+def _assert_no_gm_sentinels(serialized: str, fixture) -> None:
+    for value in _gm_sentinel_values(fixture):
+        assert value not in serialized
 
 FIXED_NOW = datetime(2026, 7, 31, 12, 0, tzinfo=UTC)
 FIXTURE_PATH = (
@@ -287,18 +326,79 @@ def test_hidden_alias_cannot_resolve() -> None:
         campaign_id="camp:assertion-scope",
         admissibility=Admissibility.PLAYER,
     )
+    assert GM_ALIAS.casefold() in scoped.omitted_alias_index
+    assert "obj:item-sun-ledger" in scoped.omitted_alias_index[GM_ALIAS.casefold()]
+
     referents = VERSIONED.resolve_mentions(
         scoped.snapshot,
         message=f"Tell me about the {GM_ALIAS}",
         selected_object_ids=[],
     )
     assert all(ref.object_id != "obj:item-sun-ledger" for ref in referents)
+
+    # Candidate seeding must not override the exact hidden-field exclusion.
+    filtered = filter_candidate_object_ids(
+        ["obj:item-sun-ledger"],
+        message=f"Tell me about the {GM_ALIAS}",
+        omitted_alias_index=scoped.omitted_alias_index,
+    )
+    assert filtered == []
+    with_candidates = VERSIONED.resolve_mentions(
+        scoped.snapshot,
+        message=f"Tell me about the {GM_ALIAS}",
+        selected_object_ids=[],
+        candidate_object_ids=filtered,
+    )
+    assert all(ref.object_id != "obj:item-sun-ledger" for ref in with_candidates)
+
     dawn = VERSIONED.resolve_mentions(
         scoped.snapshot,
         message=f"Tell me about the {PLAYER_ALIAS}",
         selected_object_ids=[],
     )
     assert any(ref.object_id == "obj:item-sun-ledger" for ref in dawn)
+
+
+def test_admitted_alias_ambiguity_not_overridden_by_candidates() -> None:
+    payload = _v2_payload()
+    payload["nodes"].append(
+        {
+            "object_id": "obj:item-dawn-copy",
+            "kind": "artifact",
+            "label": "The Dawn Copy",
+            "evidence_ref_ids": ["ev:ledger-core-player"],
+            "alias_assertions": [
+                {
+                    "assertion_id": "asrt:copy-alias-dawn",
+                    "alias": PLAYER_ALIAS,
+                    "evidence_ref_ids": ["ev:ledger-alias-player"],
+                }
+            ],
+        }
+    )
+    parsed = V2.parse(graph_schema=GRAPH_SCHEMA_V2, graph_payload=payload)
+    scoped = project_scoped_snapshot(
+        parsed,
+        sources=_sources(),
+        world_id="world:assertion-scope-demo",
+        campaign_id="camp:assertion-scope",
+        admissibility=Admissibility.PLAYER,
+    )
+    referents = VERSIONED.resolve_mentions(
+        scoped.snapshot,
+        message=f"Tell me about the {PLAYER_ALIAS}",
+        selected_object_ids=[],
+        candidate_object_ids=["obj:item-sun-ledger", "obj:item-dawn-copy"],
+    )
+    assert any(ref.outcome is IdentityOutcome.AMBIGUOUS for ref in referents)
+    assert all(
+        not (
+            ref.outcome is IdentityOutcome.RESOLVED_EXISTING
+            and ref.object_id
+            in {"obj:item-sun-ledger", "obj:item-dawn-copy"}
+        )
+        for ref in referents
+    )
 
 
 def test_hidden_text_absent_from_scoped_snapshot_and_dumps() -> None:
@@ -456,6 +556,7 @@ def test_mind_turn_player_leak_audit_and_gm_fields() -> None:
         fixture=fixture,
     )
     binding = DemoAccessBinding.from_mapping(fixture.authorized_demo_binding)
+    capturing = CapturingFixtureAgentAdapter()
     service = MindTurnService(
         world_graph=world_graph,
         retrieval_sessions=retrieval_sessions,
@@ -464,11 +565,16 @@ def test_mind_turn_player_leak_audit_and_gm_fields() -> None:
         semantic_search=semantic_search,
         sources=sources,
         query_embedder=fixture.query_embedder,
-        agent_adapter=FixtureGroundedAgentAdapter(),
+        agent_adapter=capturing,
         clock=FixedClock(FIXED_NOW),
     )
 
-    def _req(request_id: str, *, admissibility: Admissibility) -> MindTurnRequest:
+    def _req(
+        request_id: str,
+        *,
+        admissibility: Admissibility,
+        message: str = "What is the Sun Ledger?",
+    ) -> MindTurnRequest:
         # Thread binding is world/campaign/caller/tenant only; admissibility may vary.
         return MindTurnRequest.for_authorized(
             request_id=request_id,
@@ -483,7 +589,7 @@ def test_mind_turn_player_leak_audit_and_gm_fields() -> None:
             admissibility=admissibility,
             focus=ProjectionFocus(),
             surface_context=SurfaceContext(surface_id=binding.surface_id),
-            message="What is the Sun Ledger?",
+            message=message,
         )
 
     player = service.execute(_req("req:assert-player", admissibility=Admissibility.PLAYER))
@@ -491,18 +597,11 @@ def test_mind_turn_player_leak_audit_and_gm_fields() -> None:
     assert player.revision_id == gm.revision_id
     assert player.revision_id.startswith("rev:")
 
-    player_text = player.model_dump_json()
-    sentinels = fixture.raw["leak_sentinels"]
-    for value in [
-        sentinels["gm_alias"],
-        sentinels["gm_summary"],
-        *sentinels["gm_assertion_ids"],
-        *sentinels["gm_evidence_ids"],
-        *sentinels["gm_source_artifact_ids"],
-        *sentinels["gm_source_revision_ids"],
-        *sentinels["gm_locators"],
-    ]:
-        assert value not in player_text
+    # Response-envelope leak audit (separate from agent-context audit below).
+    _assert_no_gm_sentinels(player.model_dump_json(), fixture)
+    assert len(capturing.assembled_contexts) >= 2
+    player_context = capturing.assembled_contexts[0]
+    _assert_no_gm_sentinels(player_context, fixture)
 
     player_briefs = [
         p for p in player.semantic_projections if p.kind == "entity_brief"
@@ -524,6 +623,10 @@ def test_mind_turn_player_leak_audit_and_gm_fields() -> None:
         }
     ]
     assert "summary_assertion" not in player_prov[0].payload
+    admitted_evidence_ids = {e.evidence_ref_id for e in player.evidence}
+    for assertion in player_prov[0].payload["alias_assertions"]:
+        for evidence_ref_id in assertion["evidence_ref_ids"]:
+            assert evidence_ref_id in admitted_evidence_ids
 
     gm_briefs = [p for p in gm.semantic_projections if p.kind == "entity_brief"]
     assert GM_ALIAS in gm_briefs[0].payload["aliases"]
@@ -534,6 +637,59 @@ def test_mind_turn_player_leak_audit_and_gm_fields() -> None:
     assert len(gm_prov) == 1
     assert "summary_assertion" in gm_prov[0].payload
     assert GM_SUMMARY in gm.answer
+    gm_evidence_ids = {e.evidence_ref_id for e in gm.evidence}
+    assert "ev:ledger-alias-gm" in gm_evidence_ids
+    assert "ev:ledger-summary-gm" in gm_evidence_ids
+    assert any(
+        a.source_artifact_id == "src:assertion-gm-notes" for a in gm.source_anchors
+    )
+    for assertion in gm_prov[0].payload.get("alias_assertions", []):
+        for evidence_ref_id in assertion["evidence_ref_ids"]:
+            assert evidence_ref_id in gm_evidence_ids
+    summary_assertion = gm_prov[0].payload["summary_assertion"]
+    for evidence_ref_id in summary_assertion["evidence_ref_ids"]:
+        assert evidence_ref_id in gm_evidence_ids
+
+    # Hidden alias through the complete semantic-retrieval path must not recover
+    # the Sun Ledger association for a player.
+    hidden = service.execute(
+        _req(
+            "req:assert-player-hidden-alias",
+            admissibility=Admissibility.PLAYER,
+            message=f"What is the {GM_ALIAS}?",
+        )
+    )
+    assert all(ref.object_id != "obj:item-sun-ledger" for ref in hidden.resolved_referents)
+    assert not any(
+        p.payload.get("object_id") == "obj:item-sun-ledger"
+        for p in hidden.semantic_projections
+    )
+    assert "obj:item-sun-ledger" not in hidden.model_dump_json()
+    assert not any(
+        e.evidence_ref_id.startswith("ev:ledger-") for e in hidden.evidence
+    )
+    assert all(
+        "obj:item-sun-ledger" not in str(change.payload)
+        and "Sun Ledger" not in str(change.payload)
+        for change in hidden.context_changes
+    )
+    assert "Sun Ledger" not in hidden.answer
+    assert "do not have grounded knowledge" in hidden.answer.casefold()
+    hidden_context = capturing.assembled_contexts[-1]
+    assert "obj:item-sun-ledger" not in hidden_context
+    assert "Sun Ledger" not in hidden_context
+    # Response envelope still must not contain GM provenance IDs / summary.
+    # The query text itself is not part of MindTurnResponse.
+    for value in [
+        fixture.raw["leak_sentinels"]["gm_summary"],
+        *fixture.raw["leak_sentinels"]["gm_assertion_ids"],
+        *fixture.raw["leak_sentinels"]["gm_evidence_ids"],
+        *fixture.raw["leak_sentinels"]["gm_source_artifact_ids"],
+        *fixture.raw["leak_sentinels"]["gm_source_revision_ids"],
+        *fixture.raw["leak_sentinels"]["gm_locators"],
+    ]:
+        assert value not in hidden.model_dump_json()
+        assert value not in hidden_context
 
     obj = VERSIONED.parse(
         graph_schema=fixture.graph_schema,

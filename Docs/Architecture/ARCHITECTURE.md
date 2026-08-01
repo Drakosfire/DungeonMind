@@ -206,7 +206,10 @@ Published graph schemas are exact and versioned. Readers dispatch by
   are retained only when every evidence reference attached to that field is
   independently valid and in scope. Omitted fields must not participate in
   identity resolution, agent context, semantic projections, evidence, anchors,
-  coverage, or diagnostics. Relationships remain coarse in v2.
+  coverage, or diagnostics. Semantic candidate seeding must not override an
+  exact omitted-alias match (recovering the object via a player-visible
+  document would reveal the hidden alias→object association). Relationships
+  remain coarse in v2.
 
 Scope is derived from admitted evidence provenance. Assertions carry no direct
 visibility, campaign, confidence, or authority fields. There is no public

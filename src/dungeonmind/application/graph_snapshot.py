@@ -335,14 +335,20 @@ def resolve_mentions_from_snapshot(
                     None,
                 )
 
+    ambiguous_object_ids: set[str] = set()
     for alias, object_ids in sorted(snapshot.alias_index.items()):
         if alias and contains_exact_phrase(normalized_message, alias):
             if len(object_ids) == 1:
                 _emit(alias, IdentityOutcome.RESOLVED_EXISTING, object_ids[0])
             else:
+                ambiguous_object_ids.update(object_ids)
                 _emit(alias, IdentityOutcome.AMBIGUOUS, None)
 
+    # Semantic candidates must not override an exact ambiguous alias match by
+    # emitting resolved_existing under a visible primary label.
     for object_id in candidate_object_ids or []:
+        if object_id in ambiguous_object_ids:
+            continue
         if object_id in snapshot.objects:
             obj = snapshot.objects[object_id]
             _emit(obj.label, IdentityOutcome.RESOLVED_EXISTING, object_id)

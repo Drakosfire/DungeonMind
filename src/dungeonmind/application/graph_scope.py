@@ -43,12 +43,17 @@ from .graph_snapshot import (
     GraphRelationshipView,
     ParsedGraphSnapshot,
     build_label_and_alias_indexes,
+    contains_exact_phrase,
 )
 from .repositories import SourceRepository
 
 # Public gap code for corruption whose scope cannot be established, or when
 # detailed identity must not appear in MindTurnResponse.coverage.
 STORED_PROVENANCE_INVALID = "stored_provenance_invalid"
+
+
+def _norm_alias(text: str) -> str:
+    return text.casefold().strip()
 
 
 class EvidenceScopeVerdict(StrEnum):
@@ -103,6 +108,10 @@ class ScopedGraphProjection:
         default_factory=dict
     )
     assertion_exclusions: dict[str, ObjectScopeExclusion] = field(default_factory=dict)
+    # Normalized omitted alias text → object IDs that lost that alias. Internal
+    # only: used to stop semantic candidate seeding from revealing a hidden
+    # alias→object association. Never copied into public coverage/diagnostics.
+    omitted_alias_index: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def rejections(self) -> list[ProvenanceRejection]:
@@ -121,6 +130,39 @@ class ScopedGraphProjection:
                 seen.add(key)
                 items.append(rejection)
         return items
+
+
+def objects_blocked_by_omitted_aliases(
+    message: str,
+    omitted_alias_index: dict[str, list[str]],
+) -> set[str]:
+    """Object IDs that must not be seeded from semantic candidates for this message.
+
+    When the caller message contains an exact phrase matching an omitted alias,
+    candidate retrieval must not recover that object — otherwise a dense hit on
+    a player-visible document would reveal the hidden alias→object association.
+    """
+    if not omitted_alias_index:
+        return set()
+    normalized = _norm_alias(message)
+    blocked: set[str] = set()
+    for alias, object_ids in omitted_alias_index.items():
+        if alias and contains_exact_phrase(normalized, alias):
+            blocked.update(object_ids)
+    return blocked
+
+
+def filter_candidate_object_ids(
+    candidate_object_ids: list[str],
+    *,
+    message: str,
+    omitted_alias_index: dict[str, list[str]],
+) -> list[str]:
+    """Drop candidate object IDs blocked by an exact omitted-alias match."""
+    blocked = objects_blocked_by_omitted_aliases(message, omitted_alias_index)
+    if not blocked:
+        return list(candidate_object_ids)
+    return [object_id for object_id in candidate_object_ids if object_id not in blocked]
 
 
 def source_artifact_in_scope(
@@ -347,11 +389,21 @@ def _project_v2_objects(
     dict[str, GraphObjectView],
     dict[str, ObjectScopeExclusion],
     dict[str, ObjectScopeExclusion],
+    dict[str, list[str]],
 ]:
     """Core-coarse + independent alias/summary admission for v2."""
     object_exclusions: dict[str, ObjectScopeExclusion] = {}
     assertion_exclusions: dict[str, ObjectScopeExclusion] = {}
+    omitted_alias_index: dict[str, list[str]] = {}
     objects: dict[str, GraphObjectView] = {}
+
+    def _record_omitted_alias(alias: str, owner_object_id: str) -> None:
+        key = _norm_alias(alias)
+        if not key:
+            return
+        owners = omitted_alias_index.setdefault(key, [])
+        if owner_object_id not in owners:
+            owners.append(owner_object_id)
 
     for object_id, obj in snapshot.objects.items():
         core_ids = list(obj.core_evidence_ref_ids)
@@ -383,6 +435,7 @@ def _project_v2_objects(
             if alias_ok and assertion.evidence_ref_ids:
                 admitted_aliases.append(assertion)
             else:
+                _record_omitted_alias(assertion.alias, object_id)
                 if not assertion.evidence_ref_ids:
                     assertion_exclusions[assertion.assertion_id] = ObjectScopeExclusion(
                         scope_unknown=True
@@ -429,7 +482,7 @@ def _project_v2_objects(
             admitted_summary_assertion=admitted_summary,
         )
 
-    return objects, object_exclusions, assertion_exclusions
+    return objects, object_exclusions, assertion_exclusions, omitted_alias_index
 
 
 def project_scoped_snapshot(
@@ -450,8 +503,14 @@ def project_scoped_snapshot(
     into public ``Coverage`` on every turn.
     """
     assertion_exclusions: dict[str, ObjectScopeExclusion] = {}
+    omitted_alias_index: dict[str, list[str]] = {}
     if snapshot.graph_schema == GRAPH_SCHEMA_V2:
-        objects, object_exclusions, assertion_exclusions = _project_v2_objects(
+        (
+            objects,
+            object_exclusions,
+            assertion_exclusions,
+            omitted_alias_index,
+        ) = _project_v2_objects(
             snapshot,
             sources=sources,
             world_id=world_id,
@@ -521,4 +580,5 @@ def project_scoped_snapshot(
         object_exclusions=object_exclusions,
         relationship_exclusions=relationship_exclusions,
         assertion_exclusions=assertion_exclusions,
+        omitted_alias_index=omitted_alias_index,
     )

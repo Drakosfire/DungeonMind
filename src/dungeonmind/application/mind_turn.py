@@ -48,6 +48,7 @@ from .graph_scope import (
     EvidenceScopeVerdict,
     ProvenanceRejection,
     ValidatedProvenance,
+    filter_candidate_object_ids,
     project_scoped_snapshot,
     public_coverage_gaps_for_exclusion,
     resolve_evidence_provenance,
@@ -240,6 +241,7 @@ class MindTurnService:
             admissibility=request.admissibility,
         )
         object_exclusions = dict(scoped.object_exclusions)
+        omitted_alias_index = dict(scoped.omitted_alias_index)
         parsed = scoped.snapshot
 
         diagnostics: list[DiagnosticEntry] = [
@@ -328,6 +330,14 @@ class MindTurnService:
                 targeted_excluded_ids.append(doc.graph_object_id)
                 continue
             candidate_object_ids.append(doc.graph_object_id)
+
+        # Exact omitted-alias matches must not be recovered through semantic
+        # candidates (dense ranks even at zero similarity).
+        candidate_object_ids = filter_candidate_object_ids(
+            candidate_object_ids,
+            message=request.message,
+            omitted_alias_index=omitted_alias_index,
+        )
 
         # Selected IDs that fail scoping are request-targeted; surface only
         # sanitized / in-scope gaps for those objects — never graph-global dumps.
@@ -680,6 +690,11 @@ class MindTurnService:
             if self._graph_reader.get_object(parsed, doc.graph_object_id) is None:
                 continue
             candidate_object_ids.append(doc.graph_object_id)
+        candidate_object_ids = filter_candidate_object_ids(
+            candidate_object_ids,
+            message=request.message,
+            omitted_alias_index=dict(scoped.omitted_alias_index),
+        )
         seed_ids = sorted(
             {
                 *(r.object_id for r in session.referents if r.object_id),
