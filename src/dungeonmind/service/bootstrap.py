@@ -7,21 +7,32 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
 
 from ..agents.fixture import FixtureGroundedAgentAdapter
-from ..application.graph_snapshot import VersionedUnionGraphSnapshotReader
+from ..application.graph_snapshot import (
+    GraphSnapshotReader,
+    VersionedUnionGraphSnapshotReader,
+)
 from ..application.mind_turn import FixedClock, MindTurnService
+from ..application.semantic_profiles import SemanticProfileRegistry
 from ..domain.errors import (
     HeadNotFoundError,
     PersistenceIntegrityError,
     PersistenceUnavailableError,
     RevisionNotFoundError,
+    SemanticProfileIntegrityError,
 )
 from ..infrastructure.fixtures.curated_mind_turn import load_curated_mind_turn_fixture
 from ..infrastructure.postgres import PostgresDatabase, PostgresRepositoryBundle
+from ..infrastructure.semantic_profiles import (
+    ENV_SEMANTIC_PROFILE_REGISTRY_PATH,
+    FilesystemSemanticProfileRegistry,
+    StaticSemanticProfileRegistry,
+)
 from .api import create_app
 from .demo_access import DemoAccessBinding
 
@@ -35,13 +46,44 @@ def _require_database_url() -> str:
     return url
 
 
+def load_configured_profile_registry() -> SemanticProfileRegistry:
+    """Load registry from ``DUNGEONMIND_SEMANTIC_PROFILE_REGISTRY_PATH`` or empty."""
+    configured = os.environ.get(ENV_SEMANTIC_PROFILE_REGISTRY_PATH)
+    if not configured:
+        return StaticSemanticProfileRegistry()
+    try:
+        return FilesystemSemanticProfileRegistry.from_config_path(Path(configured))
+    except SemanticProfileIntegrityError:
+        raise
+    except OSError as exc:
+        raise SemanticProfileIntegrityError(
+            "semantic profile registry could not be loaded",
+            details={"reason": type(exc).__name__},
+        ) from exc
+
+
+def build_configured_graph_reader(
+    profile_registry: SemanticProfileRegistry | None = None,
+) -> VersionedUnionGraphSnapshotReader:
+    """Build the shared versioned graph reader used by service and readiness."""
+    registry = (
+        profile_registry
+        if profile_registry is not None
+        else load_configured_profile_registry()
+    )
+    return VersionedUnionGraphSnapshotReader(profile_registry=registry)
+
+
 def build_readiness_probe(
     *,
     bundle: PostgresRepositoryBundle,
     world_id: str,
     embedding_run_id: str,
     thread_id: str,
+    graph_reader: GraphSnapshotReader | None = None,
 ) -> Callable[[], dict[str, Any]]:
+    reader = graph_reader or VersionedUnionGraphSnapshotReader()
+
     def probe() -> dict[str, Any]:
         try:
             with bundle.database.connect() as conn:
@@ -60,9 +102,9 @@ def build_readiness_probe(
             raise RevisionNotFoundError(
                 f"curated revision {head.head_revision_id!r} is unreadable"
             )
-        # Validate graph payload shape without mutating.
+        # Validate graph payload shape (and v3 profile) without mutating.
         try:
-            VersionedUnionGraphSnapshotReader().parse(
+            reader.parse(
                 graph_schema=stored.revision.graph_schema,
                 graph_payload=stored.graph_payload,
             )
@@ -119,6 +161,7 @@ def create_demo_app() -> FastAPI:
     binding = DemoAccessBinding.from_mapping(fixture.authorized_demo_binding)
     database = PostgresDatabase(_require_database_url())
     bundle = PostgresRepositoryBundle(database)
+    graph_reader = build_configured_graph_reader()
     service = MindTurnService(
         world_graph=bundle.world_graph,
         retrieval_sessions=bundle.retrieval_sessions,
@@ -126,7 +169,7 @@ def create_demo_app() -> FastAPI:
         semantic_documents=bundle.semantic_documents,
         semantic_search=bundle.semantic_search,
         sources=bundle.sources,
-        graph_reader=VersionedUnionGraphSnapshotReader(),
+        graph_reader=graph_reader,
         query_embedder=fixture.query_embedder,
         agent_adapter=FixtureGroundedAgentAdapter(),
         clock=FixedClock(fixture.created_at()),
@@ -140,6 +183,7 @@ def create_demo_app() -> FastAPI:
             world_id=fixture.world_id,
             embedding_run_id=str(fixture.raw["embedding_run"]["run_id"]),
             thread_id=str(fixture.authorized_demo_binding["thread_id"]),
+            graph_reader=graph_reader,
         ),
         cors_origin=cors_origin,
     )

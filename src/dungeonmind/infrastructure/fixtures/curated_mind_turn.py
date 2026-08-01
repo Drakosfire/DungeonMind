@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ...application.graph_snapshot import VersionedUnionGraphSnapshotReader
+from ...application.graph_snapshot import (
+    GraphSnapshotReader,
+    VersionedUnionGraphSnapshotReader,
+)
 from ...application.repositories import (
     EmbeddingRunRepository,
     MindThreadRepository,
@@ -17,6 +20,7 @@ from ...application.repositories import (
     SourceRepository,
     WorldGraphRepository,
 )
+from ...application.semantic_profiles import SemanticProfileRegistry
 from ...contracts.evidence import SourceArtifact, SourceDomain, SourceRevision, SourceStatus
 from ...contracts.graph import PublishRevisionCommand
 from ...contracts.projection import Admissibility
@@ -51,6 +55,9 @@ class CuratedMindTurnSeedResult:
 class CuratedMindTurnFixture:
     raw: dict[str, Any]
     path: Path
+    graph_reader: GraphSnapshotReader = field(
+        default_factory=VersionedUnionGraphSnapshotReader
+    )
 
     @property
     def world_id(self) -> str:
@@ -100,6 +107,8 @@ def load_curated_mind_turn_fixture(
     path: Path | None = None,
     *,
     expected_fixture_version: str = "curated_mind_turn_v1",
+    profile_registry: SemanticProfileRegistry | None = None,
+    graph_reader: GraphSnapshotReader | None = None,
 ) -> CuratedMindTurnFixture:
     fixture_path = path or DEFAULT_FIXTURE_PATH
     raw = json.loads(fixture_path.read_text(encoding="utf-8"))
@@ -108,12 +117,15 @@ def load_curated_mind_turn_fixture(
             f"unexpected fixture_version {raw.get('fixture_version')!r}; "
             f"expected {expected_fixture_version!r}"
         )
-    # Fail closed on graph shape before any write.
-    VersionedUnionGraphSnapshotReader().parse(
+    reader = graph_reader or VersionedUnionGraphSnapshotReader(
+        profile_registry=profile_registry
+    )
+    # Fail closed on graph shape (and v3 profile resolution) before any write.
+    reader.parse(
         graph_schema=str(raw["graph_schema"]),
         graph_payload=raw["graph_payload"],
     )
-    return CuratedMindTurnFixture(raw=raw, path=fixture_path)
+    return CuratedMindTurnFixture(raw=raw, path=fixture_path, graph_reader=reader)
 
 
 def _build_source_artifacts(
@@ -259,7 +271,7 @@ def _preflight_fixture_consistency(
     if binding.get("world_id") != loaded.world_id:
         raise ValueError("authorized_demo_binding.world_id disagrees with fixture world_id")
 
-    parsed = VersionedUnionGraphSnapshotReader().parse(
+    parsed = loaded.graph_reader.parse(
         graph_schema=loaded.graph_schema,
         graph_payload=loaded.graph_payload,
     )

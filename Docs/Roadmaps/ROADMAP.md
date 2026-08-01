@@ -1,10 +1,10 @@
 # DungeonMind — Roadmap and PR ladder
 
-**Status:** PR A / A.1 / B / B.1a / B.1b landed. PR B.2a (assertion-scoped
-alias and summary read projection for `dm_union_graph_v2`) is the current
-DungeonMind-owned slice. External RulesIngestion PR C and product-surface
-adoption of `mind_turn_v1` remain independent successors. Ownership per
-ADR-0002.
+**Status:** PR A / A.1 / B / B.1a / B.1b / B.2a landed. PR B.2b (semantic
+profile boundary and `dm_union_graph_v3`) is the current DungeonMind-owned
+slice. External RulesIngestion PR C and product-surface adoption of
+`mind_turn_v1` remain independent successors. Ownership per ADR-0002 and
+ADR-0004.
 
 Each PR is independently reviewable, in its named repository. Cross-repo work
 is never one PR.
@@ -17,7 +17,8 @@ A.1   foundational invariant hardening ✅
 B     minimal PostgreSQL/pgvector substrate ✅
 B.1a  thin read-only Mind Turn API host ✅
 B.1b  DungeonMind-owned curated browser consumer proof ✅
-B.2a  assertion-scoped alias/summary read projection   ← current
+B.2a  assertion-scoped alias/summary read projection ✅
+B.2b  semantic profile boundary + dm_union_graph_v3    ← current
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
 D     embedding model bakeoff
@@ -133,7 +134,7 @@ Canonical handoff:
 Runbook:
 [`Docs/Runbooks/RUNBOOK-b1b-curated-browser-surface.md`](../Runbooks/RUNBOOK-b1b-curated-browser-surface.md).
 
-## PR B.2a — Assertion-scoped alias and summary read projection
+## PR B.2a — Assertion-scoped alias and summary read projection ✅
 
 **Repository:** DungeonMind only
 
@@ -153,6 +154,61 @@ opening, Hermes, or product-surface adoption. Relationships remain coarse.
 
 Canonical handoff:
 [`Docs/Handoffs/HANDOFF-b2a-assertion-scoped-alias-summary.md`](../Handoffs/HANDOFF-b2a-assertion-scoped-alias-summary.md).
+
+## PR B.2b — Semantic profile boundary and dm_union_graph_v3
+
+**Repository:** DungeonMind only
+
+Outcome:
+
+```text
+dm_union_graph_v3
+→ exact semantic-profile ref
+→ qualified opaque semantic terms
+→ generic registry/config
+→ DungeonMindDnD sibling package
+→ non-D&D canary
+```
+
+Adds a third stored graph schema whose payload pins one exact semantic
+profile (`profile_id` + `profile_revision` + `descriptor_sha256`) and whose
+node kinds and relationship predicates are qualified `namespace:local`
+terms admitted by the pinned descriptor. Resolution flows through a generic
+registry port fed by local operator config
+(`DUNGEONMIND_SEMANTIC_PROFILE_REGISTRY_PATH`); the default registry is
+empty, so v3 fails closed with no silent D&D default. The D&D 5e descriptor
+ships as package data in a data-only sibling package
+(`src/dungeonmind_dnd/`, same repository and wheel, one-way dependency
+enforced by test). The proof fixture pins the synthetic non-D&D
+`test.narrative` profile: the canary proves kernel/profile decoupling, not
+multi-system product support.
+
+Does **not** introduce D&D mechanics or taxonomy in the kernel, a generic
+ontology interpreter, executable plugins, public contract changes,
+migrations, graph writes, source opening, Hermes, multi-system support, or
+product-surface adoption. V1/v2 remain immutable and unqualified; their
+fixture vocabulary is not canonical taxonomy. GM/player/canon/session
+remains kernel policy, not claimed as universal TTRPG ontology.
+
+Canonical handoff:
+[`Docs/Handoffs/HANDOFF-b2b-semantic-profile-boundary.md`](../Handoffs/HANDOFF-b2b-semantic-profile-boundary.md).
+Decision record:
+[`Docs/Decisions/ADR-0004-semantic-profile-boundary.md`](../Decisions/ADR-0004-semantic-profile-boundary.md).
+
+## Named future lanes (no dates claimed)
+
+These lanes are named so successors can be dispatched deliberately. None is
+scheduled, and none may be smuggled into an unrelated PR.
+
+- **DungeonMindDnD concrete semantics** — the first real D&D
+  taxonomy/mechanics capability, owned by the profile package and landed
+  only when demanded by a real consumer.
+- **Profile interpretation layer** — anything beyond admit/reject
+  (taxonomy reasoning, cross-profile mapping), only after a concrete
+  second-system pressure proves what abstraction is needed.
+- **Audience-policy generalization** — GM/player/canon assumptions
+  revisited separately if a supported game requires it; kernel policy
+  until then.
 
 ## External successor — product-surface adoption (still false)
 
@@ -199,7 +255,7 @@ benchmark only — no silent production switch); disabled RulesLawyer
 capability must not load the model; readiness distinguishes model-unavailable
 from database-unavailable; Mongo env-var naming reconciled; privacy-safe
 diagnostics; API contract unchanged. No DungeonMind domain ownership moves
-(charter §10.3). Can start in parallel with B.2a.
+(charter §10.3). Can start in parallel with B.2b.
 
 ## PR F — deployment/IaC integration
 

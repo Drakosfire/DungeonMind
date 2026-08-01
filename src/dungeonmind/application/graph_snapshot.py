@@ -1,8 +1,9 @@
 """Transport-neutral readers for pinned union-graph JSON snapshots.
 
-Supports ``dm_union_graph_v1`` (coarse object fields) and ``dm_union_graph_v2``
-(assertion-scoped aliases and summary). Malformed stored state fails closed via
-``PersistenceIntegrityError``.
+Supports ``dm_union_graph_v1`` (coarse object fields), ``dm_union_graph_v2``
+(assertion-scoped aliases and summary), and ``dm_union_graph_v3`` (v2 node
+shape plus a pinned ``SemanticProfileRef`` with namespace-admitted terms).
+Malformed stored state fails closed via ``PersistenceIntegrityError``.
 """
 
 from __future__ import annotations
@@ -17,10 +18,20 @@ from ..contracts.base import DungeonMindModel
 from ..contracts.evidence import EVIDENCE_REF_SCHEMA, EvidenceRole, SourceDomain
 from ..contracts.identity import IdentityOutcome
 from ..contracts.retrieval import ResolvedReferent
+from ..contracts.semantic_profile import (
+    SemanticProfileDescriptor,
+    SemanticProfileRef,
+)
 from ..domain.errors import PersistenceIntegrityError
+from .semantic_profiles import (
+    SemanticProfileRegistry,
+    resolve_and_verify_profile,
+    validate_qualified_term,
+)
 
 GRAPH_SCHEMA_V1 = "dm_union_graph_v1"
 GRAPH_SCHEMA_V2 = "dm_union_graph_v2"
+GRAPH_SCHEMA_V3 = "dm_union_graph_v3"
 SUPPORTED_GRAPH_SCHEMA = GRAPH_SCHEMA_V1  # v1 constant retained for callers
 
 
@@ -184,6 +195,8 @@ class ParsedGraphSnapshot:
     evidence: dict[str, GraphEvidenceRecord]
     label_index: dict[str, list[str]] = field(default_factory=dict)
     alias_index: dict[str, list[str]] = field(default_factory=dict)
+    semantic_profile_ref: SemanticProfileRef | None = None
+    semantic_profile_descriptor: SemanticProfileDescriptor | None = None
 
 
 class GraphSnapshotReader(Protocol):
@@ -433,6 +446,100 @@ def _require_payload_world(graph_payload: dict[str, Any]) -> str:
     return world_id
 
 
+def _reject_semantic_profile_field(
+    graph_payload: dict[str, Any], *, graph_schema: str
+) -> None:
+    if "semantic_profile" in graph_payload:
+        raise PersistenceIntegrityError(
+            f"{graph_schema} does not accept semantic_profile",
+            details={"graph_schema": graph_schema},
+        )
+
+
+def _parse_v2_shaped_objects(
+    graph_payload: dict[str, Any],
+) -> dict[str, GraphObjectView]:
+    """Shared node parse for ``dm_union_graph_v2`` / ``dm_union_graph_v3``."""
+    try:
+        nodes = [
+            GraphNodeV2Record.model_validate(node)
+            for node in graph_payload.get("nodes", [])
+        ]
+    except (ValidationError, TypeError, ValueError) as exc:
+        raise PersistenceIntegrityError(
+            "malformed graph node, relationship, or evidence record",
+            details={"error": str(exc)},
+        ) from exc
+
+    objects: dict[str, GraphObjectView] = {}
+    assertion_ids: set[str] = set()
+    for node in nodes:
+        if node.object_id in objects:
+            raise PersistenceIntegrityError(
+                f"duplicate object_id {node.object_id!r}",
+                details={"object_id": node.object_id},
+            )
+        seen_aliases: set[str] = set()
+        alias_views: list[AdmittedAliasAssertion] = []
+        for assertion in node.alias_assertions:
+            if assertion.assertion_id in assertion_ids:
+                raise PersistenceIntegrityError(
+                    f"duplicate assertion_id {assertion.assertion_id!r}",
+                    details={"assertion_id": assertion.assertion_id},
+                )
+            assertion_ids.add(assertion.assertion_id)
+            normalized_alias = _norm(assertion.alias)
+            if normalized_alias in seen_aliases:
+                raise PersistenceIntegrityError(
+                    f"duplicate normalized alias {assertion.alias!r} on "
+                    f"object {node.object_id!r}",
+                    details={"object_id": node.object_id, "alias": assertion.alias},
+                )
+            seen_aliases.add(normalized_alias)
+            alias_views.append(
+                AdmittedAliasAssertion(
+                    assertion_id=assertion.assertion_id,
+                    alias=assertion.alias,
+                    evidence_ref_ids=list(assertion.evidence_ref_ids),
+                )
+            )
+
+        summary_view: AdmittedSummaryAssertion | None = None
+        if node.summary_assertion is not None:
+            assertion = node.summary_assertion
+            if assertion.assertion_id in assertion_ids:
+                raise PersistenceIntegrityError(
+                    f"duplicate assertion_id {assertion.assertion_id!r}",
+                    details={"assertion_id": assertion.assertion_id},
+                )
+            assertion_ids.add(assertion.assertion_id)
+            summary_view = AdmittedSummaryAssertion(
+                assertion_id=assertion.assertion_id,
+                summary=assertion.summary,
+                evidence_ref_ids=list(assertion.evidence_ref_ids),
+            )
+
+        retained_evidence = list(node.evidence_ref_ids)
+        for alias_view in alias_views:
+            retained_evidence.extend(alias_view.evidence_ref_ids)
+        if summary_view is not None:
+            retained_evidence.extend(summary_view.evidence_ref_ids)
+
+        objects[node.object_id] = GraphObjectView(
+            object_id=node.object_id,
+            kind=node.kind,
+            label=node.label,
+            aliases=[item.alias for item in alias_views],
+            evidence_ref_ids=list(dict.fromkeys(retained_evidence)),
+            summary=summary_view.summary if summary_view is not None else None,
+            object_field_schema="v2",
+            core_evidence_ref_ids=list(node.evidence_ref_ids),
+            admitted_alias_assertions=alias_views,
+            admitted_summary_assertion=summary_view,
+        )
+    return objects
+
+
 class UnionGraphV1SnapshotReader:
     """Concrete reader for ``dm_union_graph_v1`` only."""
 
@@ -449,6 +556,7 @@ class UnionGraphV1SnapshotReader:
                 details={"graph_schema": graph_schema},
             )
         world_id = _require_payload_world(graph_payload)
+        _reject_semantic_profile_field(graph_payload, graph_schema=graph_schema)
 
         try:
             nodes = [
@@ -548,85 +656,9 @@ class UnionGraphV2SnapshotReader:
                 details={"graph_schema": graph_schema},
             )
         world_id = _require_payload_world(graph_payload)
+        _reject_semantic_profile_field(graph_payload, graph_schema=graph_schema)
 
-        try:
-            nodes = [
-                GraphNodeV2Record.model_validate(node)
-                for node in graph_payload.get("nodes", [])
-            ]
-        except (ValidationError, TypeError, ValueError) as exc:
-            raise PersistenceIntegrityError(
-                "malformed graph node, relationship, or evidence record",
-                details={"error": str(exc)},
-            ) from exc
-
-        objects: dict[str, GraphObjectView] = {}
-        assertion_ids: set[str] = set()
-        for node in nodes:
-            if node.object_id in objects:
-                raise PersistenceIntegrityError(
-                    f"duplicate object_id {node.object_id!r}",
-                    details={"object_id": node.object_id},
-                )
-            seen_aliases: set[str] = set()
-            alias_views: list[AdmittedAliasAssertion] = []
-            for assertion in node.alias_assertions:
-                if assertion.assertion_id in assertion_ids:
-                    raise PersistenceIntegrityError(
-                        f"duplicate assertion_id {assertion.assertion_id!r}",
-                        details={"assertion_id": assertion.assertion_id},
-                    )
-                assertion_ids.add(assertion.assertion_id)
-                normalized_alias = _norm(assertion.alias)
-                if normalized_alias in seen_aliases:
-                    raise PersistenceIntegrityError(
-                        f"duplicate normalized alias {assertion.alias!r} on "
-                        f"object {node.object_id!r}",
-                        details={"object_id": node.object_id, "alias": assertion.alias},
-                    )
-                seen_aliases.add(normalized_alias)
-                alias_views.append(
-                    AdmittedAliasAssertion(
-                        assertion_id=assertion.assertion_id,
-                        alias=assertion.alias,
-                        evidence_ref_ids=list(assertion.evidence_ref_ids),
-                    )
-                )
-
-            summary_view: AdmittedSummaryAssertion | None = None
-            if node.summary_assertion is not None:
-                assertion = node.summary_assertion
-                if assertion.assertion_id in assertion_ids:
-                    raise PersistenceIntegrityError(
-                        f"duplicate assertion_id {assertion.assertion_id!r}",
-                        details={"assertion_id": assertion.assertion_id},
-                    )
-                assertion_ids.add(assertion.assertion_id)
-                summary_view = AdmittedSummaryAssertion(
-                    assertion_id=assertion.assertion_id,
-                    summary=assertion.summary,
-                    evidence_ref_ids=list(assertion.evidence_ref_ids),
-                )
-
-            retained_evidence = list(node.evidence_ref_ids)
-            for alias_view in alias_views:
-                retained_evidence.extend(alias_view.evidence_ref_ids)
-            if summary_view is not None:
-                retained_evidence.extend(summary_view.evidence_ref_ids)
-
-            objects[node.object_id] = GraphObjectView(
-                object_id=node.object_id,
-                kind=node.kind,
-                label=node.label,
-                aliases=[item.alias for item in alias_views],
-                evidence_ref_ids=list(dict.fromkeys(retained_evidence)),
-                summary=summary_view.summary if summary_view is not None else None,
-                object_field_schema="v2",
-                core_evidence_ref_ids=list(node.evidence_ref_ids),
-                admitted_alias_assertions=alias_views,
-                admitted_summary_assertion=summary_view,
-            )
-
+        objects = _parse_v2_shaped_objects(graph_payload)
         evidence, relationships_by_id = _parse_common_evidence_and_relationships(
             graph_payload=graph_payload,
             objects=objects,
@@ -648,6 +680,8 @@ class UnionGraphV2SnapshotReader:
             evidence=evidence,
             label_index=label_index,
             alias_index=alias_index,
+            semantic_profile_ref=None,
+            semantic_profile_descriptor=None,
         )
 
     def get_object(
@@ -680,12 +714,127 @@ class UnionGraphV2SnapshotReader:
         )
 
 
+class UnionGraphV3SnapshotReader:
+    """Concrete reader for ``dm_union_graph_v3`` (v2 nodes + semantic profile)."""
+
+    def __init__(self, profile_registry: SemanticProfileRegistry) -> None:
+        self._profile_registry = profile_registry
+
+    def parse(
+        self,
+        *,
+        graph_schema: str,
+        graph_payload: dict[str, Any],
+    ) -> ParsedGraphSnapshot:
+        if graph_schema != GRAPH_SCHEMA_V3:
+            raise PersistenceIntegrityError(
+                f"unsupported graph schema {graph_schema!r}; "
+                f"expected {GRAPH_SCHEMA_V3!r}",
+                details={"graph_schema": graph_schema},
+            )
+        world_id = _require_payload_world(graph_payload)
+
+        raw_profile = graph_payload.get("semantic_profile")
+        if raw_profile is None:
+            raise PersistenceIntegrityError(
+                "dm_union_graph_v3 requires semantic_profile",
+                details={"graph_schema": graph_schema},
+            )
+        try:
+            profile_ref = SemanticProfileRef.model_validate(raw_profile)
+        except (ValidationError, TypeError, ValueError) as exc:
+            raise PersistenceIntegrityError(
+                "malformed semantic_profile on graph payload",
+                details={"error": str(exc)},
+            ) from exc
+
+        descriptor = resolve_and_verify_profile(profile_ref, self._profile_registry)
+
+        objects = _parse_v2_shaped_objects(graph_payload)
+        for obj in objects.values():
+            validate_qualified_term(obj.kind, descriptor, field_name="kind")
+
+        evidence, relationships_by_id = _parse_common_evidence_and_relationships(
+            graph_payload=graph_payload,
+            objects=objects,
+        )
+        for rel in relationships_by_id.values():
+            validate_qualified_term(rel.predicate, descriptor, field_name="predicate")
+
+        for obj in objects.values():
+            for evidence_ref_id in obj.evidence_ref_ids:
+                if evidence_ref_id not in evidence:
+                    raise PersistenceIntegrityError(
+                        f"dangling node evidence_ref_id {evidence_ref_id!r}",
+                        details={"object_id": obj.object_id},
+                    )
+
+        label_index, alias_index = build_label_and_alias_indexes(objects)
+        return ParsedGraphSnapshot(
+            world_id=world_id,
+            graph_schema=graph_schema,
+            objects=objects,
+            relationships=relationships_by_id,
+            evidence=evidence,
+            label_index=label_index,
+            alias_index=alias_index,
+            semantic_profile_ref=profile_ref,
+            semantic_profile_descriptor=descriptor,
+        )
+
+    def get_object(
+        self,
+        snapshot: ParsedGraphSnapshot,
+        object_id: str,
+    ) -> GraphObjectView | None:
+        return get_object_from_snapshot(snapshot, object_id)
+
+    def list_relationships(
+        self,
+        snapshot: ParsedGraphSnapshot,
+        object_ids: list[str],
+    ) -> list[GraphRelationshipView]:
+        return list_relationships_from_snapshot(snapshot, object_ids)
+
+    def resolve_mentions(
+        self,
+        snapshot: ParsedGraphSnapshot,
+        *,
+        message: str,
+        selected_object_ids: list[str],
+        candidate_object_ids: list[str] | None = None,
+    ) -> list[ResolvedReferent]:
+        return resolve_mentions_from_snapshot(
+            snapshot,
+            message=message,
+            selected_object_ids=selected_object_ids,
+            candidate_object_ids=candidate_object_ids,
+        )
+
+
+class _EmptySemanticProfileRegistry:
+    """Default registry: admits nothing (v3 fails closed)."""
+
+    def get(
+        self, profile_id: str, profile_revision: str
+    ) -> SemanticProfileDescriptor | None:
+        return None
+
+
 class VersionedUnionGraphSnapshotReader:
     """Dispatch by exact ``graph_schema``; reject unsupported schemas."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        profile_registry: SemanticProfileRegistry | None = None,
+    ) -> None:
+        registry = profile_registry if profile_registry is not None else (
+            _EmptySemanticProfileRegistry()
+        )
+        self._profile_registry = registry
         self._v1 = UnionGraphV1SnapshotReader()
         self._v2 = UnionGraphV2SnapshotReader()
+        self._v3 = UnionGraphV3SnapshotReader(registry)
 
     def parse(
         self,
@@ -699,6 +848,10 @@ class VersionedUnionGraphSnapshotReader:
             )
         if graph_schema == GRAPH_SCHEMA_V2:
             return self._v2.parse(
+                graph_schema=graph_schema, graph_payload=graph_payload
+            )
+        if graph_schema == GRAPH_SCHEMA_V3:
+            return self._v3.parse(
                 graph_schema=graph_schema, graph_payload=graph_payload
             )
         raise PersistenceIntegrityError(

@@ -1,0 +1,185 @@
+{
+  "fixture_version": "curated_semantic_profile_v1",
+  "fixed_timestamps": {
+    "created_at": "2026-08-01T12:00:00Z",
+    "completed_at": "2026-08-01T12:05:00Z",
+    "thread_created_at": "2026-08-01T11:00:00Z"
+  },
+  "authorized_demo_binding": {
+    "caller_id": "caller:semantic-profile-demo",
+    "tenant_id": null,
+    "roles": ["semantic-profile-demo"],
+    "world_id": "world:semantic-profile-demo",
+    "campaign_id": "camp:semantic-profile",
+    "thread_id": "thr:semantic-profile-demo",
+    "admissibility": "player",
+    "surface_id": "test:semantic-profile"
+  },
+  "world_id": "world:semantic-profile-demo",
+  "graph_schema": "dm_union_graph_v3",
+  "graph_payload": {
+    "world_id": "world:semantic-profile-demo",
+    "semantic_profile": {
+      "schema_version": "dm_semantic_profile_ref_v1",
+      "profile_id": "test.narrative",
+      "profile_revision": "narrative-profile-v1",
+      "descriptor_sha256": "95edd343644e7a8dad7416d0002e6788c3782108f558f9b326550b4f2205ee78"
+    },
+    "nodes": [
+      {
+        "object_id": "obj:clock-buried-sun",
+        "kind": "narrative:clock",
+        "label": "The Buried Sun Clock",
+        "evidence_ref_ids": ["ev:clock-core-player"],
+        "alias_assertions": [
+          {
+            "assertion_id": "asrt:clock-alias-dawn",
+            "alias": "Dawn Clock",
+            "evidence_ref_ids": ["ev:clock-alias-player"]
+          }
+        ],
+        "summary_assertion": {
+          "assertion_id": "asrt:clock-summary-player",
+          "summary": "a public countdown toward settling the dawn debt",
+          "evidence_ref_ids": ["ev:clock-summary-player"]
+        }
+      },
+      {
+        "object_id": "obj:outcome-dawn-debt",
+        "kind": "narrative:outcome",
+        "label": "Dawn Debt Settled",
+        "evidence_ref_ids": ["ev:outcome-core-player"],
+        "alias_assertions": [],
+        "summary_assertion": null
+      }
+    ],
+    "relationships": [
+      {
+        "relationship_id": "rel:clock-advances-outcome",
+        "subject_object_id": "obj:clock-buried-sun",
+        "predicate": "narrative:advances_toward",
+        "object_object_id": "obj:outcome-dawn-debt",
+        "evidence_ref_ids": ["ev:clock-advances-player"]
+      }
+    ],
+    "evidence_refs": [
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:clock-core-player",
+        "source_artifact_id": "src:narrative-player-notes",
+        "source_revision_id": "srcrev:narrative-player-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://semantic-profile/player#clock-core"
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:clock-alias-player",
+        "source_artifact_id": "src:narrative-player-notes",
+        "source_revision_id": "srcrev:narrative-player-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://semantic-profile/player#clock-alias"
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:clock-summary-player",
+        "source_artifact_id": "src:narrative-player-notes",
+        "source_revision_id": "srcrev:narrative-player-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://semantic-profile/player#clock-summary"
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:outcome-core-player",
+        "source_artifact_id": "src:narrative-player-notes",
+        "source_revision_id": "srcrev:narrative-player-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://semantic-profile/player#outcome-core"
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:clock-advances-player",
+        "source_artifact_id": "src:narrative-player-notes",
+        "source_revision_id": "srcrev:narrative-player-notes-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "locator": "fixture://semantic-profile/player#clock-advances"
+      }
+    ]
+  },
+  "source_artifacts": [
+    {
+      "source_artifact_id": "src:narrative-player-notes",
+      "source_domain": "worldbuilding",
+      "world_id": "world:semantic-profile-demo",
+      "campaign_id": "camp:semantic-profile",
+      "session_id": null,
+      "visibility": "player",
+      "current_revision_id": "srcrev:narrative-player-notes-v1",
+      "authority": "primary",
+      "status": "active"
+    }
+  ],
+  "source_revisions": [
+    {
+      "source_revision_id": "srcrev:narrative-player-notes-v1",
+      "source_artifact_id": "src:narrative-player-notes",
+      "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "body_storage": "external",
+      "locator": "fixture://curated-semantic-profile-v1/player-notes"
+    }
+  ],
+  "embedding_run": {
+    "run_id": "erun:curated-semantic-profile-v1",
+    "embedding_model": "fixture-8dim",
+    "embedding_model_revision": "v1",
+    "embedding_dimensions": 8,
+    "embedding_recipe": "fixture-raw",
+    "world_id": "world:semantic-profile-demo"
+  },
+  "semantic_documents": [
+    {
+      "semantic_document_id": "sdoc:narrative-clock-player",
+      "document_kind": "graph_object",
+      "campaign_scope": "camp:semantic-profile",
+      "graph_object_id": "obj:clock-buried-sun",
+      "visibility": "player",
+      "content": "The Buried Sun Clock, also called Dawn Clock, advances toward Dawn Debt Settled.",
+      "embedding": [0.0, 0.05, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0]
+    },
+    {
+      "semantic_document_id": "sdoc:narrative-outcome-player",
+      "document_kind": "graph_object",
+      "campaign_scope": "camp:semantic-profile",
+      "graph_object_id": "obj:outcome-dawn-debt",
+      "visibility": "player",
+      "content": "Dawn Debt Settled is the public narrative outcome the clock advances toward.",
+      "embedding": [0.0, 0.1, 0.9, 0.0, 0.0, 0.0, 0.0, 0.0]
+    }
+  ],
+  "query_embeddings": {
+    "What is the Buried Sun Clock?": [0.0, 0.05, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "What advances toward Dawn Debt Settled?": [0.0, 0.05, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0]
+  },
+  "leak_sentinels": {
+    "forbidden_terms": [
+      "dnd5e",
+      "creature",
+      "statblock",
+      "dungeonmind.dnd5e"
+    ],
+    "path_fragments": [
+      "semantic_profiles",
+      "test-narrative-v1.json",
+      "descriptor_path"
+    ]
+  }
+}
