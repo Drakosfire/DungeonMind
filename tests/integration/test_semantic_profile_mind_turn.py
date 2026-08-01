@@ -8,6 +8,10 @@ from pathlib import Path
 
 import pytest
 
+# Core CI installs neither the ``api`` nor ``postgres`` extras. Skip collection
+# when FastAPI is absent so ``pytest -m "not integration"`` stays clean.
+pytest.importorskip("fastapi")
+
 from dungeonmind.agents.fixture import FixtureGroundedAgentAdapter
 from dungeonmind.agents.protocol import AgentTurnContext, AgentTurnResult
 from dungeonmind.application.graph_snapshot import VersionedUnionGraphSnapshotReader
