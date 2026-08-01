@@ -90,6 +90,14 @@ def test_app_js_uses_text_content_and_projection_kinds() -> None:
     assert "/readyz" in text
     assert "/v1/mind-turn" in text
     assert "Exact replay matched" in text
+    # Replay record is captured before fetch and bound to the submission host.
+    assert "submittedPayload" in text
+    assert "submittedApiBase" in text
+    assert "responseBaseline" in text
+    assert "historyBody" in text
+    assert "Exact submitted request was retried" in text
+    assert "canonicalize" in text
+    assert "responsesEqual" in text
 
 
 def test_server_module_import_does_not_bind_port() -> None:

@@ -73,7 +73,8 @@ Open `http://127.0.0.1:8081/` (not `localhost` — origin must match CORS).
 | 3 | Replay exact request | Status shows Exact replay matched; answer/revision/projections unchanged |
 | 4 | Ask “Who is the Moon King?” | Abstaining answer; “No grounded objects returned”; no entity/relationship rows |
 | 5 | Stop terminal A (API); Ask again | Network unavailable / error state; prior answer only under Prior result (stale), never styled as current success |
-| 6 | Console | No uncaught exceptions; no requests outside `127.0.0.1:8000` and the static origin |
+| 6 | Failed new request vs prior success | After a successful Sun Ledger ask, change the message to Moon King, stop the API, Ask again. Error state appears; prior Sun Ledger answer is history-only. Replay Exact Request must resend the failed Moon King payload (not the prior Sun Ledger success). Restart the API, Replay: status reports either exact replay match (if a response was observed) or “Exact submitted request was retried” (if the first response was never received); answer must be the Moon King abstention, not Mere Astor |
+| 7 | Console | No uncaught exceptions; no requests outside `127.0.0.1:8000` and the static origin |
 
 Changed-body request-ID conflict is covered by automated integration tests; do
 not add a product-like browser control solely for that case.

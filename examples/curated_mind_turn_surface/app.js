@@ -37,12 +37,15 @@
     historySummary: document.getElementById("history-summary"),
   };
 
+  // replayRecord is captured at submission time (before fetch):
+  //   submittedPayload, submittedApiBase, responseBaseline | null
+  // historyBody is separate: last successful display for stale history only.
   const state = {
     template: null,
     ready: false,
-    lastPayload: null,
-    lastSuccessBody: null,
     inFlight: false,
+    replayRecord: null,
+    historyBody: null,
   };
 
   function setText(node, value) {
@@ -65,6 +68,26 @@
     return els.apiBase.value.replace(/\/+$/, "");
   }
 
+  // PostgreSQL JSONB replay can reorder object keys while preserving semantics.
+  // Compare canonical forms so Exact replay matched reflects value equality.
+  function canonicalize(value) {
+    if (Array.isArray(value)) {
+      return value.map(canonicalize);
+    }
+    if (value && typeof value === "object") {
+      const out = {};
+      for (const key of Object.keys(value).sort()) {
+        out[key] = canonicalize(value[key]);
+      }
+      return out;
+    }
+    return value;
+  }
+
+  function responsesEqual(left, right) {
+    return JSON.stringify(canonicalize(left)) === JSON.stringify(canonicalize(right));
+  }
+
   function newRequestId() {
     if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
       return `req:browser-${globalThis.crypto.randomUUID()}`;
@@ -75,16 +98,16 @@
   function setReadyUi() {
     const canAsk = Boolean(state.template) && state.ready && !state.inFlight;
     els.ask.disabled = !canAsk;
-    els.replay.disabled = !(state.lastPayload && !state.inFlight);
+    els.replay.disabled = !(state.replayRecord && !state.inFlight);
   }
 
   function markResultStale(reason) {
-    if (!state.lastSuccessBody) {
+    if (!state.historyBody) {
       els.history.classList.add("hidden");
       return;
     }
-    const answer = state.lastSuccessBody.answer || "";
-    const revision = state.lastSuccessBody.revision_id || "";
+    const answer = state.historyBody.answer || "";
+    const revision = state.historyBody.revision_id || "";
     setText(
       els.historySummary,
       `${reason} Prior answer retained as history only: ${answer} (${revision})`,
@@ -158,7 +181,7 @@
     return { known, unknown };
   }
 
-  function renderSuccess(body, { replayMatched }) {
+  function renderSuccess(body, { replayMatched, ambiguousRetry }) {
     els.error.classList.add("hidden");
     els.result.classList.remove("hidden");
     els.history.classList.add("hidden");
@@ -248,7 +271,10 @@
     }
 
     if (hasEntities || hasRelationships || hasEvidence) {
-      setText(els.resultBadge, replayMatched ? "Grounded · exact replay" : "Grounded");
+      setText(
+        els.resultBadge,
+        replayMatched ? "Grounded · exact replay" : "Grounded",
+      );
       els.resultBadge.className = replayMatched ? "badge replay" : "badge";
     } else {
       setText(
@@ -275,15 +301,23 @@
     );
     setText(els.rawJson, JSON.stringify(body, null, 2));
 
-    setText(
-      els.requestStatus,
-      replayMatched ? "Exact replay matched." : "Mind Turn response received.",
-    );
+    if (replayMatched) {
+      setText(els.requestStatus, "Exact replay matched.");
+      setText(els.replayStatus, "Exact replay matched");
+    } else if (ambiguousRetry) {
+      setText(
+        els.requestStatus,
+        "Exact submitted request was retried.",
+      );
+      setText(
+        els.replayStatus,
+        "Exact submitted request was retried (no prior response to compare).",
+      );
+    } else {
+      setText(els.requestStatus, "Mind Turn response received.");
+      setText(els.replayStatus, "");
+    }
     els.requestStatus.className = "status ok";
-    setText(
-      els.replayStatus,
-      replayMatched ? "Exact replay matched" : "",
-    );
   }
 
   async function loadTemplate() {
@@ -347,6 +381,10 @@
             : "host ready; revision not reported",
         );
         els.error.classList.add("hidden");
+        setText(els.errorStatus, "");
+        setText(els.errorCode, "");
+        setText(els.errorMessage, "");
+        setText(els.errorDetails, "");
         setText(els.requestStatus, "Ready for Ask.");
         els.requestStatus.className = "status ok";
       } else {
@@ -381,12 +419,24 @@
     return payload;
   }
 
-  async function postMindTurn(payload, { expectReplayOf }) {
+  async function postMindTurn(payload, submittedApiBase, { isReplay }) {
+    // Capture the replay record at submission time — before fetch — so a lost
+    // response still leaves Replay able to resend the exact request to the
+    // exact host. New Ask replaces any prior record (including after success A
+    // then failed B). Replay keeps the existing record and its baseline.
+    if (!isReplay) {
+      state.replayRecord = {
+        submittedPayload: payload,
+        submittedApiBase: submittedApiBase,
+        responseBaseline: null,
+      };
+    }
+
     beginRequest(
-      expectReplayOf ? "Replaying exact request…" : "Submitting Mind Turn…",
+      isReplay ? "Replaying exact request…" : "Submitting Mind Turn…",
     );
     try {
-      const response = await fetch(`${apiBase()}/v1/mind-turn`, {
+      const response = await fetch(`${submittedApiBase}/v1/mind-turn`, {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -401,6 +451,7 @@
         body = null;
       }
       if (!response.ok) {
+        // Record already retained; do not restore a prior successful payload.
         renderError({
           httpStatus: response.status,
           code: body && body.error && body.error.code,
@@ -409,29 +460,43 @@
         });
         return;
       }
-      state.lastPayload = payload;
+
       let replayMatched = false;
-      if (expectReplayOf) {
-        replayMatched =
-          JSON.stringify(body) === JSON.stringify(expectReplayOf);
-        if (!replayMatched) {
-          renderError({
-            httpStatus: response.status,
-            code: "replay_mismatch",
-            message:
-              "Exact replay failed: parsed response differs from the prior response.",
-            details: {
-              prior_request_id: expectReplayOf.request_id,
-              replay_request_id: body && body.request_id,
-            },
-          });
-          setText(els.replayStatus, "Exact replay mismatch.");
-          return;
+      let ambiguousRetry = false;
+      const baseline =
+        state.replayRecord && state.replayRecord.responseBaseline;
+      if (isReplay) {
+        if (baseline != null) {
+          replayMatched = responsesEqual(body, baseline);
+          if (!replayMatched) {
+            renderError({
+              httpStatus: response.status,
+              code: "replay_mismatch",
+              message:
+                "Exact replay failed: parsed response differs from the prior response.",
+              details: {
+                prior_request_id: baseline.request_id,
+                replay_request_id: body && body.request_id,
+              },
+            });
+            setText(els.replayStatus, "Exact replay mismatch.");
+            return;
+          }
+        } else {
+          // First submission never observed a response; this is a retry of the
+          // exact submitted request, not an equivalence proof.
+          ambiguousRetry = true;
         }
       }
-      state.lastSuccessBody = body;
-      renderSuccess(body, { replayMatched });
+
+      if (state.replayRecord) {
+        state.replayRecord.responseBaseline = body;
+      }
+      state.historyBody = body;
+      renderSuccess(body, { replayMatched, ambiguousRetry });
     } catch (_err) {
+      // Network failure after submission: replayRecord already holds the exact
+      // payload and API base for Retry via Replay.
       renderError({
         network: true,
         message:
@@ -447,16 +512,20 @@
       return;
     }
     const payload = buildAskPayload();
-    await postMindTurn(payload, { expectReplayOf: null });
+    const submittedApiBase = apiBase();
+    await postMindTurn(payload, submittedApiBase, { isReplay: false });
   }
 
   async function onReplay() {
-    if (!state.lastPayload || state.inFlight) {
+    if (!state.replayRecord || state.inFlight) {
       return;
     }
-    await postMindTurn(state.lastPayload, {
-      expectReplayOf: state.lastSuccessBody,
-    });
+    // Always use the captured endpoint and payload — never the edited API base.
+    await postMindTurn(
+      state.replayRecord.submittedPayload,
+      state.replayRecord.submittedApiBase,
+      { isReplay: true },
+    );
   }
 
   async function boot() {
@@ -491,6 +560,7 @@
     setText(els.readyStatus, "API base changed — re-check readiness.");
     els.readyStatus.className = "status pending";
     setText(els.readyRevision, "");
+    // Replay stays bound to replayRecord.submittedApiBase, not the edited field.
     setReadyUi();
   });
 

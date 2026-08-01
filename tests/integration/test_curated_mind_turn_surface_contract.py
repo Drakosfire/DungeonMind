@@ -206,20 +206,32 @@ def test_abstention_has_no_fabricated_entity_or_relationship(cors_client) -> Non
     )
     assert response.status_code == 200
     body = response.json()
-    entity_labels = [
-        proj["payload"].get("label", "")
-        for proj in body["semantic_projections"]
-        if proj["kind"] == "entity_brief"
-    ]
-    assert not any("Moon King" in label for label in entity_labels)
-    rel_projections = [
-        proj
-        for proj in body["semantic_projections"]
-        if proj["kind"] == "relationship_list"
-    ]
-    assert rel_projections == [] or all(
-        not (proj.get("payload") or {}).get("relationships") for proj in rel_projections
+    answer_lower = str(body.get("answer", "")).lower()
+    assert (
+        "do not have grounded knowledge" in answer_lower
+        or "abstain" in answer_lower
+        or "no grounded" in answer_lower
     )
+
+    entity_briefs = [
+        proj for proj in body["semantic_projections"] if proj["kind"] == "entity_brief"
+    ]
+    assert entity_briefs == []
+
+    relationship_rows = []
+    for proj in body["semantic_projections"]:
+        if proj["kind"] == "relationship_list":
+            relationship_rows.extend((proj.get("payload") or {}).get("relationships") or [])
+    assert relationship_rows == []
+
+    evidence_summary_ids = []
+    for proj in body["semantic_projections"]:
+        if proj["kind"] == "evidence_summary":
+            evidence_summary_ids.extend(
+                (proj.get("payload") or {}).get("evidence_ref_ids") or []
+            )
+    assert evidence_summary_ids == []
+    assert body.get("evidence") == []
 
 
 def test_exact_replay_matches_and_skips_second_agent(cors_client) -> None:
