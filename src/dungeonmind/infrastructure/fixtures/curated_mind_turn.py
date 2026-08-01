@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ...application.graph_snapshot import UnionGraphV1SnapshotReader
+from ...application.graph_snapshot import VersionedUnionGraphSnapshotReader
 from ...application.repositories import (
     EmbeddingRunRepository,
     MindThreadRepository,
@@ -98,16 +98,18 @@ class CuratedMindTurnFixture:
 
 def load_curated_mind_turn_fixture(
     path: Path | None = None,
+    *,
+    expected_fixture_version: str = "curated_mind_turn_v1",
 ) -> CuratedMindTurnFixture:
     fixture_path = path or DEFAULT_FIXTURE_PATH
     raw = json.loads(fixture_path.read_text(encoding="utf-8"))
-    if raw.get("fixture_version") != "curated_mind_turn_v1":
+    if raw.get("fixture_version") != expected_fixture_version:
         raise ValueError(
             f"unexpected fixture_version {raw.get('fixture_version')!r}; "
-            "expected 'curated_mind_turn_v1'"
+            f"expected {expected_fixture_version!r}"
         )
     # Fail closed on graph shape before any write.
-    UnionGraphV1SnapshotReader().parse(
+    VersionedUnionGraphSnapshotReader().parse(
         graph_schema=str(raw["graph_schema"]),
         graph_payload=raw["graph_payload"],
     )
@@ -257,7 +259,7 @@ def _preflight_fixture_consistency(
     if binding.get("world_id") != loaded.world_id:
         raise ValueError("authorized_demo_binding.world_id disagrees with fixture world_id")
 
-    parsed = UnionGraphV1SnapshotReader().parse(
+    parsed = VersionedUnionGraphSnapshotReader().parse(
         graph_schema=loaded.graph_schema,
         graph_payload=loaded.graph_payload,
     )

@@ -12,7 +12,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from ..agents.fixture import FixtureGroundedAgentAdapter
-from ..application.graph_snapshot import UnionGraphV1SnapshotReader
+from ..application.graph_snapshot import VersionedUnionGraphSnapshotReader
 from ..application.mind_turn import FixedClock, MindTurnService
 from ..domain.errors import (
     HeadNotFoundError,
@@ -62,7 +62,7 @@ def build_readiness_probe(
             )
         # Validate graph payload shape without mutating.
         try:
-            UnionGraphV1SnapshotReader().parse(
+            VersionedUnionGraphSnapshotReader().parse(
                 graph_schema=stored.revision.graph_schema,
                 graph_payload=stored.graph_payload,
             )
@@ -126,7 +126,7 @@ def create_demo_app() -> FastAPI:
         semantic_documents=bundle.semantic_documents,
         semantic_search=bundle.semantic_search,
         sources=bundle.sources,
-        graph_reader=UnionGraphV1SnapshotReader(),
+        graph_reader=VersionedUnionGraphSnapshotReader(),
         query_embedder=fixture.query_embedder,
         agent_adapter=FixtureGroundedAgentAdapter(),
         clock=FixedClock(fixture.created_at()),

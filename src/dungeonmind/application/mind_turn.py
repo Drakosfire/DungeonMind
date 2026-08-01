@@ -9,7 +9,7 @@ import hashlib
 import threading
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from ..agents.protocol import AgentAdapter, AgentTurnContext, sanitize_agent_input
 from ..contracts.capability import CapabilityPolicy, GraphScope
@@ -57,7 +57,7 @@ from .graph_snapshot import (
     GraphRelationshipView,
     GraphSnapshotReader,
     ParsedGraphSnapshot,
-    UnionGraphV1SnapshotReader,
+    VersionedUnionGraphSnapshotReader,
     collect_one_hop_object_ids,
 )
 from .query_embedding import QueryEmbeddingProvider
@@ -154,7 +154,7 @@ class MindTurnService:
         self._semantic_documents = semantic_documents
         self._semantic_search = semantic_search
         self._sources = sources
-        self._graph_reader = graph_reader or UnionGraphV1SnapshotReader()
+        self._graph_reader = graph_reader or VersionedUnionGraphSnapshotReader()
         self._query_embedder = query_embedder
         self._agent_adapter = agent_adapter
         self._clock = clock
@@ -904,6 +904,43 @@ class MindTurnService:
                     },
                 )
             )
+            if (
+                obj.object_field_schema == "v2"
+                and (
+                    obj.admitted_alias_assertions
+                    or obj.admitted_summary_assertion is not None
+                )
+            ):
+                provenance_payload: dict[str, Any] = {
+                    "object_id": obj.object_id,
+                    "alias_assertions": [
+                        {
+                            "assertion_id": assertion.assertion_id,
+                            "alias": assertion.alias,
+                            "evidence_ref_ids": list(assertion.evidence_ref_ids),
+                        }
+                        for assertion in obj.admitted_alias_assertions
+                    ],
+                }
+                if obj.admitted_summary_assertion is not None:
+                    summary = obj.admitted_summary_assertion
+                    provenance_payload["summary_assertion"] = {
+                        "assertion_id": summary.assertion_id,
+                        "summary": summary.summary,
+                        "evidence_ref_ids": list(summary.evidence_ref_ids),
+                    }
+                projections.append(
+                    SemanticProjection(
+                        projection_id=_stable_id(
+                            "proj",
+                            request_id,
+                            "entity_field_provenance",
+                            obj.object_id,
+                        ),
+                        kind="entity_field_provenance",
+                        payload=provenance_payload,
+                    )
+                )
         if relationships:
             projections.append(
                 SemanticProjection(

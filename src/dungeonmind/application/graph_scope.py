@@ -3,10 +3,14 @@
 Exact graph labels, aliases, selected IDs, and one-hop traversal must not
 bypass visibility, campaign, or provenance checks applied to evidence.
 
-B.1a uses a coarse-object policy: an object or relationship is exposed only
-when every attached evidence reference is fully validated and in scope. Mixed
-provenance therefore hides the entire object rather than leaking GM-backed
-aliases, summaries, or other descriptive fields.
+``dm_union_graph_v1`` uses a coarse-object policy: an object or relationship is
+exposed only when every attached evidence reference is fully validated and in
+scope. Mixed provenance therefore hides the entire object rather than leaking
+GM-backed aliases, summaries, or other descriptive fields.
+
+``dm_union_graph_v2`` keeps core identity coarse, then admits each alias and the
+summary independently from their own evidence. Omitted fields never enter
+indexes, context, projections, or public diagnostics.
 
 Admissibility filtering is separated from provenance diagnostics:
 out-of-scope artifacts are excluded silently; detailed rejection identities are
@@ -31,10 +35,14 @@ from ..contracts.evidence import (
 from ..contracts.projection import Admissibility
 from ..contracts.vocabulary import Visibility
 from .graph_snapshot import (
+    GRAPH_SCHEMA_V2,
+    AdmittedAliasAssertion,
+    AdmittedSummaryAssertion,
     GraphEvidenceRecord,
     GraphObjectView,
     GraphRelationshipView,
     ParsedGraphSnapshot,
+    build_label_and_alias_indexes,
 )
 from .repositories import SourceRepository
 
@@ -87,13 +95,14 @@ class ObjectScopeExclusion:
 
 @dataclass(frozen=True)
 class ScopedGraphProjection:
-    """Scoped snapshot plus per-object exclusion diagnostics."""
+    """Scoped snapshot plus per-object / per-assertion exclusion diagnostics."""
 
     snapshot: ParsedGraphSnapshot
     object_exclusions: dict[str, ObjectScopeExclusion] = field(default_factory=dict)
     relationship_exclusions: dict[str, ObjectScopeExclusion] = field(
         default_factory=dict
     )
+    assertion_exclusions: dict[str, ObjectScopeExclusion] = field(default_factory=dict)
 
     @property
     def rejections(self) -> list[ProvenanceRejection]:
@@ -103,6 +112,7 @@ class ScopedGraphProjection:
         for exclusion in (
             *self.object_exclusions.values(),
             *self.relationship_exclusions.values(),
+            *self.assertion_exclusions.values(),
         ):
             for rejection in exclusion.rejections:
                 key = (rejection.gap_code, rejection.missing_id)
@@ -296,25 +306,15 @@ def _classify_evidence_ids(
     )
 
 
-def project_scoped_snapshot(
+def _project_v1_objects(
     snapshot: ParsedGraphSnapshot,
     *,
     sources: SourceRepository,
     world_id: str,
     campaign_id: str | None,
     admissibility: Admissibility,
-) -> ScopedGraphProjection:
-    """Return a coarse-scoped snapshot and per-object exclusion diagnostics.
-
-    Coarse-object policy (B.1a): retain an object/relationship only when every
-    attached evidence reference is fully validated and in scope. Mixed
-    player/GM provenance therefore hides the entire object — including labels,
-    aliases, and summaries — rather than leaking GM-backed descriptive fields.
-
-    Graph-global exclusions are retained per object/relationship for callers
-    that need targeted diagnostics. They must not be copied wholesale into
-    public ``Coverage`` on every turn.
-    """
+) -> tuple[dict[str, GraphObjectView], dict[str, ObjectScopeExclusion]]:
+    """Coarse-object policy for ``dm_union_graph_v1``."""
     object_exclusions: dict[str, ObjectScopeExclusion] = {}
     objects: dict[str, GraphObjectView] = {}
     for object_id, obj in snapshot.objects.items():
@@ -333,6 +333,139 @@ def project_scoped_snapshot(
                 object_exclusions[object_id] = exclusion
             continue
         objects[object_id] = obj
+    return objects, object_exclusions
+
+
+def _project_v2_objects(
+    snapshot: ParsedGraphSnapshot,
+    *,
+    sources: SourceRepository,
+    world_id: str,
+    campaign_id: str | None,
+    admissibility: Admissibility,
+) -> tuple[
+    dict[str, GraphObjectView],
+    dict[str, ObjectScopeExclusion],
+    dict[str, ObjectScopeExclusion],
+]:
+    """Core-coarse + independent alias/summary admission for v2."""
+    object_exclusions: dict[str, ObjectScopeExclusion] = {}
+    assertion_exclusions: dict[str, ObjectScopeExclusion] = {}
+    objects: dict[str, GraphObjectView] = {}
+
+    for object_id, obj in snapshot.objects.items():
+        core_ids = list(obj.core_evidence_ref_ids)
+        all_valid, exclusion = _classify_evidence_ids(
+            core_ids,
+            snapshot=snapshot,
+            sources=sources,
+            world_id=world_id,
+            campaign_id=campaign_id,
+            admissibility=admissibility,
+        )
+        if not all_valid or not core_ids:
+            if not core_ids:
+                object_exclusions[object_id] = ObjectScopeExclusion(scope_unknown=True)
+            else:
+                object_exclusions[object_id] = exclusion
+            continue
+
+        admitted_aliases: list[AdmittedAliasAssertion] = []
+        for assertion in obj.admitted_alias_assertions:
+            alias_ok, alias_exclusion = _classify_evidence_ids(
+                assertion.evidence_ref_ids,
+                snapshot=snapshot,
+                sources=sources,
+                world_id=world_id,
+                campaign_id=campaign_id,
+                admissibility=admissibility,
+            )
+            if alias_ok and assertion.evidence_ref_ids:
+                admitted_aliases.append(assertion)
+            else:
+                if not assertion.evidence_ref_ids:
+                    assertion_exclusions[assertion.assertion_id] = ObjectScopeExclusion(
+                        scope_unknown=True
+                    )
+                else:
+                    assertion_exclusions[assertion.assertion_id] = alias_exclusion
+
+        admitted_summary: AdmittedSummaryAssertion | None = None
+        if obj.admitted_summary_assertion is not None:
+            summary = obj.admitted_summary_assertion
+            summary_ok, summary_exclusion = _classify_evidence_ids(
+                summary.evidence_ref_ids,
+                snapshot=snapshot,
+                sources=sources,
+                world_id=world_id,
+                campaign_id=campaign_id,
+                admissibility=admissibility,
+            )
+            if summary_ok and summary.evidence_ref_ids:
+                admitted_summary = summary
+            elif not summary.evidence_ref_ids:
+                assertion_exclusions[summary.assertion_id] = ObjectScopeExclusion(
+                    scope_unknown=True
+                )
+            else:
+                assertion_exclusions[summary.assertion_id] = summary_exclusion
+
+        retained_evidence = list(core_ids)
+        for assertion in admitted_aliases:
+            retained_evidence.extend(assertion.evidence_ref_ids)
+        if admitted_summary is not None:
+            retained_evidence.extend(admitted_summary.evidence_ref_ids)
+
+        objects[object_id] = GraphObjectView(
+            object_id=obj.object_id,
+            kind=obj.kind,
+            label=obj.label,
+            aliases=[item.alias for item in admitted_aliases],
+            evidence_ref_ids=list(dict.fromkeys(retained_evidence)),
+            summary=admitted_summary.summary if admitted_summary is not None else None,
+            object_field_schema="v2",
+            core_evidence_ref_ids=list(core_ids),
+            admitted_alias_assertions=admitted_aliases,
+            admitted_summary_assertion=admitted_summary,
+        )
+
+    return objects, object_exclusions, assertion_exclusions
+
+
+def project_scoped_snapshot(
+    snapshot: ParsedGraphSnapshot,
+    *,
+    sources: SourceRepository,
+    world_id: str,
+    campaign_id: str | None,
+    admissibility: Admissibility,
+) -> ScopedGraphProjection:
+    """Return a scoped snapshot and exclusion diagnostics.
+
+    V1 keeps the B.1a coarse-object policy. V2 retains the object shell when
+    core evidence is admitted, then filters each alias and summary independently.
+
+    Graph-global exclusions are retained per object/relationship/assertion for
+    callers that need targeted diagnostics. They must not be copied wholesale
+    into public ``Coverage`` on every turn.
+    """
+    assertion_exclusions: dict[str, ObjectScopeExclusion] = {}
+    if snapshot.graph_schema == GRAPH_SCHEMA_V2:
+        objects, object_exclusions, assertion_exclusions = _project_v2_objects(
+            snapshot,
+            sources=sources,
+            world_id=world_id,
+            campaign_id=campaign_id,
+            admissibility=admissibility,
+        )
+    else:
+        objects, object_exclusions = _project_v1_objects(
+            snapshot,
+            sources=sources,
+            world_id=world_id,
+            campaign_id=campaign_id,
+            admissibility=admissibility,
+        )
 
     relationship_exclusions: dict[str, ObjectScopeExclusion] = {}
     relationships: dict[str, GraphRelationshipView] = {}
@@ -373,16 +506,7 @@ def project_scoped_snapshot(
         if evidence_ref_id in retained_evidence_ids
     }
 
-    label_index: dict[str, list[str]] = {}
-    alias_index: dict[str, list[str]] = {}
-    for obj in objects.values():
-        label_index.setdefault(obj.label.casefold().strip(), []).append(obj.object_id)
-        for alias in obj.aliases:
-            alias_index.setdefault(alias.casefold().strip(), []).append(obj.object_id)
-    for key, ids in label_index.items():
-        label_index[key] = sorted(set(ids))
-    for key, ids in alias_index.items():
-        alias_index[key] = sorted(set(ids))
+    label_index, alias_index = build_label_and_alias_indexes(objects)
 
     return ScopedGraphProjection(
         snapshot=ParsedGraphSnapshot(
@@ -396,4 +520,5 @@ def project_scoped_snapshot(
         ),
         object_exclusions=object_exclusions,
         relationship_exclusions=relationship_exclusions,
+        assertion_exclusions=assertion_exclusions,
     )
