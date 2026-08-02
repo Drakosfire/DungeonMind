@@ -90,6 +90,25 @@ contextual, not ontological identity.
 9. **Candidate-to-contribution planning is a named successor (B.2d).**
    This PR produces no graph reads, writes, identity resolutions,
    contribution plans, or publications.
+10. **Raw candidate payloads enter only through a package-owned sanitizing
+    parse boundary.** `parse_threat_candidate_packet` is the documented
+    ingestion API. Pydantic `ValidationError` is converted into a sanitized
+    `DndCandidateValidationError` carrying only validator message strings —
+    never raw `errors()` records, rejected input values, labels, summaries,
+    evidence locators, or source prose (`raise ... from None` also suppresses
+    the chained Pydantic traceback). Candidate contracts set
+    `hide_input_in_errors=True` as defense in depth so even the raw
+    exception's formatted output omits rejected input. Raw `model_validate`
+    remains available internally but is not the ingestion API.
+11. **The bundled Threat catalog is the only candidate-validation
+    authority.** `validate_threat_candidate_packet` always enforces the
+    bundled, pin-verified catalog identity: an injected catalog must exactly
+    match the bundled vocabulary ID, revision, pinned profile ref, and
+    canonical digest, or it is rejected with
+    `DndVocabularyIntegrityError` — an internally consistent caller-built
+    catalog cannot widen the four-kind/four-predicate inventory.
+    `_validate_against_catalog` is the private seam reserved for unit-test
+    injection.
 
 ## Consequences
 
@@ -97,6 +116,11 @@ contextual, not ontological identity.
   packet models), `domain/errors.py` (package-owned typed errors,
   transport-free), and `application/threat_candidates.py` (pure
   loader/renderer/validator). No file under `src/dungeonmind/` changes.
+- Candidate ingestion is fail-closed against prose leakage: the parse
+  boundary converts Pydantic failures into sanitized package-owned errors
+  before any caller can observe rejected input.
+- Validation authority is fail-closed against catalog substitution: only
+  the bundled, digest-pinned Threat catalog can authorize candidate terms.
 - Packet-level invariants (closed evidence ledger, endpoint resolution,
   grounding, ≥1 `dnd5e:threatens`, strict shapes) are model-enforced;
   catalog-dependent rules (exact term membership, namespace admission,
@@ -123,6 +147,8 @@ contextual, not ontological identity.
 | Confidence scores on candidates | Reject | Confidence is never authority (founding invariant) |
 | Verifying existing-object refs against a graph | Defer | Requires graph read authority; B.2d capability |
 | Generic kernel term registry | Defer | Would begin the interpretation layer prematurely |
+| Exposing raw Pydantic errors at candidate ingestion | Reject | Formatted errors and `errors()` records can carry rejected payloads (labels, summaries, locators) |
+| Caller-supplied validation catalogs | Reject | The checked-in catalog is authoritative; injected catalogs must match its exact pinned identity |
 
 ## Reversal path
 

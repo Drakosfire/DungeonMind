@@ -4,14 +4,18 @@ Side-effect-free: package data is read with ``importlib.resources`` only
 inside these functions (never at import time); no environment variables, no
 network, no database, no graph repository, no registration, no LLM. The
 rendered prompt fragment is generated deterministically from the catalog and
-is never validation authority — ``validate_threat_candidate_packet`` is.
-Failures identify candidate IDs and term IDs but never echo source prose,
-summaries, or local paths.
+is never validation authority — the bundled, pin-verified Threat catalog is,
+enforced by ``validate_threat_candidate_packet``. Raw payloads enter only
+through ``parse_threat_candidate_packet``, which converts Pydantic failures
+into sanitized package-owned errors: failures identify candidate IDs and
+term IDs but never echo source prose, summaries, evidence locators, rejected
+inputs, or local paths.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from importlib import resources
 from typing import Any
 
@@ -263,13 +267,81 @@ def _endpoint_kind(
     return endpoint.expected_kind
 
 
+def parse_threat_candidate_packet(
+    payload: Mapping[str, Any] | DndThreatCandidatePacket,
+) -> DndThreatCandidatePacket:
+    """Package-owned ingestion boundary for raw candidate payloads.
+
+    Pydantic ``ValidationError`` is converted into a sanitized
+    ``DndCandidateValidationError``: only validator message strings (which
+    identify candidate IDs, term IDs, and evidence IDs) are carried forward —
+    never raw ``errors()`` records, rejected input values, labels, summaries,
+    or evidence locators. Candidate contracts additionally set
+    ``hide_input_in_errors=True`` as defense in depth. Raw ``model_validate``
+    remains available internally but is not the documented ingestion API.
+    """
+    if isinstance(payload, DndThreatCandidatePacket):
+        return payload
+    try:
+        return DndThreatCandidatePacket.model_validate(payload)
+    except ValidationError as exc:
+        messages = _validation_messages(exc)
+        raise DndCandidateValidationError(
+            "candidate packet failed contract validation: " + "; ".join(messages),
+            details={"reason": "ValidationError", "messages": messages},
+        ) from None
+
+
+def _require_authoritative_catalog(vocabulary: DndSemanticVocabulary) -> None:
+    """Reject any injected catalog that is not the bundled authoritative
+    Threat catalog: exact match on vocabulary ID, revision, pinned profile
+    ref, and canonical digest."""
+    bundled = load_builtin_threat_vocabulary()
+    if (
+        vocabulary.vocabulary_id == bundled.vocabulary_id
+        and vocabulary.vocabulary_revision == bundled.vocabulary_revision
+        and vocabulary.semantic_profile == bundled.semantic_profile
+        and vocabulary_sha256(vocabulary) == vocabulary_sha256(bundled)
+    ):
+        return
+    raise DndVocabularyIntegrityError(
+        "injected vocabulary is not the bundled authoritative Threat catalog",
+        details={
+            "vocabulary_id": vocabulary.vocabulary_id,
+            "vocabulary_revision": vocabulary.vocabulary_revision,
+        },
+    )
+
+
 def validate_threat_candidate_packet(
     packet: DndThreatCandidatePacket,
     vocabulary: DndSemanticVocabulary | None = None,
 ) -> DndThreatCandidatePacket:
-    """Validate a packet against the catalog: exact pins, term membership,
-    predicate direction/domain/range. Returns the packet unchanged."""
-    catalog = vocabulary if vocabulary is not None else load_builtin_threat_vocabulary()
+    """Validate a packet against the bundled, pin-verified Threat catalog:
+    exact pins, term membership, predicate direction/domain/range. Returns
+    the packet unchanged.
+
+    The checked-in catalog is authoritative. An injected catalog is accepted
+    only when it exactly matches the bundled identity (vocabulary ID,
+    revision, pinned profile ref, canonical digest); any other catalog is
+    rejected with ``DndVocabularyIntegrityError`` so a caller cannot widen
+    the term inventory with its own internally consistent vocabulary.
+    """
+    if vocabulary is None:
+        catalog = load_builtin_threat_vocabulary()
+    else:
+        _require_authoritative_catalog(vocabulary)
+        catalog = vocabulary
+    return _validate_against_catalog(packet, catalog)
+
+
+def _validate_against_catalog(
+    packet: DndThreatCandidatePacket,
+    catalog: DndSemanticVocabulary,
+) -> DndThreatCandidatePacket:
+    """Catalog-dependent checks against one trusted catalog. Private seam so
+    unit tests can inject alternate catalogs; the public validator always
+    enforces the bundled authoritative identity first."""
 
     if packet.semantic_profile != catalog.semantic_profile:
         raise DndCandidateValidationError(

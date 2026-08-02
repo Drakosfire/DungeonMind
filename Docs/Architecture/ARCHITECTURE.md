@@ -313,6 +313,14 @@ Rules that bind this layer:
   unverified until a graph-aware successor (B.2d).
 - **Prompts are never authority.** The rendered prompt fragment is
   deterministic catalog output; validation authority is the catalog alone.
+- **The bundled catalog is the only validation authority.** Injected
+  catalogs must exactly match the bundled vocabulary identity (ID, revision,
+  pinned profile ref, canonical digest) or are rejected; a caller cannot
+  widen the term inventory with its own internally consistent catalog.
+- **Ingestion is sanitizing.** Raw payloads enter through
+  `parse_threat_candidate_packet`, which converts Pydantic failures into
+  sanitized package-owned errors that never echo rejected input (labels,
+  summaries, evidence locators, source prose).
 - **No graph authority.** The package reads no graphs, calls no LLM,
   persists nothing, and publishes nothing.
 

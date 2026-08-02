@@ -3,6 +3,7 @@
 from .threat_candidates import (
     builtin_threat_vocabulary_ref,
     load_builtin_threat_vocabulary,
+    parse_threat_candidate_packet,
     render_threat_vocabulary_prompt,
     threat_candidate_json_schema,
     validate_threat_candidate_packet,
@@ -12,6 +13,7 @@ from .threat_candidates import (
 __all__ = [
     "builtin_threat_vocabulary_ref",
     "load_builtin_threat_vocabulary",
+    "parse_threat_candidate_packet",
     "render_threat_vocabulary_prompt",
     "threat_candidate_json_schema",
     "validate_threat_candidate_packet",

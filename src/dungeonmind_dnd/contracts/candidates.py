@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from typing import Literal, Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from dungeonmind.contracts.base import DungeonMindModel
 from dungeonmind.contracts.evidence import EvidenceRef
@@ -69,7 +69,20 @@ def _validate_evidence_ref_ids(value: list[str]) -> list[str]:
     return value
 
 
-class DndCandidateEndpointRef(DungeonMindModel):
+class DndCandidateContractModel(DungeonMindModel):
+    """Base for every D&D candidate contract.
+
+    ``hide_input_in_errors`` keeps rejected payloads (labels, summaries,
+    evidence locators) out of formatted Pydantic errors and ``errors()``
+    records. This is defense in depth: the documented ingestion boundary
+    ``parse_threat_candidate_packet`` remains the sanitizing authority that
+    converts Pydantic failures into package-owned typed errors.
+    """
+
+    model_config = ConfigDict(hide_input_in_errors=True)
+
+
+class DndCandidateEndpointRef(DndCandidateContractModel):
     """One relationship endpoint: a packet candidate or an explicit,
     typed — but graph-unverified — existing object reference.
 
@@ -127,7 +140,7 @@ class DndCandidateEndpointRef(DungeonMindModel):
         return False
 
 
-class DndNodeCandidate(DungeonMindModel):
+class DndNodeCandidate(DndCandidateContractModel):
     """One proposed object. Temporary identity only — never graph identity."""
 
     schema_version: Literal["dmdnd_node_candidate_v1"] = NODE_CANDIDATE_SCHEMA
@@ -191,7 +204,7 @@ class DndNodeCandidate(DungeonMindModel):
         return _validate_evidence_ref_ids(value)
 
 
-class DndRelationshipCandidate(DungeonMindModel):
+class DndRelationshipCandidate(DndCandidateContractModel):
     """One proposed directed relationship. Temporary identity only."""
 
     schema_version: Literal["dmdnd_relationship_candidate_v1"] = (
@@ -225,7 +238,7 @@ class DndRelationshipCandidate(DungeonMindModel):
         return self
 
 
-class DndThreatCandidatePacket(DungeonMindModel):
+class DndThreatCandidatePacket(DndCandidateContractModel):
     """One Threat-oriented extraction proposal over one source anchor.
 
     Non-canonical and non-publishable by construction: no stable IDs, no
