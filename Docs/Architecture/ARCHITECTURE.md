@@ -60,6 +60,21 @@ Profile-side graph planning layer (PR B.2d — dungeonmind_dnd only)
         no durable identity decision
         no contribution append
         no graph publication
+
+Kernel-side finalized review layer (PR B.2e — DungeonMind)
+  ready D&D plan
+  → generic ContributionReviewIntent
+  + exact confirm_commit GM policy
+  + content-bound confirmation receipt
+  + current expected-parent preflight
+  → superseded candidate contribution
+  → active reviewed successor contribution
+  → finalized review record
+        atomic and idempotent
+        no graph materialization
+        no graph publication
+        no global identity-decision append
+        no mutable review workspace
 ```
 
 ## 2. Governing invariant
@@ -130,6 +145,8 @@ These were proven in DungeonMindBuddy and are not reopened by this repo
 | D&D 5e profile descriptor content (namespaces, revisions, digests) | **DungeonMindDnD** (`src/dungeonmind_dnd/`) | sibling package; kernel never imports it (PR B.2b, ADR-0004) |
 | D&D vocabulary catalogs, candidate contracts, candidate validation, prompt/schema rendering | **DungeonMindDnD** (`src/dungeonmind_dnd/`) | side-effect-free executable profile package; pure deterministic logic only (PR B.2c, ADR-0005) |
 | D&D create-or-connect planning and candidate-only contribution preview against a passed exact revision | **DungeonMindDnD** (`src/dungeonmind_dnd/`) | repository-blind; graph-aware through passed values only (PR B.2d, ADR-0006) |
+| Finalized review intent translation | **DungeonMindDnD** (`src/dungeonmind_dnd/`) | ready-plan adapter only; no persistence or capability authority (PR B.2e, ADR-0007) |
+| Review authority, receipts, successor contributions, atomic review persistence | **DungeonMind** (`src/dungeonmind/`) | generic kernel contracts; no D&D imports, graph materialization, or publication (PR B.2e, ADR-0007) |
 | Which profiles a deployment loads; descriptor file locations | **Operator configuration** | local registry config; locators are never durable identity (PR B.2b) |
 | Schema, migrations, repository ports, PostgreSQL adapters, reconstruction tooling | **DungeonMind** | `migrations/`, `infrastructure/postgres` (PR B) |
 | Dev/CI PostgreSQL substrate definition (pinned pgvector compose) | **DungeonMind** | PR B |
@@ -164,9 +181,11 @@ infrastructure.memory / .postgres (PR B) │ agents.* │ service.api (later)
   `dungeonmind.contracts.evidence`, `dungeonmind.contracts.semantic_profile`,
   and `dungeonmind.domain.canonical`. The B.2d planning modules alone may
   also import `graph_snapshot`, `contribution`, `graph`, `identity`, and
-  `vocabulary` contracts — never repositories, infrastructure, service, or
-  agent layers, providers, databases, or API frameworks; no registration
-  side effects and no import-time resource reads. Profile resolution flows
+  `vocabulary` contracts. The B.2e review adapter may additionally import the
+  generic `contribution` and `contribution_review` contracts — never
+  repositories, infrastructure, service, or agent layers, providers,
+  databases, or API frameworks; no registration side effects and no
+  import-time resource reads. Profile resolution flows
   through the `SemanticProfileRegistry`
   port and operator configuration, never through package imports. One
   wheel currently ships both packages.
@@ -368,6 +387,28 @@ Rules that bind this layer:
   responsible for stale-parent publication.
 - **Preview stays candidate/GM/asserted.** No `IdentityDecisionRecord`, no
   accepted assertions, no durable write.
+
+### 6.4 Kernel-side finalized contribution review (PR B.2e, ADR-0007)
+
+B.2e is the write-boundary seam after B.2d planning. The profile package ends
+at generic intent construction; the kernel owns capability evaluation,
+confirmation binding, stale-parent preflight, deterministic reviewed
+contribution construction, and atomic persistence.
+
+One complete intent and receipt produce one durable bundle:
+
+- the exact candidate preview, preserved as `superseded`;
+- an active `graph_review` successor with complete accepted/rejected
+  assertion states and final node identity outcomes; and
+- a finalized review record with plan, reviewer, receipt, verdict, and digest
+  provenance.
+
+The repository reconstructs and validates all three records on every read.
+Exact replay returns the same state; changed operation payloads and second
+reviews of one source plan fail closed. The review is governance state and is
+not graph canon: no `IdentityDecisionRecord`, graph payload, head mutation, or
+publication command is created. B.2f owns accepted materialization and
+expected-parent CAS publication.
 
 ## 7. Persistence strategy (summary of ADR-0001/0002/0003)
 

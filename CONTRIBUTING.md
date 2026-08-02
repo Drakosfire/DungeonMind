@@ -37,11 +37,12 @@ uv run pyright          # static type check over src/
    durable source and graph records. Re-embedding creates a new materialization
    run; it never silently overwrites provenance (ADR-0003).
 7. **No silent durable writes.** Agents and surfaces receive typed capabilities
-   only; durable writes are explicit, auditable operations (today: graph
-   revision publication with stale-parent rejection).
+   only; durable writes are explicit, auditable operations. Finalized review
+   writes require `confirm_commit`, exact GM world/campaign/revision scope, and
+   a content-bound confirmation receipt.
 8. **Type hints required** (ruff `ANN` rules active for `src/` and `scripts/`).
 
-## Semantic profile boundary (hard rules, ADR-0004, ADR-0005, ADR-0006)
+## Semantic profile boundary (hard rules, ADR-0004, ADR-0005, ADR-0006, ADR-0007)
 
 - **No code under `src/dungeonmind` imports `dungeonmind_dnd`** — enforced by
   `tests/unit/test_import_boundaries.py`.
@@ -52,7 +53,8 @@ uv run pyright          # static type check over src/
   `dungeonmind.contracts.semantic_profile`, and
   `dungeonmind.domain.canonical` (plus stdlib/pydantic). Only the B.2d
   planning modules may also import `graph_snapshot`, `contribution`,
-  `graph`, `identity`, and `vocabulary` — never repositories,
+  `graph`, `identity`, and `vocabulary`; the B.2e review adapter may also
+  import the generic contribution/review contracts — never repositories,
   infrastructure, service, or agent layers, and never provider, database,
   or API-framework dependencies.
 - **No profile package accesses repositories, providers, network, files, or
@@ -67,6 +69,21 @@ uv run pyright          # static type check over src/
   planner creates `IdentityDecisionRecord` or calls append/publish.
 - **Retries reuse the same `planned_at`.** It is caller-supplied operation
   identity for deterministic plan IDs.
+- **Finalized review is one-shot.** Do not add mutable drafts, incremental
+  verdict saves, cancellation, re-review, target overrides, or replacement
+  semantics to B.2e.
+- **Never mutate a candidate contribution in place.** Final review stores the
+  original candidate as `superseded` and creates an active reviewed successor.
+- **Every assertion and candidate proposal needs a complete verdict.** A
+  rejected candidate closes every dependent node and relationship assertion;
+  `create_new` requires an accepted label; accepted relationships cannot
+  reference rejected candidate endpoints.
+- **Review persistence is atomic across the review record and both
+  contributions.** Exact replay is allowed; changed operation bytes and a
+  second review for one source plan are conflicts.
+- **A finalized review is not graph truth.** It must not append an
+  `IdentityDecisionRecord`, materialize graph payloads, publish a revision, or
+  advance a head. B.2f owns materialization and publication CAS.
 - **New vocabulary terms require a new immutable catalog revision** (new
   `vocabulary_revision` pin, new catalog digest). Never edit a published
   catalog in place.

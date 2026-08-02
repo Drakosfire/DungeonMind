@@ -139,6 +139,18 @@ class PersistenceIntegrityError(DungeonMindError):
     code = "persistence_integrity_error"
 
 
+class ContributionReviewValidationError(DungeonMindError):
+    """A review intent, receipt, or verdict set is not commit-ready."""
+
+    code = "contribution_review_validation_error"
+
+
+class ContributionReviewAlreadyFinalizedError(DungeonMindError):
+    """A source plan already has one finalized review."""
+
+    code = "contribution_review_already_finalized"
+
+
 class SemanticProfileNotFoundError(PersistenceIntegrityError):
     """Pinned profile identity is absent from the configured registry."""
 

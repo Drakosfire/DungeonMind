@@ -5,6 +5,7 @@ appends, decides, or publishes.
 """
 
 from .contribution_planning import plan_threat_candidate_contribution
+from .contribution_review import build_threat_contribution_review_intent
 from .threat_candidates import (
     builtin_threat_vocabulary_ref,
     load_builtin_threat_vocabulary,
@@ -16,6 +17,7 @@ from .threat_candidates import (
 )
 
 __all__ = [
+    "build_threat_contribution_review_intent",
     "builtin_threat_vocabulary_ref",
     "load_builtin_threat_vocabulary",
     "parse_threat_candidate_packet",

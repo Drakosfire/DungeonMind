@@ -9,7 +9,8 @@
    (persistence lifecycle ownership), ADR-0003 (pgvector as derived index),
    ADR-0004 (semantic profile boundary), ADR-0005 (executable D&D profile
    boundary and Threat semantics), and ADR-0006 (pinned profile
-   create-or-connect contribution planning) are the accepted decision set.
+   create-or-connect contribution planning), and ADR-0007 (finalized
+   contribution review adoption) are the accepted decision set.
 2. **GitHub current state beats local or Project Source copies** wherever
    they disagree (applies to sibling repos inspected during founding).
 3. **DungeonMindBuddy architecture docs** are authority for the *proven
@@ -95,6 +96,29 @@ extracted with citations in
    contributions, or publish a revision.
 6. **ADR-0006** records the planning boundary on equal footing with
    ADR-0004/0005 in the authority set.
+
+## 3.3 Finalized contribution-review authority (PR B.2e)
+
+1. The source-plan reference and complete intent digest are authority for what
+   was reviewed; the candidate contribution is authority for proposed claim
+   bytes and evidence.
+2. Assertion verdicts are authority for accepted/rejected review state.
+   Identity verdicts are authority for the reviewer's disposition of each
+   planned target, but they are not `IdentityDecisionRecord` operations.
+3. The `confirm_commit` capability policy and content-bound confirmation
+   receipt are authority for whether this one-shot durable review is permitted.
+   The policy must be GM-admissible and exact in world, campaign, and revision
+   scope; an unpinned policy is never sufficient.
+4. The expected parent is authority for review context. B.2e preflights the
+   current head but does not publish or perform publication CAS; B.2f must
+   recheck the parent atomically.
+5. A finalized review is durable governance state, not canonical graph truth.
+   The superseded candidate and active reviewed successor are publication
+   inputs only. Published graph revisions remain final graph authority.
+6. Exact operation replay is idempotent. A changed operation payload and a
+   second finalized review for one source plan are conflicts, not replacement
+   semantics. No draft, cancellation, retraction, target override, or review
+   supersession exists in B.2e.
 
 ## 4. Known drift found at founding (do not re-import)
 

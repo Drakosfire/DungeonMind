@@ -15,6 +15,9 @@ from datetime import datetime
 from typing import Protocol
 
 from ..contracts.contribution import ContributionStatus, GraphContribution
+from ..contracts.contribution_review import (
+    ContributionReviewState,
+)
 from ..contracts.evidence import SourceArtifact, SourceRevision
 from ..contracts.graph import (
     PublishRevisionCommand,
@@ -101,6 +104,18 @@ class ContributionRepository(Protocol):
         *,
         superseded_by: str | None = None,
     ) -> GraphContribution: ...
+
+
+class ContributionReviewRepository(Protocol):
+    """Atomic durable bundle of one finalized contribution review."""
+
+    def finalize(self, state: ContributionReviewState) -> ContributionReviewState: ...
+
+    def get(self, world_id: str, review_id: str) -> ContributionReviewState | None: ...
+
+    def get_for_plan(
+        self, world_id: str, source_plan_id: str
+    ) -> ContributionReviewState | None: ...
 
 
 class IdentityDecisionRepository(Protocol):

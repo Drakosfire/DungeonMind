@@ -58,6 +58,7 @@ system. Decision records:
 [`Docs/Decisions/ADR-0004-semantic-profile-boundary.md`](Docs/Decisions/ADR-0004-semantic-profile-boundary.md),
 [`Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md`](Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md),
 [`Docs/Decisions/ADR-0006-pinned-profile-contribution-planning.md`](Docs/Decisions/ADR-0006-pinned-profile-contribution-planning.md).
+[`Docs/Decisions/ADR-0007-finalized-contribution-review-adoption.md`](Docs/Decisions/ADR-0007-finalized-contribution-review-adoption.md).
 
 The D&D package's first executable slice (B.2c) is intentionally tiny: one
 immutable `dnd5e-profile-v2` descriptor, one Threat vocabulary catalog
@@ -66,15 +67,19 @@ provenance-bearing extraction-candidate contracts, and deterministic
 validation plus JSON Schema/prompt rendering. B.2d adds non-mutating
 graph-aware planning: exact label/alias create-or-connect against one
 passed stored revision, producing a candidate-only contribution preview
-pinned to the expected parent. The profile package remains
-repository-blind — no graph writes, durable review, LLM calls, fuzzy
-matching, or mechanics/statblock modeling — and Threat exists only as the
-contextual `dnd5e:threatens` relationship, never as an object kind.
+pinned to the expected parent. B.2e adds a generic kernel review seam: the
+ready plan can be translated into a complete review intent and, under exact
+GM `confirm_commit` authority plus a content-bound receipt, persisted as one
+superseded candidate, one active reviewed successor, and one finalized review
+record. The graph head and identity-decision ledger remain unchanged. The
+profile package remains repository-blind — no persistence, graph writes, LLM
+calls, fuzzy matching, or mechanics/statblock modeling — and Threat exists
+only as the contextual `dnd5e:threatens` relationship, never as an object kind.
 
 ## Status
 
-**Founding through B.2c landed; B.2d pinned Threat create-or-connect
-contribution plan exists after merge (this PR).**
+**Founding through B.2d landed; B.2e finalized contribution review adoption is
+the current capability.**
 
 What exists today:
 
@@ -108,9 +113,16 @@ What exists today:
   candidates to an existing object reference, and a repository-blind
   exact-match create-or-connect planner that emits a candidate-only
   `GraphContribution` preview pinned to one expected parent revision.
+- generic finalized contribution review contracts and a D&D ready-plan adapter;
+- exact GM-scoped `confirm_commit` receipt binding, stale-parent preflight,
+  atomic/idempotent in-memory review persistence, and a PostgreSQL review table
+  that reloads the superseded candidate, active reviewed successor, and review
+  record together;
 
-What deliberately does **not** exist yet: generic field/property assertion
-models, assertion-scoped relationships, assertion authoring or graph writes,
+What deliberately does **not** exist yet: graph materialization or publication
+from finalized reviews, mutable review drafts/editing/replacement, review
+API/UI/tooling, global identity-decision append, or target overrides; generic
+field/property assertion models, assertion-scoped relationships, assertion authoring or graph writes,
 field-level semantic-document materialization, LandingPage or other
 product-surface adoption of `mind_turn_v1`, source-body opening, Hermes,
 production auth, multi-worker exactly-once adapter execution, the retrieval
@@ -199,7 +211,8 @@ strictly one-way dependency: no code under `src/dungeonmind` imports
 `dungeonmind_dnd`, and `dungeonmind_dnd` imports only a path-sensitive
 kernel allowlist (B.2c modules: contract/canonical; B.2d planning modules
 additionally: graph snapshot + contribution/graph/identity/vocabulary
-contracts — never repositories/infrastructure/service/agents, no providers,
+  contracts — and the B.2e review adapter additionally the generic
+  contribution/review contracts — never repositories/infrastructure/service/agents, no providers,
 no registration side effects, no import-time resource reads). Profile
 resolution flows through the `SemanticProfileRegistry` port and operator
 config, never through imports.

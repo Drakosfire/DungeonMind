@@ -1,10 +1,10 @@
 # DungeonMind — Roadmap and PR ladder
 
-**Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b / B.2c landed. PR B.2d
-(pinned Threat create-or-connect contribution plan) is the current
+**Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b / B.2c / B.2d landed.
+PR B.2e (finalized contribution review adoption) is the current
 DungeonMind-owned slice. External RulesIngestion PR C and product-surface
 adoption of `mind_turn_v1` remain independent successors. Ownership per
-ADR-0002, ADR-0004, ADR-0005, and ADR-0006.
+ADR-0002, ADR-0004, ADR-0005, ADR-0006, and ADR-0007.
 
 Each PR is independently reviewable, in its named repository. Cross-repo work
 is never one PR.
@@ -20,7 +20,8 @@ B.1b  DungeonMind-owned curated browser consumer proof ✅
 B.2a  assertion-scoped alias/summary read projection ✅
 B.2b  semantic profile boundary + dm_union_graph_v3 ✅
 B.2c  DungeonMindDnD Threat vocabulary + extraction candidates ✅
-B.2d  pinned create-or-connect contribution plan ← current
+B.2d  pinned create-or-connect contribution plan ✅
+B.2e  finalized contribution review adoption ← current
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
 D     embedding model bakeoff
@@ -268,15 +269,39 @@ Canonical handoff:
 Decision record:
 [`Docs/Decisions/ADR-0006-pinned-profile-contribution-planning.md`](../Decisions/ADR-0006-pinned-profile-contribution-planning.md).
 
+## PR B.2e — Finalized contribution review adoption
+
+**Repository:** DungeonMind only
+
+Outcome:
+
+```text
+ready B.2d plan
++ complete GM assertion and candidate-identity verdicts
++ exact confirm_commit capability and confirmation receipt
+→ current-head / exact-parent preflight
+→ atomic superseded candidate contribution
+→ active reviewed successor contribution
+→ finalized review record
+→ exact reload and idempotent replay
+```
+
+B.2e introduces generic review contracts, the repository-blind D&D
+ready-plan adapter, the kernel authority service, and in-memory/PostgreSQL
+review repositories. It does not create graph objects, append global identity
+decisions, construct a publication command, advance the graph head, or add a
+mutable review/API/UI/tool lifecycle.
+
+Canonical handoff:
+[`Docs/Handoffs/HANDOFF-b2e-finalized-contribution-review-adoption.md`](../Handoffs/HANDOFF-b2e-finalized-contribution-review-adoption.md).
+Decision record:
+[`Docs/Decisions/ADR-0007-finalized-contribution-review-adoption.md`](../Decisions/ADR-0007-finalized-contribution-review-adoption.md).
+
 ## Named future lanes (no dates claimed)
 
 These lanes are named so successors can be dispatched deliberately. None is
 scheduled, and none may be smuggled into an unrelated PR.
 
-- **B.2e — durable contribution review adoption** — ready B.2d plan →
-  persist candidate contribution and explicit reviewer identity outcomes →
-  accept/reject individual assertions → reload exact review state. Still no
-  graph publication.
 - **B.2f — accepted contribution materialization and expected-parent
   publication** — reviewed accepted contribution + expected parent →
   deterministic graph payload → validation → atomic CAS publication →

@@ -5,17 +5,31 @@ from __future__ import annotations
 from typing import Any
 
 from psycopg import sql
+from pydantic import ValidationError
 
 from ...contracts.contribution import ContributionStatus, GraphContribution
+from ...contracts.contribution_review import (
+    ContributionReviewRecord,
+    ContributionReviewState,
+)
 from ...contracts.evidence import SourceArtifact, SourceRevision
 from ...contracts.identity import IdentityDecisionRecord
 from ...contracts.retrieval import GraphRetrievalSession
 from ...domain.errors import (
+    ContributionReviewAlreadyFinalizedError,
     DocumentNotFoundError,
     IdempotencyConflictError,
+    InvalidLifecycleTransitionError,
     PersistenceIntegrityError,
 )
-from .database import SCHEMA, PostgresDatabase, ensure_campaign, ensure_world, jsonb
+from .database import (
+    SCHEMA,
+    PostgresDatabase,
+    ensure_campaign,
+    ensure_world,
+    jsonb,
+    lock_world,
+)
 from .evidence_extract import collect_evidence_from_contribution_payload, upsert_evidence_refs
 from .serialization import dump_payload, model_fingerprint, reconstruct
 
@@ -156,68 +170,170 @@ _SESSION_SELECT = """
     schema_version, record_fingerprint, payload
 """
 
+_REVIEW_SELECT = """
+    world_id, review_id, operation_id, source_plan_id,
+    candidate_contribution_id, reviewed_contribution_id,
+    expected_parent_revision_id, reviewer_id, reviewed_at, status,
+    schema_version, record_fingerprint, payload
+"""
+
+
+def _append_contribution_in_transaction(
+    conn: Any,
+    contribution: GraphContribution,
+) -> GraphContribution:
+    """Insert/reconcile one contribution inside an existing transaction."""
+    fingerprint = model_fingerprint(contribution)
+    upsert_evidence_refs(
+        conn, collect_evidence_from_contribution_payload(contribution)
+    )
+    conn.execute(
+        sql.SQL(
+            """
+            INSERT INTO {}.graph_contributions (
+                world_id,
+                contribution_id,
+                source_kind,
+                status,
+                campaign_scope,
+                produced_at,
+                schema_version,
+                record_fingerprint,
+                payload
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (world_id, contribution_id) DO NOTHING
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (
+            contribution.world_id,
+            contribution.contribution_id,
+            contribution.source_kind.value,
+            contribution.status.value,
+            contribution.campaign_scope,
+            contribution.produced_at,
+            contribution.schema_version,
+            fingerprint,
+            jsonb(dump_payload(contribution)),
+        ),
+    )
+    row = conn.execute(
+        sql.SQL(
+            f"""
+            SELECT {_CONTRIBUTION_SELECT}
+            FROM {{}}.graph_contributions
+            WHERE world_id = %s AND contribution_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (contribution.world_id, contribution.contribution_id),
+    ).fetchone()
+    if row is None:
+        raise PersistenceIntegrityError(
+            f"contribution {contribution.contribution_id!r} missing after insert/reconcile"
+        )
+    if row["record_fingerprint"] != fingerprint:
+        raise IdempotencyConflictError(
+            f"contribution {contribution.contribution_id!r} replayed with different payload"
+        )
+    try:
+        return _return_contribution(row)
+    except PersistenceIntegrityError:
+        raise PersistenceIntegrityError(
+            f"contribution {contribution.contribution_id!r} failed reconstruction"
+        ) from None
+
+
+def _get_contribution_in_transaction(
+    conn: Any,
+    *,
+    world_id: str,
+    contribution_id: str,
+) -> GraphContribution:
+    row = conn.execute(
+        sql.SQL(
+            f"""
+            SELECT {_CONTRIBUTION_SELECT}
+            FROM {{}}.graph_contributions
+            WHERE world_id = %s AND contribution_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (world_id, contribution_id),
+    ).fetchone()
+    if row is None:
+        raise PersistenceIntegrityError(
+            f"review contribution child {contribution_id!r} is missing"
+        )
+    try:
+        return _return_contribution(row)
+    except PersistenceIntegrityError:
+        raise PersistenceIntegrityError(
+            f"review contribution child {contribution_id!r} failed reconstruction"
+        ) from None
+
+
+def _return_review_record(row: dict[str, Any]) -> ContributionReviewRecord:
+    record = reconstruct(
+        ContributionReviewRecord,
+        dict(row["payload"]),
+        expected_fingerprint=row["record_fingerprint"],
+        identity={
+            "world_id": row["world_id"],
+            "review_id": row["review_id"],
+            "operation_id": row["operation_id"],
+            "status": row["status"],
+            "schema_version": row["schema_version"],
+        },
+    )
+    if (
+        record.plan_ref.source_plan_id != row["source_plan_id"]
+        or record.stored_candidate_contribution_id
+        != row["candidate_contribution_id"]
+        or record.reviewed_contribution_id != row["reviewed_contribution_id"]
+        or record.plan_ref.expected_parent_revision_id
+        != row["expected_parent_revision_id"]
+        or record.reviewer_id != row["reviewer_id"]
+        or record.reviewed_at != row["reviewed_at"]
+    ):
+        raise PersistenceIntegrityError(
+            f"review {record.review_id!r} extracted identity columns drifted"
+        )
+    return record
+
+
+def _return_review_state(
+    conn: Any,
+    row: dict[str, Any],
+) -> ContributionReviewState:
+    record = _return_review_record(row)
+    candidate = _get_contribution_in_transaction(
+        conn,
+        world_id=record.world_id,
+        contribution_id=record.stored_candidate_contribution_id,
+    )
+    reviewed = _get_contribution_in_transaction(
+        conn,
+        world_id=record.world_id,
+        contribution_id=record.reviewed_contribution_id,
+    )
+    try:
+        return ContributionReviewState(
+            record=record,
+            candidate_contribution=candidate,
+            reviewed_contribution=reviewed,
+        )
+    except ValidationError:
+        raise PersistenceIntegrityError(
+            f"review {record.review_id!r} failed cross-record reconstruction"
+        ) from None
+
 
 class PostgresContributionRepository:
     def __init__(self, database: PostgresDatabase) -> None:
         self._database = database
 
     def append(self, contribution: GraphContribution) -> GraphContribution:
-        fingerprint = model_fingerprint(contribution)
         with self._database.transaction() as conn:
             ensure_world(conn, contribution.world_id, created_at=contribution.produced_at)
-            upsert_evidence_refs(
-                conn, collect_evidence_from_contribution_payload(contribution)
-            )
-            conn.execute(
-                sql.SQL(
-                    """
-                    INSERT INTO {}.graph_contributions (
-                        world_id,
-                        contribution_id,
-                        source_kind,
-                        status,
-                        campaign_scope,
-                        produced_at,
-                        schema_version,
-                        record_fingerprint,
-                        payload
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (world_id, contribution_id) DO NOTHING
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (
-                    contribution.world_id,
-                    contribution.contribution_id,
-                    contribution.source_kind.value,
-                    contribution.status.value,
-                    contribution.campaign_scope,
-                    contribution.produced_at,
-                    contribution.schema_version,
-                    fingerprint,
-                    jsonb(dump_payload(contribution)),
-                ),
-            )
-            row = conn.execute(
-                sql.SQL(
-                    f"""
-                    SELECT {_CONTRIBUTION_SELECT}
-                    FROM {{}}.graph_contributions
-                    WHERE world_id = %s AND contribution_id = %s
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (contribution.world_id, contribution.contribution_id),
-            ).fetchone()
-            if row is None:
-                raise PersistenceIntegrityError(
-                    f"contribution {contribution.contribution_id!r} missing after "
-                    "insert/reconcile"
-                )
-            if row["record_fingerprint"] != fingerprint:
-                raise IdempotencyConflictError(
-                    f"contribution {contribution.contribution_id!r} replayed with "
-                    "different payload"
-                )
-            return _return_contribution(row)
+            return _append_contribution_in_transaction(conn, contribution)
 
     def get(self, world_id: str, contribution_id: str) -> GraphContribution | None:
         with self._database.transaction() as conn:
@@ -295,6 +411,32 @@ class PostgresContributionRepository:
                 expected_fingerprint=row["record_fingerprint"],
                 identity=_contribution_identity(row),
             )
+            protected = conn.execute(
+                sql.SQL(
+                    """
+                    SELECT 1
+                    FROM {}.contribution_reviews
+                    WHERE world_id = %s
+                      AND (
+                          candidate_contribution_id = %s
+                          OR reviewed_contribution_id = %s
+                      )
+                    LIMIT 1
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (world_id, contribution_id, contribution_id),
+            ).fetchone()
+            if protected is not None:
+                raise InvalidLifecycleTransitionError(
+                    record_type="contribution",
+                    record_id=contribution_id,
+                    current_status=existing.status.value,
+                    requested_status=status.value,
+                    message=(
+                        f"contribution {contribution_id!r} is lifecycle-protected "
+                        "by a finalized review"
+                    ),
+                )
             updated = existing.model_copy(deep=True)
             updated.status = status
             if superseded_by is not None:
@@ -317,6 +459,178 @@ class PostgresContributionRepository:
                 ),
             )
         return updated.model_copy(deep=True)
+
+
+class PostgresContributionReviewRepository:
+    """Atomic PostgreSQL persistence for finalized review bundles."""
+
+    def __init__(self, database: PostgresDatabase) -> None:
+        self._database = database
+
+    def _find_by_operation(self, conn: Any, world_id: str, operation_id: str) -> Any:
+        return conn.execute(
+            sql.SQL(
+                f"""
+                SELECT {_REVIEW_SELECT}
+                FROM {{}}.contribution_reviews
+                WHERE world_id = %s AND operation_id = %s
+                """
+            ).format(sql.Identifier(SCHEMA)),
+            (world_id, operation_id),
+        ).fetchone()
+
+    def _find_by_plan(self, conn: Any, world_id: str, source_plan_id: str) -> Any:
+        return conn.execute(
+            sql.SQL(
+                f"""
+                SELECT {_REVIEW_SELECT}
+                FROM {{}}.contribution_reviews
+                WHERE world_id = %s AND source_plan_id = %s
+                """
+            ).format(sql.Identifier(SCHEMA)),
+            (world_id, source_plan_id),
+        ).fetchone()
+
+    def finalize(self, state: ContributionReviewState) -> ContributionReviewState:
+        try:
+            validated = ContributionReviewState.model_validate(
+                state.model_dump(mode="json")
+            )
+        except ValidationError:
+            raise PersistenceIntegrityError(
+                "review state failed validation before PostgreSQL persistence"
+            ) from None
+        record = validated.record
+        fingerprint = model_fingerprint(record)
+        with self._database.transaction() as conn:
+            lock_world(conn, record.world_id, created_at=record.reviewed_at)
+            if record.campaign_id is not None:
+                ensure_campaign(
+                    conn,
+                    record.world_id,
+                    record.campaign_id,
+                    created_at=record.reviewed_at,
+                )
+            existing = self._find_by_operation(
+                conn, record.world_id, record.operation_id
+            )
+            if existing is None:
+                existing = self._find_by_plan(
+                    conn, record.world_id, record.plan_ref.source_plan_id
+                )
+            if existing is not None:
+                existing_record = _return_review_record(existing)
+                existing_state = _return_review_state(conn, existing)
+                if (
+                    existing_record.review_id == record.review_id
+                    and model_fingerprint(existing_state) == model_fingerprint(validated)
+                ):
+                    return existing_state
+                if existing_record.operation_id == record.operation_id:
+                    raise IdempotencyConflictError(
+                        f"operation {record.operation_id!r} replayed with different payload"
+                    )
+                if existing_record.plan_ref.source_plan_id == record.plan_ref.source_plan_id:
+                    raise ContributionReviewAlreadyFinalizedError(
+                        f"source plan {record.plan_ref.source_plan_id!r} is already finalized"
+                    )
+                raise IdempotencyConflictError(
+                    f"operation {record.operation_id!r} replayed with different payload"
+                )
+
+            candidate = _append_contribution_in_transaction(
+                conn, validated.candidate_contribution
+            )
+            reviewed = _append_contribution_in_transaction(
+                conn, validated.reviewed_contribution
+            )
+            if (
+                candidate.contribution_id
+                != record.stored_candidate_contribution_id
+                or reviewed.contribution_id != record.reviewed_contribution_id
+            ):
+                raise PersistenceIntegrityError(
+                    "review contribution IDs drifted during persistence"
+                )
+            conn.execute(
+                sql.SQL(
+                    """
+                    INSERT INTO {}.contribution_reviews (
+                        world_id,
+                        review_id,
+                        operation_id,
+                        source_plan_id,
+                        candidate_contribution_id,
+                        reviewed_contribution_id,
+                        expected_parent_revision_id,
+                        reviewer_id,
+                        reviewed_at,
+                        status,
+                        schema_version,
+                        record_fingerprint,
+                        payload
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                    ON CONFLICT (world_id, review_id) DO NOTHING
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (
+                    record.world_id,
+                    record.review_id,
+                    record.operation_id,
+                    record.plan_ref.source_plan_id,
+                    record.stored_candidate_contribution_id,
+                    record.reviewed_contribution_id,
+                    record.plan_ref.expected_parent_revision_id,
+                    record.reviewer_id,
+                    record.reviewed_at,
+                    record.status,
+                    record.schema_version,
+                    fingerprint,
+                    jsonb(dump_payload(record)),
+                ),
+            )
+            row = conn.execute(
+                sql.SQL(
+                    f"""
+                    SELECT {_REVIEW_SELECT}
+                    FROM {{}}.contribution_reviews
+                    WHERE world_id = %s AND review_id = %s
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (record.world_id, record.review_id),
+            ).fetchone()
+            if row is None:
+                raise PersistenceIntegrityError(
+                    f"review {record.review_id!r} missing after insert/reconcile"
+                )
+            if row["record_fingerprint"] != fingerprint:
+                raise IdempotencyConflictError(
+                    f"review {record.review_id!r} replayed with different payload"
+                )
+            return _return_review_state(conn, row)
+
+    def get(self, world_id: str, review_id: str) -> ContributionReviewState | None:
+        with self._database.transaction() as conn:
+            row = conn.execute(
+                sql.SQL(
+                    f"""
+                    SELECT {_REVIEW_SELECT}
+                    FROM {{}}.contribution_reviews
+                    WHERE world_id = %s AND review_id = %s
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (world_id, review_id),
+            ).fetchone()
+            return None if row is None else _return_review_state(conn, row)
+
+    def get_for_plan(
+        self, world_id: str, source_plan_id: str
+    ) -> ContributionReviewState | None:
+        with self._database.transaction() as conn:
+            row = self._find_by_plan(conn, world_id, source_plan_id)
+            return None if row is None else _return_review_state(conn, row)
 
 
 class PostgresIdentityDecisionRepository:

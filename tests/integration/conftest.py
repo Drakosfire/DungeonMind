@@ -20,6 +20,7 @@ TRUNCATE TABLE
     dungeonmind.mind_turns,
     dungeonmind.mind_threads,
     dungeonmind.retrieval_sessions,
+    dungeonmind.contribution_reviews,
     dungeonmind.identity_decisions,
     dungeonmind.graph_contributions,
     dungeonmind.evidence_refs,

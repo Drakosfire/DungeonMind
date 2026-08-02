@@ -23,6 +23,7 @@ EXPECTED_TABLES = {
     "source_revisions",
     "evidence_refs",
     "graph_contributions",
+    "contribution_reviews",
     "identity_decisions",
     "retrieval_sessions",
     "mind_threads",
@@ -66,7 +67,7 @@ def test_vector_extension_and_schema_tables(db) -> None:
             "SELECT version_num FROM dungeonmind.alembic_version"
         ).fetchone()
         assert version is not None
-        assert version["version_num"] == "0001_postgres_substrate"
+        assert version["version_num"] == "0002_contribution_reviews"
 
 
 @pytest.mark.integration
@@ -115,7 +116,7 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
             version = conn.execute(
                 "SELECT version_num FROM dungeonmind.alembic_version"
             ).fetchone()
-            assert version["version_num"] == "0001_postgres_substrate"
+            assert version["version_num"] == "0002_contribution_reviews"
             tables = conn.execute(
                 """
                 SELECT COUNT(*) AS n
