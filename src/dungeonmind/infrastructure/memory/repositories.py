@@ -17,6 +17,10 @@ from typing import TypeVar
 
 from ...application.repositories import normalize_semantic_document_batch
 from ...contracts.contribution import ContributionStatus, GraphContribution
+from ...contracts.contribution_review import (
+    ContributionReviewRecord,
+    ContributionReviewState,
+)
 from ...contracts.evidence import SourceArtifact, SourceRevision
 from ...contracts.graph import (
     PublishRevisionCommand,
@@ -38,10 +42,12 @@ from ...contracts.semantic import (
 from ...contracts.vocabulary import Visibility
 from ...domain.canonical import canonical_json, canonical_sha256
 from ...domain.errors import (
+    ContributionReviewAlreadyFinalizedError,
     DocumentNotFoundError,
     IdempotencyConflictError,
     ImmutableRevisionConflictError,
     InvalidLifecycleTransitionError,
+    PersistenceIntegrityError,
     RevisionNotFoundError,
     ScopeResolutionError,
     StaleParentRevisionError,
@@ -181,7 +187,7 @@ class InMemoryWorldGraphRepository:
 class InMemoryContributionRepository:
     def __init__(self) -> None:
         self._items: dict[tuple[str, str], GraphContribution] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def append(self, contribution: GraphContribution) -> GraphContribution:
         key = (contribution.world_id, contribution.contribution_id)
@@ -198,17 +204,19 @@ class InMemoryContributionRepository:
             return _copy(contribution)
 
     def get(self, world_id: str, contribution_id: str) -> GraphContribution | None:
-        item = self._items.get((world_id, contribution_id))
-        return _copy(item) if item is not None else None
+        with self._lock:
+            item = self._items.get((world_id, contribution_id))
+            return _copy(item) if item is not None else None
 
     def list_for_world(
         self, world_id: str, *, status: ContributionStatus | None = None
     ) -> list[GraphContribution]:
-        items = [c for (w, _), c in self._items.items() if w == world_id]
-        if status is not None:
-            items = [c for c in items if c.status is status]
-        items.sort(key=lambda c: c.contribution_id)
-        return [_copy(c) for c in items]
+        with self._lock:
+            items = [c for (w, _), c in self._items.items() if w == world_id]
+            if status is not None:
+                items = [c for c in items if c.status is status]
+            items.sort(key=lambda c: c.contribution_id)
+            return [_copy(c) for c in items]
 
     def update_status(
         self,
@@ -231,6 +239,134 @@ class InMemoryContributionRepository:
                 updated.diagnostics = {**updated.diagnostics, "superseded_by": superseded_by}
             self._items[key] = updated
             return _copy(updated)
+
+
+class InMemoryContributionReviewRepository:
+    """Atomic finalized-review store sharing contribution repository state."""
+
+    def __init__(
+        self,
+        contributions: InMemoryContributionRepository,
+        *,
+        failure_hook: Callable[[], None] | None = None,
+    ) -> None:
+        self._contributions = contributions
+        self._records: dict[tuple[str, str], ContributionReviewRecord] = {}
+        self._lock = contributions._lock
+        self._failure_hook = failure_hook
+
+    def _reconstruct_unlocked(
+        self, record: ContributionReviewRecord
+    ) -> ContributionReviewState:
+        candidate = self._contributions._items.get(
+            (record.world_id, record.stored_candidate_contribution_id)
+        )
+        reviewed = self._contributions._items.get(
+            (record.world_id, record.reviewed_contribution_id)
+        )
+        if candidate is None or reviewed is None:
+            raise PersistenceIntegrityError(
+                f"review {record.review_id!r} is missing a contribution child"
+            )
+        try:
+            return ContributionReviewState(
+                record=_copy(record),
+                candidate_contribution=_copy(candidate),
+                reviewed_contribution=_copy(reviewed),
+            )
+        except Exception:
+            raise PersistenceIntegrityError(
+                f"review {record.review_id!r} failed reconstruction"
+            ) from None
+
+    def finalize(self, state: ContributionReviewState) -> ContributionReviewState:
+        try:
+            validated = ContributionReviewState.model_validate(
+                state.model_dump(mode="json")
+            )
+        except Exception:
+            raise PersistenceIntegrityError(
+                "review state failed validation before persistence"
+            ) from None
+        record = validated.record
+        with self._lock:
+            existing = self._records.get((record.world_id, record.review_id))
+            if existing is not None:
+                current = self._reconstruct_unlocked(existing)
+                if _fingerprint(current) == _fingerprint(validated):
+                    return current
+                raise IdempotencyConflictError(
+                    f"review {record.review_id!r} replayed with different payload"
+                )
+            for prior in self._records.values():
+                if (
+                    prior.world_id == record.world_id
+                    and prior.operation_id == record.operation_id
+                ):
+                    raise IdempotencyConflictError(
+                        f"operation {record.operation_id!r} replayed with different payload"
+                    )
+                if (
+                    prior.world_id == record.world_id
+                    and prior.plan_ref.source_plan_id == record.plan_ref.source_plan_id
+                ):
+                    raise ContributionReviewAlreadyFinalizedError(
+                        f"source plan {record.plan_ref.source_plan_id!r} is already finalized"
+                    )
+            candidate_key = (record.world_id, record.stored_candidate_contribution_id)
+            reviewed_key = (record.world_id, record.reviewed_contribution_id)
+            for key, contribution in (
+                (candidate_key, validated.candidate_contribution),
+                (reviewed_key, validated.reviewed_contribution),
+            ):
+                existing_contribution = self._contributions._items.get(key)
+                if existing_contribution is not None and _fingerprint(
+                    existing_contribution
+                ) != _fingerprint(contribution):
+                    raise IdempotencyConflictError(
+                        f"contribution {key[1]!r} conflicts with review payload"
+                    )
+            inserted_keys: list[tuple[str, str]] = []
+            try:
+                if candidate_key not in self._contributions._items:
+                    self._contributions._items[candidate_key] = _copy(
+                        validated.candidate_contribution
+                    )
+                    inserted_keys.append(candidate_key)
+                if self._failure_hook is not None:
+                    self._failure_hook()
+                if reviewed_key not in self._contributions._items:
+                    self._contributions._items[reviewed_key] = _copy(
+                        validated.reviewed_contribution
+                    )
+                    inserted_keys.append(reviewed_key)
+                self._records[(record.world_id, record.review_id)] = _copy(record)
+                return self._reconstruct_unlocked(record)
+            except BaseException:
+                for key in inserted_keys:
+                    self._contributions._items.pop(key, None)
+                self._records.pop((record.world_id, record.review_id), None)
+                raise
+
+    def get(self, world_id: str, review_id: str) -> ContributionReviewState | None:
+        with self._lock:
+            record = self._records.get((world_id, review_id))
+            return None if record is None else self._reconstruct_unlocked(record)
+
+    def get_for_plan(
+        self, world_id: str, source_plan_id: str
+    ) -> ContributionReviewState | None:
+        with self._lock:
+            record = next(
+                (
+                    item
+                    for (record_world, _), item in self._records.items()
+                    if record_world == world_id
+                    and item.plan_ref.source_plan_id == source_plan_id
+                ),
+                None,
+            )
+            return None if record is None else self._reconstruct_unlocked(record)
 
 
 class InMemoryIdentityDecisionRepository:

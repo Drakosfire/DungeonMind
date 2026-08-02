@@ -9,6 +9,7 @@ from .database import PostgresDatabase
 from .graph import PostgresWorldGraphRepository
 from .records import (
     PostgresContributionRepository,
+    PostgresContributionReviewRepository,
     PostgresIdentityDecisionRepository,
     PostgresRetrievalSessionRepository,
     PostgresSourceRepository,
@@ -22,6 +23,7 @@ from .threads import PostgresMindThreadRepository
 
 __all__ = [
     "PostgresContributionRepository",
+    "PostgresContributionReviewRepository",
     "PostgresDatabase",
     "PostgresEmbeddingRunRepository",
     "PostgresIdentityDecisionRepository",
@@ -41,6 +43,7 @@ class PostgresRepositoryBundle:
         self.database = database
         self.world_graph = PostgresWorldGraphRepository(database)
         self.contributions = PostgresContributionRepository(database)
+        self.contribution_reviews = PostgresContributionReviewRepository(database)
         self.identity_decisions = PostgresIdentityDecisionRepository(database)
         self.sources = PostgresSourceRepository(database)
         self.retrieval_sessions = PostgresRetrievalSessionRepository(database)

@@ -6,6 +6,7 @@ offload (e.g. ``asyncio.to_thread``) rather than forcing async into adapters,
 following the statblocks_v1 discipline in DungeonMindServer.
 """
 
+from .contribution_review import finalize_contribution_review, load_contribution_review
 from .graph_snapshot import (
     GraphObjectView,
     GraphRelationshipView,
@@ -17,6 +18,7 @@ from .mind_turn import FixedClock, MindTurnService
 from .query_embedding import QueryEmbeddingProvider
 from .repositories import (
     ContributionRepository,
+    ContributionReviewRepository,
     EmbeddingRunRepository,
     IdentityDecisionRepository,
     MindThreadRepository,
@@ -29,6 +31,7 @@ from .repositories import (
 
 __all__ = [
     "ContributionRepository",
+    "ContributionReviewRepository",
     "EmbeddingRunRepository",
     "FixedClock",
     "GraphObjectView",
@@ -45,4 +48,6 @@ __all__ = [
     "SourceRepository",
     "UnionGraphV1SnapshotReader",
     "WorldGraphRepository",
+    "finalize_contribution_review",
+    "load_contribution_review",
 ]

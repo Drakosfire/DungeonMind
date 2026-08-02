@@ -5,6 +5,7 @@
 **Deciders:** B.2d implementing agent, per operator dispatch
 **Supersedes:** none
 **Extends:** ADR-0005 (executable D&D profile boundary)
+**Extended by:** ADR-0007 (finalized contribution review adoption)
 **Related:** ADR-0004 (semantic profile boundary),
 `src/dungeonmind_dnd/application/contribution_planning.py`,
 `src/dungeonmind_dnd/contracts/contribution_planning.py`,

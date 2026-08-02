@@ -205,7 +205,8 @@ def test_dungeonmind_does_not_import_dungeonmind_dnd() -> None:
     assert not violations, "kernel imported dungeonmind_dnd:\n" + "\n".join(violations)
 
 
-# The D&D profile package is executable but narrow (ADR-0005 / ADR-0006).
+# The D&D profile package is executable but narrow (ADR-0005 / ADR-0006 /
+# ADR-0007).
 # Most modules retain the B.2c contract/canonical allowlist. Only the B.2d
 # contribution-planning modules may import the expanded graph / contribution /
 # identity / vocabulary / graph_snapshot surface. No blanket allowance for
@@ -221,12 +222,14 @@ DND_PLANNING_MODULES = frozenset(
     {
         "dungeonmind_dnd.application.contribution_planning",
         "dungeonmind_dnd.contracts.contribution_planning",
+        "dungeonmind_dnd.application.contribution_review",
     }
 )
 
 DND_PLANNING_ALLOWED_KERNEL_MODULES = DND_ALLOWED_KERNEL_MODULES | {
     "dungeonmind.application.graph_snapshot",
     "dungeonmind.contracts.contribution",
+    "dungeonmind.contracts.contribution_review",
     "dungeonmind.contracts.graph",
     "dungeonmind.contracts.identity",
     "dungeonmind.contracts.vocabulary",
