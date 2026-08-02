@@ -19,6 +19,7 @@ from ...domain.errors import (
     ContributionReviewAlreadyFinalizedError,
     DocumentNotFoundError,
     IdempotencyConflictError,
+    InvalidLifecycleTransitionError,
     PersistenceIntegrityError,
 )
 from .database import (
@@ -410,6 +411,32 @@ class PostgresContributionRepository:
                 expected_fingerprint=row["record_fingerprint"],
                 identity=_contribution_identity(row),
             )
+            protected = conn.execute(
+                sql.SQL(
+                    """
+                    SELECT 1
+                    FROM {}.contribution_reviews
+                    WHERE world_id = %s
+                      AND (
+                          candidate_contribution_id = %s
+                          OR reviewed_contribution_id = %s
+                      )
+                    LIMIT 1
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (world_id, contribution_id, contribution_id),
+            ).fetchone()
+            if protected is not None:
+                raise InvalidLifecycleTransitionError(
+                    record_type="contribution",
+                    record_id=contribution_id,
+                    current_status=existing.status.value,
+                    requested_status=status.value,
+                    message=(
+                        f"contribution {contribution_id!r} is lifecycle-protected "
+                        "by a finalized review"
+                    ),
+                )
             updated = existing.model_copy(deep=True)
             updated.status = status
             if superseded_by is not None:

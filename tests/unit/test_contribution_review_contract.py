@@ -13,6 +13,7 @@ from dungeonmind.contracts.contribution import AcceptanceState
 from dungeonmind.contracts.contribution_review import (
     ContributionReviewIntent,
     ContributionReviewState,
+    derive_review_intent_sha256,
 )
 
 from .test_contribution_review_service import _intent, _submission
@@ -64,3 +65,51 @@ def test_finalized_state_fixture_is_contract_valid() -> None:
     state = ContributionReviewState.model_validate(payload)
     assert state.record.status == "finalized"
     assert state.reviewed_contribution.contribution_id == state.record.reviewed_contribution_id
+
+
+def test_generic_intent_accepts_non_dnd_source_plan_schema() -> None:
+    intent = _intent()
+    plan_ref = intent.plan_ref.model_copy(
+        update={"source_plan_schema": "synthetic_profile_plan_v1"}
+    )
+    digest = derive_review_intent_sha256(
+        operation_id=intent.operation_id,
+        world_id=intent.world_id,
+        campaign_id=intent.campaign_id,
+        plan_ref=plan_ref,
+        candidate_contribution=intent.candidate_contribution,
+        identity_proposals=intent.identity_proposals,
+        identity_verdicts=intent.identity_verdicts,
+        assertion_verdicts=intent.assertion_verdicts,
+        reviewer_id=intent.reviewer_id,
+        reviewed_at=intent.reviewed_at,
+    )
+    payload = intent.model_dump(mode="json")
+    payload["plan_ref"] = plan_ref.model_dump(mode="json")
+    payload["review_intent_sha256"] = digest
+    generic = ContributionReviewIntent.model_validate(payload)
+    assert generic.plan_ref.source_plan_schema == "synthetic_profile_plan_v1"
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("record", "identity_verdicts", 0, "target_object_id"), "obj:other"),
+        (("record", "identity_verdicts", 0, "verdict"), "confirm_existing"),
+        (("record", "confirmation_id"), "confirm:" + "f" * 32),
+        (("record", "review_intent_sha256"), "f" * 64),
+        (("record", "reviewer_id"), "operator:other"),
+        (("record", "reviewed_at"), "2026-08-02T00:00:00Z"),
+        (("record", "assertion_verdicts", 0, "acceptance_state"), "rejected"),
+    ],
+)
+def test_finalized_state_rejects_authority_fact_mutations(
+    path: tuple[object, ...], value: object
+) -> None:
+    payload = json.loads(STATE_FIXTURE.read_text(encoding="utf-8"))
+    current = payload
+    for key in path[:-1]:
+        current = current[key]
+    current[path[-1]] = value
+    with pytest.raises(ValidationError):
+        ContributionReviewState.model_validate(payload)

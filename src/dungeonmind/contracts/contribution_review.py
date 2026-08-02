@@ -176,6 +176,36 @@ class ContributionIdentityVerdictKind(StrEnum):
     REJECT_CANDIDATE = "reject_candidate"
 
 
+def _validate_identity_decisions(
+    proposals: list[ContributionIdentityProposal],
+    verdicts: list[ContributionIdentityVerdict],
+) -> None:
+    proposal_ids = [item.candidate_id for item in proposals]
+    _require_unique_sorted(proposal_ids, field_name="identity_proposals")
+    targets = [item.target_object_id for item in proposals]
+    if len(targets) != len(set(targets)):
+        raise ValueError("identity proposal target IDs must be unique")
+    verdict_ids = [item.candidate_id for item in verdicts]
+    _require_unique_sorted(verdict_ids, field_name="identity_verdicts")
+    if verdict_ids != proposal_ids:
+        raise ValueError("identity verdicts must cover every identity proposal exactly once")
+    proposals_by_id = {item.candidate_id: item for item in proposals}
+    for verdict in verdicts:
+        proposal = proposals_by_id[verdict.candidate_id]
+        if verdict.target_object_id != proposal.target_object_id:
+            raise ValueError("identity verdicts may not override proposal targets")
+        if (
+            verdict.verdict is ContributionIdentityVerdictKind.CONFIRM_EXISTING
+            and proposal.planned_outcome is not IdentityOutcome.RESOLVED_EXISTING
+        ):
+            raise ValueError("confirm_existing requires resolved_existing")
+        if (
+            verdict.verdict is ContributionIdentityVerdictKind.CREATE_NEW
+            and proposal.planned_outcome is not IdentityOutcome.PROVISIONAL_NEW
+        ):
+            raise ValueError("create_new requires provisional_new")
+
+
 class ContributionPlanRef(DungeonMindModel):
     """Opaque provenance pin for the exact plan being reviewed."""
 
@@ -300,8 +330,6 @@ class ContributionReviewIntent(DungeonMindModel):
 
     @model_validator(mode="after")
     def _validate_complete_intent(self) -> Self:
-        if self.plan_ref.source_plan_schema != "dmdnd_threat_contribution_plan_v1":
-            raise ValueError("unsupported source plan schema")
         if self.plan_ref.candidate_contribution_sha256 != contribution_payload_sha256(
             self.candidate_contribution
         ):
@@ -333,30 +361,7 @@ class ContributionReviewIntent(DungeonMindModel):
                 raise ValueError("candidate contribution assertions are not reviewable")
 
         proposals = self.identity_proposals
-        proposal_ids = [item.candidate_id for item in proposals]
-        _require_unique_sorted(proposal_ids, field_name="identity_proposals")
-        targets = [item.target_object_id for item in proposals]
-        if len(targets) != len(set(targets)):
-            raise ValueError("identity proposal target IDs must be unique")
-        verdict_ids = [item.candidate_id for item in self.identity_verdicts]
-        _require_unique_sorted(verdict_ids, field_name="identity_verdicts")
-        if verdict_ids != proposal_ids:
-            raise ValueError("identity verdicts must cover every identity proposal exactly once")
-        proposals_by_id = {item.candidate_id: item for item in proposals}
-        for verdict in self.identity_verdicts:
-            proposal = proposals_by_id[verdict.candidate_id]
-            if verdict.target_object_id != proposal.target_object_id:
-                raise ValueError("identity verdicts may not override proposal targets")
-            if (
-                verdict.verdict is ContributionIdentityVerdictKind.CONFIRM_EXISTING
-                and proposal.planned_outcome is not IdentityOutcome.RESOLVED_EXISTING
-            ):
-                raise ValueError("confirm_existing requires resolved_existing")
-            if (
-                verdict.verdict is ContributionIdentityVerdictKind.CREATE_NEW
-                and proposal.planned_outcome is not IdentityOutcome.PROVISIONAL_NEW
-            ):
-                raise ValueError("create_new requires provisional_new")
+        _validate_identity_decisions(proposals, self.identity_verdicts)
 
         assertion_ids = [item.assertion_id for item in contribution.assertions]
         _require_unique_sorted(
@@ -541,14 +546,7 @@ class ContributionReviewRecord(DungeonMindModel):
         )
         if self.review_id != expected:
             raise ValueError("review_id does not match review identity")
-        _require_unique_sorted(
-            [item.candidate_id for item in self.identity_proposals],
-            field_name="identity_proposals",
-        )
-        _require_unique_sorted(
-            [item.candidate_id for item in self.identity_verdicts],
-            field_name="identity_verdicts",
-        )
+        _validate_identity_decisions(self.identity_proposals, self.identity_verdicts)
         _require_unique_sorted(
             [item.assertion_id for item in self.assertion_verdicts],
             field_name="assertion_verdicts",
@@ -566,6 +564,13 @@ class ContributionReviewRecord(DungeonMindModel):
             raise ValueError("candidate and reviewed contribution IDs must differ")
         if self.candidate_preview_sha256 != self.plan_ref.candidate_contribution_sha256:
             raise ValueError("candidate preview digest differs from plan ref")
+        if self.confirmation_id != derive_confirmation_id(
+            operation_id=self.operation_id,
+            review_intent_sha256=self.review_intent_sha256,
+            actor=self.reviewer_id,
+            confirmed_at=self.reviewed_at,
+        ):
+            raise ValueError("confirmation_id does not match review authority")
         return self
 
 
@@ -628,6 +633,20 @@ class ContributionReviewState(DungeonMindModel):
             != record.plan_ref.candidate_contribution_sha256
         ):
             raise ValueError("stored candidate no longer matches the reviewed preview")
+        expected_intent_digest = derive_review_intent_sha256(
+            operation_id=record.operation_id,
+            world_id=record.world_id,
+            campaign_id=record.campaign_id,
+            plan_ref=record.plan_ref,
+            candidate_contribution=candidate_preview,
+            identity_proposals=record.identity_proposals,
+            identity_verdicts=record.identity_verdicts,
+            assertion_verdicts=record.assertion_verdicts,
+            reviewer_id=record.reviewer_id,
+            reviewed_at=record.reviewed_at,
+        )
+        if record.review_intent_sha256 != expected_intent_digest:
+            raise ValueError("review record intent digest does not match durable content")
         if candidate.world_id != reviewed.world_id:
             raise ValueError("candidate/reviewed world drifted")
         for field_name in (

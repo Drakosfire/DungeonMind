@@ -77,16 +77,29 @@ def _verdicts(plan) -> tuple[dict[str, AcceptanceState], dict[str, str]]:
     return assertion_verdicts, identity_verdicts
 
 
-def _intent():
+def _intent(
+    *,
+    operation_id: str = OPERATION_ID,
+    reviewer_id: str = REVIEWER_ID,
+    reviewed_at: datetime = REVIEWED_AT,
+    assertion_verdicts: dict[str, AcceptanceState] | None = None,
+    identity_verdicts: dict[str, str] | None = None,
+):
     plan = _plan()
-    assertion_verdicts, identity_verdicts = _verdicts(plan)
+    default_assertion_verdicts, default_identity_verdicts = _verdicts(plan)
     return build_threat_contribution_review_intent(
         plan,
-        operation_id=OPERATION_ID,
-        assertion_verdicts=assertion_verdicts,
-        identity_verdicts=identity_verdicts,
-        reviewer_id=REVIEWER_ID,
-        reviewed_at=REVIEWED_AT,
+        operation_id=operation_id,
+        assertion_verdicts=(
+            assertion_verdicts
+            if assertion_verdicts is not None
+            else default_assertion_verdicts
+        ),
+        identity_verdicts=(
+            identity_verdicts if identity_verdicts is not None else default_identity_verdicts
+        ),
+        reviewer_id=reviewer_id,
+        reviewed_at=reviewed_at,
     )
 
 

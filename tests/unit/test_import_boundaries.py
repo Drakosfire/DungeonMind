@@ -206,11 +206,12 @@ def test_dungeonmind_does_not_import_dungeonmind_dnd() -> None:
 
 
 # The D&D profile package is executable but narrow (ADR-0005 / ADR-0006 /
-# ADR-0007).
-# Most modules retain the B.2c contract/canonical allowlist. Only the B.2d
-# contribution-planning modules may import the expanded graph / contribution /
-# identity / vocabulary / graph_snapshot surface. No blanket allowance for
-# dungeonmind.application.* or any repository/infrastructure/service/agent.
+# ADR-0007). Most modules retain the B.2c contract/canonical allowlist. Only
+# B.2d contribution-planning modules may import the expanded graph /
+# contribution / identity / vocabulary / graph_snapshot surface. The B.2e
+# review adapter has its own narrower generic-review allowlist. No blanket
+# allowance exists for dungeonmind.application.* or any repository /
+# infrastructure / service / agent.
 DND_ALLOWED_KERNEL_MODULES = {
     "dungeonmind.contracts.base",
     "dungeonmind.contracts.evidence",
@@ -222,17 +223,23 @@ DND_PLANNING_MODULES = frozenset(
     {
         "dungeonmind_dnd.application.contribution_planning",
         "dungeonmind_dnd.contracts.contribution_planning",
-        "dungeonmind_dnd.application.contribution_review",
     }
 )
 
 DND_PLANNING_ALLOWED_KERNEL_MODULES = DND_ALLOWED_KERNEL_MODULES | {
     "dungeonmind.application.graph_snapshot",
     "dungeonmind.contracts.contribution",
-    "dungeonmind.contracts.contribution_review",
     "dungeonmind.contracts.graph",
     "dungeonmind.contracts.identity",
     "dungeonmind.contracts.vocabulary",
+}
+
+DND_REVIEW_MODULES = frozenset({"dungeonmind_dnd.application.contribution_review"})
+
+DND_REVIEW_ALLOWED_KERNEL_MODULES = DND_ALLOWED_KERNEL_MODULES | {
+    "dungeonmind.contracts.contribution",
+    "dungeonmind.contracts.contribution_review",
+    "dungeonmind.contracts.identity",
 }
 
 DND_FORBIDDEN_KERNEL_PREFIXES = (
@@ -257,6 +264,8 @@ def _dnd_module_name(path: Path) -> tuple[str, bool]:
 
 
 def _dnd_allowed_for(module_name: str) -> set[str]:
+    if module_name in DND_REVIEW_MODULES:
+        return DND_REVIEW_ALLOWED_KERNEL_MODULES
     if module_name in DND_PLANNING_MODULES:
         return DND_PLANNING_ALLOWED_KERNEL_MODULES
     return DND_ALLOWED_KERNEL_MODULES

@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 
 from dungeonmind.application.contribution_review import finalize_contribution_review
-from dungeonmind.domain.errors import PersistenceIntegrityError
+from dungeonmind.contracts.contribution import ContributionStatus
+from dungeonmind.domain.errors import (
+    InvalidLifecycleTransitionError,
+    PersistenceIntegrityError,
+)
 from dungeonmind.infrastructure.memory import (
     InMemoryContributionRepository,
     InMemoryContributionReviewRepository,
@@ -56,3 +60,31 @@ def test_missing_child_on_reload_is_persistence_integrity_error() -> None:
     )
     with pytest.raises(PersistenceIntegrityError):
         reviews.get(intent.world_id, state.record.review_id)
+
+
+def test_finalized_review_children_reject_generic_lifecycle_updates() -> None:
+    intent = _intent()
+    reviews, contributions = _repositories()
+    state = finalize_contribution_review(
+        _submission(intent),
+        capability_policy=_policy(intent),
+        world_graph_repository=_GraphRepository(),
+        review_repository=reviews,
+    )
+    for contribution_id, status in (
+        (
+            state.candidate_contribution.contribution_id,
+            ContributionStatus.ACTIVE,
+        ),
+        (
+            state.reviewed_contribution.contribution_id,
+            ContributionStatus.RETRACTED,
+        ),
+    ):
+        with pytest.raises(InvalidLifecycleTransitionError):
+            contributions.update_status(
+                intent.world_id,
+                contribution_id,
+                status,
+            )
+    assert reviews.get(intent.world_id, state.record.review_id) == state

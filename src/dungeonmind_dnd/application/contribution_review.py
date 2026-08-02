@@ -91,6 +91,8 @@ def build_threat_contribution_review_intent(
     except ValidationError:
         _review_error("invalid_serialized_plan")
 
+    if verified_plan.schema_version != "dmdnd_threat_contribution_plan_v1":
+        _review_error("unsupported_plan_schema")
     contribution = verified_plan.proposed_contribution
     if contribution is None or verified_plan.preview_content_sha256 is None:
         _review_error("missing_candidate_contribution")

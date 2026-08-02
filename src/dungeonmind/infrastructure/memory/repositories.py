@@ -187,6 +187,7 @@ class InMemoryWorldGraphRepository:
 class InMemoryContributionRepository:
     def __init__(self) -> None:
         self._items: dict[tuple[str, str], GraphContribution] = {}
+        self._finalized_review_ids: set[tuple[str, str]] = set()
         self._lock = threading.RLock()
 
     def append(self, contribution: GraphContribution) -> GraphContribution:
@@ -232,6 +233,17 @@ class InMemoryContributionRepository:
             if existing is None:
                 raise DocumentNotFoundError(
                     f"contribution {contribution_id!r} not found in world {world_id!r}"
+                )
+            if key in self._finalized_review_ids:
+                raise InvalidLifecycleTransitionError(
+                    record_type="contribution",
+                    record_id=contribution_id,
+                    current_status=existing.status.value,
+                    requested_status=status.value,
+                    message=(
+                        f"contribution {contribution_id!r} is lifecycle-protected "
+                        "by a finalized review"
+                    ),
                 )
             updated = existing.model_copy(deep=True)
             updated.status = status
@@ -327,12 +339,16 @@ class InMemoryContributionReviewRepository:
                         f"contribution {key[1]!r} conflicts with review payload"
                     )
             inserted_keys: list[tuple[str, str]] = []
+            protected_keys: list[tuple[str, str]] = []
             try:
                 if candidate_key not in self._contributions._items:
                     self._contributions._items[candidate_key] = _copy(
                         validated.candidate_contribution
                     )
                     inserted_keys.append(candidate_key)
+                if candidate_key not in self._contributions._finalized_review_ids:
+                    self._contributions._finalized_review_ids.add(candidate_key)
+                    protected_keys.append(candidate_key)
                 if self._failure_hook is not None:
                     self._failure_hook()
                 if reviewed_key not in self._contributions._items:
@@ -340,11 +356,16 @@ class InMemoryContributionReviewRepository:
                         validated.reviewed_contribution
                     )
                     inserted_keys.append(reviewed_key)
+                if reviewed_key not in self._contributions._finalized_review_ids:
+                    self._contributions._finalized_review_ids.add(reviewed_key)
+                    protected_keys.append(reviewed_key)
                 self._records[(record.world_id, record.review_id)] = _copy(record)
                 return self._reconstruct_unlocked(record)
             except BaseException:
                 for key in inserted_keys:
                     self._contributions._items.pop(key, None)
+                for key in protected_keys:
+                    self._contributions._finalized_review_ids.discard(key)
                 self._records.pop((record.world_id, record.review_id), None)
                 raise
 
