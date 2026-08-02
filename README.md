@@ -56,21 +56,25 @@ descriptors a deployment loads. Multi-system support is **not** implemented
 canary proves kernel/profile decoupling, not product support for any game
 system. Decision records:
 [`Docs/Decisions/ADR-0004-semantic-profile-boundary.md`](Docs/Decisions/ADR-0004-semantic-profile-boundary.md),
-[`Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md`](Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md).
+[`Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md`](Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md),
+[`Docs/Decisions/ADR-0006-pinned-profile-contribution-planning.md`](Docs/Decisions/ADR-0006-pinned-profile-contribution-planning.md).
 
 The D&D package's first executable slice (B.2c) is intentionally tiny: one
 immutable `dnd5e-profile-v2` descriptor, one Threat vocabulary catalog
 (four kinds, four predicates with closed direction), strict
 provenance-bearing extraction-candidate contracts, and deterministic
-validation plus JSON Schema/prompt rendering. It performs no graph writes
-or reads, no LLM calls, no identity resolution, and no mechanics/statblock
-modeling — and Threat exists only as the contextual `dnd5e:threatens`
-relationship, never as an object kind.
+validation plus JSON Schema/prompt rendering. B.2d adds non-mutating
+graph-aware planning: exact label/alias create-or-connect against one
+passed stored revision, producing a candidate-only contribution preview
+pinned to the expected parent. The profile package remains
+repository-blind — no graph writes, durable review, LLM calls, fuzzy
+matching, or mechanics/statblock modeling — and Threat exists only as the
+contextual `dnd5e:threatens` relationship, never as an object kind.
 
 ## Status
 
-**Founding through B.2b landed; B.2c DungeonMindDnD Threat vocabulary and
-extraction candidates exists after merge (this PR).**
+**Founding through B.2c landed; B.2d pinned Threat create-or-connect
+contribution plan exists after merge (this PR).**
 
 What exists today:
 
@@ -100,8 +104,10 @@ What exists today:
   `dnd5e-profile-v2` descriptor, the `threat-v1` vocabulary catalog (exact
   kinds/predicates + direction), strict provenance-bearing Threat candidate
   contracts, deterministic catalog validation, deterministic JSON Schema and
-  prompt-fragment rendering, and a synthetic conformance fixture connecting
-  new candidates to an existing object reference.
+  prompt-fragment rendering, a synthetic conformance fixture connecting new
+  candidates to an existing object reference, and a repository-blind
+  exact-match create-or-connect planner that emits a candidate-only
+  `GraphContribution` preview pinned to one expected parent revision.
 
 What deliberately does **not** exist yet: generic field/property assertion
 models, assertion-scoped relationships, assertion authoring or graph writes,
@@ -110,11 +116,11 @@ product-surface adoption of `mind_turn_v1`, source-body opening, Hermes,
 production auth, multi-worker exactly-once adapter execution, the retrieval
 benchmark backend (PR C), the embedding bakeoff (PR D), or production
 deployment hardening (PR F) — and, on the profile boundary: any LLM-backed
-extraction runtime, graph-aware candidate resolution or identity work,
-candidate-to-contribution planning or publication, statblock/mechanics
-binding, any profile interpretation layer (the kernel admits or rejects
-qualified terms and nothing more; one narrow D&D candidate validator exists
-in the profile package), cross-profile mapping, multi-game or multi-system
+extraction runtime, durable identity decisions, contribution append or graph
+publication, fuzzy/semantic identity matching, statblock/mechanics binding,
+any generic profile interpretation layer (the kernel admits or rejects
+qualified terms; the profile package adds one narrow candidate validator and
+one exact-match planner), cross-profile mapping, multi-game or multi-system
 product support, and audience-policy generalization. See
 [`Docs/Roadmaps/ROADMAP.md`](Docs/Roadmaps/ROADMAP.md).
 
@@ -170,9 +176,9 @@ src/dungeonmind/
     fixtures/      curated seed helpers
   service/         optional FastAPI host (api extra)
 src/dungeonmind_dnd/
-  contracts/       D&D-owned strict contracts (vocabulary catalog, candidates)
+  contracts/       D&D-owned strict contracts (vocabulary, candidates, plans)
   domain/          package-owned typed errors (transport-free)
-  application/     pure loaders/renderers/validators (side-effect-free)
+  application/     pure loaders/validators/planners (side-effect-free)
   profiles/        immutable semantic profile descriptors (v1 + v2 package data)
   vocabularies/    immutable Threat vocabulary catalog (package data)
 migrations/        DungeonMind-owned schema migrations
@@ -190,11 +196,13 @@ repository or UI package. Heavyweight integrations live behind optional extras.
 The browser example under `examples/` is framework-free HTML/CSS/JS and is not
 imported by the Python package. One wheel currently ships two packages with a
 strictly one-way dependency: no code under `src/dungeonmind` imports
-`dungeonmind_dnd`, and `dungeonmind_dnd` imports only narrow kernel
-contract/canonical modules (no kernel application/infrastructure/service/
-agent layers, no providers, no registration side effects, no import-time
-resource reads) — profile resolution flows through the
-`SemanticProfileRegistry` port and operator config, never through imports.
+`dungeonmind_dnd`, and `dungeonmind_dnd` imports only a path-sensitive
+kernel allowlist (B.2c modules: contract/canonical; B.2d planning modules
+additionally: graph snapshot + contribution/graph/identity/vocabulary
+contracts — never repositories/infrastructure/service/agents, no providers,
+no registration side effects, no import-time resource reads). Profile
+resolution flows through the `SemanticProfileRegistry` port and operator
+config, never through imports.
 
 ## Contributing
 

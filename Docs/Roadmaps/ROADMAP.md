@@ -1,10 +1,10 @@
 # DungeonMind — Roadmap and PR ladder
 
-**Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b landed. PR B.2c
-(DungeonMindDnD Threat vocabulary and extraction candidates) is the current
+**Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b / B.2c landed. PR B.2d
+(pinned Threat create-or-connect contribution plan) is the current
 DungeonMind-owned slice. External RulesIngestion PR C and product-surface
 adoption of `mind_turn_v1` remain independent successors. Ownership per
-ADR-0002, ADR-0004, and ADR-0005.
+ADR-0002, ADR-0004, ADR-0005, and ADR-0006.
 
 Each PR is independently reviewable, in its named repository. Cross-repo work
 is never one PR.
@@ -19,7 +19,8 @@ B.1a  thin read-only Mind Turn API host ✅
 B.1b  DungeonMind-owned curated browser consumer proof ✅
 B.2a  assertion-scoped alias/summary read projection ✅
 B.2b  semantic profile boundary + dm_union_graph_v3 ✅
-B.2c  DungeonMindDnD Threat vocabulary + extraction candidates ← current
+B.2c  DungeonMindDnD Threat vocabulary + extraction candidates ✅
+B.2d  pinned create-or-connect contribution plan ← current
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
 D     embedding model bakeoff
@@ -196,7 +197,7 @@ Canonical handoff:
 Decision record:
 [`Docs/Decisions/ADR-0004-semantic-profile-boundary.md`](../Decisions/ADR-0004-semantic-profile-boundary.md).
 
-## PR B.2c — DungeonMindDnD Threat vocabulary and extraction candidates
+## PR B.2c — DungeonMindDnD Threat vocabulary and extraction candidates ✅
 
 **Repository:** DungeonMind only
 
@@ -236,20 +237,56 @@ Canonical handoff:
 Decision record:
 [`Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md`](../Decisions/ADR-0005-dnd-profile-executable-boundary.md).
 
+## PR B.2d — Pinned Threat create-or-connect contribution plan
+
+**Repository:** DungeonMind only
+
+Outcome:
+
+```text
+validated Threat candidate packet
++ exact dm_union_graph_v3 StoredGraphRevision
+→ graph integrity / profile pin verification
+→ explicit existing-object verification
+→ exact label/alias create-or-connect proposal
+→ ambiguity / collision / duplicate blockers
+→ candidate-only GraphContribution preview
+→ expected-parent pin (no append, no publish)
+```
+
+Adds a repository-blind, profile-owned planner
+(`plan_threat_candidate_contribution`) that reconciles one B.2c packet
+against one exact stored revision and emits a deterministic
+`DndThreatContributionPlan`. Exact matching may propose identity; it never
+confirms it. Ready plans carry a candidate/GM/asserted contribution preview
+only; blocked plans carry machine-readable blockers and no contribution.
+No kernel source, vocabulary, profile artifact, migration, or repository
+adapter changes.
+
+Canonical handoff:
+[`Docs/Handoffs/HANDOFF-b2d-pinned-threat-contribution-plan.md`](../Handoffs/HANDOFF-b2d-pinned-threat-contribution-plan.md).
+Decision record:
+[`Docs/Decisions/ADR-0006-pinned-profile-contribution-planning.md`](../Decisions/ADR-0006-pinned-profile-contribution-planning.md).
+
 ## Named future lanes (no dates claimed)
 
 These lanes are named so successors can be dispatched deliberately. None is
 scheduled, and none may be smuggled into an unrelated PR.
 
-- **B.2d — graph-aware candidate resolution and contribution planning** —
-  validated D&D candidates → graph-aware existing-node verification →
-  exact-match identity blocking → explicit unresolved/merge/new outcomes →
-  a non-mutating, reviewable contribution plan. Still no automatic
-  publication.
+- **B.2e — durable contribution review adoption** — ready B.2d plan →
+  persist candidate contribution and explicit reviewer identity outcomes →
+  accept/reject individual assertions → reload exact review state. Still no
+  graph publication.
+- **B.2f — accepted contribution materialization and expected-parent
+  publication** — reviewed accepted contribution + expected parent →
+  deterministic graph payload → validation → atomic CAS publication →
+  revision-pinned receipt. Must handle stale parent without silently
+  replanning.
 - **B.3 — Threat mechanics-resource binding** — approved Threat graph
   identity → exact external statblock/mechanics resource ref →
   revision/digest pin → profile-owned hydration contract. Mechanics stay
-  outside the graph body.
+  outside the graph body. Only after a Threat identity can be durably
+  published.
 - **DungeonMindDnD further concrete semantics** — additional D&D
   vocabulary slices (classification, mechanics), owned by the profile
   package and landed only when demanded by a real consumer.

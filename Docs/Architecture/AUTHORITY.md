@@ -7,8 +7,9 @@
 1. **This repository's checked-in state** (code, contracts, ADRs) is the
    current truth for DungeonMind. ADR-0001 (datastore), ADR-0002
    (persistence lifecycle ownership), ADR-0003 (pgvector as derived index),
-   ADR-0004 (semantic profile boundary), and ADR-0005 (executable D&D
-   profile boundary and Threat semantics) are the accepted decision set.
+   ADR-0004 (semantic profile boundary), ADR-0005 (executable D&D profile
+   boundary and Threat semantics), and ADR-0006 (pinned profile
+   create-or-connect contribution planning) are the accepted decision set.
 2. **GitHub current state beats local or Project Source copies** wherever
    they disagree (applies to sibling repos inspected during founding).
 3. **DungeonMindBuddy architecture docs** are authority for the *proven
@@ -79,6 +80,21 @@ extracted with citations in
 5. **Prompts and model output are never semantic authority.** The rendered
    prompt fragment is deterministic catalog-derived guidance; the catalog
    and the deterministic validator are the only candidate-term authority.
+
+## 3.2 Pinned contribution-plan authority (PR B.2d)
+
+1. **The exact immutable base revision** is authority for existing object
+   and relationship presence during planning. Current head is not inferred.
+2. **The D&D catalog** remains authority for allowed candidate terms.
+3. **Candidate evidence** remains authority for proposed claims.
+4. **Exact label/alias matching is a proposal mechanism**, not an identity
+   decision. Ambiguity and cross-kind collisions block; they never pick a
+   winner.
+5. **The plan and contribution preview are not canonical.** Only a later
+   confirmed durable operation may append identity decisions or
+   contributions, or publish a revision.
+6. **ADR-0006** records the planning boundary on equal footing with
+   ADR-0004/0005 in the authority set.
 
 ## 4. Known drift found at founding (do not re-import)
 

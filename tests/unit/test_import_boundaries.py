@@ -205,16 +205,39 @@ def test_dungeonmind_does_not_import_dungeonmind_dnd() -> None:
     assert not violations, "kernel imported dungeonmind_dnd:\n" + "\n".join(violations)
 
 
-# The D&D profile package is executable but narrow: exactly these kernel
-# modules may be imported (ADR-0005). Everything else — kernel application,
-# infrastructure, service, agents, providers, databases, API frameworks —
-# is forbidden.
+# The D&D profile package is executable but narrow (ADR-0005 / ADR-0006).
+# Most modules retain the B.2c contract/canonical allowlist. Only the B.2d
+# contribution-planning modules may import the expanded graph / contribution /
+# identity / vocabulary / graph_snapshot surface. No blanket allowance for
+# dungeonmind.application.* or any repository/infrastructure/service/agent.
 DND_ALLOWED_KERNEL_MODULES = {
     "dungeonmind.contracts.base",
     "dungeonmind.contracts.evidence",
     "dungeonmind.contracts.semantic_profile",
     "dungeonmind.domain.canonical",
 }
+
+DND_PLANNING_MODULES = frozenset(
+    {
+        "dungeonmind_dnd.application.contribution_planning",
+        "dungeonmind_dnd.contracts.contribution_planning",
+    }
+)
+
+DND_PLANNING_ALLOWED_KERNEL_MODULES = DND_ALLOWED_KERNEL_MODULES | {
+    "dungeonmind.application.graph_snapshot",
+    "dungeonmind.contracts.contribution",
+    "dungeonmind.contracts.graph",
+    "dungeonmind.contracts.identity",
+    "dungeonmind.contracts.vocabulary",
+}
+
+DND_FORBIDDEN_KERNEL_PREFIXES = (
+    "dungeonmind.application.repositories",
+    "dungeonmind.infrastructure",
+    "dungeonmind.service",
+    "dungeonmind.agents",
+)
 
 
 def _dnd_module_name(path: Path) -> tuple[str, bool]:
@@ -230,26 +253,57 @@ def _dnd_module_name(path: Path) -> tuple[str, bool]:
     return module_name, is_init
 
 
+def _dnd_allowed_for(module_name: str) -> set[str]:
+    if module_name in DND_PLANNING_MODULES:
+        return DND_PLANNING_ALLOWED_KERNEL_MODULES
+    return DND_ALLOWED_KERNEL_MODULES
+
+
 def test_dungeonmind_dnd_executable_profile_boundary() -> None:
-    """Profile package imports only the narrow allowed kernel modules."""
+    """Path-sensitive profile allowlist: B.2c narrow; B.2d planning expanded."""
     if not DND_SRC.exists():
         pytest.skip("dungeonmind_dnd package missing")
     stdlib = sys.stdlib_module_names
     violations: list[str] = []
     for path in sorted(DND_SRC.rglob("*.py")):
         module_name, is_init = _dnd_module_name(path)
+        allowed = _dnd_allowed_for(module_name)
         for module in _imports_of(path, module_name, is_init):
             root = module.split(".")[0]
             if root in stdlib or root in ALLOWED_EXTERNAL:
                 continue
             if root == "dungeonmind_dnd":
                 continue
-            if module in DND_ALLOWED_KERNEL_MODULES:
+            if module in allowed:
                 continue
             violations.append(f"{module_name} imports unallowed module {module}")
+            forbidden = any(
+                module == prefix or module.startswith(f"{prefix}.")
+                for prefix in DND_FORBIDDEN_KERNEL_PREFIXES
+            )
+            if forbidden:
+                violations.append(
+                    f"{module_name} imports forbidden kernel surface {module}"
+                )
     assert not violations, "dungeonmind_dnd boundary violations:\n" + "\n".join(
         violations
     )
+
+
+def test_dnd_planning_modules_never_import_repositories_or_infra() -> None:
+    """B.2d planning stays repository-blind even with its expanded allowlist."""
+    if not DND_SRC.exists():
+        pytest.skip("dungeonmind_dnd package missing")
+    violations: list[str] = []
+    for path in sorted(DND_SRC.rglob("*.py")):
+        module_name, is_init = _dnd_module_name(path)
+        for module in _imports_of(path, module_name, is_init):
+            if any(
+                module == prefix or module.startswith(f"{prefix}.")
+                for prefix in DND_FORBIDDEN_KERNEL_PREFIXES
+            ):
+                violations.append(f"{module_name} imports {module}")
+    assert not violations, "forbidden planner imports:\n" + "\n".join(violations)
 
 
 def test_kernel_import_never_loads_dnd_package() -> None:
@@ -268,6 +322,17 @@ def test_dnd_import_loads_no_optional_dependencies() -> None:
         'forbidden = ("fastapi", "psycopg", "sqlalchemy", "openai", "anthropic"); '
         "loaded = [name for name in forbidden if name in sys.modules]; "
         'assert not loaded, f"profile import loaded {loaded}"'
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_dnd_planning_import_loads_no_optional_dependencies() -> None:
+    code = (
+        "import sys; "
+        "import dungeonmind_dnd.application.contribution_planning; "
+        'forbidden = ("fastapi", "psycopg", "sqlalchemy", "openai", "anthropic"); '
+        "loaded = [name for name in forbidden if name in sys.modules]; "
+        'assert not loaded, f"planning import loaded {loaded}"'
     )
     subprocess.run([sys.executable, "-c", code], check=True)
 

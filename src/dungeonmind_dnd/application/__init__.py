@@ -1,5 +1,10 @@
-"""Pure, side-effect-free D&D profile application logic."""
+"""Pure, side-effect-free D&D profile application logic.
 
+Includes the non-mutating B.2d create-or-connect planner; nothing here
+appends, decides, or publishes.
+"""
+
+from .contribution_planning import plan_threat_candidate_contribution
 from .threat_candidates import (
     builtin_threat_vocabulary_ref,
     load_builtin_threat_vocabulary,
@@ -14,6 +19,7 @@ __all__ = [
     "builtin_threat_vocabulary_ref",
     "load_builtin_threat_vocabulary",
     "parse_threat_candidate_packet",
+    "plan_threat_candidate_contribution",
     "render_threat_vocabulary_prompt",
     "threat_candidate_json_schema",
     "validate_threat_candidate_packet",
