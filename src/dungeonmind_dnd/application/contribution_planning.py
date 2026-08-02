@@ -52,7 +52,6 @@ from ..contracts.candidates import (
     DndThreatCandidatePacket,
 )
 from ..contracts.contribution_planning import (
-    THREAT_CONTRIBUTION_PLAN_SCHEMA,
     DndCandidateResolution,
     DndExistingObjectVerification,
     DndExistingObjectVerificationState,
@@ -63,6 +62,11 @@ from ..contracts.contribution_planning import (
     DndRelationshipPlanState,
     DndThreatContributionPlan,
     DndThreatPlanStatus,
+    derive_assertion_id,
+    derive_contribution_id,
+    derive_plan_id,
+    derive_proposed_object_id,
+    format_extraction_profile,
 )
 from ..domain.errors import (
     DndCandidateValidationError,
@@ -73,12 +77,6 @@ from .threat_candidates import (
     parse_threat_candidate_packet,
     validate_threat_candidate_packet,
 )
-
-_ID_HEX_LENGTH = 32
-_PLAN_REQUEST_SCHEMA = "dmdnd_threat_contribution_plan_request_v1"
-_PROPOSED_OBJECT_ID_SCHEMA = "dmdnd_proposed_object_id_v1"
-_CONTRIBUTION_ID_SCHEMA = "dmdnd_contribution_id_v1"
-_ASSERTION_ID_SCHEMA = "dmdnd_assertion_id_v1"
 
 
 def _norm(term: str) -> str:
@@ -100,66 +98,6 @@ def _candidate_terms(packet: DndThreatCandidatePacket) -> dict[str, list[str]]:
         ordered = [_norm(node.label), *(_norm(form) for form in node.surface_forms)]
         terms[node.candidate_id] = list(dict.fromkeys(ordered))
     return terms
-
-
-def _proposed_object_id(
-    *, world_id: str, packet_digest: str, candidate_id: str
-) -> str:
-    """Deterministic non-canonical proposed identity for ``provisional_new``.
-
-    Stable for the same packet/world/candidate regardless of the base
-    revision, so replanning against a newer revision does not churn the
-    proposal. Not canonical until a later confirmed capability adopts it.
-    """
-    material = {
-        "schema": _PROPOSED_OBJECT_ID_SCHEMA,
-        "world_id": world_id,
-        "candidate_packet_sha256": packet_digest,
-        "candidate_id": candidate_id,
-    }
-    return f"obj:{canonical_sha256(material)[:_ID_HEX_LENGTH]}"
-
-
-def _plan_id(
-    *,
-    packet_digest: str,
-    base_revision_id: str,
-    base_graph_payload_sha256: str,
-    actor: str,
-    planned_at: datetime,
-) -> str:
-    material = {
-        "schema": _PLAN_REQUEST_SCHEMA,
-        "candidate_packet_sha256": packet_digest,
-        "base_revision_id": base_revision_id,
-        "base_graph_payload_sha256": base_graph_payload_sha256,
-        "actor": actor,
-        "planned_at": planned_at.isoformat(),
-        "planner_schema": THREAT_CONTRIBUTION_PLAN_SCHEMA,
-    }
-    return f"plan:{canonical_sha256(material)[:_ID_HEX_LENGTH]}"
-
-
-def _contribution_id(*, plan_id: str) -> str:
-    material = {"schema": _CONTRIBUTION_ID_SCHEMA, "plan_id": plan_id}
-    return f"contrib:{canonical_sha256(material)[:_ID_HEX_LENGTH]}"
-
-
-def _assertion_id(
-    *,
-    contribution_id: str,
-    candidate_id: str,
-    assertion_kind: str,
-    discriminator: str,
-) -> str:
-    material = {
-        "schema": _ASSERTION_ID_SCHEMA,
-        "contribution_id": contribution_id,
-        "candidate_id": candidate_id,
-        "assertion_kind": assertion_kind,
-        "discriminator": discriminator,
-    }
-    return f"asrt:{canonical_sha256(material)[:_ID_HEX_LENGTH]}"
 
 
 def _parse_and_validate_packet(
@@ -328,7 +266,7 @@ def _resolve_candidates(
                     candidate_id=node.candidate_id,
                     candidate_kind=node.kind,
                     outcome=IdentityOutcome.PROVISIONAL_NEW,
-                    target_object_id=_proposed_object_id(
+                    target_object_id=derive_proposed_object_id(
                         world_id=packet.world_id,
                         packet_digest=packet_digest,
                         candidate_id=node.candidate_id,
@@ -550,6 +488,7 @@ def _collect_blockers(
                 DndPlanBlocker(
                     code=DndPlanBlockerCode.EXISTING_OBJECT_MISSING,
                     object_id=verification.existing_object_id,
+                    expected_kind=verification.expected_kind,
                 )
             )
         elif verification.state is DndExistingObjectVerificationState.KIND_MISMATCH:
@@ -557,6 +496,7 @@ def _collect_blockers(
                 DndPlanBlocker(
                     code=DndPlanBlockerCode.EXISTING_OBJECT_KIND_MISMATCH,
                     object_id=verification.existing_object_id,
+                    expected_kind=verification.expected_kind,
                 )
             )
     for plan in relationship_plans:
@@ -588,19 +528,10 @@ def _collect_blockers(
             blocker.candidate_id or "",
             blocker.relationship_candidate_id or "",
             blocker.object_id or "",
+            blocker.expected_kind or "",
         )
     )
     return blockers
-
-
-def _extraction_profile(packet: DndThreatCandidatePacket) -> str:
-    profile = packet.semantic_profile
-    vocabulary = packet.vocabulary
-    return (
-        f"{profile.profile_id}@{profile.profile_revision}"
-        f"|{vocabulary.vocabulary_id}@{vocabulary.vocabulary_revision}"
-        f"|sha256:{vocabulary.catalog_sha256}"
-    )
 
 
 def _node_field_assertion(
@@ -617,7 +548,7 @@ def _node_field_assertion(
     value: str | None = None,
 ) -> GraphContributionAssertion:
     return GraphContributionAssertion(
-        assertion_id=_assertion_id(
+        assertion_id=derive_assertion_id(
             contribution_id=contribution_id,
             candidate_id=candidate_id,
             assertion_kind=assertion_kind,
@@ -723,7 +654,7 @@ def _relationship_assertions(
             )
         assertions.append(
             GraphContributionAssertion(
-                assertion_id=_assertion_id(
+                assertion_id=derive_assertion_id(
                     contribution_id=contribution_id,
                     candidate_id=relationship.candidate_id,
                     assertion_kind="relationship",
@@ -759,7 +690,7 @@ def _build_contribution_preview(
 ) -> GraphContribution:
     """Step 12: the candidate-only, GM-only review preview. Built only for a
     blocker-free packet; never appended anywhere."""
-    contribution_id = _contribution_id(plan_id=plan_id)
+    contribution_id = derive_contribution_id(plan_id=plan_id)
     evidence_by_id = {ref.evidence_ref_id: ref for ref in packet.evidence_refs}
     resolution_by_candidate = {r.candidate_id: r for r in resolutions}
     plan_by_relationship = {p.relationship_candidate_id: p for p in relationship_plans}
@@ -778,7 +709,9 @@ def _build_contribution_preview(
             source_kind=ContributionSourceKind.EXTRACTION,
             source_artifact_id=packet.source_artifact_id,
             source_revision_id=packet.source_revision_id,
-            extraction_profile=_extraction_profile(packet),
+            extraction_profile=format_extraction_profile(
+                packet.semantic_profile, packet.vocabulary
+            ),
             produced_at=planned_at,
             campaign_scope=packet.campaign_id,
             status=ContributionStatus.ACTIVE,
@@ -886,7 +819,7 @@ def plan_threat_candidate_contribution(
     )
     blockers = _collect_blockers(resolutions, verifications, relationship_plans)
 
-    plan_id = _plan_id(
+    plan_id = derive_plan_id(
         packet_digest=packet_digest,
         base_revision_id=stored_revision.revision.revision_id,
         base_graph_payload_sha256=stored_revision.revision.graph_payload_sha256,

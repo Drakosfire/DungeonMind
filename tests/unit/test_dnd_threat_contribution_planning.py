@@ -455,6 +455,57 @@ def test_wrong_kind_explicit_object_blocks() -> None:
     )
 
 
+def test_multiple_typed_refs_to_same_object_yield_blocked_plan() -> None:
+    """One object ID with two expected kinds: verified + kind_mismatch.
+
+    Catalog-valid because ``dnd5e:threatens`` accepts creature/faction/location
+    as object. Must return a blocked plan, never a planning exception.
+    """
+    packet = _packet()
+    for relationship in packet["relationships"]:
+        if relationship["candidate_id"] == "candrel:tripod-threatens-north-gate":
+            relationship["object"] = {
+                "existing_object_id": NORTH_GATE,
+                "expected_kind": "dnd5e:creature",
+            }
+    plan = _plan(packet)
+    assert plan.status is DndThreatPlanStatus.BLOCKED
+    assert plan.proposed_contribution is None
+    by_pair = {
+        (v.existing_object_id, v.expected_kind): v
+        for v in plan.existing_object_verifications
+    }
+    assert by_pair[(NORTH_GATE, "dnd5e:location")].state is (
+        DndExistingObjectVerificationState.VERIFIED
+    )
+    assert by_pair[(NORTH_GATE, "dnd5e:creature")].state is (
+        DndExistingObjectVerificationState.KIND_MISMATCH
+    )
+    assert DndPlanBlockerCode.EXISTING_OBJECT_KIND_MISMATCH.value in _blocker_codes(
+        plan
+    )
+    mismatch_blockers = [
+        b
+        for b in plan.blockers
+        if b.code is DndPlanBlockerCode.EXISTING_OBJECT_KIND_MISMATCH
+    ]
+    assert len(mismatch_blockers) == 1
+    assert mismatch_blockers[0].object_id == NORTH_GATE
+    assert mismatch_blockers[0].expected_kind == "dnd5e:creature"
+    threatens = next(
+        p
+        for p in plan.relationship_plans
+        if p.relationship_candidate_id == "candrel:tripod-threatens-north-gate"
+    )
+    assert threatens.state is DndRelationshipPlanState.ENDPOINT_BLOCKED
+    located = next(
+        p
+        for p in plan.relationship_plans
+        if p.relationship_candidate_id == "candrel:tripod-located-at-north-gate"
+    )
+    assert located.state is DndRelationshipPlanState.READY
+
+
 def test_explicit_id_is_not_substituted_by_label_similarity() -> None:
     packet = _packet()
     # Point the existing endpoint at a missing ID while a similarly-labeled

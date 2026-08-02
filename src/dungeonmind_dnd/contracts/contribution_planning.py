@@ -36,6 +36,7 @@ from dungeonmind.contracts.contribution import (
 from dungeonmind.contracts.identity import IdentityOutcome
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vocabulary import EpistemicKind, Visibility
+from dungeonmind.domain.canonical import canonical_sha256
 
 from .candidates import DndCandidateContractModel
 from .vocabulary import DndVocabularyRef
@@ -46,8 +47,16 @@ EXISTING_OBJECT_VERIFICATION_SCHEMA = "dmdnd_existing_object_verification_v1"
 RELATIONSHIP_PLAN_SCHEMA = "dmdnd_relationship_plan_v1"
 PLAN_BLOCKER_SCHEMA = "dmdnd_plan_blocker_v1"
 
+_PLAN_REQUEST_SCHEMA = "dmdnd_threat_contribution_plan_request_v1"
+_PROPOSED_OBJECT_ID_SCHEMA = "dmdnd_proposed_object_id_v1"
+_CONTRIBUTION_ID_SCHEMA = "dmdnd_contribution_id_v1"
+_ASSERTION_ID_SCHEMA = "dmdnd_assertion_id_v1"
+_ID_HEX_LENGTH = 32
+
 _PLAN_ID = re.compile(r"^plan:[0-9a-f]{32}$")
 _PROPOSED_OBJECT_ID = re.compile(r"^obj:[0-9a-f]{32}$")
+_CONTRIBUTION_ID = re.compile(r"^contrib:[0-9a-f]{32}$")
+_ASSERTION_ID = re.compile(r"^asrt:[0-9a-f]{32}$")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 # namespace:local — mirrors the kernel term shape; duplicated deliberately
 # because the profile package owns its contract surface.
@@ -62,6 +71,78 @@ _ALLOWED_OUTCOMES = frozenset(
         IdentityOutcome.BLOCKED_COLLISION,
     }
 )
+_READY_OUTCOMES = frozenset(
+    {
+        IdentityOutcome.RESOLVED_EXISTING,
+        IdentityOutcome.PROVISIONAL_NEW,
+    }
+)
+_NODE_ASSERTION_KINDS = frozenset({"label", "alias", "summary"})
+
+
+def derive_proposed_object_id(
+    *, world_id: str, packet_digest: str, candidate_id: str
+) -> str:
+    """Deterministic non-canonical proposed identity for ``provisional_new``."""
+    material = {
+        "schema": _PROPOSED_OBJECT_ID_SCHEMA,
+        "world_id": world_id,
+        "candidate_packet_sha256": packet_digest,
+        "candidate_id": candidate_id,
+    }
+    return f"obj:{canonical_sha256(material)[:_ID_HEX_LENGTH]}"
+
+
+def derive_plan_id(
+    *,
+    packet_digest: str,
+    base_revision_id: str,
+    base_graph_payload_sha256: str,
+    actor: str,
+    planned_at: datetime,
+) -> str:
+    material = {
+        "schema": _PLAN_REQUEST_SCHEMA,
+        "candidate_packet_sha256": packet_digest,
+        "base_revision_id": base_revision_id,
+        "base_graph_payload_sha256": base_graph_payload_sha256,
+        "actor": actor,
+        "planned_at": planned_at.isoformat(),
+        "planner_schema": THREAT_CONTRIBUTION_PLAN_SCHEMA,
+    }
+    return f"plan:{canonical_sha256(material)[:_ID_HEX_LENGTH]}"
+
+
+def derive_contribution_id(*, plan_id: str) -> str:
+    material = {"schema": _CONTRIBUTION_ID_SCHEMA, "plan_id": plan_id}
+    return f"contrib:{canonical_sha256(material)[:_ID_HEX_LENGTH]}"
+
+
+def derive_assertion_id(
+    *,
+    contribution_id: str,
+    candidate_id: str,
+    assertion_kind: str,
+    discriminator: str,
+) -> str:
+    material = {
+        "schema": _ASSERTION_ID_SCHEMA,
+        "contribution_id": contribution_id,
+        "candidate_id": candidate_id,
+        "assertion_kind": assertion_kind,
+        "discriminator": discriminator,
+    }
+    return f"asrt:{canonical_sha256(material)[:_ID_HEX_LENGTH]}"
+
+
+def format_extraction_profile(
+    profile: SemanticProfileRef, vocabulary: DndVocabularyRef
+) -> str:
+    return (
+        f"{profile.profile_id}@{profile.profile_revision}"
+        f"|{vocabulary.vocabulary_id}@{vocabulary.vocabulary_revision}"
+        f"|sha256:{vocabulary.catalog_sha256}"
+    )
 
 
 def _validate_term(value: str, *, field_name: str) -> str:
@@ -318,7 +399,9 @@ class DndPlanBlocker(DndCandidateContractModel):
 
     Fields not relevant to a code remain null/empty; no free-form prose and
     no labels, summaries, aliases, evidence locators, filesystem paths, or
-    raw payloads.
+    raw payloads. Existing-object blockers are keyed by the full
+    ``(object_id, expected_kind)`` verification pair so multiple typed
+    references to one object remain distinguishable.
     """
 
     schema_version: Literal["dmdnd_plan_blocker_v1"] = PLAN_BLOCKER_SCHEMA
@@ -326,7 +409,15 @@ class DndPlanBlocker(DndCandidateContractModel):
     candidate_id: str | None = None
     relationship_candidate_id: str | None = None
     object_id: str | None = None
+    expected_kind: str | None = None
     related_object_ids: list[str] = []
+
+    @field_validator("expected_kind")
+    @classmethod
+    def _validate_expected_kind(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _validate_term(value, field_name="expected_kind")
 
     @model_validator(mode="after")
     def _code_shape(self) -> Self:
@@ -349,9 +440,14 @@ class DndPlanBlocker(DndCandidateContractModel):
         if self.code in identity:
             if not self.candidate_id:
                 raise ValueError(f"{self.code.value} requires candidate_id")
-            if self.relationship_candidate_id is not None or self.object_id is not None:
+            if (
+                self.relationship_candidate_id is not None
+                or self.object_id is not None
+                or self.expected_kind is not None
+            ):
                 raise ValueError(
-                    f"{self.code.value} carries no relationship or object fields"
+                    f"{self.code.value} carries no relationship, object, or "
+                    "expected_kind fields"
                 )
             if (
                 self.code is DndPlanBlockerCode.CROSS_KIND_COLLISION
@@ -363,6 +459,11 @@ class DndPlanBlocker(DndCandidateContractModel):
         elif self.code in existing:
             if not self.object_id:
                 raise ValueError(f"{self.code.value} requires object_id")
+            if not self.expected_kind:
+                raise ValueError(
+                    f"{self.code.value} requires expected_kind "
+                    "(full verification pair key)"
+                )
             if self.candidate_id is not None or self.relationship_candidate_id is not None:
                 raise ValueError(
                     f"{self.code.value} carries no candidate or relationship fields"
@@ -372,9 +473,14 @@ class DndPlanBlocker(DndCandidateContractModel):
         elif self.code in relationship:
             if not self.relationship_candidate_id:
                 raise ValueError(f"{self.code.value} requires relationship_candidate_id")
-            if self.candidate_id is not None or self.object_id is not None:
+            if (
+                self.candidate_id is not None
+                or self.object_id is not None
+                or self.expected_kind is not None
+            ):
                 raise ValueError(
-                    f"{self.code.value} carries no candidate or object fields"
+                    f"{self.code.value} carries no candidate, object, or "
+                    "expected_kind fields"
                 )
             if (
                 self.code is DndPlanBlockerCode.RELATIONSHIP_ALREADY_EXISTS
@@ -392,12 +498,15 @@ class DndPlanBlocker(DndCandidateContractModel):
         return self
 
 
-def _blocker_sort_key(blocker: DndPlanBlocker) -> tuple[str, str, str, str]:
+def _blocker_sort_key(
+    blocker: DndPlanBlocker,
+) -> tuple[str, str, str, str, str]:
     return (
         blocker.code.value,
         blocker.candidate_id or "",
         blocker.relationship_candidate_id or "",
         blocker.object_id or "",
+        blocker.expected_kind or "",
     )
 
 
@@ -499,13 +608,30 @@ class DndThreatContributionPlan(DndCandidateContractModel):
 
     def _require_blocker_correspondence(self) -> None:
         """Every blocked/bad record has exactly its blocker, and every
-        blocker names a real bad record (no orphans)."""
-        blocker_keys = {
-            (b.code, b.candidate_id, b.relationship_candidate_id, b.object_id)
+        blocker names a real bad record (no orphans). Existing-object
+        blockers are keyed by ``(object_id, expected_kind)``."""
+        blocker_keys: set[
+            tuple[
+                DndPlanBlockerCode, str | None, str | None, str | None, str | None
+            ]
+        ] = {
+            (
+                b.code,
+                b.candidate_id,
+                b.relationship_candidate_id,
+                b.object_id,
+                b.expected_kind,
+            )
             for b in self.blockers
         }
+        if len(blocker_keys) != len(self.blockers):
+            raise ValueError("blockers must be unique by correspondence key")
 
-        def _need(key: tuple[DndPlanBlockerCode, str | None, str | None, str | None]) -> None:
+        def _need(
+            key: tuple[
+                DndPlanBlockerCode, str | None, str | None, str | None, str | None
+            ],
+        ) -> None:
             if key not in blocker_keys:
                 raise ValueError(f"missing blocker for {key[0].value}: {key[1:]}")
 
@@ -517,6 +643,7 @@ class DndThreatContributionPlan(DndCandidateContractModel):
                         resolution.candidate_id,
                         None,
                         None,
+                        None,
                     )
                 )
             elif resolution.outcome is IdentityOutcome.BLOCKED_COLLISION:
@@ -524,6 +651,7 @@ class DndThreatContributionPlan(DndCandidateContractModel):
                     (
                         DndPlanBlockerCode.CROSS_KIND_COLLISION,
                         resolution.candidate_id,
+                        None,
                         None,
                         None,
                     )
@@ -536,6 +664,7 @@ class DndThreatContributionPlan(DndCandidateContractModel):
                         None,
                         None,
                         verification.existing_object_id,
+                        verification.expected_kind,
                     )
                 )
             elif verification.state is DndExistingObjectVerificationState.KIND_MISMATCH:
@@ -545,6 +674,7 @@ class DndThreatContributionPlan(DndCandidateContractModel):
                         None,
                         None,
                         verification.existing_object_id,
+                        verification.expected_kind,
                     )
                 )
         for plan in self.relationship_plans:
@@ -555,6 +685,7 @@ class DndThreatContributionPlan(DndCandidateContractModel):
                         None,
                         plan.relationship_candidate_id,
                         None,
+                        None,
                     )
                 )
             elif plan.state is DndRelationshipPlanState.DUPLICATE_IN_PACKET:
@@ -563,6 +694,7 @@ class DndThreatContributionPlan(DndCandidateContractModel):
                         DndPlanBlockerCode.DUPLICATE_PACKET_RELATIONSHIP,
                         None,
                         plan.relationship_candidate_id,
+                        None,
                         None,
                     )
                 )
@@ -573,12 +705,14 @@ class DndThreatContributionPlan(DndCandidateContractModel):
                         None,
                         plan.relationship_candidate_id,
                         None,
+                        None,
                     )
                 )
 
         resolutions = {r.candidate_id: r for r in self.candidate_resolutions}
         verifications = {
-            v.existing_object_id: v for v in self.existing_object_verifications
+            (v.existing_object_id, v.expected_kind): v
+            for v in self.existing_object_verifications
         }
         plans = {p.relationship_candidate_id: p for p in self.relationship_plans}
         for blocker in self.blockers:
@@ -592,13 +726,17 @@ class DndThreatContributionPlan(DndCandidateContractModel):
                 if target is None or target.outcome is not IdentityOutcome.BLOCKED_COLLISION:
                     raise ValueError("orphan cross_kind_collision blocker")
             elif code is DndPlanBlockerCode.EXISTING_OBJECT_MISSING:
-                target = verifications.get(blocker.object_id or "")
+                target = verifications.get(
+                    (blocker.object_id or "", blocker.expected_kind or "")
+                )
                 if target is None or target.state is not (
                     DndExistingObjectVerificationState.MISSING
                 ):
                     raise ValueError("orphan existing_object_missing blocker")
             elif code is DndPlanBlockerCode.EXISTING_OBJECT_KIND_MISMATCH:
-                target = verifications.get(blocker.object_id or "")
+                target = verifications.get(
+                    (blocker.object_id or "", blocker.expected_kind or "")
+                )
                 if target is None or target.state is not (
                     DndExistingObjectVerificationState.KIND_MISMATCH
                 ):
@@ -657,6 +795,25 @@ class DndThreatContributionPlan(DndCandidateContractModel):
         contribution = self.proposed_contribution
         if contribution is None:
             return
+
+        expected_plan_id = derive_plan_id(
+            packet_digest=self.candidate_packet_sha256,
+            base_revision_id=self.base_revision_id,
+            base_graph_payload_sha256=self.base_graph_payload_sha256,
+            actor=self.actor,
+            planned_at=self.planned_at,
+        )
+        if self.plan_id != expected_plan_id:
+            raise ValueError("plan_id must match the deterministic request fingerprint")
+
+        expected_contribution_id = derive_contribution_id(plan_id=self.plan_id)
+        if contribution.contribution_id != expected_contribution_id:
+            raise ValueError(
+                "contribution_id must be derived deterministically from plan_id"
+            )
+        if not _CONTRIBUTION_ID.fullmatch(contribution.contribution_id):
+            raise ValueError("contribution_id must be contrib:<32 lowercase hex>")
+
         if contribution.world_id != self.world_id:
             raise ValueError("contribution world must equal the plan world")
         if contribution.campaign_scope != self.campaign_id:
@@ -673,6 +830,46 @@ class DndThreatContributionPlan(DndCandidateContractModel):
             raise ValueError("planned contributions contain no unresolved mentions")
         if contribution.diagnostics:
             raise ValueError("planned contributions contain no diagnostics")
+        if contribution.authored_by != self.actor:
+            raise ValueError("contribution authored_by must equal the plan actor")
+        if contribution.produced_at != self.planned_at:
+            raise ValueError("contribution produced_at must equal planned_at")
+        expected_profile = format_extraction_profile(
+            self.semantic_profile, self.vocabulary
+        )
+        if contribution.extraction_profile != expected_profile:
+            raise ValueError(
+                "contribution extraction_profile must match the plan "
+                "profile/vocabulary pins"
+            )
+
+        target_to_resolution = {
+            resolution.target_object_id: resolution
+            for resolution in self.candidate_resolutions
+            if resolution.target_object_id is not None
+        }
+        if len(target_to_resolution) != sum(
+            1
+            for resolution in self.candidate_resolutions
+            if resolution.target_object_id is not None
+        ):
+            raise ValueError(
+                "ready resolutions must have unique target object identities"
+            )
+
+        ready_plans = [
+            plan
+            for plan in self.relationship_plans
+            if plan.state is DndRelationshipPlanState.READY
+        ]
+        ready_by_triple = {
+            (plan.subject_object_id, plan.predicate, plan.object_object_id): plan
+            for plan in ready_plans
+        }
+        if len(ready_by_triple) != len(ready_plans):
+            raise ValueError("ready relationship plans must have unique triples")
+        matched_ready: set[tuple[str | None, str, str | None]] = set()
+
         for assertion in contribution.assertions:
             if assertion.acceptance_state is not AcceptanceState.CANDIDATE:
                 raise ValueError(
@@ -683,4 +880,99 @@ class DndThreatContributionPlan(DndCandidateContractModel):
                 raise ValueError("every planned assertion is GM-visible only")
             if assertion.epistemic_kind is not EpistemicKind.ASSERTED:
                 raise ValueError("every planned assertion is asserted")
-   
+            if not assertion.evidence_refs:
+                raise ValueError("every planned assertion requires evidence")
+            if assertion.campaign_scope != contribution.campaign_scope:
+                raise ValueError(
+                    "assertion campaign_scope must equal the contribution campaign"
+                )
+            if assertion.source_artifact_id != contribution.source_artifact_id:
+                raise ValueError(
+                    "assertion source_artifact_id must equal the contribution source"
+                )
+            if assertion.source_revision_id != contribution.source_revision_id:
+                raise ValueError(
+                    "assertion source_revision_id must equal the contribution source"
+                )
+            if not _ASSERTION_ID.fullmatch(assertion.assertion_id):
+                raise ValueError("assertion_id must be asrt:<32 lowercase hex>")
+
+            if assertion.assertion_kind in _NODE_ASSERTION_KINDS:
+                if assertion.subject_object_id is None:
+                    raise ValueError("node assertions require a subject_object_id")
+                resolution = target_to_resolution.get(assertion.subject_object_id)
+                if resolution is None:
+                    raise ValueError(
+                        "node assertion subject must be a candidate resolution target"
+                    )
+                if resolution.outcome not in _READY_OUTCOMES:
+                    raise ValueError(
+                        "node assertion identity outcome must be "
+                        "resolved_existing or provisional_new"
+                    )
+                if assertion.identity_resolution_outcome is not resolution.outcome:
+                    raise ValueError(
+                        "node assertion identity_resolution_outcome must match "
+                        "the candidate resolution outcome"
+                    )
+                if assertion.assertion_kind == "alias":
+                    if not assertion.value:
+                        raise ValueError("alias assertions require a value")
+                    discriminator = assertion.value
+                else:
+                    discriminator = ""
+                expected_id = derive_assertion_id(
+                    contribution_id=contribution.contribution_id,
+                    candidate_id=resolution.candidate_id,
+                    assertion_kind=assertion.assertion_kind,
+                    discriminator=discriminator,
+                )
+                if assertion.assertion_id != expected_id:
+                    raise ValueError(
+                        "node assertion_id must match the deterministic formula"
+                    )
+            elif assertion.assertion_kind == "relationship":
+                if assertion.identity_resolution_outcome is not None:
+                    raise ValueError(
+                        "relationship assertions require a null "
+                        "identity_resolution_outcome"
+                    )
+                if assertion.predicate is None:
+                    raise ValueError("relationship assertions require a predicate")
+                triple = (
+                    assertion.subject_object_id,
+                    assertion.predicate,
+                    assertion.object_object_id,
+                )
+                plan = ready_by_triple.get(triple)
+                if plan is None:
+                    raise ValueError(
+                        "relationship assertion must match a ready relationship plan"
+                    )
+                if triple in matched_ready:
+                    raise ValueError(
+                        "each ready relationship plan may have only one assertion"
+                    )
+                matched_ready.add(triple)
+                expected_id = derive_assertion_id(
+                    contribution_id=contribution.contribution_id,
+                    candidate_id=plan.relationship_candidate_id,
+                    assertion_kind="relationship",
+                    discriminator="",
+                )
+                if assertion.assertion_id != expected_id:
+                    raise ValueError(
+                        "relationship assertion_id must match the deterministic "
+                        "formula"
+                    )
+            else:
+                raise ValueError(
+                    "planned assertions may only be label, alias, summary, or "
+                    "relationship"
+                )
+
+        if matched_ready != set(ready_by_triple):
+            raise ValueError(
+                "every ready relationship plan requires exactly one matching "
+                "relationship assertion"
+            )

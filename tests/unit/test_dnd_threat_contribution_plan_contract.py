@@ -158,6 +158,72 @@ def test_candidate_only_preview_rejects_identity_decision_ids() -> None:
         DndThreatContributionPlan.model_validate(payload)
 
 
+def test_candidate_only_preview_rejects_empty_evidence() -> None:
+    payload = _fixture()
+    payload["proposed_contribution"]["assertions"][0]["evidence_refs"] = []
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_candidate_only_preview_rejects_wrong_relationship_endpoint() -> None:
+    payload = _fixture()
+    for assertion in payload["proposed_contribution"]["assertions"]:
+        if assertion["assertion_kind"] == "relationship":
+            assertion["object_object_id"] = "obj:" + "f" * 32
+            break
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_candidate_only_preview_rejects_wrong_node_outcome() -> None:
+    payload = _fixture()
+    for assertion in payload["proposed_contribution"]["assertions"]:
+        if assertion["assertion_kind"] == "label":
+            assertion["identity_resolution_outcome"] = "resolved_existing"
+            break
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_candidate_only_preview_rejects_non_null_relationship_outcome() -> None:
+    payload = _fixture()
+    for assertion in payload["proposed_contribution"]["assertions"]:
+        if assertion["assertion_kind"] == "relationship":
+            assertion["identity_resolution_outcome"] = "provisional_new"
+            break
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_candidate_only_preview_rejects_actor_drift() -> None:
+    payload = _fixture()
+    payload["proposed_contribution"]["authored_by"] = "operator:other"
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_candidate_only_preview_rejects_timestamp_drift() -> None:
+    payload = _fixture()
+    payload["proposed_contribution"]["produced_at"] = "2026-08-01T19:00:00Z"
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_candidate_only_preview_rejects_extraction_profile_drift() -> None:
+    payload = _fixture()
+    payload["proposed_contribution"]["extraction_profile"] = "tampered-profile"
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_existing_object_blocker_requires_expected_kind() -> None:
+    with pytest.raises(ValidationError):
+        DndPlanBlocker(
+            code=DndPlanBlockerCode.EXISTING_OBJECT_KIND_MISMATCH,
+            object_id="obj:north-gate",
+        )
+
+
 def test_expected_parent_must_equal_base_revision() -> None:
     payload = _fixture()
     payload["expected_parent_revision_id"] = "rev:" + "0" * 32
