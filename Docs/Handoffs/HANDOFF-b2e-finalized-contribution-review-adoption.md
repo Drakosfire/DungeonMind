@@ -70,7 +70,7 @@ Invariant
 One review operation ID + one review-intent digest
 → exactly one atomic durable review bundle.
 
-Exact replay
+### Exact replay
 → byte-equivalent reload.
 
 Same operation ID or source plan with different review content
@@ -110,43 +110,18 @@ Stop rather than broadening.
 ## §2 Context, authority, and boundaries
 
 
-Field
+| Field | Required content |
+| --- | --- |
+| Parent authority | `Docs/Architecture/ARCHITECTURE.md`; ADR-0001/0002/0004/0005/0006 |
+| Repository rules | `CONTRIBUTING.md`; import-boundary tests; locked dependencies; migration discipline |
+| Base revision | `1a4ee973725d51a188da1b1a7a67a987c85266fe` |
+| Predecessor contract | `DndThreatContributionPlan` / `dmdnd_threat_contribution_plan_v1` from merged PR #9 |
+| Exact input consumed | One ready, fully validated B.2d plan translated into one generic review intent |
+| Named successor | B.2f graph materialization and publication |
+| What remains false | No graph revision, no head change, no global identity-decision ledger entry, no review surface |
+| Explicit non-goals | Draft sessions, API/UI/tooling, target override, re-review, fuzzy matching, mechanics, LLM extraction |
 
-Required content
-
-Parent authority
-
-Docs/Architecture/ARCHITECTURE.md; ADR-0001/0002/0004/0005/0006
-
-Repository rules
-
-CONTRIBUTING.md; import-boundary tests; locked dependencies; migration discipline
-
-Base revision
-
-1a4ee973725d51a188da1b1a7a67a987c85266fe
-
-Predecessor contract
-
-DndThreatContributionPlan / dmdnd_threat_contribution_plan_v1 from merged PR #9
-
-Exact input consumed
-
-One ready, fully validated B.2d plan translated into one generic review intent
-
-Named successor
-
-B.2f graph materialization and publication
-
-What remains false
-
-No graph revision, no head change, no global identity-decision ledger entry, no review surface
-
-Explicit non-goals
-
-Draft sessions, API/UI/tooling, target override, re-review, fuzzy matching, mechanics, LLM extraction
-
-Repository-state gate
+### Repository-state gate
 
 Before editing:
 
@@ -155,7 +130,7 @@ git checkout main
 git pull --ff-only
 git rev-parse HEAD
 
-Expected:
+#### Expected
 
 1a4ee973725d51a188da1b1a7a67a987c85266fe
 
@@ -176,65 +151,40 @@ migrations/versions/
 
 Stop if another open or merged PR owns contribution review, confirmation receipts, review persistence, reviewed-contribution construction, or publication from B.2d plans.
 
-Read in this order
+### Read in this order
 
-Docs/Architecture/AUTHORITY.md
+ - `Docs/Architecture/AUTHORITY.md`
+ - `Docs/Architecture/ARCHITECTURE.md`
+ - `Docs/Decisions/ADR-0001-postgresql-jsonb-pgvector.md`
+ - `Docs/Decisions/ADR-0002-persistence-lifecycle-ownership.md`
+ - `Docs/Decisions/ADR-0004-semantic-profile-boundary.md`
+ - `Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md`
+ - `Docs/Decisions/ADR-0006-pinned-profile-contribution-planning.md`
+ - `Docs/Roadmaps/ROADMAP.md`
+ - `Docs/Handoffs/HANDOFF-b2d-pinned-threat-contribution-plan.md`
 
-Docs/Architecture/ARCHITECTURE.md
+### PR #9 final merge state
 
-Docs/Decisions/ADR-0001-postgresql-jsonb-pgvector.md
+ - `src/dungeonmind/contracts/contribution.py`
+ - `src/dungeonmind/contracts/identity.py`
+ - `src/dungeonmind/contracts/capability.py`
+ - `src/dungeonmind/contracts/graph.py`
+ - `src/dungeonmind/contracts/semantic_profile.py`
+ - `src/dungeonmind/domain/capability.py`
+ - `src/dungeonmind/domain/canonical.py`
+ - `src/dungeonmind/domain/errors.py`
+ - `src/dungeonmind/application/repositories.py`
+ - `src/dungeonmind/infrastructure/memory/repositories.py`
+ - `src/dungeonmind/infrastructure/postgres/records.py`
+ - `src/dungeonmind/infrastructure/postgres/serialization.py`
+ - `src/dungeonmind/infrastructure/postgres/evidence_extract.py`
+ - `src/dungeonmind_dnd/contracts/contribution_planning.py`
+ - `src/dungeonmind_dnd/application/contribution_planning.py`
+ - `tests/fixtures/dungeonmind_dnd/tripod-null-calf-contribution-plan-v1.json`
+ - current migration head and repository conformance tests
+ - `tests/unit/test_import_boundaries.py`
 
-Docs/Decisions/ADR-0002-persistence-lifecycle-ownership.md
-
-Docs/Decisions/ADR-0004-semantic-profile-boundary.md
-
-Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md
-
-Docs/Decisions/ADR-0006-pinned-profile-contribution-planning.md
-
-Docs/Roadmaps/ROADMAP.md
-
-Docs/Handoffs/HANDOFF-b2d-pinned-threat-contribution-plan.md
-
-PR #9 final merge state
-
-src/dungeonmind/contracts/contribution.py
-
-src/dungeonmind/contracts/identity.py
-
-src/dungeonmind/contracts/capability.py
-
-src/dungeonmind/contracts/graph.py
-
-src/dungeonmind/contracts/semantic_profile.py
-
-src/dungeonmind/domain/capability.py
-
-src/dungeonmind/domain/canonical.py
-
-src/dungeonmind/domain/errors.py
-
-src/dungeonmind/application/repositories.py
-
-src/dungeonmind/infrastructure/memory/repositories.py
-
-src/dungeonmind/infrastructure/postgres/records.py
-
-src/dungeonmind/infrastructure/postgres/serialization.py
-
-src/dungeonmind/infrastructure/postgres/evidence_extract.py
-
-src/dungeonmind_dnd/contracts/contribution_planning.py
-
-src/dungeonmind_dnd/application/contribution_planning.py
-
-tests/fixtures/dungeonmind_dnd/tripod-null-calf-contribution-plan-v1.json
-
-current migration head and repository conformance tests
-
-tests/unit/test_import_boundaries.py
-
-Authority precedence
+### Authority precedence
 
 1. Current checked-in DungeonMind contracts, ADRs, architecture, and migrations
 2. Merged repository state at 1a4ee973...
@@ -243,32 +193,24 @@ Authority precedence
 5. Project-source research and predecessor handoffs
 6. Chat summaries
 
-Existing-contract interpretation
+### Existing-contract interpretation
 
 Preserve these meanings:
 
-GraphContribution remains the durable contribution ledger type.
-
-Candidate assertions are proposals, not graph truth.
-
-GraphContributionAssertion.acceptance_state remains the accepted/rejected review state.
-
-ContributionRepository.append remains idempotent by contribution ID.
-
-IdentityDecisionRecord remains the global graph-identity operation ledger.
-
-CapabilityPolicy remains the sole authority for whether a commit effect is permitted.
-
-PublishRevisionCommand remains the only normal graph-head publication command.
-
-DndThreatContributionPlan remains profile-owned and non-durable.
-
-no code under src/dungeonmind imports dungeonmind_dnd.
+- GraphContribution remains the durable contribution ledger type.
+- Candidate assertions are proposals, not graph truth.
+- GraphContributionAssertion.acceptance_state remains the accepted/rejected review state.
+- ContributionRepository.append remains idempotent by contribution ID.
+- IdentityDecisionRecord remains the global graph-identity operation ledger.
+- CapabilityPolicy remains the sole authority for whether a commit effect is permitted.
+- PublishRevisionCommand remains the only normal graph-head publication command.
+- DndThreatContributionPlan remains profile-owned and non-durable.
+- No code under `src/dungeonmind` imports `dungeonmind_dnd`.
 
 ## §3 Governing design decision
 
 
-Selected flow
+### Selected flow
 ```text
 
 ready DndThreatContributionPlan
@@ -281,8 +223,9 @@ ready DndThreatContributionPlan
 → deterministic reviewed contribution
 → atomic review repository finalize
 → ContributionReviewState reload
+```
 
-Durable bundle
+### Durable bundle
 
 One finalized review atomically stores:
 
@@ -308,7 +251,7 @@ One finalized review atomically stores:
 
 No intermediate active candidate row is exposed. The atomic repository receives the B.2d preview, deterministically constructs/stores the superseded candidate form and active reviewed successor in one transaction, then stores the review record.
 
-Why the global identity-decision ledger is not written
+### Why the global identity-decision ledger is not written
 
 The existing IdentityDecisionRecord contract describes graph identity operations such as alias add/remove, merge, split, unmerge, rejection, ambiguity, and human override. B.2e records reviewer verdicts over B.2d proposals:
 
@@ -328,7 +271,7 @@ appends no IdentityDecisionRecord.
 
 B.2f may translate finalized verdicts into global identity-decision records while materializing and publishing. Do not force B.2e verdicts into mismatched merge/split/alias semantics.
 
-Why candidate and reviewed contributions use separate IDs
+### Why candidate and reviewed contributions use separate IDs
 
 The B.2d preview is content-bound and immutable as a proposal. Review changes acceptance and final identity outcomes. Mutating the same contribution payload would violate append idempotency. B.2e therefore stores:
 
@@ -340,7 +283,6 @@ reviewed contribution ID
 
 Assertion IDs remain unchanged across the two contributions so decisions refer to the same proposed claims.
 
-```
 ## §4 Observable-path inventory
 
 
@@ -369,33 +311,34 @@ Assertion IDs remain unchanged across the two contributions so decisions refer t
 ## §5 Ownership and dependency boundary
 
 
-DungeonMind kernel owns
+### DungeonMind kernel owns
 
-generic review contracts
-commit confirmation receipt
-capability/scope enforcement
-review application orchestration
-durable contribution-review repository port
-review persistence and migration
-candidate/reviewed contribution lifecycle
-idempotency and reconstruction
-stale-parent preflight
+- generic review contracts
+- commit confirmation receipt
+- capability/scope enforcement
+- review application orchestration
+- durable contribution-review repository port
+- review persistence and migration
+- candidate/reviewed contribution lifecycle
+- idempotency and reconstruction
+- stale-parent preflight
 
-DungeonMindDnD owns
+### DungeonMindDnD owns
 
-translation from a valid ready DndThreatContributionPlan
-to a generic ContributionReviewIntent
+- translation from a valid ready DndThreatContributionPlan
+- to a generic ContributionReviewIntent
 
-mapping:
+Mapping:
   candidate resolution → generic identity proposal
   D&D plan pins → generic source-plan ref
 
 It does not own persistence or reviewer authorization.
 
-Dependency direction
+### Dependency direction
 
-Allowed:
+#### Allowed
 
+```text
 dungeonmind_dnd.application.contribution_review
   → dungeonmind.contracts.contribution_review
   → existing kernel contracts/canonical helpers
@@ -405,9 +348,11 @@ dungeonmind.application.contribution_review
 
 infrastructure
   → application ports + contracts
+```
 
-Forbidden:
+#### Forbidden
 
+```text
 src/dungeonmind/*
   → dungeonmind_dnd
 
@@ -416,8 +361,9 @@ dungeonmind_dnd
   → dungeonmind.infrastructure
   → dungeonmind.service
   → database drivers
+```
 
-Import-boundary update
+### Import-boundary update
 
 Only the new D&D adapter may add:
 
@@ -430,7 +376,7 @@ The B.2c and B.2d modules retain their existing exact allowlists.
 ## §6 New generic contracts
 
 
-Create:
+### Create:
 
 src/dungeonmind/contracts/contribution_review.py
 
@@ -770,9 +716,9 @@ reviewed author and timestamp equal reviewer/review time.
 ## §7 Deterministic review identity
 
 
-Review-intent digest
+### Review-intent digest
 
-Canonical material:
+#### Canonical material
 ```json
 
 {
@@ -792,11 +738,12 @@ Canonical material:
 ```
 All lists are deterministically sorted before hashing.
 
-Review ID
+### Review ID
 
 review:<32 lowercase hex>
 
-Material:
+#### Material
+```json
 
 {
   "schema": "dm_contribution_review_id_v1",
@@ -804,43 +751,46 @@ Material:
   "review_intent_sha256": "...",
   "world_id": "..."
 }
+```
 
-Reviewed contribution ID
+### Reviewed contribution ID
 
 contrib:<32 lowercase hex>
 
-Material:
+#### Material
+```json
 
 {
   "schema": "dm_reviewed_contribution_id_v1",
   "review_id": "...",
   "candidate_contribution_id": "..."
 }
+```
 
-Exact replay
+### Exact replay
 
 The caller must reuse:
 
-operation_id
-reviewer_id
-reviewed_at
-all verdicts
-confirmation receipt
+- `operation_id`
+- `reviewer_id`
+- `reviewed_at`
+- all verdicts
+- confirmation receipt
 
 Same complete submission produces the same:
 
-review_intent_sha256
-review_id
-reviewed_contribution_id
-record payload
+- `review_intent_sha256`
+- `review_id`
+- `reviewed_contribution_id`
+- record payload
 
 Changing any field while reusing the operation ID is an idempotency conflict.
 
-One finalized review per source plan
+### One finalized review per source plan
 
 Database and in-memory adapters enforce unique:
 
-(world_id, source_plan_id)
+`(world_id, source_plan_id)`
 
 A second operation for the same plan is rejected with a typed already-finalized error. B.2e has no re-review or supersession semantics.
 
@@ -849,14 +799,14 @@ A corrected review requires a newly generated B.2d plan with a new plan ID. A fu
 ## §8 Profile-side adapter
 
 
-Create:
+### Create:
 
 src/dungeonmind_dnd/application/contribution_review.py
 
-Public function:
+### Public function
 
-def build_threat_contribution_review_intent(
 ```python
+def build_threat_contribution_review_intent(
     plan: DndThreatContributionPlan,
     *,
     operation_id: str,
@@ -868,45 +818,39 @@ def build_threat_contribution_review_intent(
     ...
 
 ```
-Adapter responsibilities
+### Adapter responsibilities
 
-Require a validated ready_for_review plan.
+- Require a validated ready_for_review plan.
 
-Require non-null preview_content_sha256.
+- Require non-null preview_content_sha256.
 
-Require non-null proposed_contribution.
+- Require non-null proposed_contribution.
 
-Canonically hash the complete plan.
+- Canonically hash the complete plan.
 
-Build ContributionPlanRef.
+- Build ContributionPlanRef.
 
-Translate every candidate resolution into one generic identity proposal.
+- Translate every candidate resolution into one generic identity proposal.
 
-Convert caller verdict mappings into sorted generic verdict records.
+- Convert caller verdict mappings into sorted generic verdict records.
 
-Preserve the exact candidate contribution preview.
+- Preserve the exact candidate contribution preview.
 
-Build and validate the generic intent.
+- Build and validate the generic intent.
 
-Return no receipt and perform no write.
+- Return no receipt and perform no write.
 
-Adapter rejection
+### Adapter rejection
 
 Reject through a sanitized D&D-owned typed error when:
 
-plan is blocked;
-
-plan lacks a preview;
-
-plan fails re-validation;
-
-plan digest/content binding is invalid;
-
-verdict coverage is incomplete;
-
-an identity verdict is incompatible with the planned outcome;
-
-assertion IDs or candidate IDs are unknown.
+- plan is blocked;
+- plan lacks a preview;
+- plan fails re-validation;
+- plan digest/content binding is invalid;
+- verdict coverage is incomplete;
+- an identity verdict is incompatible with the planned outcome;
+- assertion IDs or candidate IDs are unknown.
 
 Do not echo labels, summaries, aliases, or evidence locators in errors.
 
@@ -1088,18 +1032,18 @@ The reviewed successor may contain only rejected assertions. It remains an activ
 ## §11 Application service
 
 
-Create:
+### Create:
 
 src/dungeonmind/application/contribution_review.py
 
-Constants:
+### Constants:
 
 FINALIZE_REVIEW_TOOL = dungeonmind.finalize_contribution_review
 
-Public function:
+### Public function:
 
-def finalize_contribution_review(
 ```python
+def finalize_contribution_review(
     submission: ContributionReviewSubmission,
     *,
     capability_policy: CapabilityPolicy,
@@ -1108,8 +1052,11 @@ def finalize_contribution_review(
 ) -> ContributionReviewState:
     ...
 
-Optional thin read helper:
+```
 
+### Optional thin read helper:
+
+```python
 def load_contribution_review(
     world_id: str,
     review_id: str,
@@ -1119,7 +1066,7 @@ def load_contribution_review(
     ...
 
 ```
-Required execution order
+### Required execution order
 
 1. validate submission
 2. evaluate capability:
@@ -1142,7 +1089,7 @@ Required execution order
 17. repository.finalize(state)
 18. return exact stored/reconstructed state
 
-Capability rules
+### Capability rules
 
 evaluate_capability must pass with:
 
@@ -1151,7 +1098,7 @@ allowed effect includes commit
 tool enabled = dungeonmind.finalize_contribution_review
 graph scope present
 
-Additional exact checks:
+### Additional exact checks
 
 policy.graph_scope.world_id == intent.world_id
 policy.graph_scope.campaign_id == intent.campaign_id
@@ -1184,11 +1131,11 @@ No need to interpret D&D terms; B.2d already validated profile semantics.
 ## §12 Repository port and atomicity
 
 
-Modify:
+### Modify:
 
 src/dungeonmind/application/repositories.py
 
-Add:
+### Add:
 
 class ContributionReviewRepository(Protocol):
     def finalize(
@@ -1211,7 +1158,7 @@ class ContributionReviewRepository(Protocol):
     ) -> ContributionReviewState | None:
         ...
 
-Port guarantees
+### Port guarantees
 
 finalize atomically persists:
 
@@ -1222,7 +1169,7 @@ all evidence refs referenced by both contributions
 
 All or nothing.
 
-Idempotency
+### Idempotency
 
 Exact existing review state:
 
@@ -1233,7 +1180,7 @@ same candidate fingerprint
 same reviewed fingerprint
 → return exact reconstructed state
 
-Conflicts:
+### Conflicts:
 
 same operation ID, different payload
 → IdempotencyConflictError
@@ -1244,7 +1191,7 @@ same source plan, different operation/review
 same candidate or reviewed contribution ID, different payload
 → IdempotencyConflictError
 
-Reconstruction
+### Reconstruction
 
 Every read:
 
@@ -1265,20 +1212,20 @@ Unknown review ID returns None.
 ## §13 In-memory adapter
 
 
-Modify:
+### Modify:
 
 src/dungeonmind/infrastructure/memory/repositories.py
 src/dungeonmind/infrastructure/memory/__init__.py
 
-Add:
+### Add:
 
 InMemoryContributionReviewRepository
 
-Shared-state requirement
+### Shared-state requirement
 
 The review repository and ordinary contribution repository must read the same contribution dictionary.
 
-Expected construction:
+### Expected construction:
 
 contributions = InMemoryContributionRepository()
 reviews = InMemoryContributionReviewRepository(contributions)
@@ -1298,17 +1245,17 @@ Do not expose adapter storage types through application ports.
 ## §14 PostgreSQL adapter and migration
 
 
-Modify:
+### Modify:
 
 src/dungeonmind/infrastructure/postgres/records.py
 src/dungeonmind/infrastructure/postgres/__init__.py
 
-Add:
+### Add:
 
 PostgresContributionReviewRepository
 PostgresRepositoryBundle.contribution_reviews
 
-Internal contribution insert helper
+### Internal contribution insert helper
 
 Refactor existing contribution insertion into a transaction-local private helper so:
 
@@ -1320,13 +1267,13 @@ evidence refs are upserted inside that transaction;
 
 no nested independent transaction is opened.
 
-New table
+### New table
 
 Create exactly one Alembic migration adding:
 
 dungeonmind.contribution_reviews
 
-Columns:
+### Columns:
 
 world_id                     text not null
 review_id                    text not null
@@ -1462,7 +1409,7 @@ Persistence integrity:
 
 stored record/contribution/fingerprint/cross-link drift.
 
-Sanitization
+### Sanitization
 
 Errors may include:
 
@@ -1657,7 +1604,7 @@ no graph revision or publication receipt.
 ## §18 Import-boundary evolution
 
 
-Modify:
+### Modify:
 
 tests/unit/test_import_boundaries.py
 
@@ -1834,7 +1781,7 @@ publish in the same PR.
 ### §20.2 Architecture
 
 
-Add:
+### Add:
 
 Kernel-side finalized review layer (B.2e)
   generic review intent
@@ -1863,7 +1810,7 @@ B.2f owns graph payload construction and CAS.
 ### §20.3 Authority
 
 
-Add:
+### Add:
 
 source plan ref/digest is authority for what was reviewed;
 
@@ -2044,8 +1991,7 @@ checked-in handoff.
 ## §22 Verification commands
 
 
-Core gates
-
+### Core gates
 ```bash
 uv sync --locked
 uv run ruff check .
@@ -2053,33 +1999,37 @@ uv run pyright
 uv run --no-dev python -c "import dungeonmind"
 uv run --no-dev python -c "import dungeonmind_dnd"
 uv run pytest -m "not integration"
+```
 
-Focused unit gates
-
+### Focused unit gates
+```bash
 uv run pytest -q \
   tests/unit/test_contribution_review_contract.py \
   tests/unit/test_contribution_review_service.py \
   tests/unit/test_contribution_review_memory_repository.py \
   tests/unit/test_dnd_threat_contribution_review_adapter.py \
   tests/unit/test_import_boundaries.py
+```
 
-Integration gate
-
+### Integration gate
+```bash
 DUNGEONMIND_DATABASE_URL=postgresql://dungeonmind:dungeonmind-dev@localhost:54329/dungeonmind \
   uv run pytest -q -m integration \
   tests/integration/test_postgres_contribution_review_repository.py
+```
 
-Migration gates
-
+### Migration gates
+```bash
 uv run alembic heads
 uv run alembic upgrade head
 uv run alembic downgrade -1
 uv run alembic upgrade head
+```
 
 Exactly one head before and after.
 
-No forbidden drift
-
+### No forbidden drift
+```bash
 git diff -- \
   src/dungeonmind/contracts/contribution.py \
   src/dungeonmind/contracts/identity.py \
@@ -2094,20 +2044,22 @@ git diff -- \
   tests/fixtures/dungeonmind_dnd/gatewatch-world-graph-v3.json \
   uv.lock \
   compose.postgres.yml
+```
 
 Expected: empty.
 
-No publication proof
-
+### No publication proof
+```bash
 rg -n \
   'PublishRevisionCommand|publish_revision|rollback_head|IdentityDecisionRepository|identity_decisions\.append' \
   src/dungeonmind/application/contribution_review.py \
   src/dungeonmind_dnd/application/contribution_review.py
+```
 
 Expected: no invocation. Importing WorldGraphRepository for read preflight is allowed; publication calls are not.
 
-Import proof
-
+### Import proof
+```bash
 uv run --no-dev python - <<'PY'
 import sys
 import dungeonmind
@@ -2127,9 +2079,10 @@ for forbidden in (
 ):
     assert forbidden not in sys.modules
 PY
+```
 
-Wheel proof
-
+### Wheel proof
+```bash
 uv build
 uv run python - <<'PY'
 from pathlib import Path
@@ -2153,7 +2106,7 @@ rm -rf dist
 ## §23 Acceptance rubric
 
 
-Boundary
+### Boundary
 
 Base is PR #9 merge commit or explicitly re-anchored descendant.
 
@@ -2167,7 +2120,7 @@ No dependency/lockfile change.
 
 No API/UI/tool/agent surface.
 
-Review intent
+### Review intent
 
 Ready plan translates deterministically.
 
@@ -2183,7 +2136,7 @@ One assertion verdict per assertion.
 
 Intent digest binds all semantic content.
 
-Authority
+### Authority
 
 Commit effect evaluated through existing capability authority.
 
@@ -2199,7 +2152,7 @@ Current head preflighted.
 
 Exact parent revision/digest verified.
 
-Review semantics
+### Review semantics
 
 Candidate rejection closes all dependent assertions.
 
@@ -2215,7 +2168,7 @@ Node identity outcomes finalized correctly.
 
 Relationship identity outcomes remain null.
 
-Persistence
+### Persistence
 
 Candidate contribution stored superseded.
 
@@ -2669,7 +2622,7 @@ Search application code.
 
 no publish_revision, no identity-decision append.
 
-Approval bar
+### Approval bar
 
 Approve only when the reviewer can truthfully say:
 

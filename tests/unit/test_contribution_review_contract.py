@@ -76,7 +76,7 @@ def test_generic_intent_accepts_non_dnd_source_plan_schema() -> None:
     intent = _intent()
     candidate_payload = intent.candidate_contribution.model_dump(mode="json")
     candidate_payload["assertions"][0]["label"] = "synthetic label"
-    candidate_payload["assertions"][0]["value"] = "synthetic label"
+    candidate_payload["assertions"][0]["value"] = None
     candidate = GraphContribution.model_validate(candidate_payload)
     plan_ref = intent.plan_ref.model_copy(
         update={
@@ -112,7 +112,11 @@ def test_generic_intent_accepts_non_dnd_source_plan_schema() -> None:
     assert generic.candidate_contribution.assertions[0].label == "synthetic label"
 
 
-def _intent_with_candidate_mutation(mutator) -> dict[str, object]:
+def _intent_with_candidate_mutation(
+    mutator,
+    *,
+    first_verdict_state: str | None = None,
+) -> dict[str, object]:
     intent = _intent()
     payload = intent.model_dump(mode="json")
     candidate_payload = payload["candidate_contribution"]
@@ -123,6 +127,19 @@ def _intent_with_candidate_mutation(mutator) -> dict[str, object]:
     )
     payload["candidate_contribution"] = candidate.model_dump(mode="json")
     payload["plan_ref"] = plan_ref.model_dump(mode="json")
+    assertion_verdicts = intent.assertion_verdicts
+    if first_verdict_state is not None:
+        payload["assertion_verdicts"][0]["acceptance_state"] = first_verdict_state
+        assertion_verdicts = [
+            verdict.model_copy(
+                update={
+                    "acceptance_state": AcceptanceState(first_verdict_state)
+                    if index == 0
+                    else verdict.acceptance_state
+                }
+            )
+            for index, verdict in enumerate(assertion_verdicts)
+        ]
     payload["review_intent_sha256"] = derive_review_intent_sha256(
         operation_id=intent.operation_id,
         world_id=intent.world_id,
@@ -131,7 +148,7 @@ def _intent_with_candidate_mutation(mutator) -> dict[str, object]:
         candidate_contribution=candidate,
         identity_proposals=intent.identity_proposals,
         identity_verdicts=intent.identity_verdicts,
-        assertion_verdicts=intent.assertion_verdicts,
+        assertion_verdicts=assertion_verdicts,
         reviewer_id=intent.reviewer_id,
         reviewed_at=intent.reviewed_at,
     )
@@ -149,25 +166,104 @@ def test_intent_rejects_duplicate_candidate_assertion_ids() -> None:
 
 
 @pytest.mark.parametrize(
-    ("assertion_kind", "acceptance_state"),
+    ("assertion_kind", "verdict_state"),
     [
         ("attribute", "accepted"),
-        ("mystery", "candidate"),
+        ("mystery", "accepted"),
         ("mystery", "rejected"),
     ],
 )
 def test_intent_rejects_unknown_assertion_kind(
     assertion_kind: str,
-    acceptance_state: str,
+    verdict_state: str,
 ) -> None:
     def mutate(candidate: dict[str, object]) -> None:
         assertion = candidate["assertions"][0]
         assertion["assertion_kind"] = assertion_kind
-        assertion["acceptance_state"] = acceptance_state
+
+    payload = _intent_with_candidate_mutation(
+        mutate,
+        first_verdict_state=verdict_state,
+    )
+    with pytest.raises(ValidationError):
+        ContributionReviewIntent.model_validate(payload)
+
+
+def test_intent_rejects_create_new_label_without_label_text() -> None:
+    def mutate(candidate: dict[str, object]) -> None:
+        assertion = candidate["assertions"][0]
+        assertion["label"] = None
+        assertion["value"] = None
+
+    payload = _intent_with_candidate_mutation(
+        mutate,
+        first_verdict_state="accepted",
+    )
+    with pytest.raises(ValidationError):
+        ContributionReviewIntent.model_validate(payload)
+
+
+@pytest.mark.parametrize("assertion_kind", ["alias", "summary"])
+def test_intent_rejects_alias_or_summary_without_nonblank_value(
+    assertion_kind: str,
+) -> None:
+    def mutate(candidate: dict[str, object]) -> None:
+        assertion = candidate["assertions"][0]
+        assertion["assertion_kind"] = assertion_kind
+        assertion["label"] = None
+        assertion["value"] = " "
 
     payload = _intent_with_candidate_mutation(mutate)
     with pytest.raises(ValidationError):
         ContributionReviewIntent.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "missing_field",
+    ["subject_object_id", "object_object_id", "predicate"],
+)
+def test_intent_rejects_relationship_missing_required_field(
+    missing_field: str,
+) -> None:
+    def mutate(candidate: dict[str, object]) -> None:
+        assertion = candidate["assertions"][0]
+        assertion.update(
+            assertion_kind="relationship",
+            subject_object_id="obj:subject",
+            object_object_id="obj:object",
+            predicate="threatens",
+            label=None,
+            value=None,
+        )
+        assertion[missing_field] = None
+
+    payload = _intent_with_candidate_mutation(mutate)
+    with pytest.raises(ValidationError):
+        ContributionReviewIntent.model_validate(payload)
+
+
+def test_intent_rejects_relationship_with_node_only_fields() -> None:
+    def mutate(candidate: dict[str, object]) -> None:
+        candidate["assertions"][0].update(
+            assertion_kind="relationship",
+            subject_object_id="obj:subject",
+            object_object_id="obj:object",
+            predicate="threatens",
+            label="not a relationship label",
+            value=None,
+        )
+
+    payload = _intent_with_candidate_mutation(mutate)
+    with pytest.raises(ValidationError):
+        ContributionReviewIntent.model_validate(payload)
+
+
+def test_finalized_state_rejects_supported_assertion_shape_drift() -> None:
+    payload = json.loads(STATE_FIXTURE.read_text(encoding="utf-8"))
+    payload["candidate_contribution"]["assertions"][0]["label"] = None
+    payload["candidate_contribution"]["assertions"][0]["value"] = None
+    with pytest.raises(ValidationError):
+        ContributionReviewState.model_validate(payload)
 
 
 @pytest.mark.parametrize(

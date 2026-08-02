@@ -96,8 +96,37 @@ def _validate_reviewable_assertions(
     if len(assertion_ids) != len(set(assertion_ids)):
         raise ValueError("candidate assertion IDs must be unique")
     for assertion in assertions:
-        if assertion.assertion_kind not in _REVIEWABLE_ASSERTION_KINDS:
+        kind = assertion.assertion_kind
+        if kind not in _REVIEWABLE_ASSERTION_KINDS:
             raise ValueError("unsupported assertion kind for finalized review")
+        if kind == "label":
+            _require_assertion_text(assertion.subject_object_id, "label subject")
+            _require_assertion_text(assertion.label, "label")
+            _require_absent_assertion_field(assertion.object_object_id, "label object")
+            _require_absent_assertion_field(assertion.predicate, "label predicate")
+            _require_absent_assertion_field(assertion.value, "label value")
+        elif kind in {"alias", "summary"}:
+            _require_assertion_text(assertion.subject_object_id, f"{kind} subject")
+            _require_assertion_text(assertion.value, f"{kind} value")
+            _require_absent_assertion_field(assertion.object_object_id, f"{kind} object")
+            _require_absent_assertion_field(assertion.predicate, f"{kind} predicate")
+            _require_absent_assertion_field(assertion.label, f"{kind} label")
+        else:
+            _require_assertion_text(assertion.subject_object_id, "relationship subject")
+            _require_assertion_text(assertion.object_object_id, "relationship object")
+            _require_assertion_text(assertion.predicate, "relationship predicate")
+            _require_absent_assertion_field(assertion.label, "relationship label")
+            _require_absent_assertion_field(assertion.value, "relationship value")
+
+
+def _require_assertion_text(value: str | None, field_name: str) -> None:
+    if value is None or not value.strip():
+        raise ValueError(f"{field_name} must be non-blank")
+
+
+def _require_absent_assertion_field(value: str | None, field_name: str) -> None:
+    if value is not None:
+        raise ValueError(f"{field_name} must be absent")
 
 
 def derive_review_intent_sha256(
