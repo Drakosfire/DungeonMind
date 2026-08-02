@@ -65,6 +65,7 @@ from ..contracts.contribution_planning import (
     derive_assertion_id,
     derive_contribution_id,
     derive_plan_id,
+    derive_preview_content_sha256,
     derive_proposed_object_id,
     format_extraction_profile,
 )
@@ -743,6 +744,7 @@ def _build_plan(
     blockers: list[DndPlanBlocker],
     actor: str,
     planned_at: datetime,
+    preview_content_sha256: str | None,
     proposed_contribution: GraphContribution | None,
 ) -> DndThreatContributionPlan:
     """Step 13: deterministic record ordering and plan assembly."""
@@ -757,6 +759,7 @@ def _build_plan(
             base_revision_id=revision.revision_id,
             base_graph_schema=revision.graph_schema,
             base_graph_payload_sha256=revision.graph_payload_sha256,
+            preview_content_sha256=preview_content_sha256,
             expected_parent_revision_id=revision.revision_id,
             semantic_profile=packet.semantic_profile,
             vocabulary=packet.vocabulary,
@@ -841,9 +844,33 @@ def plan_threat_candidate_contribution(
             packet,
             stored_revision,
             status=DndThreatPlanStatus.BLOCKED,
+            preview_content_sha256=None,
             proposed_contribution=None,
             **common,
         )
+    contribution = _build_contribution_preview(
+        packet,
+        resolutions,
+        relationship_plans,
+        plan_id=plan_id,
+        actor=actor,
+        planned_at=planned_at,
+    )
+    preview_content_sha256 = derive_preview_content_sha256(
+        candidate_resolutions=resolutions,
+        existing_object_verifications=verifications,
+        relationship_plans=relationship_plans,
+        contribution=contribution,
+    )
+    plan_id = derive_plan_id(
+        packet_digest=packet_digest,
+        base_revision_id=stored_revision.revision.revision_id,
+        base_graph_payload_sha256=stored_revision.revision.graph_payload_sha256,
+        actor=actor,
+        planned_at=planned_at,
+        preview_content_sha256=preview_content_sha256,
+    )
+    common["plan_id"] = plan_id
     contribution = _build_contribution_preview(
         packet,
         resolutions,
@@ -856,6 +883,7 @@ def plan_threat_candidate_contribution(
         packet,
         stored_revision,
         status=DndThreatPlanStatus.READY_FOR_REVIEW,
+        preview_content_sha256=preview_content_sha256,
         proposed_contribution=contribution,
         **common,
     )

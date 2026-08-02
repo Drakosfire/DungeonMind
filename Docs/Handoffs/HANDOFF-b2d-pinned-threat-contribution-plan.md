@@ -345,7 +345,7 @@ inherit `DndCandidateContractModel` (`extra="forbid"`).
 | `DndExistingObjectVerification` | `dmdnd_existing_object_verification_v1` | `existing_object_id`, `expected_kind`, `actual_kind`, `state`, `relationship_candidate_ids` |
 | `DndRelationshipPlan` | `dmdnd_relationship_plan_v1` | `relationship_candidate_id`, `predicate`, `subject_object_id`, `object_object_id`, `state`, `existing_relationship_ids` |
 | `DndPlanBlocker` | `dmdnd_plan_blocker_v1` | `code`, optional IDs, `related_object_ids` — no prose |
-| `DndThreatContributionPlan` | `dmdnd_threat_contribution_plan_v1` | pins, resolutions, verifications, plans, blockers, optional `proposed_contribution` |
+| `DndThreatContributionPlan` | `dmdnd_threat_contribution_plan_v1` | pins, resolutions, verifications, plans, blockers, optional preview-content digest and `proposed_contribution` |
 
 ### Key contract rules
 
@@ -357,6 +357,9 @@ inherit `DndCandidateContractModel` (`extra="forbid"`).
 - `base_graph_schema` must be exactly `dm_union_graph_v3`.
 - Digest fields are 64-char lowercase hex.
 - `plan_id` is `plan:<32 hex>`; proposed object IDs are `obj:<32 hex>`.
+- Blocked plans derive `plan_id` from packet/base/actor/time; ready plans also
+  bind `preview_content_sha256`, a canonical digest of the complete preview
+  content with derived contribution/assertion IDs excluded.
 - Plan records carry IDs, qualified terms, and digests only — never labels,
   aliases, summaries, evidence locators, or source prose.
 - Blockers correspond bijectively to bad resolution/verification/relationship
@@ -364,7 +367,9 @@ inherit `DndCandidateContractModel` (`extra="forbid"`).
 - `ready_for_review` requires zero blockers and a non-null
   `proposed_contribution`. `blocked` requires blockers and null contribution.
 - Contribution preview invariants: candidate-only assertions, GM visibility,
-  asserted epistemic kind, empty identity/unresolved/diagnostics fields.
+  asserted epistemic kind, empty identity/unresolved/diagnostics fields,
+  complete node coverage (one label per resolution, unique aliases and at most
+  one summary), unique assertion IDs, and content-digest verification.
 
 ## §6 Planner API and execution order
 
@@ -406,9 +411,13 @@ exact retries must reuse it.
 8. **Verify explicit existing endpoints** — by ID and kind (§8).
 9. **Plan relationships** — endpoint resolution + duplicate detection (§9).
 10. **Collect blockers** — one per non-reviewable record; sort deterministically.
-11. **Compute plan_id** — digest of packet, base revision, actor, `planned_at`.
-12. **Build contribution preview** — only if zero blockers (§10).
-13. **Assemble plan** — sorted child records; set status.
+11. **Compute blocked plan_id** — digest of packet, base revision, actor,
+    `planned_at`; blocked plans return without a preview.
+12. **Build preview content** — only if zero blockers (§10), then compute its
+    canonical content digest.
+13. **Compute ready plan_id** — bind the preview content digest to the request
+    fingerprint and rebuild derived contribution/assertion IDs.
+14. **Assemble plan** — sorted child records; validate complete preview binding.
 
 Integrity failures raise `DndContributionPlanningError` and produce no plan.
 Valid-but-unresolvable states yield a `blocked` plan.
@@ -545,6 +554,14 @@ Every assertion:
 
 Assertion IDs are deterministic from contribution id, candidate id, kind, and
 discriminator.
+
+Ready `plan_id` additionally commits to a canonical digest of every semantic
+preview field: node labels, aliases, summaries, relationship endpoints and
+predicates, evidence records, packet source anchors, contribution metadata, and
+the plan's resolution/verification/relationship records. Derived contribution
+and assertion IDs are excluded from that digest because they are derived from
+`plan_id`. Reloaded plans therefore reject content mutations even when a
+non-empty evidence list or the original assertion ID is retained.
 
 ## §11 Failure and sanitization model
 

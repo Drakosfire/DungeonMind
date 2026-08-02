@@ -31,6 +31,7 @@ from dungeonmind_dnd.contracts.contribution_planning import (
     DndRelationshipPlanState,
     DndThreatContributionPlan,
     DndThreatPlanStatus,
+    derive_plan_id,
 )
 from dungeonmind_dnd.contracts.vocabulary import DndVocabularyRef
 
@@ -260,8 +261,15 @@ def test_cross_kind_blocker_requires_related_objects() -> None:
 
 
 def test_minimal_blocked_plan_validates() -> None:
+    plan_id = derive_plan_id(
+        packet_digest="b" * 64,
+        base_revision_id="rev:" + "c" * 32,
+        base_graph_payload_sha256="d" * 64,
+        actor="operator:synthetic-reviewer",
+        planned_at=datetime(2026, 8, 1, 18, 0, tzinfo=UTC),
+    )
     plan = DndThreatContributionPlan(
-        plan_id="plan:" + "a" * 32,
+        plan_id=plan_id,
         world_id="world:synthetic-gatewatch",
         campaign_id="campaign:synthetic-gatewatch-frontier",
         packet_id="packet:tripod-null-calf-threat-v1",
@@ -348,6 +356,148 @@ def test_minimal_blocked_plan_validates() -> None:
     )
     assert plan.status is DndThreatPlanStatus.BLOCKED
     assert plan.proposed_contribution is None
+
+
+def test_blocked_plan_rejects_arbitrary_plan_id() -> None:
+    plan_id = derive_plan_id(
+        packet_digest="b" * 64,
+        base_revision_id="rev:" + "c" * 32,
+        base_graph_payload_sha256="d" * 64,
+        actor="operator:synthetic-reviewer",
+        planned_at=datetime(2026, 8, 1, 18, 0, tzinfo=UTC),
+    )
+    payload = {
+        "schema_version": "dmdnd_threat_contribution_plan_v1",
+        "plan_id": plan_id,
+        "world_id": "world:synthetic-gatewatch",
+        "campaign_id": "campaign:synthetic-gatewatch-frontier",
+        "packet_id": "packet:tripod-null-calf-threat-v1",
+        "candidate_packet_sha256": "b" * 64,
+        "base_revision_id": "rev:" + "c" * 32,
+        "base_graph_schema": "dm_union_graph_v3",
+        "base_graph_payload_sha256": "d" * 64,
+        "expected_parent_revision_id": "rev:" + "c" * 32,
+        "semantic_profile": PROFILE.model_dump(mode="json"),
+        "vocabulary": VOCAB.model_dump(mode="json"),
+        "actor": "operator:synthetic-reviewer",
+        "planned_at": "2026-08-01T18:00:00Z",
+        "status": "blocked",
+        "candidate_resolutions": [
+            {
+                "candidate_id": "cand:x",
+                "candidate_kind": "dnd5e:creature",
+                "outcome": "ambiguous",
+                "matched_object_ids": ["obj:a", "obj:b"],
+                "match_channels": ["label"],
+            }
+        ],
+        "existing_object_verifications": [],
+        "relationship_plans": [
+            {
+                "relationship_candidate_id": "candrel:x",
+                "predicate": "dnd5e:threatens",
+                "subject_object_id": None,
+                "object_object_id": None,
+                "state": "endpoint_blocked",
+            }
+        ],
+        "blockers": [
+            {
+                "code": "ambiguous_identity",
+                "candidate_id": "cand:x",
+                "related_object_ids": ["obj:a", "obj:b"],
+            },
+            {
+                "code": "relationship_endpoint_blocked",
+                "relationship_candidate_id": "candrel:x",
+            },
+        ],
+        "confirmation_required": True,
+        "proposed_contribution": None,
+    }
+    payload["plan_id"] = "plan:" + "a" * 32
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_candidate_only_preview_requires_complete_node_assertions() -> None:
+    payload = _fixture()
+    tripod_target = next(
+        resolution["target_object_id"]
+        for resolution in payload["candidate_resolutions"]
+        if resolution["candidate_id"] == "cand:tripod-null-calf"
+    )
+    payload["proposed_contribution"]["assertions"] = [
+        assertion
+        for assertion in payload["proposed_contribution"]["assertions"]
+        if assertion["subject_object_id"] != tripod_target
+    ]
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_candidate_only_preview_rejects_duplicate_label_assertion() -> None:
+    payload = _fixture()
+    label = next(
+        assertion
+        for assertion in payload["proposed_contribution"]["assertions"]
+        if assertion["assertion_kind"] == "label"
+    )
+    payload["proposed_contribution"]["assertions"].append(copy.deepcopy(label))
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_candidate_only_preview_rejects_changed_label_text() -> None:
+    payload = _fixture()
+    label = next(
+        assertion
+        for assertion in payload["proposed_contribution"]["assertions"]
+        if assertion["assertion_kind"] == "label"
+    )
+    label["label"] = "Tampered label"
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_candidate_only_preview_rejects_changed_alias_text() -> None:
+    payload = _fixture()
+    alias = next(
+        assertion
+        for assertion in payload["proposed_contribution"]["assertions"]
+        if assertion["assertion_kind"] == "alias"
+    )
+    alias["value"] = "Tampered alias"
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_candidate_only_preview_rejects_changed_summary_text() -> None:
+    payload = _fixture()
+    summary = next(
+        assertion
+        for assertion in payload["proposed_contribution"]["assertions"]
+        if assertion["assertion_kind"] == "summary"
+    )
+    summary["value"] = "Tampered summary"
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_candidate_only_preview_rejects_changed_evidence_locator() -> None:
+    payload = _fixture()
+    evidence = payload["proposed_contribution"]["assertions"][0]["evidence_refs"][0]
+    evidence["locator"] = "fixture://tampered-locator"
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
+
+
+def test_candidate_only_preview_rejects_changed_evidence_source() -> None:
+    payload = _fixture()
+    evidence = payload["proposed_contribution"]["assertions"][0]["evidence_refs"][0]
+    evidence["source_artifact_id"] = "src:tampered-source"
+    with pytest.raises(ValidationError):
+        DndThreatContributionPlan.model_validate(payload)
 
 
 def test_ready_preview_rejects_non_empty_diagnostics() -> None:

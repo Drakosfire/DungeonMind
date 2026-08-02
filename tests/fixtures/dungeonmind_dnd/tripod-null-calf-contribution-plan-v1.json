@@ -1,6 +1,6 @@
 {
   "schema_version": "dmdnd_threat_contribution_plan_v1",
-  "plan_id": "plan:80551e7013a8772ace77f6e1ffed934d",
+  "plan_id": "plan:b989f575adb27d0c23d410fea9da5449",
   "world_id": "world:synthetic-gatewatch",
   "campaign_id": "campaign:synthetic-gatewatch-frontier",
   "packet_id": "packet:tripod-null-calf-threat-v1",
@@ -8,6 +8,7 @@
   "base_revision_id": "rev:f2d5164c176289c5f3df7e68b4f0e46d",
   "base_graph_schema": "dm_union_graph_v3",
   "base_graph_payload_sha256": "99778951787744b85ae42444b0100f433b964f62120bf709793423d1d01f2036",
+  "preview_content_sha256": "03c8ce31248450bbb28ba892158c57a779d50c7f03554f97594af88c553c1b12",
   "expected_parent_revision_id": "rev:f2d5164c176289c5f3df7e68b4f0e46d",
   "semantic_profile": {
     "schema_version": "dm_semantic_profile_ref_v1",
@@ -92,7 +93,7 @@
   "confirmation_required": true,
   "proposed_contribution": {
     "schema_version": "dm_graph_contribution_v1",
-    "contribution_id": "contrib:1e8b762a6f80391c8cb618093bf09030",
+    "contribution_id": "contrib:b1416abf5571c978851b778c511673fc",
     "world_id": "world:synthetic-gatewatch",
     "source_kind": "extraction",
     "source_artifact_id": "src:synthetic-gatewatch-watchlog",
@@ -104,7 +105,7 @@
     "supersedes_contribution_id": null,
     "assertions": [
       {
-        "assertion_id": "asrt:aa6fcc3263f6e71e80a9b89cdd50878c",
+        "assertion_id": "asrt:7a40c5e50a8b6fc11aea4b35a3ae76d4",
         "assertion_kind": "label",
         "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
         "object_object_id": null,
@@ -135,7 +136,7 @@
         "identity_resolution_outcome": "provisional_new"
       },
       {
-        "assertion_id": "asrt:6028be549f1e38dfc06f0f13e72a6221",
+        "assertion_id": "asrt:ce088416c732f2ba70ec44f1e7edaa93",
         "assertion_kind": "alias",
         "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
         "object_object_id": null,
@@ -166,7 +167,7 @@
         "identity_resolution_outcome": "provisional_new"
       },
       {
-        "assertion_id": "asrt:18d2d1e7b22ee1dd376432523db8c6e9",
+        "assertion_id": "asrt:eebcbdfeabbecdcf22c18d24313e7b79",
         "assertion_kind": "alias",
         "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
         "object_object_id": null,
@@ -197,7 +198,7 @@
         "identity_resolution_outcome": "provisional_new"
       },
       {
-        "assertion_id": "asrt:57466e9f8c5bcbba43cf9a2d5d3effcc",
+        "assertion_id": "asrt:4dfb5efcd35880eb1c2e45ad50ce24ee",
         "assertion_kind": "summary",
         "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
         "object_object_id": null,
@@ -228,7 +229,7 @@
         "identity_resolution_outcome": "provisional_new"
       },
       {
-        "assertion_id": "asrt:32f0dcf84e70d12a8c593e908402ca91",
+        "assertion_id": "asrt:36e0d020cd3c37e8f4042f0d0bd07585",
         "assertion_kind": "label",
         "subject_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
         "object_object_id": null,
@@ -259,7 +260,7 @@
         "identity_resolution_outcome": "provisional_new"
       },
       {
-        "assertion_id": "asrt:dfac2088def72955a326ca6f16f823ab",
+        "assertion_id": "asrt:a13780ad18486b89e58db463aef5809f",
         "assertion_kind": "alias",
         "subject_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
         "object_object_id": null,
@@ -290,7 +291,7 @@
         "identity_resolution_outcome": "provisional_new"
       },
       {
-        "assertion_id": "asrt:6858552f4fa66c2189f69731c8add5a8",
+        "assertion_id": "asrt:fe4045c389c3dc28a34bff749ff75cc2",
         "assertion_kind": "summary",
         "subject_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
         "object_object_id": null,
@@ -321,7 +322,7 @@
         "identity_resolution_outcome": "provisional_new"
       },
       {
-        "assertion_id": "asrt:7a1f9b9ff2b070ce78c351eb55167c03",
+        "assertion_id": "asrt:ec3795eb74d333a69f38f48c51043543",
         "assertion_kind": "relationship",
         "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
         "object_object_id": "obj:north-gate",
@@ -352,7 +353,7 @@
         "identity_resolution_outcome": null
       },
       {
-        "assertion_id": "asrt:7fe3d82153a96a557d2c181a95465d71",
+        "assertion_id": "asrt:67ebd5898d1f56392218f7cf2e80a70a",
         "assertion_kind": "relationship",
         "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
         "object_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
@@ -383,7 +384,7 @@
         "identity_resolution_outcome": null
       },
       {
-        "assertion_id": "asrt:214af6a71ee78d9e7595c5347fed08dd",
+        "assertion_id": "asrt:ef8e2748a3d129bf6ecf68c8d1f8971c",
         "assertion_kind": "relationship",
         "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
         "object_object_id": "obj:north-gate",

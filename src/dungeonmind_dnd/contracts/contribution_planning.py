@@ -48,6 +48,7 @@ RELATIONSHIP_PLAN_SCHEMA = "dmdnd_relationship_plan_v1"
 PLAN_BLOCKER_SCHEMA = "dmdnd_plan_blocker_v1"
 
 _PLAN_REQUEST_SCHEMA = "dmdnd_threat_contribution_plan_request_v1"
+_PREVIEW_CONTENT_SCHEMA = "dmdnd_threat_contribution_preview_content_v1"
 _PROPOSED_OBJECT_ID_SCHEMA = "dmdnd_proposed_object_id_v1"
 _CONTRIBUTION_ID_SCHEMA = "dmdnd_contribution_id_v1"
 _ASSERTION_ID_SCHEMA = "dmdnd_assertion_id_v1"
@@ -100,6 +101,7 @@ def derive_plan_id(
     base_graph_payload_sha256: str,
     actor: str,
     planned_at: datetime,
+    preview_content_sha256: str | None = None,
 ) -> str:
     material = {
         "schema": _PLAN_REQUEST_SCHEMA,
@@ -110,6 +112,8 @@ def derive_plan_id(
         "planned_at": planned_at.isoformat(),
         "planner_schema": THREAT_CONTRIBUTION_PLAN_SCHEMA,
     }
+    if preview_content_sha256 is not None:
+        material["preview_content_sha256"] = preview_content_sha256
     return f"plan:{canonical_sha256(material)[:_ID_HEX_LENGTH]}"
 
 
@@ -510,6 +514,54 @@ def _blocker_sort_key(
     )
 
 
+def derive_preview_content_sha256(
+    *,
+    candidate_resolutions: list[DndCandidateResolution],
+    existing_object_verifications: list[DndExistingObjectVerification],
+    relationship_plans: list[DndRelationshipPlan],
+    contribution: GraphContribution,
+) -> str:
+    """Hash all non-derived semantic content in a ready preview.
+
+    Contribution and assertion IDs are deliberately excluded because they are
+    derived from the plan ID, while labels, summaries, aliases, evidence,
+    source anchors, endpoints, and all planning records remain bound.
+    """
+    contribution_data = contribution.model_dump(mode="json")
+    contribution_data.pop("contribution_id", None)
+    for assertion in contribution_data["assertions"]:
+        assertion.pop("assertion_id", None)
+    return canonical_sha256(
+        {
+            "schema": _PREVIEW_CONTENT_SCHEMA,
+            "candidate_resolutions": [
+                resolution.model_dump(mode="json")
+                for resolution in sorted(
+                    candidate_resolutions, key=lambda item: item.candidate_id
+                )
+            ],
+            "existing_object_verifications": [
+                verification.model_dump(mode="json")
+                for verification in sorted(
+                    existing_object_verifications,
+                    key=lambda item: (
+                        item.existing_object_id,
+                        item.expected_kind,
+                    ),
+                )
+            ],
+            "relationship_plans": [
+                plan.model_dump(mode="json")
+                for plan in sorted(
+                    relationship_plans,
+                    key=lambda item: item.relationship_candidate_id,
+                )
+            ],
+            "contribution": contribution_data,
+        }
+    )
+
+
 class DndThreatContributionPlan(DndCandidateContractModel):
     """One pinned, deterministic create-or-connect review plan.
 
@@ -530,6 +582,7 @@ class DndThreatContributionPlan(DndCandidateContractModel):
     base_revision_id: str = Field(min_length=1)
     base_graph_schema: str
     base_graph_payload_sha256: str
+    preview_content_sha256: str | None = None
     expected_parent_revision_id: str = Field(min_length=1)
     semantic_profile: SemanticProfileRef
     vocabulary: DndVocabularyRef
@@ -555,6 +608,15 @@ class DndThreatContributionPlan(DndCandidateContractModel):
     def _validate_digest(cls, value: str) -> str:
         if not _SHA256_HEX.fullmatch(value):
             raise ValueError("digest fields must be exactly 64 lowercase hex")
+        return value
+
+    @field_validator("preview_content_sha256")
+    @classmethod
+    def _validate_preview_content_digest(cls, value: str | None) -> str | None:
+        if value is not None and not _SHA256_HEX.fullmatch(value):
+            raise ValueError(
+                "preview_content_sha256 must be exactly 64 lowercase hex"
+            )
         return value
 
     @field_validator("base_graph_schema")
@@ -792,19 +854,27 @@ class DndThreatContributionPlan(DndCandidateContractModel):
                 raise ValueError("blocked plans contain no contribution preview")
 
     def _require_candidate_only_preview(self) -> None:
-        contribution = self.proposed_contribution
-        if contribution is None:
-            return
-
         expected_plan_id = derive_plan_id(
             packet_digest=self.candidate_packet_sha256,
             base_revision_id=self.base_revision_id,
             base_graph_payload_sha256=self.base_graph_payload_sha256,
             actor=self.actor,
             planned_at=self.planned_at,
+            preview_content_sha256=self.preview_content_sha256,
         )
         if self.plan_id != expected_plan_id:
             raise ValueError("plan_id must match the deterministic request fingerprint")
+
+        contribution = self.proposed_contribution
+        if contribution is None:
+            if self.preview_content_sha256 is not None:
+                raise ValueError(
+                    "blocked plans must not carry a preview content digest"
+                )
+            return
+
+        if self.preview_content_sha256 is None:
+            raise ValueError("ready plans require a preview content digest")
 
         expected_contribution_id = derive_contribution_id(plan_id=self.plan_id)
         if contribution.contribution_id != expected_contribution_id:
@@ -869,6 +939,11 @@ class DndThreatContributionPlan(DndCandidateContractModel):
         if len(ready_by_triple) != len(ready_plans):
             raise ValueError("ready relationship plans must have unique triples")
         matched_ready: set[tuple[str | None, str, str | None]] = set()
+        assertion_ids = [assertion.assertion_id for assertion in contribution.assertions]
+        if len(set(assertion_ids)) != len(assertion_ids):
+            raise ValueError("planned assertion IDs must be unique")
+        node_counts: dict[tuple[str, str], int] = {}
+        node_alias_values: dict[str, list[str]] = {}
 
         for assertion in contribution.assertions:
             if assertion.acceptance_state is not AcceptanceState.CANDIDATE:
@@ -915,11 +990,24 @@ class DndThreatContributionPlan(DndCandidateContractModel):
                         "node assertion identity_resolution_outcome must match "
                         "the candidate resolution outcome"
                     )
+                candidate_key = (resolution.candidate_id, assertion.assertion_kind)
+                node_counts[candidate_key] = node_counts.get(candidate_key, 0) + 1
                 if assertion.assertion_kind == "alias":
                     if not assertion.value:
                         raise ValueError("alias assertions require a value")
+                    if assertion.label is not None:
+                        raise ValueError("alias assertions carry value only")
+                    node_alias_values.setdefault(resolution.candidate_id, []).append(
+                        assertion.value
+                    )
                     discriminator = assertion.value
+                elif assertion.assertion_kind == "label":
+                    if assertion.label is None or assertion.value is not None:
+                        raise ValueError("label assertions require label only")
+                    discriminator = ""
                 else:
+                    if assertion.label is not None or assertion.value is None:
+                        raise ValueError("summary assertions require value only")
                     discriminator = ""
                 expected_id = derive_assertion_id(
                     contribution_id=contribution.contribution_id,
@@ -971,8 +1059,32 @@ class DndThreatContributionPlan(DndCandidateContractModel):
                     "relationship"
                 )
 
+        for resolution in self.candidate_resolutions:
+            candidate_id = resolution.candidate_id
+            if node_counts.get((candidate_id, "label"), 0) != 1:
+                raise ValueError(
+                    "every candidate resolution requires exactly one label assertion"
+                )
+            if node_counts.get((candidate_id, "summary"), 0) > 1:
+                raise ValueError(
+                    "each candidate may have at most one summary assertion"
+                )
+            aliases = node_alias_values.get(candidate_id, [])
+            if len(set(aliases)) != len(aliases):
+                raise ValueError("candidate aliases must be unique")
+
         if matched_ready != set(ready_by_triple):
             raise ValueError(
                 "every ready relationship plan requires exactly one matching "
                 "relationship assertion"
+            )
+        actual_preview_digest = derive_preview_content_sha256(
+            candidate_resolutions=self.candidate_resolutions,
+            existing_object_verifications=self.existing_object_verifications,
+            relationship_plans=self.relationship_plans,
+            contribution=contribution,
+        )
+        if self.preview_content_sha256 != actual_preview_digest:
+            raise ValueError(
+                "preview_content_sha256 must match the complete preview content"
             )
