@@ -23,7 +23,7 @@ DungeonMind is **not**:
   this architecture was proven; this repository is the product boundary);
 - a LandingPage backend;
 - the owner of D&D (or any game system's) meaning — game vocabulary lives in
-  versioned, data-only semantic profiles outside the kernel (ADR-0004).
+  versioned semantic profiles outside the kernel (ADR-0004, ADR-0005).
 
 ## Ownership at a glance
 
@@ -45,21 +45,32 @@ DungeonMind is a governed semantic **kernel**: it owns identity, evidence,
 revisions, retrieval, and admission — including the *identity model* for
 semantic profiles (pinned refs, descriptor shape, registry port,
 qualified-term admission). It does not own any game system's meaning. D&D
-5e profile data lives in `src/dungeonmind_dnd/`, a data-only sibling
-package: one distribution currently contains both packages, the dependency
-is strictly one-way (no code under `src/dungeonmind` imports
-`dungeonmind_dnd`), and importing the profile package registers nothing.
-Graph payloads pin profiles by identity and digest, never by path; local
-registry config decides which descriptors a deployment loads. Multi-system
-support is **not** implemented — the B.2b proof fixture uses a synthetic
-non-D&D profile precisely so the canary proves kernel/profile decoupling,
-not product support for any game system. Decision record:
-[`Docs/Decisions/ADR-0004-semantic-profile-boundary.md`](Docs/Decisions/ADR-0004-semantic-profile-boundary.md).
+5e profile data and pure candidate logic live in `src/dungeonmind_dnd/`, a
+side-effect-free sibling package: one distribution currently contains both
+packages, the dependency is strictly one-way (no code under
+`src/dungeonmind` imports `dungeonmind_dnd`), and importing the profile
+package registers nothing and reads nothing. Graph payloads pin profiles by
+identity and digest, never by path; local registry config decides which
+descriptors a deployment loads. Multi-system support is **not** implemented
+— the B.2b proof fixture uses a synthetic non-D&D profile precisely so the
+canary proves kernel/profile decoupling, not product support for any game
+system. Decision records:
+[`Docs/Decisions/ADR-0004-semantic-profile-boundary.md`](Docs/Decisions/ADR-0004-semantic-profile-boundary.md),
+[`Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md`](Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md).
+
+The D&D package's first executable slice (B.2c) is intentionally tiny: one
+immutable `dnd5e-profile-v2` descriptor, one Threat vocabulary catalog
+(four kinds, four predicates with closed direction), strict
+provenance-bearing extraction-candidate contracts, and deterministic
+validation plus JSON Schema/prompt rendering. It performs no graph writes
+or reads, no LLM calls, no identity resolution, and no mechanics/statblock
+modeling — and Threat exists only as the contextual `dnd5e:threatens`
+relationship, never as an object kind.
 
 ## Status
 
-**Founding through B.2a landed; B.2b semantic profile boundary
-(`dm_union_graph_v3`) exists after merge (this PR).**
+**Founding through B.2b landed; B.2c DungeonMindDnD Threat vocabulary and
+extraction candidates exists after merge (this PR).**
 
 What exists today:
 
@@ -82,9 +93,15 @@ What exists today:
   qualified `namespace:local` kinds/predicates that profile owns, resolved
   through a config-driven registry
   (`DUNGEONMIND_SEMANTIC_PROFILE_REGISTRY_PATH`) that fails closed when
-  unconfigured — with the data-only `dungeonmind_dnd` sibling package
-  shipping the D&D 5e descriptor as package data, and a synthetic non-D&D
-  canary profile (`test.narrative`) proving the boundary end to end.
+  unconfigured — with the `dungeonmind_dnd` sibling package shipping the D&D
+  5e descriptors as package data, and a synthetic non-D&D canary profile
+  (`test.narrative`) proving the boundary end to end;
+- `dungeonmind_dnd` executable profile slice: the immutable
+  `dnd5e-profile-v2` descriptor, the `threat-v1` vocabulary catalog (exact
+  kinds/predicates + direction), strict provenance-bearing Threat candidate
+  contracts, deterministic catalog validation, deterministic JSON Schema and
+  prompt-fragment rendering, and a synthetic conformance fixture connecting
+  new candidates to an existing object reference.
 
 What deliberately does **not** exist yet: generic field/property assertion
 models, assertion-scoped relationships, assertion authoring or graph writes,
@@ -92,11 +109,13 @@ field-level semantic-document materialization, LandingPage or other
 product-surface adoption of `mind_turn_v1`, source-body opening, Hermes,
 production auth, multi-worker exactly-once adapter execution, the retrieval
 benchmark backend (PR C), the embedding bakeoff (PR D), or production
-deployment hardening (PR F) — and, on the profile boundary: any concrete D&D
-taxonomy or mechanics capability, any profile interpretation layer (the
-kernel admits or rejects qualified terms and nothing more), cross-profile
-mapping, executable profile behavior, multi-game or multi-system product
-support, and audience-policy generalization. See
+deployment hardening (PR F) — and, on the profile boundary: any LLM-backed
+extraction runtime, graph-aware candidate resolution or identity work,
+candidate-to-contribution planning or publication, statblock/mechanics
+binding, any profile interpretation layer (the kernel admits or rejects
+qualified terms and nothing more; one narrow D&D candidate validator exists
+in the profile package), cross-profile mapping, multi-game or multi-system
+product support, and audience-policy generalization. See
 [`Docs/Roadmaps/ROADMAP.md`](Docs/Roadmaps/ROADMAP.md).
 
 ## Quickstart
@@ -151,7 +170,11 @@ src/dungeonmind/
     fixtures/      curated seed helpers
   service/         optional FastAPI host (api extra)
 src/dungeonmind_dnd/
-  profiles/        data-only semantic profile descriptors (D&D 5e package data)
+  contracts/       D&D-owned strict contracts (vocabulary catalog, candidates)
+  domain/          package-owned typed errors (transport-free)
+  application/     pure loaders/renderers/validators (side-effect-free)
+  profiles/        immutable semantic profile descriptors (v1 + v2 package data)
+  vocabularies/    immutable Threat vocabulary catalog (package data)
 migrations/        DungeonMind-owned schema migrations
 examples/          non-product acceptance consumers (static browser proof,
                    semantic profile registry config example)
@@ -167,8 +190,10 @@ repository or UI package. Heavyweight integrations live behind optional extras.
 The browser example under `examples/` is framework-free HTML/CSS/JS and is not
 imported by the Python package. One wheel currently ships two packages with a
 strictly one-way dependency: no code under `src/dungeonmind` imports
-`dungeonmind_dnd`, and `dungeonmind_dnd` stays data-only (no kernel layer
-imports, no registration side effects) — profile resolution flows through the
+`dungeonmind_dnd`, and `dungeonmind_dnd` imports only narrow kernel
+contract/canonical modules (no kernel application/infrastructure/service/
+agent layers, no providers, no registration side effects, no import-time
+resource reads) — profile resolution flows through the
 `SemanticProfileRegistry` port and operator config, never through imports.
 
 ## Contributing

@@ -48,3 +48,19 @@ A published v3 graph revision stores an exact profile ref. Deleting or altering
 an old descriptor breaks later reads and retrieval-session reconstruction for
 that revision. Keep historical profile revisions loadable for as long as those
 graphs must remain readable.
+
+## v1 and v2 coexist (PR B.2c)
+
+This registry lists two revisions of `dungeonmind.dnd5e`:
+
+- **`dnd5e-profile-v1`** — the original namespace-only descriptor. It remains
+  valid for graphs pinned to it and is never edited.
+- **`dnd5e-profile-v2`** — the profile identity pinned by the D&D Threat
+  vocabulary catalog (`dungeonmind.dnd5e.threat` / `threat-v1`).
+
+The registry locates **descriptors only** — it does not locate the vocabulary
+catalog. The `dungeonmind_dnd` package loads its own catalog from package data
+(`dungeonmind_dnd/vocabularies/threat-v1.json`) and verifies that the
+catalog's pinned profile ref matches the bundled v2 descriptor byte-for-byte
+by digest. Deleting either descriptor revision breaks old consumers (v3 graph
+reads on v1; candidate validation on v2) and is forbidden.

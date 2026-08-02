@@ -41,21 +41,41 @@ uv run pyright          # static type check over src/
    revision publication with stale-parent rejection).
 8. **Type hints required** (ruff `ANN` rules active for `src/` and `scripts/`).
 
-## Semantic profile boundary (hard rules, ADR-0004)
+## Semantic profile boundary (hard rules, ADR-0004, ADR-0005)
 
 - **No code under `src/dungeonmind` imports `dungeonmind_dnd`** — enforced by
-  `tests/unit/test_import_boundaries.py`. `dungeonmind_dnd` also stays
-  data-only: no kernel layer imports, no registration side effects.
+  `tests/unit/test_import_boundaries.py`.
+- **D&D semantic terms belong only under `src/dungeonmind_dnd`.** Profile
+  packages are executable but side-effect-free: strict contracts and pure
+  deterministic logic that may import only `dungeonmind.contracts.base`,
+  `dungeonmind.contracts.evidence`, `dungeonmind.contracts.semantic_profile`,
+  and `dungeonmind.domain.canonical` (plus stdlib/pydantic) — never kernel
+  application, infrastructure, service, or agent layers, and never provider,
+  database, or API-framework dependencies.
+- **No profile package accesses repositories, providers, network, files, or
+  config on import.** Registration on import is forbidden; package-data
+  reads happen only inside loader functions.
+- **New vocabulary terms require a new immutable catalog revision** (new
+  `vocabulary_revision` pin, new catalog digest). Never edit a published
+  catalog in place.
+- **Changing a profile descriptor requires a new immutable profile
+  revision** — a new `profile_revision` pin and a new digest. Never edit a
+  published descriptor in place; old revisions stay loadable for as long as
+  graphs pinned to them must remain readable. Changing the profile a
+  catalog associates with likewise requires a new profile revision.
+- **Threat must not be introduced as an object kind** without a new ADR. In
+  the D&D profile it is the contextual `dnd5e:threatens` relationship only.
+- **Candidate schemas carry closed evidence and temporary IDs.** Every node
+  and relationship is evidenced; the ledger has no dangling or unused refs;
+  candidate IDs never use `obj:`/`rel:` prefixes; no property bags,
+  confidence scores, canon/visibility fields, stable IDs, or write-path
+  fields.
 - **No unqualified new semantic kinds/predicates in `dm_union_graph_v3`
   fixtures.** Every v3 `kind` and `predicate` is a qualified
   `namespace:local` term admitted by the fixture's pinned profile.
 - **No D&D mechanics contract lands under `src/dungeonmind`.** Game meaning
   belongs to profile packages; the kernel owns admission, never
   interpretation.
-- **Changing a profile descriptor requires a new immutable profile
-  revision** — a new `profile_revision` pin and a new digest. Never edit a
-  published descriptor in place; old revisions stay loadable for as long as
-  graphs pinned to them must remain readable.
 - **Config paths are never stored in graph payloads or public responses**
   (nor in error details). Durable identity is the pinned `profile_id` +
   `profile_revision` + `descriptor_sha256`; registry config paths are

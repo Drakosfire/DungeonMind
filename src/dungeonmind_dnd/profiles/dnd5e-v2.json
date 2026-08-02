@@ -1,0 +1,6 @@
+{
+  "schema_version": "dm_semantic_profile_v1",
+  "profile_id": "dungeonmind.dnd5e",
+  "profile_revision": "dnd5e-profile-v2",
+  "term_namespaces": ["dnd5e"]
+}

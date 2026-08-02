@@ -1,16 +1,20 @@
 """Static import-boundary enforcement.
 
-Two guarantees:
+Three guarantees:
 1. Layering: contracts ← domain ← application ← infrastructure/agents.
 2. Core stays light: nothing under src/ imports web frameworks, database
    drivers, model frameworks, Hermes, DungeonMindBuddy ``apps.*``, or any
    sibling repository / UI package — except the explicit
    ``infrastructure.postgres`` adapter layer, which may import psycopg/pgvector
    and is never loaded by the core import path.
+3. The semantic-profile dependency is one-way: the kernel never imports
+   ``dungeonmind_dnd``, and the executable profile package imports only the
+   narrow allowed kernel contract/canonical modules (ADR-0005).
 """
 
 import ast
 import importlib
+import subprocess
 import sys
 from pathlib import Path
 
@@ -201,37 +205,71 @@ def test_dungeonmind_does_not_import_dungeonmind_dnd() -> None:
     assert not violations, "kernel imported dungeonmind_dnd:\n" + "\n".join(violations)
 
 
-def test_dungeonmind_dnd_stays_data_only() -> None:
-    """Sibling package may not import application/infrastructure/service layers."""
+# The D&D profile package is executable but narrow: exactly these kernel
+# modules may be imported (ADR-0005). Everything else — kernel application,
+# infrastructure, service, agents, providers, databases, API frameworks —
+# is forbidden.
+DND_ALLOWED_KERNEL_MODULES = {
+    "dungeonmind.contracts.base",
+    "dungeonmind.contracts.evidence",
+    "dungeonmind.contracts.semantic_profile",
+    "dungeonmind.domain.canonical",
+}
+
+
+def _dnd_module_name(path: Path) -> tuple[str, bool]:
+    is_init = path.name == "__init__.py"
+    dotted = ".".join(path.relative_to(DND_SRC).with_suffix("").parts)
+    module_name = (
+        "dungeonmind_dnd"
+        if is_init and dotted in {"", "__init__"}
+        else f"dungeonmind_dnd.{dotted.removesuffix('.__init__')}"
+    )
+    if module_name.endswith("."):
+        module_name = "dungeonmind_dnd"
+    return module_name, is_init
+
+
+def test_dungeonmind_dnd_executable_profile_boundary() -> None:
+    """Profile package imports only the narrow allowed kernel modules."""
     if not DND_SRC.exists():
         pytest.skip("dungeonmind_dnd package missing")
-    forbidden_prefixes = (
-        "dungeonmind.application",
-        "dungeonmind.infrastructure",
-        "dungeonmind.service",
-        "dungeonmind.agents",
-    )
+    stdlib = sys.stdlib_module_names
     violations: list[str] = []
     for path in sorted(DND_SRC.rglob("*.py")):
-        is_init = path.name == "__init__.py"
-        dotted = ".".join(path.relative_to(DND_SRC).with_suffix("").parts)
-        module_name = (
-            "dungeonmind_dnd"
-            if is_init and dotted in {"", "__init__"}
-            else f"dungeonmind_dnd.{dotted.removesuffix('.__init__')}"
-        )
-        if module_name.endswith("."):
-            module_name = "dungeonmind_dnd"
+        module_name, is_init = _dnd_module_name(path)
         for module in _imports_of(path, module_name, is_init):
-            blocked = any(
-                module == prefix or module.startswith(f"{prefix}.")
-                for prefix in forbidden_prefixes
-            )
-            if blocked:
-                violations.append(f"{module_name} imports {module}")
-    assert not violations, "dungeonmind_dnd layer violations:\n" + "\n".join(
+            root = module.split(".")[0]
+            if root in stdlib or root in ALLOWED_EXTERNAL:
+                continue
+            if root == "dungeonmind_dnd":
+                continue
+            if module in DND_ALLOWED_KERNEL_MODULES:
+                continue
+            violations.append(f"{module_name} imports unallowed module {module}")
+    assert not violations, "dungeonmind_dnd boundary violations:\n" + "\n".join(
         violations
     )
+
+
+def test_kernel_import_never_loads_dnd_package() -> None:
+    code = (
+        "import sys; import dungeonmind; "
+        'assert "dungeonmind_dnd" not in sys.modules, '
+        '"kernel import loaded dungeonmind_dnd"'
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_dnd_import_loads_no_optional_dependencies() -> None:
+    code = (
+        "import sys; import dungeonmind_dnd; "
+        "import dungeonmind_dnd.contracts, dungeonmind_dnd.application.threat_candidates; "
+        'forbidden = ("fastapi", "psycopg", "sqlalchemy", "openai", "anthropic"); '
+        "loaded = [name for name in forbidden if name in sys.modules]; "
+        'assert not loaded, f"profile import loaded {loaded}"'
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
 
 
 def test_every_module_imports_cleanly_without_optional_extras() -> None:

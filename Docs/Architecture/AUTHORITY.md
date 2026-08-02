@@ -7,7 +7,8 @@
 1. **This repository's checked-in state** (code, contracts, ADRs) is the
    current truth for DungeonMind. ADR-0001 (datastore), ADR-0002
    (persistence lifecycle ownership), ADR-0003 (pgvector as derived index),
-   and ADR-0004 (semantic profile boundary) are the accepted decision set.
+   ADR-0004 (semantic profile boundary), and ADR-0005 (executable D&D
+   profile boundary and Threat semantics) are the accepted decision set.
 2. **GitHub current state beats local or Project Source copies** wherever
    they disagree (applies to sibling repos inspected during founding).
 3. **DungeonMindBuddy architecture docs** are authority for the *proven
@@ -59,6 +60,25 @@ extracted with citations in
    locates descriptor files for one deployment; durable identity is the
    pinned `profile_id` + `profile_revision` + `descriptor_sha256`, and
    paths never appear in graph payloads or public responses.
+
+## 3.1 D&D vocabulary and candidate authority (PR B.2c)
+
+1. **The checked-in D&D vocabulary catalog** (`src/dungeonmind_dnd/vocabularies/threat-v1.json`)
+   is authoritative for B.2c candidate terms: exactly the kinds, predicates,
+   and direction it declares. It changes only by a new immutable catalog
+   revision (new pin, new digest).
+2. **The catalog is not authority over existing graph truth.** It
+   constrains what candidates may propose, never what the graph contains.
+3. **Evidence and source artifacts remain the authority for claims.**
+   Candidate packets are provenance-bearing *proposals*, not canonical
+   facts; validation does not canonize them.
+4. **DungeonMindBuddy Threat/statblock documents remain consumer
+   requirements.** They justify which narrow profile-owned terms exist;
+   they never authorize kernel D&D semantics and they are not candidate
+   term authority.
+5. **Prompts and model output are never semantic authority.** The rendered
+   prompt fragment is deterministic catalog-derived guidance; the catalog
+   and the deterministic validator are the only candidate-term authority.
 
 ## 4. Known drift found at founding (do not re-import)
 
