@@ -1,0 +1,63 @@
+{
+  "schema_version": "dmdnd_semantic_vocabulary_v1",
+  "vocabulary_id": "dungeonmind.dnd5e.threat",
+  "vocabulary_revision": "threat-v1",
+  "semantic_profile": {
+    "schema_version": "dm_semantic_profile_ref_v1",
+    "profile_id": "dungeonmind.dnd5e",
+    "profile_revision": "dnd5e-profile-v2",
+    "descriptor_sha256": "57de5bc922503571d781f0de00d0a26b7aabcb3c363518e269f6c7a52a6c0086"
+  },
+  "object_kinds": [
+    {
+      "term": "dnd5e:creature",
+      "label": "Creature",
+      "description": "A persistent creature or character identity. This does not imply NPC, enemy, ally, monster type, or statblock availability."
+    },
+    {
+      "term": "dnd5e:location",
+      "label": "Location",
+      "description": "A campaign place that can be referenced by identity."
+    },
+    {
+      "term": "dnd5e:faction",
+      "label": "Faction",
+      "description": "A persistent organized group or affiliation."
+    },
+    {
+      "term": "dnd5e:encounter",
+      "label": "Encounter",
+      "description": "A bounded prepared, potential, historical, or active play situation. It is not synonymous with combat."
+    }
+  ],
+  "predicates": [
+    {
+      "term": "dnd5e:located_at",
+      "label": "Located at",
+      "description": "Subject is situated at the location for the asserted context.",
+      "subject_kinds": ["dnd5e:creature", "dnd5e:encounter"],
+      "object_kinds": ["dnd5e:location"]
+    },
+    {
+      "term": "dnd5e:member_of",
+      "label": "Member of",
+      "description": "Creature is affiliated with the faction.",
+      "subject_kinds": ["dnd5e:creature"],
+      "object_kinds": ["dnd5e:faction"]
+    },
+    {
+      "term": "dnd5e:participates_in",
+      "label": "Participates in",
+      "description": "Subject participates in the encounter.",
+      "subject_kinds": ["dnd5e:creature", "dnd5e:faction"],
+      "object_kinds": ["dnd5e:encounter"]
+    },
+    {
+      "term": "dnd5e:threatens",
+      "label": "Threatens",
+      "description": "Subject poses a contextual threat to the object.",
+      "subject_kinds": ["dnd5e:creature", "dnd5e:faction", "dnd5e:encounter"],
+      "object_kinds": ["dnd5e:location", "dnd5e:faction", "dnd5e:creature"]
+    }
+  ]
+}

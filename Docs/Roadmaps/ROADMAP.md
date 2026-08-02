@@ -1,10 +1,10 @@
 # DungeonMind — Roadmap and PR ladder
 
-**Status:** PR A / A.1 / B / B.1a / B.1b / B.2a landed. PR B.2b (semantic
-profile boundary and `dm_union_graph_v3`) is the current DungeonMind-owned
-slice. External RulesIngestion PR C and product-surface adoption of
-`mind_turn_v1` remain independent successors. Ownership per ADR-0002 and
-ADR-0004.
+**Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b landed. PR B.2c
+(DungeonMindDnD Threat vocabulary and extraction candidates) is the current
+DungeonMind-owned slice. External RulesIngestion PR C and product-surface
+adoption of `mind_turn_v1` remain independent successors. Ownership per
+ADR-0002, ADR-0004, and ADR-0005.
 
 Each PR is independently reviewable, in its named repository. Cross-repo work
 is never one PR.
@@ -18,7 +18,8 @@ B     minimal PostgreSQL/pgvector substrate ✅
 B.1a  thin read-only Mind Turn API host ✅
 B.1b  DungeonMind-owned curated browser consumer proof ✅
 B.2a  assertion-scoped alias/summary read projection ✅
-B.2b  semantic profile boundary + dm_union_graph_v3    ← current
+B.2b  semantic profile boundary + dm_union_graph_v3 ✅
+B.2c  DungeonMindDnD Threat vocabulary + extraction candidates ← current
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
 D     embedding model bakeoff
@@ -155,7 +156,7 @@ opening, Hermes, or product-surface adoption. Relationships remain coarse.
 Canonical handoff:
 [`Docs/Handoffs/HANDOFF-b2a-assertion-scoped-alias-summary.md`](../Handoffs/HANDOFF-b2a-assertion-scoped-alias-summary.md).
 
-## PR B.2b — Semantic profile boundary and dm_union_graph_v3
+## PR B.2b — Semantic profile boundary and dm_union_graph_v3 ✅
 
 **Repository:** DungeonMind only
 
@@ -195,14 +196,63 @@ Canonical handoff:
 Decision record:
 [`Docs/Decisions/ADR-0004-semantic-profile-boundary.md`](../Decisions/ADR-0004-semantic-profile-boundary.md).
 
+## PR B.2c — DungeonMindDnD Threat vocabulary and extraction candidates
+
+**Repository:** DungeonMind only
+
+Outcome:
+
+```text
+dnd5e-profile-v2
+→ threat-v1 vocabulary catalog (4 kinds / 4 predicates + direction)
+→ strict provenance-bearing node/relationship candidate contracts
+→ deterministic domain/range + evidence-ledger validation
+→ deterministic JSON Schema + controlled-vocabulary prompt fragment
+→ synthetic existing-node reference proof (Tripod Null-Calf)
+```
+
+Makes `dungeonmind_dnd` the first executable semantic-profile package
+(ADR-0005): it loads one immutable profile revision and one immutable
+Threat vocabulary catalog from package data, exposes strict versioned
+candidate contracts suitable for structured LLM output or human-authored
+JSON, renders deterministic JSON Schema and a catalog-derived prompt
+fragment, and validates candidate terms, predicate direction/domain/range,
+endpoint resolution, and a closed evidence ledger — while producing no
+stable IDs, merge decisions, graph contributions, or durable writes.
+Threat is modeled only as the contextual `dnd5e:threatens` relationship,
+never as an object kind. The synthetic fixture connects new candidates
+(`cand:tripod-null-calf`, `cand:north-gate-breach`) to an explicit existing
+object reference (`obj:north-gate`) without claiming identity resolution or
+graph read authority.
+
+Does **not** change any file under `src/dungeonmind/`, call an LLM, read a
+graph, resolve identity, plan contributions, publish revisions, model
+mechanics/statblocks, add a generic interpretation layer, or add another
+game system. The kernel remains D&D-blind (namespace admission only); the
+v1 descriptor remains byte-for-byte immutable.
+
+Canonical handoff:
+[`Docs/Handoffs/HANDOFF-b2c-dnd-threat-vocabulary-candidates.md`](../Handoffs/HANDOFF-b2c-dnd-threat-vocabulary-candidates.md).
+Decision record:
+[`Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md`](../Decisions/ADR-0005-dnd-profile-executable-boundary.md).
+
 ## Named future lanes (no dates claimed)
 
 These lanes are named so successors can be dispatched deliberately. None is
 scheduled, and none may be smuggled into an unrelated PR.
 
-- **DungeonMindDnD concrete semantics** — the first real D&D
-  taxonomy/mechanics capability, owned by the profile package and landed
-  only when demanded by a real consumer.
+- **B.2d — graph-aware candidate resolution and contribution planning** —
+  validated D&D candidates → graph-aware existing-node verification →
+  exact-match identity blocking → explicit unresolved/merge/new outcomes →
+  a non-mutating, reviewable contribution plan. Still no automatic
+  publication.
+- **B.3 — Threat mechanics-resource binding** — approved Threat graph
+  identity → exact external statblock/mechanics resource ref →
+  revision/digest pin → profile-owned hydration contract. Mechanics stay
+  outside the graph body.
+- **DungeonMindDnD further concrete semantics** — additional D&D
+  vocabulary slices (classification, mechanics), owned by the profile
+  package and landed only when demanded by a real consumer.
 - **Profile interpretation layer** — anything beyond admit/reject
   (taxonomy reasoning, cross-profile mapping), only after a concrete
   second-system pressure proves what abstraction is needed.

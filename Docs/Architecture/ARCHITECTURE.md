@@ -37,11 +37,18 @@ Knowledge substrate
   source artifacts / object storage
   immutable graph revisions, contributions, evidence
 
-Semantic profile layer (side boundary, one-way — PR B.2b)
-  data-only profile descriptors pinned by id + revision + digest
+Semantic profile layer (side boundary, one-way — PR B.2b/B.2c)
+  profile descriptors pinned by id + revision + digest
   (e.g. the dungeonmind_dnd D&D 5e profile package)
   resolved through a registry port fed by operator config;
   the kernel never imports a profile package
+
+Profile-side candidate layer (PR B.2c — dungeonmind_dnd only)
+  vocabulary catalog (exact kinds/predicates + direction)
+  strict provenance-bearing candidate contracts
+  deterministic candidate validation and prompt/schema rendering
+        no graph read/write authority, no identity resolution,
+        no publication, no LLM
 ```
 
 ## 2. Governing invariant
@@ -109,7 +116,8 @@ These were proven in DungeonMindBuddy and are not reopened by this repo
 | Retrieval sessions, claim ledgers, coverage, answer validation | **DungeonMind** | read-only, revision-pinned |
 | Semantic documents, embedding runs, provenance | **DungeonMind** | derived data (ADR-0003) |
 | Semantic profile identity model: ref/descriptor/registry contracts, registry port, qualified-term admission | **DungeonMind** | `contracts/semantic_profile.py`, `application/semantic_profiles.py` (PR B.2b, ADR-0004) |
-| D&D 5e profile descriptor content (namespaces, revisions, digests) | **DungeonMindDnD** (`src/dungeonmind_dnd/`) | data-only sibling package; kernel never imports it (PR B.2b, ADR-0004) |
+| D&D 5e profile descriptor content (namespaces, revisions, digests) | **DungeonMindDnD** (`src/dungeonmind_dnd/`) | sibling package; kernel never imports it (PR B.2b, ADR-0004) |
+| D&D vocabulary catalogs, candidate contracts, candidate validation, prompt/schema rendering | **DungeonMindDnD** (`src/dungeonmind_dnd/`) | side-effect-free executable profile package; pure deterministic logic only (PR B.2c, ADR-0005) |
 | Which profiles a deployment loads; descriptor file locations | **Operator configuration** | local registry config; locators are never durable identity (PR B.2b) |
 | Schema, migrations, repository ports, PostgreSQL adapters, reconstruction tooling | **DungeonMind** | `migrations/`, `infrastructure/postgres` (PR B) |
 | Dev/CI PostgreSQL substrate definition (pinned pgvector compose) | **DungeonMind** | PR B |
@@ -137,11 +145,17 @@ infrastructure.memory / .postgres (PR B) │ agents.* │ service.api (later)
   SentenceTransformers, OpenAI, or Hermes; those live behind optional extras.
 - The semantic-profile dependency is one-way: no code under
   `src/dungeonmind` imports `dungeonmind_dnd` (enforced by
-  `tests/unit/test_import_boundaries.py`), and `dungeonmind_dnd` stays
-  data-only — no imports of the kernel's application, infrastructure, or
-  service layers, no registration side effects. Profile resolution flows
-  through the `SemanticProfileRegistry` port and operator configuration,
-  never through package imports. One wheel currently ships both packages.
+  `tests/unit/test_import_boundaries.py`). `dungeonmind_dnd` is an
+  executable profile package (ADR-0005): it may contain side-effect-free
+  contracts and pure deterministic validation, importing only
+  `dungeonmind.contracts.base`, `dungeonmind.contracts.evidence`,
+  `dungeonmind.contracts.semantic_profile`, and
+  `dungeonmind.domain.canonical` — never kernel application,
+  infrastructure, service, or agent layers, providers, databases, or API
+  frameworks; no registration side effects and no import-time resource
+  reads. Profile resolution flows through the `SemanticProfileRegistry`
+  port and operator configuration, never through package imports. One
+  wheel currently ships both packages.
 - No runtime imports from sibling repositories (`graph_memory`,
   `retrieval_lab`, `apps.*`, UI packages). Adaption means owned code in this
   repo with conformance fixtures proving behavior, not import reuse.
@@ -275,6 +289,33 @@ Semantic-profile rules that bind every schema (ADR-0004):
   after a concrete second-system pressure proves the abstraction. No such
   interpreter exists today.
 
+### 6.2 Profile-side candidate layer (PR B.2c, ADR-0005)
+
+`dungeonmind_dnd` now owns one narrow executable capability: the
+`dnd5e-profile-v2` descriptor, the Threat vocabulary catalog
+(`dungeonmind.dnd5e.threat` / `threat-v1`), strict provenance-bearing
+candidate contracts (`dmdnd_*_v1`), and pure deterministic validation plus
+JSON Schema/prompt rendering.
+
+Rules that bind this layer:
+
+- **This is not the interpretation layer.** The kernel still validates
+  namespaces only. The D&D package validates exact D&D terms for candidate
+  production only. A graph may contain profile-qualified terms not produced
+  by this candidate package, and candidate validation never makes a fact
+  canonical.
+- **Threat is a relationship.** `dnd5e:threatens` is contextual; no
+  `dnd5e:threat` object kind exists and the candidate contract rejects one.
+- **Candidate identity is temporary.** Candidates carry packet-local IDs, a
+  closed evidence ledger, and no stable IDs, merge outcomes, confidence,
+  property bags, or write-path fields. Existing graph objects are
+  referenced explicitly (`existing_object_id` + `expected_kind`) but stay
+  unverified until a graph-aware successor (B.2d).
+- **Prompts are never authority.** The rendered prompt fragment is
+  deterministic catalog output; validation authority is the catalog alone.
+- **No graph authority.** The package reads no graphs, calls no LLM,
+  persists nothing, and publishes nothing.
+
 ## 7. Persistence strategy (summary of ADR-0001/0002/0003)
 
 - PostgreSQL + JSONB + pgvector. Relational identity/lifecycle columns;
@@ -292,18 +333,24 @@ Semantic-profile rules that bind every schema (ADR-0004):
 
 See `Docs/Roadmaps/ROADMAP.md`. In short: PostgreSQL adapters + migrations
 (PR B), thin read-only Mind Turn host + curated browser consumer (PR B.1a/B.1b),
-assertion-scoped alias/summary read projection (PR B.2a), and the semantic
-profile boundary with `dm_union_graph_v3` plus the data-only
-`dungeonmind_dnd` sibling package (PR B.2b) have landed. Next: pgvector
+assertion-scoped alias/summary read projection (PR B.2a), the semantic
+profile boundary with `dm_union_graph_v3` plus the `dungeonmind_dnd`
+sibling package (PR B.2b), and the package's first executable capability —
+the Threat vocabulary catalog, candidate contracts, and deterministic
+candidate validation (PR B.2c) — have landed. Next: graph-aware candidate
+resolution and reviewable contribution planning (B.2d), exact external
+mechanics/statblock binding for a Threat consumer (B.3), pgvector
 benchmark backend via RulesIngestion Option B (PR C), embedding bakeoff
 (PR D), DungeonMindServer retrieval seam (PR E), and production IaC
 integration (PR F). Conversation/chat history is never authoritative anywhere
-in this target state. Still false after B.2b: generic assertion frameworks,
+in this target state. Still false after B.2c: generic assertion frameworks,
 assertion-scoped relationships, assertion authoring, source opening, Hermes,
 and external product-surface adoption — plus, on the profile boundary: any
-concrete D&D taxonomy or mechanics capability, any profile interpretation
-layer (admit/reject is all that exists), cross-profile mapping, executable
-profile behavior or plugins, multi-game/multi-system product support,
+LLM-backed extraction runtime, any graph-aware candidate resolution or
+identity work, any candidate-to-contribution planning or publication, any
+statblock/mechanics binding, any profile interpretation layer (admit/reject
+in the kernel plus one narrow D&D candidate validator is all that exists),
+cross-profile mapping, multi-game/multi-system product support,
 audience-policy generalization into profile data, and a separate repository
 or distribution for `dungeonmind_dnd`. The B.2b canary proves kernel/profile
 decoupling; it does not prove multi-system support.

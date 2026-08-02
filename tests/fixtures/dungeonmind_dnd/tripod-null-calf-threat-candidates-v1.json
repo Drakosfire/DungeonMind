@@ -1,0 +1,135 @@
+{
+  "schema_version": "dmdnd_threat_candidate_packet_v1",
+  "packet_id": "packet:tripod-null-calf-threat-v1",
+  "world_id": "world:synthetic-gatewatch",
+  "campaign_id": "campaign:synthetic-gatewatch-frontier",
+  "semantic_profile": {
+    "schema_version": "dm_semantic_profile_ref_v1",
+    "profile_id": "dungeonmind.dnd5e",
+    "profile_revision": "dnd5e-profile-v2",
+    "descriptor_sha256": "57de5bc922503571d781f0de00d0a26b7aabcb3c363518e269f6c7a52a6c0086"
+  },
+  "vocabulary": {
+    "schema_version": "dmdnd_vocabulary_ref_v1",
+    "vocabulary_id": "dungeonmind.dnd5e.threat",
+    "vocabulary_revision": "threat-v1",
+    "catalog_sha256": "0edaeee9dc6ccb0c507e79339ce74cbea7e3734bb42ae00b4833d02ac8ea6047"
+  },
+  "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+  "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+  "focus_evidence_ref_ids": ["ev:tripod-null-calf-sighting"],
+  "evidence_refs": [
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:tripod-null-calf-sighting",
+      "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+      "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-watchlog#tripod-null-calf-sighting",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:north-gate-breach-plan",
+      "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+      "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-watchlog#north-gate-breach-plan",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:tripod-at-north-gate",
+      "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+      "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-watchlog#tripod-at-north-gate",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:tripod-in-breach",
+      "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+      "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-watchlog#tripod-in-breach",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:tripod-threatens-gate",
+      "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+      "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-watchlog#tripod-threatens-gate",
+      "uri": null
+    }
+  ],
+  "nodes": [
+    {
+      "schema_version": "dmdnd_node_candidate_v1",
+      "candidate_id": "cand:tripod-null-calf",
+      "kind": "dnd5e:creature",
+      "label": "Tripod Null-Calf",
+      "surface_forms": ["Tripod Null-Calf", "the three-legged calf", "null-calf"],
+      "summary": "A skittish three-legged creature seen pacing outside the North Gate.",
+      "evidence_ref_ids": ["ev:tripod-null-calf-sighting"]
+    },
+    {
+      "schema_version": "dmdnd_node_candidate_v1",
+      "candidate_id": "cand:north-gate-breach",
+      "kind": "dnd5e:encounter",
+      "label": "North Gate Breach",
+      "surface_forms": ["North Gate Breach", "the gate breach"],
+      "summary": "A prepared situation in which the North Gate is forced open.",
+      "evidence_ref_ids": ["ev:north-gate-breach-plan"]
+    }
+  ],
+  "relationships": [
+    {
+      "schema_version": "dmdnd_relationship_candidate_v1",
+      "candidate_id": "candrel:tripod-located-at-north-gate",
+      "subject": {"candidate_id": "cand:tripod-null-calf"},
+      "predicate": "dnd5e:located_at",
+      "object": {
+        "existing_object_id": "obj:north-gate",
+        "expected_kind": "dnd5e:location"
+      },
+      "evidence_ref_ids": ["ev:tripod-at-north-gate"]
+    },
+    {
+      "schema_version": "dmdnd_relationship_candidate_v1",
+      "candidate_id": "candrel:tripod-participates-in-breach",
+      "subject": {"candidate_id": "cand:tripod-null-calf"},
+      "predicate": "dnd5e:participates_in",
+      "object": {"candidate_id": "cand:north-gate-breach"},
+      "evidence_ref_ids": ["ev:tripod-in-breach"]
+    },
+    {
+      "schema_version": "dmdnd_relationship_candidate_v1",
+      "candidate_id": "candrel:tripod-threatens-north-gate",
+      "subject": {"candidate_id": "cand:tripod-null-calf"},
+      "predicate": "dnd5e:threatens",
+      "object": {
+        "existing_object_id": "obj:north-gate",
+        "expected_kind": "dnd5e:location"
+      },
+      "evidence_ref_ids": ["ev:tripod-threatens-gate"]
+    }
+  ]
+}

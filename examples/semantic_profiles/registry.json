@@ -5,6 +5,11 @@
       "profile_id": "dungeonmind.dnd5e",
       "profile_revision": "dnd5e-profile-v1",
       "descriptor_path": "../../src/dungeonmind_dnd/profiles/dnd5e-v1.json"
+    },
+    {
+      "profile_id": "dungeonmind.dnd5e",
+      "profile_revision": "dnd5e-profile-v2",
+      "descriptor_path": "../../src/dungeonmind_dnd/profiles/dnd5e-v2.json"
     }
   ]
 }
