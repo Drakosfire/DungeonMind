@@ -148,13 +148,21 @@ def test_intent_rejects_duplicate_candidate_assertion_ids() -> None:
         ContributionReviewIntent.model_validate(payload)
 
 
-@pytest.mark.parametrize("acceptance_state", ["candidate", "accepted", "rejected"])
+@pytest.mark.parametrize(
+    ("assertion_kind", "acceptance_state"),
+    [
+        ("attribute", "accepted"),
+        ("mystery", "candidate"),
+        ("mystery", "rejected"),
+    ],
+)
 def test_intent_rejects_unknown_assertion_kind(
+    assertion_kind: str,
     acceptance_state: str,
 ) -> None:
     def mutate(candidate: dict[str, object]) -> None:
         assertion = candidate["assertions"][0]
-        assertion["assertion_kind"] = "attribute"
+        assertion["assertion_kind"] = assertion_kind
         assertion["acceptance_state"] = acceptance_state
 
     payload = _intent_with_candidate_mutation(mutate)
