@@ -1,0 +1,422 @@
+{
+  "schema_version": "dmdnd_threat_contribution_plan_v1",
+  "plan_id": "plan:80551e7013a8772ace77f6e1ffed934d",
+  "world_id": "world:synthetic-gatewatch",
+  "campaign_id": "campaign:synthetic-gatewatch-frontier",
+  "packet_id": "packet:tripod-null-calf-threat-v1",
+  "candidate_packet_sha256": "a111f2f1b742e6f8a00dd46e86a397d3879154c1c679641b6996fec22c3f7314",
+  "base_revision_id": "rev:f2d5164c176289c5f3df7e68b4f0e46d",
+  "base_graph_schema": "dm_union_graph_v3",
+  "base_graph_payload_sha256": "99778951787744b85ae42444b0100f433b964f62120bf709793423d1d01f2036",
+  "expected_parent_revision_id": "rev:f2d5164c176289c5f3df7e68b4f0e46d",
+  "semantic_profile": {
+    "schema_version": "dm_semantic_profile_ref_v1",
+    "profile_id": "dungeonmind.dnd5e",
+    "profile_revision": "dnd5e-profile-v2",
+    "descriptor_sha256": "57de5bc922503571d781f0de00d0a26b7aabcb3c363518e269f6c7a52a6c0086"
+  },
+  "vocabulary": {
+    "schema_version": "dmdnd_vocabulary_ref_v1",
+    "vocabulary_id": "dungeonmind.dnd5e.threat",
+    "vocabulary_revision": "threat-v1",
+    "catalog_sha256": "0edaeee9dc6ccb0c507e79339ce74cbea7e3734bb42ae00b4833d02ac8ea6047"
+  },
+  "actor": "operator:synthetic-reviewer",
+  "planned_at": "2026-08-01T18:00:00Z",
+  "status": "ready_for_review",
+  "candidate_resolutions": [
+    {
+      "schema_version": "dmdnd_candidate_resolution_v1",
+      "candidate_id": "cand:north-gate-breach",
+      "candidate_kind": "dnd5e:encounter",
+      "outcome": "provisional_new",
+      "target_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
+      "matched_object_ids": [],
+      "match_channels": [],
+      "confirmation_required": true
+    },
+    {
+      "schema_version": "dmdnd_candidate_resolution_v1",
+      "candidate_id": "cand:tripod-null-calf",
+      "candidate_kind": "dnd5e:creature",
+      "outcome": "provisional_new",
+      "target_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+      "matched_object_ids": [],
+      "match_channels": [],
+      "confirmation_required": true
+    }
+  ],
+  "existing_object_verifications": [
+    {
+      "schema_version": "dmdnd_existing_object_verification_v1",
+      "existing_object_id": "obj:north-gate",
+      "expected_kind": "dnd5e:location",
+      "actual_kind": "dnd5e:location",
+      "state": "verified",
+      "relationship_candidate_ids": [
+        "candrel:tripod-located-at-north-gate",
+        "candrel:tripod-threatens-north-gate"
+      ]
+    }
+  ],
+  "relationship_plans": [
+    {
+      "schema_version": "dmdnd_relationship_plan_v1",
+      "relationship_candidate_id": "candrel:tripod-located-at-north-gate",
+      "predicate": "dnd5e:located_at",
+      "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+      "object_object_id": "obj:north-gate",
+      "state": "ready",
+      "existing_relationship_ids": []
+    },
+    {
+      "schema_version": "dmdnd_relationship_plan_v1",
+      "relationship_candidate_id": "candrel:tripod-participates-in-breach",
+      "predicate": "dnd5e:participates_in",
+      "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+      "object_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
+      "state": "ready",
+      "existing_relationship_ids": []
+    },
+    {
+      "schema_version": "dmdnd_relationship_plan_v1",
+      "relationship_candidate_id": "candrel:tripod-threatens-north-gate",
+      "predicate": "dnd5e:threatens",
+      "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+      "object_object_id": "obj:north-gate",
+      "state": "ready",
+      "existing_relationship_ids": []
+    }
+  ],
+  "blockers": [],
+  "confirmation_required": true,
+  "proposed_contribution": {
+    "schema_version": "dm_graph_contribution_v1",
+    "contribution_id": "contrib:1e8b762a6f80391c8cb618093bf09030",
+    "world_id": "world:synthetic-gatewatch",
+    "source_kind": "extraction",
+    "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+    "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+    "extraction_profile": "dungeonmind.dnd5e@dnd5e-profile-v2|dungeonmind.dnd5e.threat@threat-v1|sha256:0edaeee9dc6ccb0c507e79339ce74cbea7e3734bb42ae00b4833d02ac8ea6047",
+    "produced_at": "2026-08-01T18:00:00Z",
+    "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+    "status": "active",
+    "supersedes_contribution_id": null,
+    "assertions": [
+      {
+        "assertion_id": "asrt:aa6fcc3263f6e71e80a9b89cdd50878c",
+        "assertion_kind": "label",
+        "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+        "object_object_id": null,
+        "predicate": null,
+        "label": "Tripod Null-Calf",
+        "value": null,
+        "evidence_refs": [
+          {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": "ev:tripod-null-calf-sighting",
+            "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+            "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+            "source_domain": "prep",
+            "evidence_role": "support",
+            "can_open_source": true,
+            "can_highlight_span": true,
+            "locator": "fixture://synthetic-gatewatch-watchlog#tripod-null-calf-sighting",
+            "uri": null
+          }
+        ],
+        "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+        "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+        "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+        "temporal_scope": null,
+        "visibility": "gm",
+        "epistemic_kind": "asserted",
+        "acceptance_state": "candidate",
+        "identity_resolution_outcome": "provisional_new"
+      },
+      {
+        "assertion_id": "asrt:6028be549f1e38dfc06f0f13e72a6221",
+        "assertion_kind": "alias",
+        "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+        "object_object_id": null,
+        "predicate": null,
+        "label": null,
+        "value": "the three-legged calf",
+        "evidence_refs": [
+          {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": "ev:tripod-null-calf-sighting",
+            "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+            "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+            "source_domain": "prep",
+            "evidence_role": "support",
+            "can_open_source": true,
+            "can_highlight_span": true,
+            "locator": "fixture://synthetic-gatewatch-watchlog#tripod-null-calf-sighting",
+            "uri": null
+          }
+        ],
+        "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+        "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+        "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+        "temporal_scope": null,
+        "visibility": "gm",
+        "epistemic_kind": "asserted",
+        "acceptance_state": "candidate",
+        "identity_resolution_outcome": "provisional_new"
+      },
+      {
+        "assertion_id": "asrt:18d2d1e7b22ee1dd376432523db8c6e9",
+        "assertion_kind": "alias",
+        "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+        "object_object_id": null,
+        "predicate": null,
+        "label": null,
+        "value": "null-calf",
+        "evidence_refs": [
+          {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": "ev:tripod-null-calf-sighting",
+            "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+            "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+            "source_domain": "prep",
+            "evidence_role": "support",
+            "can_open_source": true,
+            "can_highlight_span": true,
+            "locator": "fixture://synthetic-gatewatch-watchlog#tripod-null-calf-sighting",
+            "uri": null
+          }
+        ],
+        "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+        "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+        "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+        "temporal_scope": null,
+        "visibility": "gm",
+        "epistemic_kind": "asserted",
+        "acceptance_state": "candidate",
+        "identity_resolution_outcome": "provisional_new"
+      },
+      {
+        "assertion_id": "asrt:57466e9f8c5bcbba43cf9a2d5d3effcc",
+        "assertion_kind": "summary",
+        "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+        "object_object_id": null,
+        "predicate": null,
+        "label": null,
+        "value": "A skittish three-legged creature seen pacing outside the North Gate.",
+        "evidence_refs": [
+          {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": "ev:tripod-null-calf-sighting",
+            "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+            "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+            "source_domain": "prep",
+            "evidence_role": "support",
+            "can_open_source": true,
+            "can_highlight_span": true,
+            "locator": "fixture://synthetic-gatewatch-watchlog#tripod-null-calf-sighting",
+            "uri": null
+          }
+        ],
+        "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+        "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+        "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+        "temporal_scope": null,
+        "visibility": "gm",
+        "epistemic_kind": "asserted",
+        "acceptance_state": "candidate",
+        "identity_resolution_outcome": "provisional_new"
+      },
+      {
+        "assertion_id": "asrt:32f0dcf84e70d12a8c593e908402ca91",
+        "assertion_kind": "label",
+        "subject_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
+        "object_object_id": null,
+        "predicate": null,
+        "label": "North Gate Breach",
+        "value": null,
+        "evidence_refs": [
+          {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": "ev:north-gate-breach-plan",
+            "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+            "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+            "source_domain": "prep",
+            "evidence_role": "support",
+            "can_open_source": true,
+            "can_highlight_span": true,
+            "locator": "fixture://synthetic-gatewatch-watchlog#north-gate-breach-plan",
+            "uri": null
+          }
+        ],
+        "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+        "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+        "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+        "temporal_scope": null,
+        "visibility": "gm",
+        "epistemic_kind": "asserted",
+        "acceptance_state": "candidate",
+        "identity_resolution_outcome": "provisional_new"
+      },
+      {
+        "assertion_id": "asrt:dfac2088def72955a326ca6f16f823ab",
+        "assertion_kind": "alias",
+        "subject_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
+        "object_object_id": null,
+        "predicate": null,
+        "label": null,
+        "value": "the gate breach",
+        "evidence_refs": [
+          {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": "ev:north-gate-breach-plan",
+            "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+            "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+            "source_domain": "prep",
+            "evidence_role": "support",
+            "can_open_source": true,
+            "can_highlight_span": true,
+            "locator": "fixture://synthetic-gatewatch-watchlog#north-gate-breach-plan",
+            "uri": null
+          }
+        ],
+        "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+        "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+        "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+        "temporal_scope": null,
+        "visibility": "gm",
+        "epistemic_kind": "asserted",
+        "acceptance_state": "candidate",
+        "identity_resolution_outcome": "provisional_new"
+      },
+      {
+        "assertion_id": "asrt:6858552f4fa66c2189f69731c8add5a8",
+        "assertion_kind": "summary",
+        "subject_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
+        "object_object_id": null,
+        "predicate": null,
+        "label": null,
+        "value": "A prepared situation in which the North Gate is forced open.",
+        "evidence_refs": [
+          {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": "ev:north-gate-breach-plan",
+            "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+            "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+            "source_domain": "prep",
+            "evidence_role": "support",
+            "can_open_source": true,
+            "can_highlight_span": true,
+            "locator": "fixture://synthetic-gatewatch-watchlog#north-gate-breach-plan",
+            "uri": null
+          }
+        ],
+        "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+        "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+        "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+        "temporal_scope": null,
+        "visibility": "gm",
+        "epistemic_kind": "asserted",
+        "acceptance_state": "candidate",
+        "identity_resolution_outcome": "provisional_new"
+      },
+      {
+        "assertion_id": "asrt:7a1f9b9ff2b070ce78c351eb55167c03",
+        "assertion_kind": "relationship",
+        "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+        "object_object_id": "obj:north-gate",
+        "predicate": "dnd5e:located_at",
+        "label": null,
+        "value": null,
+        "evidence_refs": [
+          {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": "ev:tripod-at-north-gate",
+            "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+            "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+            "source_domain": "prep",
+            "evidence_role": "support",
+            "can_open_source": true,
+            "can_highlight_span": true,
+            "locator": "fixture://synthetic-gatewatch-watchlog#tripod-at-north-gate",
+            "uri": null
+          }
+        ],
+        "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+        "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+        "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+        "temporal_scope": null,
+        "visibility": "gm",
+        "epistemic_kind": "asserted",
+        "acceptance_state": "candidate",
+        "identity_resolution_outcome": null
+      },
+      {
+        "assertion_id": "asrt:7fe3d82153a96a557d2c181a95465d71",
+        "assertion_kind": "relationship",
+        "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+        "object_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
+        "predicate": "dnd5e:participates_in",
+        "label": null,
+        "value": null,
+        "evidence_refs": [
+          {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": "ev:tripod-in-breach",
+            "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+            "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+            "source_domain": "prep",
+            "evidence_role": "support",
+            "can_open_source": true,
+            "can_highlight_span": true,
+            "locator": "fixture://synthetic-gatewatch-watchlog#tripod-in-breach",
+            "uri": null
+          }
+        ],
+        "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+        "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+        "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+        "temporal_scope": null,
+        "visibility": "gm",
+        "epistemic_kind": "asserted",
+        "acceptance_state": "candidate",
+        "identity_resolution_outcome": null
+      },
+      {
+        "assertion_id": "asrt:214af6a71ee78d9e7595c5347fed08dd",
+        "assertion_kind": "relationship",
+        "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+        "object_object_id": "obj:north-gate",
+        "predicate": "dnd5e:threatens",
+        "label": null,
+        "value": null,
+        "evidence_refs": [
+          {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": "ev:tripod-threatens-gate",
+            "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+            "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+            "source_domain": "prep",
+            "evidence_role": "support",
+            "can_open_source": true,
+            "can_highlight_span": true,
+            "locator": "fixture://synthetic-gatewatch-watchlog#tripod-threatens-gate",
+            "uri": null
+          }
+        ],
+        "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+        "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+        "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+        "temporal_scope": null,
+        "visibility": "gm",
+        "epistemic_kind": "asserted",
+        "acceptance_state": "candidate",
+        "identity_resolution_outcome": null
+      }
+    ],
+    "unresolved_mentions": [],
+    "identity_decision_ids": [],
+    "authored_by": "operator:synthetic-reviewer",
+    "diagnostics": {}
+  }
+}

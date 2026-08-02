@@ -1,0 +1,138 @@
+{
+  "fixture_version": "dmdnd_gatewatch_world_graph_v1",
+  "world_id": "world:synthetic-gatewatch",
+  "graph_schema": "dm_union_graph_v3",
+  "revision_metadata": {
+    "created_at": "2026-08-01T17:00:00Z",
+    "parent_revision_id": null,
+    "operation_ids": ["op:seed-gatewatch-base-graph-v1"]
+  },
+  "graph_payload": {
+    "world_id": "world:synthetic-gatewatch",
+    "semantic_profile": {
+      "schema_version": "dm_semantic_profile_ref_v1",
+      "profile_id": "dungeonmind.dnd5e",
+      "profile_revision": "dnd5e-profile-v2",
+      "descriptor_sha256": "57de5bc922503571d781f0de00d0a26b7aabcb3c363518e269f6c7a52a6c0086"
+    },
+    "nodes": [
+      {
+        "object_id": "obj:north-gate",
+        "kind": "dnd5e:location",
+        "label": "North Gate",
+        "evidence_ref_ids": ["ev:gatewatch-north-gate-core"],
+        "alias_assertions": [
+          {
+            "assertion_id": "asrt:gatewatch-north-gate-alias",
+            "alias": "Old North Gate",
+            "evidence_ref_ids": ["ev:gatewatch-north-gate-alias"]
+          }
+        ],
+        "summary_assertion": {
+          "assertion_id": "asrt:gatewatch-north-gate-summary",
+          "summary": "The fortified northern entrance to the town of Gatewatch.",
+          "evidence_ref_ids": ["ev:gatewatch-north-gate-summary"]
+        }
+      },
+      {
+        "object_id": "obj:gatewatch-keep",
+        "kind": "dnd5e:location",
+        "label": "Gatewatch Keep",
+        "evidence_ref_ids": ["ev:gatewatch-keep-core"],
+        "alias_assertions": [],
+        "summary_assertion": null
+      },
+      {
+        "object_id": "obj:gatewatch-mustering",
+        "kind": "dnd5e:encounter",
+        "label": "Gatewatch Mustering",
+        "evidence_ref_ids": ["ev:gatewatch-mustering-core"],
+        "alias_assertions": [],
+        "summary_assertion": null
+      }
+    ],
+    "relationships": [
+      {
+        "relationship_id": "rel:mustering-at-keep",
+        "subject_object_id": "obj:gatewatch-mustering",
+        "predicate": "dnd5e:located_at",
+        "object_object_id": "obj:gatewatch-keep",
+        "evidence_ref_ids": ["ev:mustering-at-keep"]
+      }
+    ],
+    "evidence_refs": [
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:gatewatch-north-gate-core",
+        "source_artifact_id": "src:synthetic-gatewatch-codex",
+        "source_revision_id": "srcrev:synthetic-gatewatch-codex-v1",
+        "source_domain": "prep",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": true,
+        "locator": "fixture://synthetic-gatewatch-codex#north-gate-core",
+        "uri": null
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:gatewatch-north-gate-alias",
+        "source_artifact_id": "src:synthetic-gatewatch-codex",
+        "source_revision_id": "srcrev:synthetic-gatewatch-codex-v1",
+        "source_domain": "prep",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": true,
+        "locator": "fixture://synthetic-gatewatch-codex#north-gate-alias",
+        "uri": null
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:gatewatch-north-gate-summary",
+        "source_artifact_id": "src:synthetic-gatewatch-codex",
+        "source_revision_id": "srcrev:synthetic-gatewatch-codex-v1",
+        "source_domain": "prep",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": true,
+        "locator": "fixture://synthetic-gatewatch-codex#north-gate-summary",
+        "uri": null
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:gatewatch-keep-core",
+        "source_artifact_id": "src:synthetic-gatewatch-codex",
+        "source_revision_id": "srcrev:synthetic-gatewatch-codex-v1",
+        "source_domain": "prep",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": true,
+        "locator": "fixture://synthetic-gatewatch-codex#keep-core",
+        "uri": null
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:gatewatch-mustering-core",
+        "source_artifact_id": "src:synthetic-gatewatch-codex",
+        "source_revision_id": "srcrev:synthetic-gatewatch-codex-v1",
+        "source_domain": "prep",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": true,
+        "locator": "fixture://synthetic-gatewatch-codex#mustering-core",
+        "uri": null
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:mustering-at-keep",
+        "source_artifact_id": "src:synthetic-gatewatch-codex",
+        "source_revision_id": "srcrev:synthetic-gatewatch-codex-v1",
+        "source_domain": "prep",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": true,
+        "locator": "fixture://synthetic-gatewatch-codex#mustering-at-keep",
+        "uri": null
+      }
+    ]
+  }
+}

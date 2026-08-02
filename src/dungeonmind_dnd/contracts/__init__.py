@@ -1,4 +1,4 @@
-"""D&D profile-owned contract families (vocabulary catalog + candidates)."""
+"""D&D profile-owned contract families (vocabulary catalog, candidates, plans)."""
 
 from .candidates import (
     FORBIDDEN_THREAT_KIND,
@@ -11,6 +11,19 @@ from .candidates import (
     DndNodeCandidate,
     DndRelationshipCandidate,
     DndThreatCandidatePacket,
+)
+from .contribution_planning import (
+    THREAT_CONTRIBUTION_PLAN_SCHEMA,
+    DndCandidateResolution,
+    DndExistingObjectVerification,
+    DndExistingObjectVerificationState,
+    DndMatchChannel,
+    DndPlanBlocker,
+    DndPlanBlockerCode,
+    DndRelationshipPlan,
+    DndRelationshipPlanState,
+    DndThreatContributionPlan,
+    DndThreatPlanStatus,
 )
 from .vocabulary import (
     SEMANTIC_VOCABULARY_SCHEMA,
@@ -29,13 +42,24 @@ __all__ = [
     "REQUIRED_THREAT_PREDICATE",
     "SEMANTIC_VOCABULARY_SCHEMA",
     "THREAT_CANDIDATE_PACKET_SCHEMA",
+    "THREAT_CONTRIBUTION_PLAN_SCHEMA",
     "VOCABULARY_REF_SCHEMA",
     "DndCandidateContractModel",
     "DndCandidateEndpointRef",
+    "DndCandidateResolution",
+    "DndExistingObjectVerification",
+    "DndExistingObjectVerificationState",
+    "DndMatchChannel",
     "DndNodeCandidate",
+    "DndPlanBlocker",
+    "DndPlanBlockerCode",
     "DndRelationshipCandidate",
+    "DndRelationshipPlan",
+    "DndRelationshipPlanState",
     "DndSemanticVocabulary",
     "DndThreatCandidatePacket",
+    "DndThreatContributionPlan",
+    "DndThreatPlanStatus",
     "DndVocabularyObjectKind",
     "DndVocabularyPredicate",
     "DndVocabularyRef",

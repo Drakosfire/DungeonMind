@@ -41,20 +41,32 @@ uv run pyright          # static type check over src/
    revision publication with stale-parent rejection).
 8. **Type hints required** (ruff `ANN` rules active for `src/` and `scripts/`).
 
-## Semantic profile boundary (hard rules, ADR-0004, ADR-0005)
+## Semantic profile boundary (hard rules, ADR-0004, ADR-0005, ADR-0006)
 
 - **No code under `src/dungeonmind` imports `dungeonmind_dnd`** — enforced by
   `tests/unit/test_import_boundaries.py`.
 - **D&D semantic terms belong only under `src/dungeonmind_dnd`.** Profile
   packages are executable but side-effect-free: strict contracts and pure
-  deterministic logic that may import only `dungeonmind.contracts.base`,
-  `dungeonmind.contracts.evidence`, `dungeonmind.contracts.semantic_profile`,
-  and `dungeonmind.domain.canonical` (plus stdlib/pydantic) — never kernel
-  application, infrastructure, service, or agent layers, and never provider,
-  database, or API-framework dependencies.
+  deterministic logic. Most modules may import only
+  `dungeonmind.contracts.base`, `dungeonmind.contracts.evidence`,
+  `dungeonmind.contracts.semantic_profile`, and
+  `dungeonmind.domain.canonical` (plus stdlib/pydantic). Only the B.2d
+  planning modules may also import `graph_snapshot`, `contribution`,
+  `graph`, `identity`, and `vocabulary` — never repositories,
+  infrastructure, service, or agent layers, and never provider, database,
+  or API-framework dependencies.
 - **No profile package accesses repositories, providers, network, files, or
   config on import.** Registration on import is forbidden; package-data
   reads happen only inside loader functions.
+- **Profile planners receive exact revisions; they never query
+  repositories.** Never plan from a caller-scoped graph snapshot.
+- **Exact matching may propose identity; it never confirms identity.** Any
+  ambiguity or cross-kind collision blocks the entire plan.
+- **Existing relationship triples are not silently merged.**
+- **Generated contribution assertions remain candidate and GM-only.** No
+  planner creates `IdentityDecisionRecord` or calls append/publish.
+- **Retries reuse the same `planned_at`.** It is caller-supplied operation
+  identity for deterministic plan IDs.
 - **New vocabulary terms require a new immutable catalog revision** (new
   `vocabulary_revision` pin, new catalog digest). Never edit a published
   catalog in place.

@@ -47,8 +47,19 @@ Profile-side candidate layer (PR B.2c — dungeonmind_dnd only)
   vocabulary catalog (exact kinds/predicates + direction)
   strict provenance-bearing candidate contracts
   deterministic candidate validation and prompt/schema rendering
-        no graph read/write authority, no identity resolution,
-        no publication, no LLM
+        no repository access, no durable identity decision,
+        no contribution append, no graph publication, no LLM
+
+Profile-side graph planning layer (PR B.2d — dungeonmind_dnd only)
+  validated Threat packet
+  + exact StoredGraphRevision
+  + configured GraphSnapshotReader
+  → create-or-connect plan
+  → candidate-only GraphContribution preview
+        no repository access
+        no durable identity decision
+        no contribution append
+        no graph publication
 ```
 
 ## 2. Governing invariant
@@ -118,6 +129,7 @@ These were proven in DungeonMindBuddy and are not reopened by this repo
 | Semantic profile identity model: ref/descriptor/registry contracts, registry port, qualified-term admission | **DungeonMind** | `contracts/semantic_profile.py`, `application/semantic_profiles.py` (PR B.2b, ADR-0004) |
 | D&D 5e profile descriptor content (namespaces, revisions, digests) | **DungeonMindDnD** (`src/dungeonmind_dnd/`) | sibling package; kernel never imports it (PR B.2b, ADR-0004) |
 | D&D vocabulary catalogs, candidate contracts, candidate validation, prompt/schema rendering | **DungeonMindDnD** (`src/dungeonmind_dnd/`) | side-effect-free executable profile package; pure deterministic logic only (PR B.2c, ADR-0005) |
+| D&D create-or-connect planning and candidate-only contribution preview against a passed exact revision | **DungeonMindDnD** (`src/dungeonmind_dnd/`) | repository-blind; graph-aware through passed values only (PR B.2d, ADR-0006) |
 | Which profiles a deployment loads; descriptor file locations | **Operator configuration** | local registry config; locators are never durable identity (PR B.2b) |
 | Schema, migrations, repository ports, PostgreSQL adapters, reconstruction tooling | **DungeonMind** | `migrations/`, `infrastructure/postgres` (PR B) |
 | Dev/CI PostgreSQL substrate definition (pinned pgvector compose) | **DungeonMind** | PR B |
@@ -146,14 +158,16 @@ infrastructure.memory / .postgres (PR B) │ agents.* │ service.api (later)
 - The semantic-profile dependency is one-way: no code under
   `src/dungeonmind` imports `dungeonmind_dnd` (enforced by
   `tests/unit/test_import_boundaries.py`). `dungeonmind_dnd` is an
-  executable profile package (ADR-0005): it may contain side-effect-free
-  contracts and pure deterministic validation, importing only
-  `dungeonmind.contracts.base`, `dungeonmind.contracts.evidence`,
-  `dungeonmind.contracts.semantic_profile`, and
-  `dungeonmind.domain.canonical` — never kernel application,
-  infrastructure, service, or agent layers, providers, databases, or API
-  frameworks; no registration side effects and no import-time resource
-  reads. Profile resolution flows through the `SemanticProfileRegistry`
+  executable profile package (ADR-0005/ADR-0006): it may contain
+  side-effect-free contracts and pure deterministic validation/planning.
+  Most modules import only `dungeonmind.contracts.base`,
+  `dungeonmind.contracts.evidence`, `dungeonmind.contracts.semantic_profile`,
+  and `dungeonmind.domain.canonical`. The B.2d planning modules alone may
+  also import `graph_snapshot`, `contribution`, `graph`, `identity`, and
+  `vocabulary` contracts — never repositories, infrastructure, service, or
+  agent layers, providers, databases, or API frameworks; no registration
+  side effects and no import-time resource reads. Profile resolution flows
+  through the `SemanticProfileRegistry`
   port and operator configuration, never through package imports. One
   wheel currently ships both packages.
 - No runtime imports from sibling repositories (`graph_memory`,
@@ -309,8 +323,9 @@ Rules that bind this layer:
 - **Candidate identity is temporary.** Candidates carry packet-local IDs, a
   closed evidence ledger, and no stable IDs, merge outcomes, confidence,
   property bags, or write-path fields. Existing graph objects are
-  referenced explicitly (`existing_object_id` + `expected_kind`) but stay
-  unverified until a graph-aware successor (B.2d).
+  referenced explicitly (`existing_object_id` + `expected_kind`) and are
+  verified against a passed exact revision by the B.2d planner — never by
+  the candidate packet alone.
 - **Prompts are never authority.** The rendered prompt fragment is
   deterministic catalog output; validation authority is the catalog alone.
 - **The bundled catalog is the only validation authority.** Injected
@@ -321,8 +336,38 @@ Rules that bind this layer:
   `parse_threat_candidate_packet`, which converts Pydantic failures into
   sanitized package-owned errors that never echo rejected input (labels,
   summaries, evidence locators, source prose).
-- **No graph authority.** The package reads no graphs, calls no LLM,
-  persists nothing, and publishes nothing.
+- **No graph authority in the candidate layer.** B.2c validation reads no
+  graphs, calls no LLM, persists nothing, and publishes nothing. Graph-aware
+  planning is a separate B.2d capability (§6.3).
+
+### 6.3 Profile-side graph planning layer (PR B.2d, ADR-0006)
+
+`dungeonmind_dnd` owns one additional non-mutating capability: reconcile a
+validated Threat packet against one exact `StoredGraphRevision` (plus a
+configured `GraphSnapshotReader`) and emit a deterministic
+`DndThreatContributionPlan` with a candidate-only `GraphContribution`
+preview when — and only when — the entire packet is safe for review.
+
+Rules that bind this layer:
+
+- **Still not a generic interpretation layer.** Graph revision supplies
+  identity state; D&D package supplies exact term semantics and planning
+  policy.
+- **Repository-blind.** The planner receives a passed revision; it never
+  imports repositories, looks up current head, appends, or publishes.
+- **Full unscoped payload required.** The planner parses the complete
+  stored payload itself so a scoped snapshot cannot hide an identity.
+- **Exact matching proposes; it never confirms.** Same-kind singleton →
+  `resolved_existing`; no match → deterministic `provisional_new`;
+  ambiguity or cross-kind collision blocks the whole plan.
+- **Explicit existing IDs are stronger than label matching.** Verified by
+  ID and kind only; never substituted.
+- **Existing relationship triples block.** Evidence augmentation is
+  undesigned; silent merge is forbidden.
+- **Expected parent is pinned, not CAS-checked.** Future commit remains
+  responsible for stale-parent publication.
+- **Preview stays candidate/GM/asserted.** No `IdentityDecisionRecord`, no
+  accepted assertions, no durable write.
 
 ## 7. Persistence strategy (summary of ADR-0001/0002/0003)
 
@@ -345,20 +390,28 @@ assertion-scoped alias/summary read projection (PR B.2a), the semantic
 profile boundary with `dm_union_graph_v3` plus the `dungeonmind_dnd`
 sibling package (PR B.2b), and the package's first executable capability —
 the Threat vocabulary catalog, candidate contracts, and deterministic
-candidate validation (PR B.2c) — have landed. Next: graph-aware candidate
-resolution and reviewable contribution planning (B.2d), exact external
+candidate validation (PR B.2c), and non-mutating pinned create-or-connect
+contribution planning (PR B.2d) — have landed. This planning layer is still
+not a generic interpretation layer: the graph revision supplies identity
+state, not D&D meaning; the D&D package supplies exact term semantics and
+planning policy; the full unscoped payload is required to prevent hidden
+duplicate identities; the expected parent is pinned but not checked against
+current head (future commit remains responsible for stale-parent CAS).
+Next: durable contribution review adoption (B.2e), accepted contribution
+materialization and CAS publication (B.2f), exact external
 mechanics/statblock binding for a Threat consumer (B.3), pgvector
 benchmark backend via RulesIngestion Option B (PR C), embedding bakeoff
 (PR D), DungeonMindServer retrieval seam (PR E), and production IaC
 integration (PR F). Conversation/chat history is never authoritative anywhere
-in this target state. Still false after B.2c: generic assertion frameworks,
+in this target state. Still false after B.2d: generic assertion frameworks,
 assertion-scoped relationships, assertion authoring, source opening, Hermes,
 and external product-surface adoption — plus, on the profile boundary: any
-LLM-backed extraction runtime, any graph-aware candidate resolution or
-identity work, any candidate-to-contribution planning or publication, any
-statblock/mechanics binding, any profile interpretation layer (admit/reject
-in the kernel plus one narrow D&D candidate validator is all that exists),
-cross-profile mapping, multi-game/multi-system product support,
-audience-policy generalization into profile data, and a separate repository
-or distribution for `dungeonmind_dnd`. The B.2b canary proves kernel/profile
-decoupling; it does not prove multi-system support.
+LLM-backed extraction runtime, durable identity decisions, contribution
+append or graph publication, fuzzy/semantic identity resolution, any
+statblock/mechanics binding, any generic profile interpretation layer
+(admit/reject in the kernel plus one narrow D&D candidate validator and one
+exact-match planner is all that exists), cross-profile mapping,
+multi-game/multi-system product support, audience-policy generalization into
+profile data, and a separate repository or distribution for
+`dungeonmind_dnd`. The B.2b canary proves kernel/profile decoupling; it does
+not prove multi-system support.

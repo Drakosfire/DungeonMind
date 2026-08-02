@@ -31,3 +31,19 @@ class DndCandidateValidationError(DndError):
     """A candidate packet violated catalog-owned term or pin rules."""
 
     code = "dnd_candidate_validation_error"
+
+
+class DndContributionPlanningError(DndError):
+    """Contribution planning inputs or environment cannot be trusted.
+
+    Integrity failures (malformed packets, payload hash mismatch, unsupported
+    graph schema, world/profile mismatch, deterministic-ID collision,
+    planner invariant failure) raise this error and produce no plan. Valid
+    inputs that merely require human review surface as plan blockers instead.
+    Details identify packet/candidate/relationship/object IDs, qualified
+    terms, schema/profile/vocabulary IDs, digests, and exception type names —
+    never labels, aliases, summaries, source prose, evidence locators, graph
+    prose, raw payloads, filesystem paths, or chained parser exceptions.
+    """
+
+    code = "dnd_contribution_planning_error"

@@ -4,6 +4,7 @@
 **Date:** 2026-08-01
 **Deciders:** B.2c implementing agent, per operator dispatch
 **Supersedes:** none
+**Extended by:** ADR-0006 (pinned profile create-or-connect contribution planning)
 **Related:** ADR-0004 (semantic profile boundary), `src/dungeonmind_dnd/`,
 `contracts/semantic_profile.py` (kernel, unchanged),
 `tests/unit/test_import_boundaries.py`
