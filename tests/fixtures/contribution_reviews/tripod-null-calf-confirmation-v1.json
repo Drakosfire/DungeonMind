@@ -1,8 +1,8 @@
 {
   "schema_version": "dm_commit_confirmation_receipt_v1",
-  "confirmation_id": "confirm:052d9aad1773f70450b6714a22f984bf",
+  "confirmation_id": "confirm:fa0d200c9922caf3c7e925b320cf9dae",
   "operation_id": "reviewop:11111111111111111111111111111111",
-  "review_intent_sha256": "d78365ea7deb18feadab9e96d031533e513cc4a9ff90123d816c1e5b6901975c",
+  "review_intent_sha256": "0a3cdd6f704a22a5d954c028b20c17220074442bfb2c70e1367afda3493174ce",
   "actor": "operator:synthetic-gm",
   "tool_name": "dungeonmind.finalize_contribution_review",
   "effect": "commit",

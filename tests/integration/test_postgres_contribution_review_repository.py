@@ -12,7 +12,6 @@ from dungeonmind.domain.errors import (
     InvalidLifecycleTransitionError,
     PersistenceIntegrityError,
 )
-from dungeonmind.infrastructure.postgres.database import jsonb
 from tests.unit.test_contribution_review_service import (
     _intent,
     _policy,
@@ -244,6 +243,8 @@ def test_postgres_review_failure_rolls_back_all_children(
 
 @pytest.mark.integration
 def test_postgres_review_reload_detects_record_and_child_corruption(pg) -> None:
+    from dungeonmind.infrastructure.postgres.database import jsonb
+
     intent = _intent()
     _publish_fixture_revision(pg)
     state = finalize_contribution_review(

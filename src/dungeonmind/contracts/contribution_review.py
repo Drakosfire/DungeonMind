@@ -24,6 +24,7 @@ from .contribution import (
     ContributionSourceKind,
     ContributionStatus,
     GraphContribution,
+    GraphContributionAssertion,
 )
 from .identity import IdentityOutcome
 from .semantic_profile import SemanticProfileRef
@@ -41,7 +42,7 @@ CONTRIBUTION_REVIEW_STATE_SCHEMA = "dm_contribution_review_state_v1"
 FINALIZE_REVIEW_TOOL = "dungeonmind.finalize_contribution_review"
 FINALIZE_REVIEW_EFFECT = "commit"
 
-_REVIEW_INTENT_DIGEST_SCHEMA = "dm_contribution_review_intent_digest_v1"
+_REVIEW_INTENT_DIGEST_SCHEMA = CONTRIBUTION_REVIEW_INTENT_SCHEMA
 _CONFIRMATION_ID_SCHEMA = "dm_confirmation_id_v1"
 _REVIEW_ID_SCHEMA = "dm_contribution_review_id_v1"
 _REVIEWED_CONTRIBUTION_ID_SCHEMA = "dm_reviewed_contribution_id_v1"
@@ -50,6 +51,7 @@ _OPERATION_ID = re.compile(r"^reviewop:[0-9a-f]{32}$")
 _REVIEW_ID = re.compile(r"^review:[0-9a-f]{32}$")
 _CONFIRMATION_ID = re.compile(r"^confirm:[0-9a-f]{32}$")
 _CONTRIBUTION_ID = re.compile(r"^contrib:[0-9a-f]{32}$")
+_REVIEWABLE_ASSERTION_KINDS = frozenset({"label", "alias", "summary", "relationship"})
 
 
 def _canonical_sha256(value: object) -> str:
@@ -85,6 +87,17 @@ def _require_nonblank(value: str, *, field_name: str) -> str:
 def contribution_payload_sha256(contribution: GraphContribution) -> str:
     """Digest the complete serialized contribution payload."""
     return _canonical_sha256(contribution.model_dump(mode="json"))
+
+
+def _validate_reviewable_assertions(
+    assertions: list[GraphContributionAssertion],
+) -> None:
+    assertion_ids = [assertion.assertion_id for assertion in assertions]
+    if len(assertion_ids) != len(set(assertion_ids)):
+        raise ValueError("candidate assertion IDs must be unique")
+    for assertion in assertions:
+        if assertion.assertion_kind not in _REVIEWABLE_ASSERTION_KINDS:
+            raise ValueError("unsupported assertion kind for finalized review")
 
 
 def derive_review_intent_sha256(
@@ -351,6 +364,7 @@ class ContributionReviewIntent(DungeonMindModel):
             raise ValueError("review intents contain no unresolved mentions")
         if contribution.diagnostics:
             raise ValueError("review intents contain no diagnostics")
+        _validate_reviewable_assertions(contribution.assertions)
         for assertion in contribution.assertions:
             if (
                 assertion.acceptance_state is not AcceptanceState.CANDIDATE
@@ -618,6 +632,8 @@ class ContributionReviewState(DungeonMindModel):
             raise ValueError("review state cannot retain unresolved mentions")
         if candidate.diagnostics or reviewed.diagnostics:
             raise ValueError("review state cannot retain diagnostics")
+        _validate_reviewable_assertions(candidate.assertions)
+        _validate_reviewable_assertions(reviewed.assertions)
         for assertion in candidate.assertions:
             if assertion.acceptance_state is not AcceptanceState.CANDIDATE:
                 raise ValueError("stored candidate assertions must remain candidate")

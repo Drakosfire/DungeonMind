@@ -9,12 +9,17 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from dungeonmind.contracts.contribution import AcceptanceState
+from dungeonmind.contracts.contribution import (
+    AcceptanceState,
+    GraphContribution,
+)
 from dungeonmind.contracts.contribution_review import (
     ContributionReviewIntent,
     ContributionReviewState,
+    contribution_payload_sha256,
     derive_review_intent_sha256,
 )
+from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 
 from .test_contribution_review_service import _intent, _submission
 
@@ -69,15 +74,29 @@ def test_finalized_state_fixture_is_contract_valid() -> None:
 
 def test_generic_intent_accepts_non_dnd_source_plan_schema() -> None:
     intent = _intent()
+    candidate_payload = intent.candidate_contribution.model_dump(mode="json")
+    candidate_payload["assertions"][0]["label"] = "synthetic label"
+    candidate_payload["assertions"][0]["value"] = "synthetic label"
+    candidate = GraphContribution.model_validate(candidate_payload)
     plan_ref = intent.plan_ref.model_copy(
-        update={"source_plan_schema": "synthetic_profile_plan_v1"}
+        update={
+            "source_plan_schema": "synthetic_profile_plan_v1",
+            "source_input_sha256": "c" * 64,
+            "preview_content_sha256": "d" * 64,
+            "candidate_contribution_sha256": contribution_payload_sha256(candidate),
+            "semantic_profile": SemanticProfileRef(
+                profile_id="synthetic.profile",
+                profile_revision="v1",
+                descriptor_sha256="a" * 64,
+            ),
+        }
     )
     digest = derive_review_intent_sha256(
         operation_id=intent.operation_id,
         world_id=intent.world_id,
         campaign_id=intent.campaign_id,
         plan_ref=plan_ref,
-        candidate_contribution=intent.candidate_contribution,
+        candidate_contribution=candidate,
         identity_proposals=intent.identity_proposals,
         identity_verdicts=intent.identity_verdicts,
         assertion_verdicts=intent.assertion_verdicts,
@@ -86,9 +105,61 @@ def test_generic_intent_accepts_non_dnd_source_plan_schema() -> None:
     )
     payload = intent.model_dump(mode="json")
     payload["plan_ref"] = plan_ref.model_dump(mode="json")
+    payload["candidate_contribution"] = candidate.model_dump(mode="json")
     payload["review_intent_sha256"] = digest
     generic = ContributionReviewIntent.model_validate(payload)
     assert generic.plan_ref.source_plan_schema == "synthetic_profile_plan_v1"
+    assert generic.candidate_contribution.assertions[0].label == "synthetic label"
+
+
+def _intent_with_candidate_mutation(mutator) -> dict[str, object]:
+    intent = _intent()
+    payload = intent.model_dump(mode="json")
+    candidate_payload = payload["candidate_contribution"]
+    mutator(candidate_payload)
+    candidate = GraphContribution.model_validate(candidate_payload)
+    plan_ref = intent.plan_ref.model_copy(
+        update={"candidate_contribution_sha256": contribution_payload_sha256(candidate)}
+    )
+    payload["candidate_contribution"] = candidate.model_dump(mode="json")
+    payload["plan_ref"] = plan_ref.model_dump(mode="json")
+    payload["review_intent_sha256"] = derive_review_intent_sha256(
+        operation_id=intent.operation_id,
+        world_id=intent.world_id,
+        campaign_id=intent.campaign_id,
+        plan_ref=plan_ref,
+        candidate_contribution=candidate,
+        identity_proposals=intent.identity_proposals,
+        identity_verdicts=intent.identity_verdicts,
+        assertion_verdicts=intent.assertion_verdicts,
+        reviewer_id=intent.reviewer_id,
+        reviewed_at=intent.reviewed_at,
+    )
+    return payload
+
+
+def test_intent_rejects_duplicate_candidate_assertion_ids() -> None:
+    payload = _intent_with_candidate_mutation(
+        lambda candidate: candidate["assertions"][1].update(
+            assertion_id=candidate["assertions"][0]["assertion_id"]
+        )
+    )
+    with pytest.raises(ValidationError):
+        ContributionReviewIntent.model_validate(payload)
+
+
+@pytest.mark.parametrize("acceptance_state", ["candidate", "accepted", "rejected"])
+def test_intent_rejects_unknown_assertion_kind(
+    acceptance_state: str,
+) -> None:
+    def mutate(candidate: dict[str, object]) -> None:
+        assertion = candidate["assertions"][0]
+        assertion["assertion_kind"] = "attribute"
+        assertion["acceptance_state"] = acceptance_state
+
+    payload = _intent_with_candidate_mutation(mutate)
+    with pytest.raises(ValidationError):
+        ContributionReviewIntent.model_validate(payload)
 
 
 @pytest.mark.parametrize(
