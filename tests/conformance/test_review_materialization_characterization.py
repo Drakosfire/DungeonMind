@@ -47,6 +47,9 @@ from dungeonmind_dnd.application.contribution_planning import (
 from dungeonmind_dnd.application.contribution_review import (
     build_threat_contribution_review_intent,
 )
+from dungeonmind_dnd.contracts.contribution_planning import (
+    DndThreatContributionPlan,
+)
 
 from .review_materialization_characterization import (
     ReviewEffectCharacterizationError,
@@ -112,7 +115,7 @@ def _state() -> ContributionReviewState:
 
 
 def _review_state_from_plan(
-    plan: Any,
+    plan: DndThreatContributionPlan,
 ) -> ContributionReviewState:
     contribution = plan.proposed_contribution
     assert contribution is not None
@@ -442,6 +445,12 @@ def _mutate_parent_assertion_id_collision(
     parent_assertion_id: str,
 ) -> None:
     target = "obj:0ad51ac659fdcc7600be620b6645a7a0"
+    old_assertion_id = next(
+        item["assertion_id"]
+        for item in payload["candidate_contribution"]["assertions"]
+        if item["assertion_kind"] == assertion_kind
+        and item["subject_object_id"] == target
+    )
     for contribution_key in ("candidate_contribution", "reviewed_contribution"):
         assertion = next(
             item
@@ -449,11 +458,9 @@ def _mutate_parent_assertion_id_collision(
             if item["assertion_kind"] == assertion_kind
             and item["subject_object_id"] == target
         )
-        old_assertion_id = assertion["assertion_id"]
+        if assertion["assertion_id"] != old_assertion_id:
+            raise AssertionError("candidate and reviewed assertion IDs drifted")
         assertion["assertion_id"] = parent_assertion_id
-        for other in payload[contribution_key]["assertions"]:
-            if other is not assertion and other["assertion_id"] == old_assertion_id:
-                other["assertion_id"] = parent_assertion_id
     for verdict in payload["record"]["assertion_verdicts"]:
         if verdict["assertion_id"] == old_assertion_id:
             verdict["assertion_id"] = parent_assertion_id
