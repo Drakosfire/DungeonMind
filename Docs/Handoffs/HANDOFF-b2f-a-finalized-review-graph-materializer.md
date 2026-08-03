@@ -117,9 +117,10 @@ dispatch—not an invitation to add a new graph schema:
   duplicate relationship triples, pre-existing relationship triples, dangling
   endpoints, and derived relationship-ID collisions fail closed.
 
-The returned `FinalizedReviewGraphMaterialization.graph_payload` must be
-recursively immutable while remaining JSON-compatible. Its stored digest must
-continue to equal the canonical digest after any attempted caller mutation.
+The returned `FinalizedReviewGraphMaterialization` stores its payload as private
+canonical JSON and returns a fresh JSON-compatible deep copy on every
+`graph_payload` read. Caller mutation of that copy must never alter the stored
+payload or digest, and `copy.deepcopy` of the result must remain supported.
 
 ## §3 Explicitly false after this slice
 
@@ -181,7 +182,7 @@ evidence rows against the merged B.2f-0 characterization.
 The owning conformance suite must prove:
 
 - exact payload and digest;
-- recursive result-payload immutability and digest binding;
+- copy-on-read result-payload isolation and digest binding;
 - deterministic replay and relationship IDs;
 - actual B.2d planner output through the B.2e review adapter for
   `confirm_existing`;
@@ -195,8 +196,10 @@ The owning conformance suite must prove:
 - orphan assertions;
 - duplicate and pre-existing relationship triples;
 - derived relationship-ID collisions;
+- reader input-mutation isolation for both parent and output parses;
 - output reparse and output-field/triple/evidence validation failure;
-- input parent immutability.
+- input parent immutability and byte-equivalent untouched-row preservation at
+  original list positions.
 
 The fixture must be generated from the real finalized B.2e state and exact
 Gatewatch parent, not hand-authored as an approximation. The independent

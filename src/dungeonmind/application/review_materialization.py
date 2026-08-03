@@ -8,8 +8,9 @@ decisions, or expose a transport surface.
 from __future__ import annotations
 
 import copy
+import json
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, NoReturn
 
 from ..contracts.contribution import (
@@ -21,7 +22,7 @@ from ..contracts.contribution_review import (
     ContributionReviewState,
 )
 from ..contracts.graph import StoredGraphRevision
-from ..domain.canonical import canonical_sha256
+from ..domain.canonical import canonical_json, canonical_sha256
 from ..domain.errors import ContributionMaterializationError
 from .graph_snapshot import GraphSnapshotReader, ParsedGraphSnapshot
 
@@ -29,58 +30,9 @@ GRAPH_SCHEMA_V3 = "dm_union_graph_v3"
 RELATIONSHIP_ID_SCHEMA = "dm_review_relationship_id_v1"
 
 
-class _FrozenDict(dict[str, Any]):
-    """JSON-compatible dictionary that rejects every ordinary mutation."""
-
-    def __init__(self, values: dict[str, Any]) -> None:
-        dict.__init__(self, values)
-
-    def _immutable(self, *_args: Any, **_kwargs: Any) -> NoReturn:
-        raise TypeError("materialization graph payload is immutable")
-
-    __delitem__ = __setitem__ = clear = pop = popitem = _immutable
-
-    def setdefault(self, _key: str, _default: Any = None) -> Any:
-        self._immutable()
-
-    def update(self, *_args: Any, **_kwargs: Any) -> None:
-        self._immutable()
-
-    def __ior__(self, _other: Any) -> NoReturn:
-        self._immutable()
-
-
-class _FrozenList(list[Any]):
-    """JSON-compatible list that rejects every ordinary mutation."""
-
-    def __init__(self, values: list[Any]) -> None:
-        list.__init__(self, values)
-
-    def _immutable(self, *_args: Any, **_kwargs: Any) -> NoReturn:
-        raise TypeError("materialization graph payload is immutable")
-
-    __delitem__ = __setitem__ = __iadd__ = __imul__ = _immutable
-    append = clear = extend = insert = pop = remove = reverse = _immutable
-
-    def sort(self, *, key: Any = None, reverse: bool = False) -> None:
-        self._immutable()
-
-
-def _freeze_payload(value: Any) -> Any:
-    if isinstance(value, dict):
-        return _FrozenDict(
-            {key: _freeze_payload(item) for key, item in value.items()}
-        )
-    if isinstance(value, list):
-        return _FrozenList([_freeze_payload(item) for item in value])
-    if isinstance(value, tuple):
-        return tuple(_freeze_payload(item) for item in value)
-    return value
-
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class FinalizedReviewGraphMaterialization:
-    """Ephemeral, content-bound result of pure review materialization."""
+    """Ephemeral result with a private canonical payload and copy-on-read access."""
 
     world_id: str
     review_id: str
@@ -92,16 +44,50 @@ class FinalizedReviewGraphMaterialization:
     expected_parent_revision_id: str
     parent_graph_payload_sha256: str
     graph_schema: str
-    graph_payload: dict[str, Any]
     graph_payload_sha256: str
+    _graph_payload_json: str = field(repr=False)
 
-    def __post_init__(self) -> None:
-        payload = copy.deepcopy(self.graph_payload)
-        if self.graph_schema != GRAPH_SCHEMA_V3:
+    def __init__(
+        self,
+        world_id: str,
+        review_id: str,
+        reviewed_contribution_id: str,
+        reviewed_contribution_sha256: str,
+        review_intent_sha256: str,
+        confirmation_id: str,
+        operation_id: str,
+        expected_parent_revision_id: str,
+        parent_graph_payload_sha256: str,
+        graph_schema: str,
+        graph_payload: dict[str, Any],
+        graph_payload_sha256: str,
+    ) -> None:
+        payload = copy.deepcopy(graph_payload)
+        if graph_schema != GRAPH_SCHEMA_V3:
             raise ValueError("materialization result has an unsupported graph schema")
-        if canonical_sha256(payload) != self.graph_payload_sha256:
+        if canonical_sha256(payload) != graph_payload_sha256:
             raise ValueError("materialization result payload digest does not match")
-        object.__setattr__(self, "graph_payload", _freeze_payload(payload))
+        object.__setattr__(self, "world_id", world_id)
+        object.__setattr__(self, "review_id", review_id)
+        object.__setattr__(self, "reviewed_contribution_id", reviewed_contribution_id)
+        object.__setattr__(self, "reviewed_contribution_sha256", reviewed_contribution_sha256)
+        object.__setattr__(self, "review_intent_sha256", review_intent_sha256)
+        object.__setattr__(self, "confirmation_id", confirmation_id)
+        object.__setattr__(self, "operation_id", operation_id)
+        object.__setattr__(self, "expected_parent_revision_id", expected_parent_revision_id)
+        object.__setattr__(
+            self,
+            "parent_graph_payload_sha256",
+            parent_graph_payload_sha256,
+        )
+        object.__setattr__(self, "graph_schema", graph_schema)
+        object.__setattr__(self, "graph_payload_sha256", graph_payload_sha256)
+        object.__setattr__(self, "_graph_payload_json", canonical_json(payload))
+
+    @property
+    def graph_payload(self) -> dict[str, Any]:
+        """Return a fresh JSON-compatible copy that cannot mutate this result."""
+        return json.loads(self._graph_payload_json)
 
 
 def _fail(reason: str, **details: Any) -> NoReturn:
@@ -153,9 +139,10 @@ def _parse_parent(
             graph_schema=revision.graph_schema,
         )
     try:
+        reader_payload = copy.deepcopy(parent.graph_payload)
         snapshot = graph_reader.parse(
             graph_schema=revision.graph_schema,
-            graph_payload=parent.graph_payload,
+            graph_payload=reader_payload,
         )
     except Exception:
         _fail("parent_reload_validation", graph_schema=revision.graph_schema)
@@ -608,9 +595,10 @@ def materialize_finalized_review(
     ]
 
     try:
+        reader_payload = copy.deepcopy(payload)
         output_snapshot = graph_reader.parse(
             graph_schema=GRAPH_SCHEMA_V3,
-            graph_payload=payload,
+            graph_payload=reader_payload,
         )
     except Exception:
         _fail("output_graph_validation")

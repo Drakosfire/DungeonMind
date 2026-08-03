@@ -235,6 +235,14 @@ def _assert_payload_matches_effect_oracle(
     }
     assert output_evidence == oracle["accepted_evidence"]
 
+    for index, parent_node in enumerate(parent_payload["nodes"]):
+        if parent_node["object_id"] not in expected_effect_ids:
+            assert payload["nodes"][index] == parent_node
+    for index, parent_relationship in enumerate(parent_payload["relationships"]):
+        assert payload["relationships"][index] == parent_relationship
+    for index, parent_evidence_row in enumerate(parent_payload["evidence_refs"]):
+        assert payload["evidence_refs"][index] == parent_evidence_row
+
 
 @pytest.mark.conformance
 def test_tripod_materializes_exact_payload_and_independent_effects() -> None:
@@ -282,19 +290,23 @@ def test_result_binds_review_parent_and_is_replay_deterministic() -> None:
 
 
 @pytest.mark.conformance
-def test_result_payload_is_recursively_immutable_and_digest_bound() -> None:
+def test_result_payload_is_copy_on_read_and_digest_bound() -> None:
     parent, reader = _parent_inputs()
     result = _materialize(_state(), parent, reader)
     digest = result.graph_payload_sha256
+    original = copy.deepcopy(result.graph_payload)
+    caller_copy = result.graph_payload
 
-    with pytest.raises(TypeError, match="immutable"):
-        result.graph_payload["nodes"][0]["label"] = "tampered"
-    with pytest.raises(TypeError, match="immutable"):
-        result.graph_payload["nodes"].append({"object_id": "tampered"})
-    with pytest.raises(TypeError, match="immutable"):
-        result.graph_payload["nodes"][0]["alias_assertions"].clear()
+    caller_copy["nodes"][0]["label"] = "tampered"
+    caller_copy["nodes"].append({"object_id": "tampered"})
+    caller_copy["nodes"][0]["alias_assertions"].clear()
+    dict.__setitem__(caller_copy["nodes"][0], "label", "bypass-tampered")
+    list.append(caller_copy["nodes"], {"object_id": "bypass-tampered"})
 
+    assert result.graph_payload == original
     assert canonical_sha256(result.graph_payload) == digest
+    copied_result = copy.deepcopy(result)
+    assert copied_result.graph_payload == original
 
 
 @pytest.mark.conformance
@@ -640,6 +652,24 @@ class _RejectOutputReader:
         )
 
 
+class _MutatingReader:
+    def __init__(self, delegate: UnionGraphV3SnapshotReader) -> None:
+        self.delegate = delegate
+        self.calls = 0
+
+    def parse(self, *, graph_schema: str, graph_payload: dict[str, Any]):
+        self.calls += 1
+        snapshot = self.delegate.parse(
+            graph_schema=graph_schema,
+            graph_payload=graph_payload,
+        )
+        if self.calls == 1:
+            graph_payload["nodes"][0]["label"] = "reader-mutated-parent"
+        else:
+            graph_payload["relationships"][0]["predicate"] = "reader-mutated-output"
+        return snapshot
+
+
 class _TamperOutputReader:
     def __init__(self, delegate: UnionGraphV3SnapshotReader) -> None:
         self.delegate = delegate
@@ -677,6 +707,21 @@ def test_output_reparse_failure_is_sanitized_and_write_free() -> None:
         _materialize(_state(), parent, _RejectOutputReader(reader))
     _assert_reason(exc, "output_graph_validation")
     assert parent.graph_payload == before
+
+
+@pytest.mark.conformance
+def test_reader_mutation_cannot_change_parent_or_result_payload() -> None:
+    parent, reader = _parent_inputs()
+    before = copy.deepcopy(parent.graph_payload)
+    expected = json.loads(MATERIALIZED_FIXTURE.read_text(encoding="utf-8"))
+
+    mutating_reader = _MutatingReader(reader)
+    result = _materialize(_state(), parent, mutating_reader)
+
+    assert mutating_reader.calls == 2
+    assert parent.graph_payload == before
+    assert result.graph_payload == expected
+    assert result.graph_payload_sha256 == canonical_sha256(expected)
 
 
 @pytest.mark.conformance

@@ -121,7 +121,7 @@ What exists today:
   record together;
 - pure generic materialization of one finalized review against one exact pinned
   `dm_union_graph_v3` parent, including deterministic accepted nodes, evidence,
-  relationships, output reparse, and an ephemeral recursively immutable,
+  relationships, output reparse, and an ephemeral copy-on-read,
   digest-bound result;
 
 What deliberately does **not** exist yet: expected-parent CAS publication,

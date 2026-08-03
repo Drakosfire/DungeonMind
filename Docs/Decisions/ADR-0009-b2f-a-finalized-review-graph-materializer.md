@@ -23,9 +23,10 @@ expected-parent and semantic-profile pins, parses the exact parent payload,
 deep-copies that payload, realizes accepted review effects, reparses the
 candidate output through the supplied reader, and returns a result bound to
 the review, reviewed contribution, confirmation, operation, parent, schema,
-and payload digest. The returned JSON-compatible payload is recursively
-immutable, so callers cannot alter graph bytes while retaining the original
-digest.
+and payload digest. The result stores private canonical JSON and exposes a
+fresh JSON-compatible copy on each payload read, so caller mutation cannot
+alter the stored graph bytes or retain a stale digest. The result remains
+deep-copyable for publication handoff.
 
 The materializer does not:
 
@@ -116,7 +117,7 @@ relationship evidence, and accepted evidence rows with the B.2f-0
 characterization. It also proves:
 
 - exact replay and deterministic relationship IDs;
-- recursive result-payload immutability and digest binding;
+- copy-on-read result-payload isolation and digest binding;
 - actual B.2d planner → B.2e review → materializer `confirm_existing`;
 - `create_new`, `confirm_existing`, and `reject_candidate`;
 - rejected assertion/evidence exclusion;
@@ -125,8 +126,10 @@ characterization. It also proves:
 - missing accepted graph evidence;
 - duplicate and pre-existing relationship rejection;
 - relationship-ID collision rejection;
+- reader input-mutation isolation for parent and output parsing;
 - output reparse and output-field/triple/evidence validation failure;
-- parent payload immutability and untouched-row preservation.
+- parent payload immutability and byte-equivalent untouched-row preservation at
+  original list positions.
 
 Publication, CAS, persistence, recovery, identity-decision append, and
 transport remain separate B.2f-b/c/d capabilities.
