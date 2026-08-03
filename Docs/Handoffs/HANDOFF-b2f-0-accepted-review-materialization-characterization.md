@@ -49,10 +49,13 @@ In scope:
   assertion/evidence identities and adds accepted assertion identities,
   summary replacement retires the parent summary assertion/evidence, and
   retained fields preserve their parent provenance.
-- The positive `confirm_existing` proof uses an exact same-kind candidate-term
-  match produced by the B.2d planner before characterization.
+- The positive `confirm_existing` proof uses the exact
+  `proposed_contribution` and plan provenance emitted by B.2d after an exact
+  same-kind candidate-term match, rather than mutating the create-new fixture.
 - Multiple accepted canonical label/summary assertions and normalized alias
   collisions fail closed.
+- Reused accepted alias/summary assertion IDs and emitted accepted evidence IDs
+  are checked against the exact parent namespaces and fail closed on collision.
 - Duplicate and pre-existing relationship triples fail closed because B.2d
   does not authorize evidence augmentation or silent merging.
 - Evidence references, source artifact/revision lineage, campaign scope,
@@ -61,7 +64,8 @@ In scope:
   graph-payload, and semantic-profile pins.
 - Determinism, tamper rejection, changed-parent rejection, rejected-assertion
   exclusion, pre-existing relationship rejection, duplicate relationship
-  rejection, and zero-write proof.
+  rejection, parent assertion/evidence namespace collision rejection, and
+  zero-write proof.
 
 Out of scope:
 

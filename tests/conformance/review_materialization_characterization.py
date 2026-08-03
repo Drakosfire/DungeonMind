@@ -122,6 +122,21 @@ def _parent_field_provenance(
     raise ReviewEffectCharacterizationError("unsupported object field provenance")
 
 
+def _parent_assertion_ids(snapshot: ParsedGraphSnapshot) -> set[str]:
+    return {
+        assertion.assertion_id
+        for obj in snapshot.objects.values()
+        for assertion in (
+            *obj.admitted_alias_assertions,
+            *(
+                [obj.admitted_summary_assertion]
+                if obj.admitted_summary_assertion is not None
+                else []
+            ),
+        )
+    }
+
+
 def _field_provenance(
     *,
     parent: dict[str, list[str]],
@@ -256,6 +271,8 @@ def characterize_finalized_review(
         raise ReviewEffectCharacterizationError(
             "parent semantic profile differs from the pinned plan"
         )
+    parent_assertion_ids = _parent_assertion_ids(parent_snapshot)
+    parent_evidence_ids = set(parent_snapshot.evidence)
 
     proposals = {item.candidate_id: item for item in record.identity_proposals}
     verdicts = {item.candidate_id: item for item in record.identity_verdicts}
@@ -305,6 +322,26 @@ def characterize_finalized_review(
                     "accepted node assertion has no target"
                 )
             accepted_by_target[assertion.subject_object_id].append(assertion)
+    reused_parent_assertion_ids = sorted(
+        parent_assertion_ids.intersection(
+            {
+                assertion.assertion_id
+                for assertion in accepted_assertions
+                if assertion.assertion_kind in {"alias", "summary"}
+            }
+        )
+    )
+    if reused_parent_assertion_ids:
+        raise ReviewEffectCharacterizationError(
+            "accepted source assertion ID collides with the exact parent namespace"
+        )
+    colliding_parent_evidence_ids = sorted(
+        parent_evidence_ids.intersection(evidence)
+    )
+    if colliding_parent_evidence_ids:
+        raise ReviewEffectCharacterizationError(
+            "accepted evidence ID collides with the exact parent namespace"
+        )
 
     identity_effects: list[dict[str, Any]] = []
     object_effects: list[dict[str, Any]] = []

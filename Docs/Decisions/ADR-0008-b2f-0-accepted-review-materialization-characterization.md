@@ -32,8 +32,8 @@ replace it with a production materializer only after this mapping is accepted.
 | `confirm_existing` identity verdict | `reuse_existing_object` with executable field operations | Target exists in parent with the proposed kind; one accepted label is an explicit `replace` of the canonical label slot, one accepted summary is an explicit `replace` of the canonical summary slot, and accepted aliases are explicit `append` values |
 | `reject_candidate` identity verdict | `exclude_from_graph_truth` | No object or dependent relationship effect |
 | accepted `label` | Object label | Subject target, label bytes, evidence, lineage, scope, temporal, visibility, epistemic kind preserved |
-| accepted `alias` | Object alias | Subject target and non-empty value preserved |
-| accepted `summary` | Object summary | Subject target and non-empty value preserved |
+| accepted `alias` | Object alias | Subject target and non-empty value preserved; reused source assertion/evidence IDs must not collide with the exact parent namespaces |
+| accepted `summary` | Object summary | Subject target and non-empty value preserved; reused source assertion/evidence IDs must not collide with the exact parent namespaces |
 | accepted `relationship` | Relationship key/effect proposal | Subject, predicate, object, evidence, lineage, scope, temporal, visibility, and epistemic kind preserved |
 | rejected assertion | Review history only | Assertion ID is excluded from every graph effect |
 | pre-existing relationship key | fail closed | B.2d does not authorize relationship evidence augmentation or silent merge |
@@ -55,6 +55,9 @@ and the resulting value(s), plus an explicit provenance transition:
   summary assertion.
 - Retained fields keep their parent assertion/evidence identities; omitted
   fields produce no assertion or evidence.
+- Reused accepted alias/summary assertion IDs and emitted accepted evidence IDs
+  are checked against the exact parent namespaces; any collision fails closed
+  before effects are emitted.
 
 An object has one canonical label slot and one summary slot; multiple accepted
 label or summary assertions therefore fail closed. Aliases are list additions
@@ -77,6 +80,8 @@ accepted relationship triple fails closed rather than silently merging evidence.
   checked; callers cannot supply an independently invented snapshot.
 - Invalid/tampered finalized review state fails before characterization.
 - Rejected assertions and their review history never appear in graph effects.
+- Parent assertion-ID and evidence-ID collisions fail closed before graph
+  effects are emitted.
 - Pre-existing and duplicate accepted relationship triples fail closed.
 - `durable_writes` is always empty; graph head and identity-decision effects
   are explicitly unchanged.

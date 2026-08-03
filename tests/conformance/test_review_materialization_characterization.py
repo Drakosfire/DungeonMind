@@ -15,12 +15,19 @@ from pydantic import ValidationError
 from dungeonmind.application.graph_snapshot import (
     UnionGraphV3SnapshotReader,
 )
-from dungeonmind.contracts.contribution import ContributionStatus, GraphContribution
+from dungeonmind.contracts.contribution import (
+    AcceptanceState,
+    ContributionSourceKind,
+    ContributionStatus,
+    GraphContribution,
+)
 from dungeonmind.contracts.contribution_review import (
     ContributionAssertionVerdict,
     ContributionIdentityProposal,
     ContributionIdentityVerdict,
+    ContributionIdentityVerdictKind,
     ContributionPlanRef,
+    ContributionReviewRecord,
     ContributionReviewState,
     contribution_payload_sha256,
     derive_confirmation_id,
@@ -36,6 +43,9 @@ from dungeonmind.domain.revision_ids import compute_revision_id
 from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
 from dungeonmind_dnd.application.contribution_planning import (
     plan_threat_candidate_contribution,
+)
+from dungeonmind_dnd.application.contribution_review import (
+    build_threat_contribution_review_intent,
 )
 
 from .review_materialization_characterization import (
@@ -98,6 +108,122 @@ def _parent_inputs() -> tuple[
 def _state() -> ContributionReviewState:
     return ContributionReviewState.model_validate(
         json.loads(STATE_FIXTURE.read_text(encoding="utf-8"))
+    )
+
+
+def _review_state_from_plan(
+    plan: Any,
+) -> ContributionReviewState:
+    contribution = plan.proposed_contribution
+    assert contribution is not None
+    identity_verdicts = {
+        "cand:north-gate-breach": ContributionIdentityVerdictKind.CONFIRM_EXISTING,
+        "cand:tripod-null-calf": ContributionIdentityVerdictKind.CREATE_NEW,
+    }
+    tripod_target = next(
+        resolution.target_object_id
+        for resolution in plan.candidate_resolutions
+        if resolution.candidate_id == "cand:tripod-null-calf"
+    )
+    assertion_verdicts = {
+        assertion.assertion_id: (
+            AcceptanceState.REJECTED
+            if (
+                assertion.assertion_kind == "alias"
+                and assertion.subject_object_id == tripod_target
+            )
+            else AcceptanceState.ACCEPTED
+        )
+        for assertion in contribution.assertions
+    }
+    intent = build_threat_contribution_review_intent(
+        plan,
+        operation_id="reviewop:" + "1" * 32,
+        assertion_verdicts=assertion_verdicts,
+        identity_verdicts=identity_verdicts,
+        reviewer_id="operator:synthetic-gm",
+        reviewed_at=datetime(2026, 8, 1, 22, 0, tzinfo=UTC),
+    )
+
+    candidate_payload = intent.candidate_contribution.model_dump(mode="json")
+    candidate_payload["status"] = ContributionStatus.SUPERSEDED.value
+    candidate = GraphContribution.model_validate(candidate_payload)
+
+    proposals_by_target = {
+        proposal.target_object_id: proposal for proposal in intent.identity_proposals
+    }
+    verdicts_by_candidate = {
+        verdict.candidate_id: verdict for verdict in intent.identity_verdicts
+    }
+    reviewed_assertions = []
+    reviewed_outcomes = {
+        ContributionIdentityVerdictKind.CONFIRM_EXISTING: "resolved_existing",
+        ContributionIdentityVerdictKind.CREATE_NEW: "created_new",
+        ContributionIdentityVerdictKind.REJECT_CANDIDATE: "rejected",
+    }
+    for assertion in intent.candidate_contribution.assertions:
+        assertion_payload = assertion.model_dump(mode="json")
+        assertion_payload["acceptance_state"] = assertion_verdicts[
+            assertion.assertion_id
+        ].value
+        if assertion.assertion_kind in {"label", "alias", "summary"}:
+            proposal = proposals_by_target[assertion.subject_object_id or ""]
+            assertion_payload["identity_resolution_outcome"] = reviewed_outcomes[
+                verdicts_by_candidate[proposal.candidate_id].verdict
+            ]
+        else:
+            assertion_payload["identity_resolution_outcome"] = None
+        reviewed_assertions.append(assertion_payload)
+
+    review_id = derive_review_id(
+        operation_id=intent.operation_id,
+        review_intent_sha256=intent.review_intent_sha256,
+        world_id=intent.world_id,
+    )
+    reviewed_payload = candidate.model_dump(mode="json")
+    reviewed_payload.update(
+        {
+            "contribution_id": derive_reviewed_contribution_id(
+                review_id=review_id,
+                candidate_contribution_id=candidate.contribution_id,
+            ),
+            "source_kind": ContributionSourceKind.GRAPH_REVIEW.value,
+            "status": ContributionStatus.ACTIVE.value,
+            "supersedes_contribution_id": candidate.contribution_id,
+            "produced_at": intent.reviewed_at.isoformat(),
+            "authored_by": intent.reviewer_id,
+            "assertions": reviewed_assertions,
+        }
+    )
+    reviewed = GraphContribution.model_validate(reviewed_payload)
+    record = ContributionReviewRecord(
+        review_id=review_id,
+        operation_id=intent.operation_id,
+        world_id=intent.world_id,
+        campaign_id=intent.campaign_id,
+        plan_ref=intent.plan_ref,
+        review_intent_sha256=intent.review_intent_sha256,
+        candidate_preview_sha256=intent.plan_ref.candidate_contribution_sha256,
+        stored_candidate_contribution_id=candidate.contribution_id,
+        stored_candidate_sha256=contribution_payload_sha256(candidate),
+        reviewed_contribution_id=reviewed.contribution_id,
+        reviewed_contribution_sha256=contribution_payload_sha256(reviewed),
+        identity_proposals=intent.identity_proposals,
+        identity_verdicts=intent.identity_verdicts,
+        assertion_verdicts=intent.assertion_verdicts,
+        reviewer_id=intent.reviewer_id,
+        reviewed_at=intent.reviewed_at,
+        confirmation_id=derive_confirmation_id(
+            operation_id=intent.operation_id,
+            review_intent_sha256=intent.review_intent_sha256,
+            actor=intent.reviewer_id,
+            confirmed_at=intent.reviewed_at,
+        ),
+    )
+    return ContributionReviewState(
+        record=record,
+        candidate_contribution=candidate,
+        reviewed_contribution=reviewed,
     )
 
 
@@ -309,6 +435,43 @@ def _mutate_opaque_temporal_scope(payload: dict[str, Any]) -> None:
         payload[contribution_key]["assertions"][0]["temporal_scope"] = opaque_scope
 
 
+def _mutate_parent_assertion_id_collision(
+    payload: dict[str, Any],
+    *,
+    assertion_kind: str,
+    parent_assertion_id: str,
+) -> None:
+    target = "obj:0ad51ac659fdcc7600be620b6645a7a0"
+    for contribution_key in ("candidate_contribution", "reviewed_contribution"):
+        assertion = next(
+            item
+            for item in payload[contribution_key]["assertions"]
+            if item["assertion_kind"] == assertion_kind
+            and item["subject_object_id"] == target
+        )
+        old_assertion_id = assertion["assertion_id"]
+        assertion["assertion_id"] = parent_assertion_id
+        for other in payload[contribution_key]["assertions"]:
+            if other is not assertion and other["assertion_id"] == old_assertion_id:
+                other["assertion_id"] = parent_assertion_id
+    for verdict in payload["record"]["assertion_verdicts"]:
+        if verdict["assertion_id"] == old_assertion_id:
+            verdict["assertion_id"] = parent_assertion_id
+    payload["record"]["assertion_verdicts"].sort(
+        key=lambda item: item["assertion_id"]
+    )
+
+
+def _mutate_parent_evidence_id_collision(payload: dict[str, Any]) -> None:
+    old_evidence_id = "ev:north-gate-breach-plan"
+    parent_evidence_id = "ev:gatewatch-mustering-core"
+    for contribution_key in ("candidate_contribution", "reviewed_contribution"):
+        for assertion in payload[contribution_key]["assertions"]:
+            for evidence_ref in assertion["evidence_refs"]:
+                if evidence_ref["evidence_ref_id"] == old_evidence_id:
+                    evidence_ref["evidence_ref_id"] = parent_evidence_id
+
+
 @pytest.mark.conformance
 def test_tripod_effect_spec_matches_derived_fixture() -> None:
     parent_revision, graph_reader, parent_payload = _parent_inputs()
@@ -355,21 +518,21 @@ def test_confirm_existing_variant_exercises_field_operations() -> None:
     assert breach_resolution.target_object_id == "obj:gatewatch-mustering"
     assert [channel.value for channel in breach_resolution.match_channels] == ["alias"]
 
-    def rebind_confirm_existing_to_planner_parent(
-        payload: dict[str, Any],
-    ) -> None:
-        _mutate_confirm_existing(payload)
-        payload["record"]["plan_ref"].update(
-            {
-                "expected_parent_revision_id": planner_parent_revision.revision_id,
-                "base_graph_payload_sha256": (
-                    planner_parent_revision.graph_payload_sha256
-                ),
-            }
+    planner_contribution = planner.proposed_contribution
+    assert planner_contribution is not None
+    state = _review_state_from_plan(planner)
+    assert (
+        state.candidate_contribution.model_copy(
+            update={"status": ContributionStatus.ACTIVE}
         )
-
+        == planner_contribution
+    )
+    assert state.record.plan_ref.source_plan_id == planner.plan_id
+    assert state.record.plan_ref.source_plan_sha256 == canonical_sha256(
+        planner.model_dump(mode="json")
+    )
     actual = characterize_finalized_review(
-        _derived_state(rebind_confirm_existing_to_planner_parent),
+        state,
         parent_revision=planner_parent_revision,
         parent_graph_payload=planner_parent_payload,
         graph_reader=graph_reader,
@@ -391,12 +554,30 @@ def test_confirm_existing_variant_exercises_field_operations() -> None:
         "kind": "dnd5e:encounter",
     }
     assert breach_object["created_fields"] is None
+    breach_label = next(
+        assertion
+        for assertion in planner_contribution.assertions
+        if assertion.assertion_kind == "label"
+        and assertion.subject_object_id == "obj:gatewatch-mustering"
+    )
+    breach_alias = next(
+        assertion
+        for assertion in planner_contribution.assertions
+        if assertion.assertion_kind == "alias"
+        and assertion.subject_object_id == "obj:gatewatch-mustering"
+    )
+    breach_summary = next(
+        assertion
+        for assertion in planner_contribution.assertions
+        if assertion.assertion_kind == "summary"
+        and assertion.subject_object_id == "obj:gatewatch-mustering"
+    )
     label_operation = breach_object["proposed_fields"]["label"]
     assert label_operation["operation"] == "replace"
     assert label_operation["expected_parent_value"] == "Gatewatch Mustering"
     assert label_operation["result_value"] == "North Gate Breach"
     assert label_operation["assertion_ids"] == [
-        "asrt:36e0d020cd3c37e8f4042f0d0bd07585"
+        breach_label.assertion_id
     ]
     assert label_operation["provenance"] == {
         "graph_assertion_id_policy": "canonical_field_has_no_assertion_id",
@@ -407,17 +588,21 @@ def test_confirm_existing_variant_exercises_field_operations() -> None:
         "retained_parent_evidence_ref_ids": [],
         "retired_parent_evidence_ref_ids": ["ev:gatewatch-mustering-core"],
         "result_assertion_ids": [],
-        "result_evidence_ref_ids": ["ev:north-gate-breach-plan"],
+        "result_evidence_ref_ids": [
+            ref.evidence_ref_id for ref in breach_label.evidence_refs
+        ],
         "accepted_source_assertions": [
             {
-                "assertion_id": "asrt:36e0d020cd3c37e8f4042f0d0bd07585",
+                "assertion_id": breach_label.assertion_id,
                 "assertion_kind": "label",
                 "subject_object_id": "obj:gatewatch-mustering",
                 "object_object_id": None,
                 "predicate": None,
                 "label": "North Gate Breach",
                 "value": None,
-                "evidence_ref_ids": ["ev:north-gate-breach-plan"],
+                "evidence_ref_ids": [
+                    ref.evidence_ref_id for ref in breach_label.evidence_refs
+                ],
                 "source_artifact_id": "src:synthetic-gatewatch-watchlog",
                 "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
                 "campaign_scope": "campaign:synthetic-gatewatch-frontier",
@@ -436,7 +621,7 @@ def test_confirm_existing_variant_exercises_field_operations() -> None:
         "the gate breach",
     ]
     assert alias_operation["assertion_ids"] == [
-        "asrt:a13780ad18486b89e58db463aef5809f"
+        breach_alias.assertion_id
     ]
     alias_provenance = alias_operation["provenance"]
     assert alias_provenance["parent_assertion_ids"] == [
@@ -447,7 +632,7 @@ def test_confirm_existing_variant_exercises_field_operations() -> None:
     ]
     assert alias_provenance["retired_parent_assertion_ids"] == []
     assert alias_provenance["result_assertion_ids"] == [
-        "asrt:a13780ad18486b89e58db463aef5809f",
+        breach_alias.assertion_id,
         "asrt:gatewatch-mustering-breach-alias",
     ]
     assert alias_provenance["retained_parent_evidence_ref_ids"] == [
@@ -456,7 +641,7 @@ def test_confirm_existing_variant_exercises_field_operations() -> None:
     assert alias_provenance["retired_parent_evidence_ref_ids"] == []
     assert alias_provenance["result_evidence_ref_ids"] == [
         "ev:gatewatch-mustering-breach-alias",
-        "ev:north-gate-breach-plan",
+        *[ref.evidence_ref_id for ref in breach_alias.evidence_refs],
     ]
     summary_operation = breach_object["proposed_fields"]["summary"]
     assert summary_operation["operation"] == "replace"
@@ -465,16 +650,16 @@ def test_confirm_existing_variant_exercises_field_operations() -> None:
         "A prepared situation in which the North Gate is forced open."
     )
     assert summary_operation["assertion_ids"] == [
-        "asrt:fe4045c389c3dc28a34bff749ff75cc2"
+        breach_summary.assertion_id
     ]
     summary_provenance = summary_operation["provenance"]
     assert summary_provenance["retired_parent_assertion_ids"] == []
     assert summary_provenance["result_assertion_ids"] == [
-        "asrt:fe4045c389c3dc28a34bff749ff75cc2"
+        breach_summary.assertion_id
     ]
     assert summary_provenance["retired_parent_evidence_ref_ids"] == []
     assert summary_provenance["result_evidence_ref_ids"] == [
-        "ev:north-gate-breach-plan"
+        *[ref.evidence_ref_id for ref in breach_summary.evidence_refs],
     ]
 
 
@@ -515,6 +700,54 @@ def test_opaque_temporal_scope_is_preserved_without_interpretation() -> None:
         for effect in actual["object_effects"]
         for scope in effect["temporal_scopes"]
     )
+
+
+@pytest.mark.conformance
+@pytest.mark.parametrize(
+    ("assertion_kind", "parent_assertion_id"),
+    [
+        ("alias", "asrt:gatewatch-north-gate-alias"),
+        ("summary", "asrt:gatewatch-north-gate-summary"),
+    ],
+)
+def test_reused_parent_assertion_id_fails_closed(
+    assertion_kind: str,
+    parent_assertion_id: str,
+) -> None:
+    parent_revision, graph_reader, parent_payload = _parent_inputs()
+
+    def mutate(payload: dict[str, Any]) -> None:
+        _mutate_parent_assertion_id_collision(
+            payload,
+            assertion_kind=assertion_kind,
+            parent_assertion_id=parent_assertion_id,
+        )
+
+    with pytest.raises(
+        ReviewEffectCharacterizationError,
+        match="accepted source assertion ID collides",
+    ):
+        characterize_finalized_review(
+            _derived_state(mutate),
+            parent_revision=parent_revision,
+            parent_graph_payload=parent_payload,
+            graph_reader=graph_reader,
+        )
+
+
+@pytest.mark.conformance
+def test_reused_parent_evidence_id_fails_closed() -> None:
+    parent_revision, graph_reader, parent_payload = _parent_inputs()
+    with pytest.raises(
+        ReviewEffectCharacterizationError,
+        match="accepted evidence ID collides",
+    ):
+        characterize_finalized_review(
+            _derived_state(_mutate_parent_evidence_id_collision),
+            parent_revision=parent_revision,
+            parent_graph_payload=parent_payload,
+            graph_reader=graph_reader,
+        )
 
 
 @pytest.mark.conformance
