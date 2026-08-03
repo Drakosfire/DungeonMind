@@ -1,0 +1,267 @@
+{
+  "world_id": "world:synthetic-gatewatch",
+  "semantic_profile": {
+    "schema_version": "dm_semantic_profile_ref_v1",
+    "profile_id": "dungeonmind.dnd5e",
+    "profile_revision": "dnd5e-profile-v2",
+    "descriptor_sha256": "57de5bc922503571d781f0de00d0a26b7aabcb3c363518e269f6c7a52a6c0086"
+  },
+  "nodes": [
+    {
+      "object_id": "obj:north-gate",
+      "kind": "dnd5e:location",
+      "label": "North Gate",
+      "evidence_ref_ids": [
+        "ev:gatewatch-north-gate-core"
+      ],
+      "alias_assertions": [
+        {
+          "assertion_id": "asrt:gatewatch-north-gate-alias",
+          "alias": "Old North Gate",
+          "evidence_ref_ids": [
+            "ev:gatewatch-north-gate-alias"
+          ]
+        }
+      ],
+      "summary_assertion": {
+        "assertion_id": "asrt:gatewatch-north-gate-summary",
+        "summary": "The fortified northern entrance to the town of Gatewatch.",
+        "evidence_ref_ids": [
+          "ev:gatewatch-north-gate-summary"
+        ]
+      }
+    },
+    {
+      "object_id": "obj:gatewatch-keep",
+      "kind": "dnd5e:location",
+      "label": "Gatewatch Keep",
+      "evidence_ref_ids": [
+        "ev:gatewatch-keep-core"
+      ],
+      "alias_assertions": [],
+      "summary_assertion": null
+    },
+    {
+      "object_id": "obj:gatewatch-mustering",
+      "kind": "dnd5e:encounter",
+      "label": "Gatewatch Mustering",
+      "evidence_ref_ids": [
+        "ev:gatewatch-mustering-core"
+      ],
+      "alias_assertions": [],
+      "summary_assertion": null
+    },
+    {
+      "object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
+      "kind": "dnd5e:encounter",
+      "label": "North Gate Breach",
+      "evidence_ref_ids": [
+        "ev:north-gate-breach-plan"
+      ],
+      "alias_assertions": [
+        {
+          "assertion_id": "asrt:a13780ad18486b89e58db463aef5809f",
+          "alias": "the gate breach",
+          "evidence_ref_ids": [
+            "ev:north-gate-breach-plan"
+          ]
+        }
+      ],
+      "summary_assertion": {
+        "assertion_id": "asrt:fe4045c389c3dc28a34bff749ff75cc2",
+        "summary": "A prepared situation in which the North Gate is forced open.",
+        "evidence_ref_ids": [
+          "ev:north-gate-breach-plan"
+        ]
+      }
+    },
+    {
+      "object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+      "kind": "dnd5e:creature",
+      "label": "Tripod Null-Calf",
+      "evidence_ref_ids": [
+        "ev:tripod-null-calf-sighting"
+      ],
+      "alias_assertions": [],
+      "summary_assertion": {
+        "assertion_id": "asrt:4dfb5efcd35880eb1c2e45ad50ce24ee",
+        "summary": "A skittish three-legged creature seen pacing outside the North Gate.",
+        "evidence_ref_ids": [
+          "ev:tripod-null-calf-sighting"
+        ]
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_id": "rel:mustering-at-keep",
+      "subject_object_id": "obj:gatewatch-mustering",
+      "predicate": "dnd5e:located_at",
+      "object_object_id": "obj:gatewatch-keep",
+      "evidence_ref_ids": [
+        "ev:mustering-at-keep"
+      ]
+    },
+    {
+      "relationship_id": "rel:7136b2aa4616bd0455f8fde084b5a1c0",
+      "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+      "predicate": "dnd5e:threatens",
+      "object_object_id": "obj:north-gate",
+      "evidence_ref_ids": [
+        "ev:tripod-threatens-gate"
+      ]
+    },
+    {
+      "relationship_id": "rel:915b93b66a80e03522cbd789eac0cafc",
+      "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+      "predicate": "dnd5e:located_at",
+      "object_object_id": "obj:north-gate",
+      "evidence_ref_ids": [
+        "ev:tripod-at-north-gate"
+      ]
+    },
+    {
+      "relationship_id": "rel:92889103c270dd357944b277ff126cc1",
+      "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+      "predicate": "dnd5e:participates_in",
+      "object_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
+      "evidence_ref_ids": [
+        "ev:tripod-in-breach"
+      ]
+    }
+  ],
+  "evidence_refs": [
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:gatewatch-north-gate-core",
+      "source_artifact_id": "src:synthetic-gatewatch-codex",
+      "source_revision_id": "srcrev:synthetic-gatewatch-codex-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-codex#north-gate-core",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:gatewatch-north-gate-alias",
+      "source_artifact_id": "src:synthetic-gatewatch-codex",
+      "source_revision_id": "srcrev:synthetic-gatewatch-codex-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-codex#north-gate-alias",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:gatewatch-north-gate-summary",
+      "source_artifact_id": "src:synthetic-gatewatch-codex",
+      "source_revision_id": "srcrev:synthetic-gatewatch-codex-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-codex#north-gate-summary",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:gatewatch-keep-core",
+      "source_artifact_id": "src:synthetic-gatewatch-codex",
+      "source_revision_id": "srcrev:synthetic-gatewatch-codex-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-codex#keep-core",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:gatewatch-mustering-core",
+      "source_artifact_id": "src:synthetic-gatewatch-codex",
+      "source_revision_id": "srcrev:synthetic-gatewatch-codex-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-codex#mustering-core",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:mustering-at-keep",
+      "source_artifact_id": "src:synthetic-gatewatch-codex",
+      "source_revision_id": "srcrev:synthetic-gatewatch-codex-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-codex#mustering-at-keep",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:north-gate-breach-plan",
+      "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+      "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-watchlog#north-gate-breach-plan",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:tripod-at-north-gate",
+      "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+      "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-watchlog#tripod-at-north-gate",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:tripod-in-breach",
+      "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+      "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-watchlog#tripod-in-breach",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:tripod-null-calf-sighting",
+      "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+      "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-watchlog#tripod-null-calf-sighting",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:tripod-threatens-gate",
+      "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+      "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+      "source_domain": "prep",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "fixture://synthetic-gatewatch-watchlog#tripod-threatens-gate",
+      "uri": null
+    }
+  ]
+}
