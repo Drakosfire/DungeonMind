@@ -42,13 +42,27 @@
       "object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
       "kind": "dnd5e:encounter",
       "effect": "create_object",
-      "label": "North Gate Breach",
-      "aliases": [
-        "the gate breach"
-      ],
-      "summaries": [
-        "A prepared situation in which the North Gate is forced open."
-      ],
+      "parent_object": null,
+      "created_fields": {
+        "label": "North Gate Breach",
+        "aliases": [
+          "the gate breach"
+        ],
+        "summaries": [
+          "A prepared situation in which the North Gate is forced open."
+        ]
+      },
+      "proposed_fields": {
+        "labels": [
+          "North Gate Breach"
+        ],
+        "aliases": [
+          "the gate breach"
+        ],
+        "summaries": [
+          "A prepared situation in which the North Gate is forced open."
+        ]
+      },
       "accepted_assertion_ids": [
         "asrt:36e0d020cd3c37e8f4042f0d0bd07585",
         "asrt:a13780ad18486b89e58db463aef5809f",
@@ -136,11 +150,23 @@
       "object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
       "kind": "dnd5e:creature",
       "effect": "create_object",
-      "label": "Tripod Null-Calf",
-      "aliases": [],
-      "summaries": [
-        "A skittish three-legged creature seen pacing outside the North Gate."
-      ],
+      "parent_object": null,
+      "created_fields": {
+        "label": "Tripod Null-Calf",
+        "aliases": [],
+        "summaries": [
+          "A skittish three-legged creature seen pacing outside the North Gate."
+        ]
+      },
+      "proposed_fields": {
+        "labels": [
+          "Tripod Null-Calf"
+        ],
+        "aliases": [],
+        "summaries": [
+          "A skittish three-legged creature seen pacing outside the North Gate."
+        ]
+      },
       "accepted_assertion_ids": [
         "asrt:4dfb5efcd35880eb1c2e45ad50ce24ee",
         "asrt:7a40c5e50a8b6fc11aea4b35a3ae76d4"
@@ -226,7 +252,6 @@
         }
       ],
       "effect": "propose_new_relationship",
-      "existing_relationship_ids": [],
       "source_assertion_ids": [
         "asrt:ec3795eb74d333a69f38f48c51043543"
       ],
@@ -291,7 +316,6 @@
         }
       ],
       "effect": "propose_new_relationship",
-      "existing_relationship_ids": [],
       "source_assertion_ids": [
         "asrt:67ebd5898d1f56392218f7cf2e80a70a"
       ],
@@ -356,7 +380,6 @@
         }
       ],
       "effect": "propose_new_relationship",
-      "existing_relationship_ids": [],
       "source_assertion_ids": [
         "asrt:ef8e2748a3d129bf6ecf68c8d1f8971c"
       ],
@@ -473,5 +496,5 @@
   "durable_writes": [],
   "graph_head_effect": "unchanged",
   "identity_decision_effect": "unchanged",
-  "effect_digest": "9e214475c3c2747cd3f35c3a81e5764ed3a5336e7330f80a9b105d0e477b2493"
+  "effect_digest": "d42f948bfa5e28a66159133bbf9b9b6b3db4e7aef2c94ae161f28eaa5bf1dcbf"
 }

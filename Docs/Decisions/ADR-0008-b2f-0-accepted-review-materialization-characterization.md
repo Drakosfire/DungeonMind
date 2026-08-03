@@ -36,13 +36,13 @@ replace it with a production materializer only after this mapping is accepted.
 | accepted `summary` | Object summary | Subject target and non-empty value preserved |
 | accepted `relationship` | Relationship key/effect proposal | Subject, predicate, object, evidence, lineage, scope, temporal, visibility, and epistemic kind preserved |
 | rejected assertion | Review history only | Assertion ID is excluded from every graph effect |
-| existing relationship key | `reuse_existing_relationship` | Existing relationship IDs are reported; no new durable ID is assigned |
-| new relationship key | `propose_new_relationship` | Duplicate accepted assertions are grouped by key |
+| pre-existing relationship key | fail closed | B.2d does not authorize relationship evidence augmentation or silent merge |
+| new relationship key | `propose_new_relationship` | Exactly one accepted assertion is required per key |
 | plan reference | Parent/schema/profile binding | Exact parent revision, graph schema/payload digest, and semantic-profile pin match |
 
 Temporal scopes are copied as opaque JSON values. No Timeline interpretation is
-performed. Relationship IDs are not assigned; the characterization reports the
-stable subject/predicate/object key and any matching parent IDs.
+performed. Relationship IDs are not assigned; a pre-existing or duplicate
+accepted relationship triple fails closed rather than silently merging evidence.
 
 ## Invariants
 
@@ -50,8 +50,11 @@ stable subject/predicate/object key and any matching parent IDs.
   and the same `effect_digest`.
 - Changed parent identity, graph payload, graph schema, or semantic-profile pin
   fails closed.
+- The parsed snapshot is produced from the exact payload after its digest is
+  checked; callers cannot supply an independently invented snapshot.
 - Invalid/tampered finalized review state fails before characterization.
 - Rejected assertions and their review history never appear in graph effects.
+- Pre-existing and duplicate accepted relationship triples fail closed.
 - `durable_writes` is always empty; graph head and identity-decision effects
   are explicitly unchanged.
 - No mechanics, external resource binding, Timeline semantics, transport, or

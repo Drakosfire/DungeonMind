@@ -11,7 +11,12 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from dungeonmind.application.graph_snapshot import ParsedGraphSnapshot
+from pydantic import ValidationError
+
+from dungeonmind.application.graph_snapshot import (
+    GraphSnapshotReader,
+    ParsedGraphSnapshot,
+)
 from dungeonmind.contracts.contribution import (
     AcceptanceState,
     GraphContributionAssertion,
@@ -76,10 +81,19 @@ def characterize_finalized_review(
     state: ContributionReviewState,
     *,
     parent_revision: WorldGraphRevision,
-    parent_snapshot: ParsedGraphSnapshot,
     parent_graph_payload: dict[str, Any],
+    graph_reader: GraphSnapshotReader,
 ) -> dict[str, Any]:
     """Return deterministic, write-free effects proposed by a finalized review."""
+
+    try:
+        state = ContributionReviewState.model_validate(
+            state.model_dump(mode="json")
+        )
+    except ValidationError:
+        raise ReviewEffectCharacterizationError(
+            "finalized review state failed reload validation"
+        ) from None
 
     record = state.record
     plan_ref = record.plan_ref
@@ -104,6 +118,10 @@ def characterize_finalized_review(
         canonical_sha256(parent_graph_payload),
         parent_revision.graph_payload_sha256,
         "parent graph payload does not match the exact revision",
+    )
+    parent_snapshot: ParsedGraphSnapshot = graph_reader.parse(
+        graph_schema=parent_revision.graph_schema,
+        graph_payload=parent_graph_payload,
     )
     _assert_same(
         parent_snapshot.world_id,
@@ -215,11 +233,6 @@ def characterize_finalized_review(
             raise ReviewEffectCharacterizationError(
                 "create_new characterization requires exactly one accepted label"
             )
-        label = (
-            label_assertions[0].label
-            if label_assertions
-            else None if existing is None else existing.label
-        )
         aliases = sorted(
             item.value
             for item in target_assertions
@@ -230,6 +243,29 @@ def characterize_finalized_review(
             for item in target_assertions
             if item.assertion_kind == "summary" and item.value is not None
         ]
+        proposed_fields = {
+            "labels": sorted(
+                item.label
+                for item in label_assertions
+                if item.label is not None
+            ),
+            "aliases": aliases,
+            "summaries": summaries,
+        }
+        created_fields = (
+            {
+                "label": label_assertions[0].label,
+                "aliases": aliases,
+                "summaries": summaries,
+            }
+            if verdict.verdict.value == "create_new"
+            else None
+        )
+        parent_object = (
+            None
+            if existing is None
+            else {"object_id": existing.object_id, "kind": existing.kind}
+        )
         all_target_evidence = sorted(
             {
                 ref.evidence_ref_id
@@ -251,9 +287,9 @@ def characterize_finalized_review(
                 "object_id": target,
                 "kind": object_kind,
                 "effect": effect,
-                "label": label,
-                "aliases": aliases,
-                "summaries": summaries,
+                "parent_object": parent_object,
+                "created_fields": created_fields,
+                "proposed_fields": proposed_fields,
                 "accepted_assertion_ids": sorted(
                     item.assertion_id for item in target_assertions
                 ),
@@ -300,6 +336,10 @@ def characterize_finalized_review(
     }
     relationship_effects: list[dict[str, Any]] = []
     for (subject, predicate, object_id), assertions in sorted(relationship_groups.items()):
+        if len(assertions) != 1:
+            raise ReviewEffectCharacterizationError(
+                "duplicate accepted relationship triples are unsupported"
+            )
         endpoint_effects = []
         for endpoint in (subject, object_id):
             effect = identity_effect_by_target.get(endpoint)
@@ -334,6 +374,10 @@ def characterize_finalized_review(
             )
             == (subject, predicate, object_id)
         )
+        if existing_ids:
+            raise ReviewEffectCharacterizationError(
+                "pre-existing relationship triples are unsupported"
+            )
         relationship_effects.append(
             {
                 "relationship_key": {
@@ -342,12 +386,7 @@ def characterize_finalized_review(
                     "object_object_id": object_id,
                 },
                 "endpoint_effects": endpoint_effects,
-                "effect": (
-                    "reuse_existing_relationship"
-                    if existing_ids
-                    else "propose_new_relationship"
-                ),
-                "existing_relationship_ids": existing_ids,
+                "effect": "propose_new_relationship",
                 "source_assertion_ids": sorted(
                     item.assertion_id for item in assertions
                 ),

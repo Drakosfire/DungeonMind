@@ -36,9 +36,14 @@ exact parent revision
 In scope:
 
 - Pure test-only characterization under `tests/conformance`.
+- The raw parent payload is hashed first and parsed by the supplied graph
+  reader; no independently supplied parsed snapshot is accepted.
 - `create_new`, `confirm_existing`, and `reject_candidate` disposition mapping.
 - Accepted `label`, `alias`, `summary`, and `relationship` field preservation.
-- Existing-object reuse versus proposed creation.
+- Existing-object reuse versus proposed creation, with existing-object output
+  represented as proposed deltas only rather than inherited parent fields.
+- Duplicate and pre-existing relationship triples fail closed because B.2d
+  does not authorize evidence augmentation or silent merging.
 - Evidence references, source artifact/revision lineage, campaign scope,
   opaque temporal scope, visibility, and epistemic kind.
 - Exact review operation, intent digest, confirmation, parent, graph-schema,
@@ -70,8 +75,11 @@ generic characterization.
 - `tests/fixtures/contribution_reviews/tripod-null-calf-review-effect-spec-v1.json`
 - This handoff and ADR-0008.
 
-The fixture is derived by executing the characterization against the checked-in
-finalized review and parent fixtures; it is not hand-authored.
+The primary fixture is derived by executing the characterization against the
+checked-in finalized review and parent fixtures; it is not hand-authored.
+Additional confirm-existing, reject-candidate, and opaque-temporal matrix
+variants are valid states derived from that finalized fixture in the
+conformance tests.
 
 ## Later decomposition
 
