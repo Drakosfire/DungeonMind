@@ -28,11 +28,16 @@ from .repositories import (
     SourceRepository,
     WorldGraphRepository,
 )
+from .review_materialization import (
+    FinalizedReviewGraphMaterialization,
+    materialize_finalized_review,
+)
 
 __all__ = [
     "ContributionRepository",
     "ContributionReviewRepository",
     "EmbeddingRunRepository",
+    "FinalizedReviewGraphMaterialization",
     "FixedClock",
     "GraphObjectView",
     "GraphRelationshipView",
@@ -50,4 +55,5 @@ __all__ = [
     "WorldGraphRepository",
     "finalize_contribution_review",
     "load_contribution_review",
+    "materialize_finalized_review",
 ]
