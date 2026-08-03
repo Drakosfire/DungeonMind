@@ -1,10 +1,11 @@
 # DungeonMind — Roadmap and PR ladder
 
-**Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b / B.2c / B.2d landed.
-PR B.2e (finalized contribution review adoption) is the current
-DungeonMind-owned slice. External RulesIngestion PR C and product-surface
-adoption of `mind_turn_v1` remain independent successors. Ownership per
-ADR-0002, ADR-0004, ADR-0005, ADR-0006, and ADR-0007.
+**Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b / B.2c / B.2d /
+B.2e / B.2f-0 / B.2f-a landed or are in review. B.2f-a is the current
+DungeonMind-owned slice; expected-parent publication remains a separate
+successor. External RulesIngestion PR C and product-surface adoption of
+`mind_turn_v1` remain independent successors. Ownership per ADR-0002,
+ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, and ADR-0009.
 
 Each PR is independently reviewable, in its named repository. Cross-repo work
 is never one PR.
@@ -21,7 +22,12 @@ B.2a  assertion-scoped alias/summary read projection ✅
 B.2b  semantic profile boundary + dm_union_graph_v3 ✅
 B.2c  DungeonMindDnD Threat vocabulary + extraction candidates ✅
 B.2d  pinned create-or-connect contribution plan ✅
-B.2e  finalized contribution review adoption ← current
+B.2e  finalized contribution review adoption ✅
+B.2f-0 accepted-review materialization characterization ✅
+B.2f-a finalized-review graph payload materializer ← current
+B.2f-b expected-parent CAS publication
+B.2f-c durable publication operation + uncertain-outcome recovery
+B.2f-d service transport + external consumer contract
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
 D     embedding model bakeoff
@@ -297,16 +303,42 @@ Canonical handoff:
 Decision record:
 [`Docs/Decisions/ADR-0007-finalized-contribution-review-adoption.md`](../Decisions/ADR-0007-finalized-contribution-review-adoption.md).
 
+## PR B.2f-a — Finalized-review graph payload materializer
+
+**Repository:** DungeonMind only
+
+Outcome:
+
+```text
+finalized ContributionReviewState
++ exact pinned StoredGraphRevision
++ matching GraphSnapshotReader
+→ deterministic dm_union_graph_v3 payload
+→ output reparse and semantic-profile validation
+→ ephemeral result bound to review, parent, and payload digests
+```
+
+B.2f-a promotes the accepted B.2f-0 review-to-effects mapping into a generic,
+side-effect-free kernel application seam. It materializes accepted node fields,
+evidence, and deterministic relationships while preserving untouched parent
+records and rejecting unsupported or colliding effects. It does not construct a
+revision, read or advance a head, publish, persist, append identity decisions,
+or expose transport.
+
+Canonical handoff:
+[`Docs/Handoffs/HANDOFF-b2f-a-finalized-review-graph-materializer.md`](../Handoffs/HANDOFF-b2f-a-finalized-review-graph-materializer.md).
+Decision record:
+[`Docs/Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md`](../Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md).
+
 ## Named future lanes (no dates claimed)
 
 These lanes are named so successors can be dispatched deliberately. None is
 scheduled, and none may be smuggled into an unrelated PR.
 
-- **B.2f — accepted contribution materialization and expected-parent
-  publication** — reviewed accepted contribution + expected parent →
-  deterministic graph payload → validation → atomic CAS publication →
-  revision-pinned receipt. Must handle stale parent without silently
-  replanning.
+- **B.2f-b/c/d — expected-parent publication, recovery, and transport** —
+  B.2f-a's deterministic payload is a pure input to separate current-head CAS,
+  durable publication/recovery, and transport slices. These successors must
+  handle stale parents without silently replanning.
 - **B.3 — Threat mechanics-resource binding** — approved Threat graph
   identity → exact external statblock/mechanics resource ref →
   revision/digest pin → profile-owned hydration contract. Mechanics stay
