@@ -41,10 +41,27 @@ replace it with a production materializer only after this mapping is accepted.
 | plan reference | Parent/schema/profile binding | Exact parent revision, graph schema/payload digest, and semantic-profile pin match |
 
 For `confirm_existing`, each field operation includes the expected parent value
-and the resulting value(s). An object has one canonical label slot and one
-summary slot; multiple accepted label or summary assertions therefore fail
-closed. Aliases are list additions and fail closed when normalized values
-duplicate one another or an existing alias.
+and the resulting value(s), plus an explicit provenance transition:
+
+- Canonical label replacement retires the parent core evidence references and
+  uses the accepted source assertion's evidence references for the resulting
+  label. The canonical graph field has no graph assertion ID; the accepted
+  assertion ID remains source provenance only.
+- Alias append retains every parent alias assertion and its evidence, then
+  reuses each accepted source assertion ID as the resulting graph alias
+  assertion ID and unions the parent and accepted evidence references.
+- Summary replacement retires the parent summary assertion and evidence, then
+  reuses the accepted source assertion ID and evidence for the resulting
+  summary assertion.
+- Retained fields keep their parent assertion/evidence identities; omitted
+  fields produce no assertion or evidence.
+
+An object has one canonical label slot and one summary slot; multiple accepted
+label or summary assertions therefore fail closed. Aliases are list additions
+and fail closed when normalized values duplicate one another or an existing
+alias. Accepted source provenance (source artifact/revision, campaign scope,
+temporal scope, visibility, and epistemic kind) is copied into each field
+operation.
 
 Temporal scopes are copied as opaque JSON values. No Timeline interpretation is
 performed. Relationship IDs are not assigned; a pre-existing or duplicate

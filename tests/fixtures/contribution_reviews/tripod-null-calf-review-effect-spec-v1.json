@@ -63,7 +63,7 @@
   },
   "characterization_version": "b2f-0-review-effect-spec-v1",
   "durable_writes": [],
-  "effect_digest": "08dce93e20f2186d355127e4c0ae99267619ade5db8f7b1a56a47173079f8b4e",
+  "effect_digest": "4ef372367ff6da5758ad2ef8462856219e97f0953976858c5a0a0479d3fa689b",
   "graph_head_effect": "unchanged",
   "identity_decision_effect": "unchanged",
   "identity_effects": [
@@ -173,6 +173,41 @@
           ],
           "expected_parent_values": [],
           "operation": "set",
+          "provenance": {
+            "accepted_source_assertions": [
+              {
+                "assertion_id": "asrt:a13780ad18486b89e58db463aef5809f",
+                "assertion_kind": "alias",
+                "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+                "epistemic_kind": "asserted",
+                "evidence_ref_ids": [
+                  "ev:north-gate-breach-plan"
+                ],
+                "label": null,
+                "object_object_id": null,
+                "predicate": null,
+                "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+                "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+                "subject_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
+                "temporal_scope": null,
+                "value": "the gate breach",
+                "visibility": "gm"
+              }
+            ],
+            "graph_assertion_id_policy": "reuse_source_assertion_id",
+            "parent_assertion_ids": [],
+            "parent_evidence_ref_ids": [],
+            "result_assertion_ids": [
+              "asrt:a13780ad18486b89e58db463aef5809f"
+            ],
+            "result_evidence_ref_ids": [
+              "ev:north-gate-breach-plan"
+            ],
+            "retained_parent_assertion_ids": [],
+            "retained_parent_evidence_ref_ids": [],
+            "retired_parent_assertion_ids": [],
+            "retired_parent_evidence_ref_ids": []
+          },
           "result_values": [
             "the gate breach"
           ]
@@ -183,6 +218,39 @@
           ],
           "expected_parent_value": null,
           "operation": "set",
+          "provenance": {
+            "accepted_source_assertions": [
+              {
+                "assertion_id": "asrt:36e0d020cd3c37e8f4042f0d0bd07585",
+                "assertion_kind": "label",
+                "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+                "epistemic_kind": "asserted",
+                "evidence_ref_ids": [
+                  "ev:north-gate-breach-plan"
+                ],
+                "label": "North Gate Breach",
+                "object_object_id": null,
+                "predicate": null,
+                "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+                "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+                "subject_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
+                "temporal_scope": null,
+                "value": null,
+                "visibility": "gm"
+              }
+            ],
+            "graph_assertion_id_policy": "canonical_field_has_no_assertion_id",
+            "parent_assertion_ids": [],
+            "parent_evidence_ref_ids": [],
+            "result_assertion_ids": [],
+            "result_evidence_ref_ids": [
+              "ev:north-gate-breach-plan"
+            ],
+            "retained_parent_assertion_ids": [],
+            "retained_parent_evidence_ref_ids": [],
+            "retired_parent_assertion_ids": [],
+            "retired_parent_evidence_ref_ids": []
+          },
           "result_value": "North Gate Breach"
         },
         "summary": {
@@ -191,6 +259,41 @@
           ],
           "expected_parent_value": null,
           "operation": "set",
+          "provenance": {
+            "accepted_source_assertions": [
+              {
+                "assertion_id": "asrt:fe4045c389c3dc28a34bff749ff75cc2",
+                "assertion_kind": "summary",
+                "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+                "epistemic_kind": "asserted",
+                "evidence_ref_ids": [
+                  "ev:north-gate-breach-plan"
+                ],
+                "label": null,
+                "object_object_id": null,
+                "predicate": null,
+                "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+                "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+                "subject_object_id": "obj:0ad51ac659fdcc7600be620b6645a7a0",
+                "temporal_scope": null,
+                "value": "A prepared situation in which the North Gate is forced open.",
+                "visibility": "gm"
+              }
+            ],
+            "graph_assertion_id_policy": "reuse_source_assertion_id",
+            "parent_assertion_ids": [],
+            "parent_evidence_ref_ids": [],
+            "result_assertion_ids": [
+              "asrt:fe4045c389c3dc28a34bff749ff75cc2"
+            ],
+            "result_evidence_ref_ids": [
+              "ev:north-gate-breach-plan"
+            ],
+            "retained_parent_assertion_ids": [],
+            "retained_parent_evidence_ref_ids": [],
+            "retired_parent_assertion_ids": [],
+            "retired_parent_evidence_ref_ids": []
+          },
           "result_value": "A prepared situation in which the North Gate is forced open."
         }
       },
@@ -274,6 +377,18 @@
           "assertion_ids": [],
           "expected_parent_values": [],
           "operation": "set",
+          "provenance": {
+            "accepted_source_assertions": [],
+            "graph_assertion_id_policy": "reuse_source_assertion_id",
+            "parent_assertion_ids": [],
+            "parent_evidence_ref_ids": [],
+            "result_assertion_ids": [],
+            "result_evidence_ref_ids": [],
+            "retained_parent_assertion_ids": [],
+            "retained_parent_evidence_ref_ids": [],
+            "retired_parent_assertion_ids": [],
+            "retired_parent_evidence_ref_ids": []
+          },
           "result_values": []
         },
         "label": {
@@ -282,6 +397,39 @@
           ],
           "expected_parent_value": null,
           "operation": "set",
+          "provenance": {
+            "accepted_source_assertions": [
+              {
+                "assertion_id": "asrt:7a40c5e50a8b6fc11aea4b35a3ae76d4",
+                "assertion_kind": "label",
+                "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+                "epistemic_kind": "asserted",
+                "evidence_ref_ids": [
+                  "ev:tripod-null-calf-sighting"
+                ],
+                "label": "Tripod Null-Calf",
+                "object_object_id": null,
+                "predicate": null,
+                "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+                "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+                "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+                "temporal_scope": null,
+                "value": null,
+                "visibility": "gm"
+              }
+            ],
+            "graph_assertion_id_policy": "canonical_field_has_no_assertion_id",
+            "parent_assertion_ids": [],
+            "parent_evidence_ref_ids": [],
+            "result_assertion_ids": [],
+            "result_evidence_ref_ids": [
+              "ev:tripod-null-calf-sighting"
+            ],
+            "retained_parent_assertion_ids": [],
+            "retained_parent_evidence_ref_ids": [],
+            "retired_parent_assertion_ids": [],
+            "retired_parent_evidence_ref_ids": []
+          },
           "result_value": "Tripod Null-Calf"
         },
         "summary": {
@@ -290,6 +438,41 @@
           ],
           "expected_parent_value": null,
           "operation": "set",
+          "provenance": {
+            "accepted_source_assertions": [
+              {
+                "assertion_id": "asrt:4dfb5efcd35880eb1c2e45ad50ce24ee",
+                "assertion_kind": "summary",
+                "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+                "epistemic_kind": "asserted",
+                "evidence_ref_ids": [
+                  "ev:tripod-null-calf-sighting"
+                ],
+                "label": null,
+                "object_object_id": null,
+                "predicate": null,
+                "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+                "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+                "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+                "temporal_scope": null,
+                "value": "A skittish three-legged creature seen pacing outside the North Gate.",
+                "visibility": "gm"
+              }
+            ],
+            "graph_assertion_id_policy": "reuse_source_assertion_id",
+            "parent_assertion_ids": [],
+            "parent_evidence_ref_ids": [],
+            "result_assertion_ids": [
+              "asrt:4dfb5efcd35880eb1c2e45ad50ce24ee"
+            ],
+            "result_evidence_ref_ids": [
+              "ev:tripod-null-calf-sighting"
+            ],
+            "retained_parent_assertion_ids": [],
+            "retained_parent_evidence_ref_ids": [],
+            "retired_parent_assertion_ids": [],
+            "retired_parent_evidence_ref_ids": []
+          },
           "result_value": "A skittish three-legged creature seen pacing outside the North Gate."
         }
       },

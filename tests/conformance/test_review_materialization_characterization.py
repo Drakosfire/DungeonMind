@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -28,11 +28,15 @@ from dungeonmind.contracts.contribution_review import (
     derive_review_intent_sha256,
     derive_reviewed_contribution_id,
 )
-from dungeonmind.contracts.graph import WorldGraphRevision
+from dungeonmind.contracts.graph import StoredGraphRevision, WorldGraphRevision
+from dungeonmind.contracts.identity import IdentityOutcome
 from dungeonmind.contracts.semantic_profile import SemanticProfileDescriptor
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.revision_ids import compute_revision_id
 from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
+from dungeonmind_dnd.application.contribution_planning import (
+    plan_threat_candidate_contribution,
+)
 
 from .review_materialization_characterization import (
     ReviewEffectCharacterizationError,
@@ -41,6 +45,7 @@ from .review_materialization_characterization import (
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 GRAPH_FIXTURE = FIXTURES / "dungeonmind_dnd/gatewatch-world-graph-v3.json"
+PACKET_FIXTURE = FIXTURES / "dungeonmind_dnd/tripod-null-calf-threat-candidates-v1.json"
 PROFILE_DESCRIPTOR = (
     Path(__file__).resolve().parents[2]
     / "src/dungeonmind_dnd/profiles/dnd5e-v2.json"
@@ -248,6 +253,36 @@ def _revision_for_payload(
     )
 
 
+def _add_planner_match_alias(payload: dict[str, Any]) -> None:
+    evidence_id = "ev:gatewatch-mustering-breach-alias"
+    payload["evidence_refs"].append(
+        {
+            "schema_version": "dm_evidence_ref_v1",
+            "evidence_ref_id": evidence_id,
+            "source_artifact_id": "src:synthetic-gatewatch-codex",
+            "source_revision_id": "srcrev:synthetic-gatewatch-codex-v1",
+            "source_domain": "prep",
+            "evidence_role": "support",
+            "can_open_source": True,
+            "can_highlight_span": True,
+            "locator": "fixture://synthetic-gatewatch-codex#mustering-breach-alias",
+            "uri": None,
+        }
+    )
+    node = next(
+        item
+        for item in payload["nodes"]
+        if item["object_id"] == "obj:gatewatch-mustering"
+    )
+    node["alias_assertions"].append(
+        {
+            "assertion_id": "asrt:gatewatch-mustering-breach-alias",
+            "alias": "North Gate Breach",
+            "evidence_ref_ids": [evidence_id],
+        }
+    )
+
+
 def _mutate_reject_candidate(payload: dict[str, Any]) -> None:
     target = "obj:48e170969a2bb3980e437f7430b7b1c1"
     for verdict in payload["record"]["identity_verdicts"]:
@@ -294,10 +329,49 @@ def test_tripod_effect_spec_matches_derived_fixture() -> None:
 @pytest.mark.conformance
 def test_confirm_existing_variant_exercises_field_operations() -> None:
     parent_revision, graph_reader, parent_payload = _parent_inputs()
+    planner_parent_payload = copy.deepcopy(parent_payload)
+    _add_planner_match_alias(planner_parent_payload)
+    planner_parent_revision = _revision_for_payload(
+        parent_revision,
+        planner_parent_payload,
+    )
+    planner = plan_threat_candidate_contribution(
+        json.loads(PACKET_FIXTURE.read_text(encoding="utf-8")),
+        stored_revision=StoredGraphRevision(
+            revision=planner_parent_revision,
+            graph_payload=planner_parent_payload,
+        ),
+        graph_reader=graph_reader,
+        actor="operator:synthetic-reviewer",
+        planned_at=datetime(2026, 8, 1, 18, 0, tzinfo=UTC),
+    )
+    breach_resolution = next(
+        item
+        for item in planner.candidate_resolutions
+        if item.candidate_id == "cand:north-gate-breach"
+    )
+    assert planner.blockers == []
+    assert breach_resolution.outcome is IdentityOutcome.RESOLVED_EXISTING
+    assert breach_resolution.target_object_id == "obj:gatewatch-mustering"
+    assert [channel.value for channel in breach_resolution.match_channels] == ["alias"]
+
+    def rebind_confirm_existing_to_planner_parent(
+        payload: dict[str, Any],
+    ) -> None:
+        _mutate_confirm_existing(payload)
+        payload["record"]["plan_ref"].update(
+            {
+                "expected_parent_revision_id": planner_parent_revision.revision_id,
+                "base_graph_payload_sha256": (
+                    planner_parent_revision.graph_payload_sha256
+                ),
+            }
+        )
+
     actual = characterize_finalized_review(
-        _derived_state(_mutate_confirm_existing),
-        parent_revision=parent_revision,
-        parent_graph_payload=parent_payload,
+        _derived_state(rebind_confirm_existing_to_planner_parent),
+        parent_revision=planner_parent_revision,
+        parent_graph_payload=planner_parent_payload,
         graph_reader=graph_reader,
     )
     breach_identity = next(
@@ -317,25 +391,91 @@ def test_confirm_existing_variant_exercises_field_operations() -> None:
         "kind": "dnd5e:encounter",
     }
     assert breach_object["created_fields"] is None
-    assert breach_object["proposed_fields"]["label"] == {
-        "operation": "replace",
-        "expected_parent_value": "Gatewatch Mustering",
-        "result_value": "North Gate Breach",
-        "assertion_ids": ["asrt:36e0d020cd3c37e8f4042f0d0bd07585"],
+    label_operation = breach_object["proposed_fields"]["label"]
+    assert label_operation["operation"] == "replace"
+    assert label_operation["expected_parent_value"] == "Gatewatch Mustering"
+    assert label_operation["result_value"] == "North Gate Breach"
+    assert label_operation["assertion_ids"] == [
+        "asrt:36e0d020cd3c37e8f4042f0d0bd07585"
+    ]
+    assert label_operation["provenance"] == {
+        "graph_assertion_id_policy": "canonical_field_has_no_assertion_id",
+        "parent_assertion_ids": [],
+        "parent_evidence_ref_ids": ["ev:gatewatch-mustering-core"],
+        "retained_parent_assertion_ids": [],
+        "retired_parent_assertion_ids": [],
+        "retained_parent_evidence_ref_ids": [],
+        "retired_parent_evidence_ref_ids": ["ev:gatewatch-mustering-core"],
+        "result_assertion_ids": [],
+        "result_evidence_ref_ids": ["ev:north-gate-breach-plan"],
+        "accepted_source_assertions": [
+            {
+                "assertion_id": "asrt:36e0d020cd3c37e8f4042f0d0bd07585",
+                "assertion_kind": "label",
+                "subject_object_id": "obj:gatewatch-mustering",
+                "object_object_id": None,
+                "predicate": None,
+                "label": "North Gate Breach",
+                "value": None,
+                "evidence_ref_ids": ["ev:north-gate-breach-plan"],
+                "source_artifact_id": "src:synthetic-gatewatch-watchlog",
+                "source_revision_id": "srcrev:synthetic-gatewatch-watchlog-v1",
+                "campaign_scope": "campaign:synthetic-gatewatch-frontier",
+                "temporal_scope": None,
+                "visibility": "gm",
+                "epistemic_kind": "asserted",
+            }
+        ],
     }
-    assert breach_object["proposed_fields"]["aliases"] == {
-        "operation": "append",
-        "expected_parent_values": [],
-        "added_values": ["the gate breach"],
-        "result_values": ["the gate breach"],
-        "assertion_ids": ["asrt:a13780ad18486b89e58db463aef5809f"],
-    }
-    assert breach_object["proposed_fields"]["summary"] == {
-        "operation": "replace",
-        "expected_parent_value": None,
-        "result_value": "A prepared situation in which the North Gate is forced open.",
-        "assertion_ids": ["asrt:fe4045c389c3dc28a34bff749ff75cc2"],
-    }
+    alias_operation = breach_object["proposed_fields"]["aliases"]
+    assert alias_operation["operation"] == "append"
+    assert alias_operation["expected_parent_values"] == ["North Gate Breach"]
+    assert alias_operation["added_values"] == ["the gate breach"]
+    assert alias_operation["result_values"] == [
+        "North Gate Breach",
+        "the gate breach",
+    ]
+    assert alias_operation["assertion_ids"] == [
+        "asrt:a13780ad18486b89e58db463aef5809f"
+    ]
+    alias_provenance = alias_operation["provenance"]
+    assert alias_provenance["parent_assertion_ids"] == [
+        "asrt:gatewatch-mustering-breach-alias"
+    ]
+    assert alias_provenance["retained_parent_assertion_ids"] == [
+        "asrt:gatewatch-mustering-breach-alias"
+    ]
+    assert alias_provenance["retired_parent_assertion_ids"] == []
+    assert alias_provenance["result_assertion_ids"] == [
+        "asrt:a13780ad18486b89e58db463aef5809f",
+        "asrt:gatewatch-mustering-breach-alias",
+    ]
+    assert alias_provenance["retained_parent_evidence_ref_ids"] == [
+        "ev:gatewatch-mustering-breach-alias"
+    ]
+    assert alias_provenance["retired_parent_evidence_ref_ids"] == []
+    assert alias_provenance["result_evidence_ref_ids"] == [
+        "ev:gatewatch-mustering-breach-alias",
+        "ev:north-gate-breach-plan",
+    ]
+    summary_operation = breach_object["proposed_fields"]["summary"]
+    assert summary_operation["operation"] == "replace"
+    assert summary_operation["expected_parent_value"] is None
+    assert summary_operation["result_value"] == (
+        "A prepared situation in which the North Gate is forced open."
+    )
+    assert summary_operation["assertion_ids"] == [
+        "asrt:fe4045c389c3dc28a34bff749ff75cc2"
+    ]
+    summary_provenance = summary_operation["provenance"]
+    assert summary_provenance["retired_parent_assertion_ids"] == []
+    assert summary_provenance["result_assertion_ids"] == [
+        "asrt:fe4045c389c3dc28a34bff749ff75cc2"
+    ]
+    assert summary_provenance["retired_parent_evidence_ref_ids"] == []
+    assert summary_provenance["result_evidence_ref_ids"] == [
+        "ev:north-gate-breach-plan"
+    ]
 
 
 @pytest.mark.conformance

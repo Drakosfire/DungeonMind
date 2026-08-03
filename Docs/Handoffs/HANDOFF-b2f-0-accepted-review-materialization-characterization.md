@@ -44,6 +44,13 @@ In scope:
   represented as executable field operations rather than ambiguous field lists:
   canonical label and summary assertions replace their single parent slots,
   while aliases append to the parent alias list.
+- Field operations explicitly characterize provenance transitions: label
+  replacement retires parent core evidence, alias append retains parent
+  assertion/evidence identities and adds accepted assertion identities,
+  summary replacement retires the parent summary assertion/evidence, and
+  retained fields preserve their parent provenance.
+- The positive `confirm_existing` proof uses an exact same-kind candidate-term
+  match produced by the B.2d planner before characterization.
 - Multiple accepted canonical label/summary assertions and normalized alias
   collisions fail closed.
 - Duplicate and pre-existing relationship triples fail closed because B.2d

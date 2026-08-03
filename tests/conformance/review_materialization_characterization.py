@@ -14,6 +14,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from dungeonmind.application.graph_snapshot import (
+    GraphObjectView,
     GraphSnapshotReader,
     ParsedGraphSnapshot,
 )
@@ -75,6 +76,124 @@ def _lineage(assertions: list[GraphContributionAssertion]) -> list[dict[str, str
             for assertion in assertions
         ]
     )
+
+
+def _parent_field_provenance(
+    existing: GraphObjectView | None,
+    *,
+    field_name: str,
+) -> dict[str, list[str]]:
+    if existing is None:
+        return {
+            "assertion_ids": [],
+            "evidence_ref_ids": [],
+        }
+    if field_name == "label":
+        return {
+            "assertion_ids": [],
+            "evidence_ref_ids": sorted(existing.core_evidence_ref_ids),
+        }
+    if field_name == "alias":
+        assertions = sorted(
+            existing.admitted_alias_assertions,
+            key=lambda item: item.assertion_id,
+        )
+        return {
+            "assertion_ids": [item.assertion_id for item in assertions],
+            "evidence_ref_ids": sorted(
+                {
+                    evidence_ref_id
+                    for item in assertions
+                    for evidence_ref_id in item.evidence_ref_ids
+                }
+            ),
+        }
+    if field_name == "summary":
+        assertion = existing.admitted_summary_assertion
+        if assertion is None:
+            return {
+                "assertion_ids": [],
+                "evidence_ref_ids": [],
+            }
+        return {
+            "assertion_ids": [assertion.assertion_id],
+            "evidence_ref_ids": sorted(assertion.evidence_ref_ids),
+        }
+    raise ReviewEffectCharacterizationError("unsupported object field provenance")
+
+
+def _field_provenance(
+    *,
+    parent: dict[str, list[str]],
+    accepted_assertions: list[GraphContributionAssertion],
+    operation: str,
+    graph_assertion_id_policy: str,
+) -> dict[str, Any]:
+    accepted = sorted(accepted_assertions, key=lambda item: item.assertion_id)
+    accepted_ids = [item.assertion_id for item in accepted]
+    accepted_evidence_ref_ids = sorted(
+        {
+            evidence_ref_id
+            for item in accepted
+            for evidence_ref_id in (
+                ref.evidence_ref_id for ref in item.evidence_refs
+            )
+        }
+    )
+    parent_assertion_ids = list(parent["assertion_ids"])
+    parent_evidence_ref_ids = list(parent["evidence_ref_ids"])
+
+    if operation == "retain":
+        retained_parent_assertion_ids = parent_assertion_ids
+        retired_parent_assertion_ids: list[str] = []
+        result_assertion_ids = parent_assertion_ids
+        retained_parent_evidence_ref_ids = parent_evidence_ref_ids
+        retired_parent_evidence_ref_ids: list[str] = []
+        result_evidence_ref_ids = parent_evidence_ref_ids
+    elif operation == "append":
+        retained_parent_assertion_ids = parent_assertion_ids
+        retired_parent_assertion_ids = []
+        result_assertion_ids = sorted(parent_assertion_ids + accepted_ids)
+        retained_parent_evidence_ref_ids = parent_evidence_ref_ids
+        retired_parent_evidence_ref_ids = []
+        result_evidence_ref_ids = sorted(
+            set(parent_evidence_ref_ids + accepted_evidence_ref_ids)
+        )
+    elif operation in {"replace", "set"}:
+        retained_parent_assertion_ids = []
+        retired_parent_assertion_ids = parent_assertion_ids
+        result_assertion_ids = (
+            accepted_ids
+            if graph_assertion_id_policy == "reuse_source_assertion_id"
+            else []
+        )
+        retained_parent_evidence_ref_ids = []
+        retired_parent_evidence_ref_ids = parent_evidence_ref_ids
+        result_evidence_ref_ids = accepted_evidence_ref_ids
+    elif operation == "omit":
+        retained_parent_assertion_ids = []
+        retired_parent_assertion_ids = []
+        result_assertion_ids = []
+        retained_parent_evidence_ref_ids = []
+        retired_parent_evidence_ref_ids = []
+        result_evidence_ref_ids = []
+    else:  # pragma: no cover - operation values are constructed above
+        raise ReviewEffectCharacterizationError("unsupported field operation")
+
+    return {
+        "graph_assertion_id_policy": graph_assertion_id_policy,
+        "parent_assertion_ids": parent_assertion_ids,
+        "parent_evidence_ref_ids": parent_evidence_ref_ids,
+        "accepted_source_assertions": [
+            _assertion_effect(item) for item in accepted
+        ],
+        "retained_parent_assertion_ids": retained_parent_assertion_ids,
+        "retired_parent_assertion_ids": retired_parent_assertion_ids,
+        "result_assertion_ids": result_assertion_ids,
+        "retained_parent_evidence_ref_ids": retained_parent_evidence_ref_ids,
+        "retired_parent_evidence_ref_ids": retired_parent_evidence_ref_ids,
+        "result_evidence_ref_ids": result_evidence_ref_ids,
+    }
 
 
 def characterize_finalized_review(
@@ -254,7 +373,7 @@ def characterize_finalized_review(
             raise ReviewEffectCharacterizationError(
                 "accepted aliases contain duplicate normalized values"
             )
-        parent_aliases = [] if existing is None else list(existing.aliases)
+        parent_aliases = [] if existing is None else sorted(existing.aliases)
         if existing is not None:
             parent_alias_keys = {
                 value.casefold().strip() for value in parent_aliases
@@ -306,6 +425,12 @@ def characterize_finalized_review(
                 "assertion_ids": [
                     item.assertion_id for item in label_assertions
                 ],
+                "provenance": _field_provenance(
+                    parent=_parent_field_provenance(existing, field_name="label"),
+                    accepted_assertions=label_assertions,
+                    operation=label_operation,
+                    graph_assertion_id_policy="canonical_field_has_no_assertion_id",
+                ),
             },
             "aliases": {
                 "operation": alias_operation,
@@ -319,6 +444,16 @@ def characterize_finalized_review(
                     for item in target_assertions
                     if item.assertion_kind == "alias"
                 ],
+                "provenance": _field_provenance(
+                    parent=_parent_field_provenance(existing, field_name="alias"),
+                    accepted_assertions=[
+                        item
+                        for item in target_assertions
+                        if item.assertion_kind == "alias"
+                    ],
+                    operation=alias_operation,
+                    graph_assertion_id_policy="reuse_source_assertion_id",
+                ),
             },
             "summary": {
                 "operation": summary_operation,
@@ -329,6 +464,12 @@ def characterize_finalized_review(
                 "assertion_ids": [
                     item.assertion_id for item in summary_assertions
                 ],
+                "provenance": _field_provenance(
+                    parent=_parent_field_provenance(existing, field_name="summary"),
+                    accepted_assertions=summary_assertions,
+                    operation=summary_operation,
+                    graph_assertion_id_policy="reuse_source_assertion_id",
+                ),
             },
         }
         created_fields = (
