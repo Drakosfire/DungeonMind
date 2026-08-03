@@ -29,7 +29,7 @@ replace it with a production materializer only after this mapping is accepted.
 | Review input | Characterized effect | Required checks |
 | --- | --- | --- |
 | `create_new` identity verdict | `create_object` for the pinned target | Target absent from exact parent; accepted label exists exactly once |
-| `confirm_existing` identity verdict | `reuse_existing_object` | Target exists in parent with the proposed kind |
+| `confirm_existing` identity verdict | `reuse_existing_object` with executable field operations | Target exists in parent with the proposed kind; one accepted label is an explicit `replace` of the canonical label slot, one accepted summary is an explicit `replace` of the canonical summary slot, and accepted aliases are explicit `append` values |
 | `reject_candidate` identity verdict | `exclude_from_graph_truth` | No object or dependent relationship effect |
 | accepted `label` | Object label | Subject target, label bytes, evidence, lineage, scope, temporal, visibility, epistemic kind preserved |
 | accepted `alias` | Object alias | Subject target and non-empty value preserved |
@@ -39,6 +39,12 @@ replace it with a production materializer only after this mapping is accepted.
 | pre-existing relationship key | fail closed | B.2d does not authorize relationship evidence augmentation or silent merge |
 | new relationship key | `propose_new_relationship` | Exactly one accepted assertion is required per key |
 | plan reference | Parent/schema/profile binding | Exact parent revision, graph schema/payload digest, and semantic-profile pin match |
+
+For `confirm_existing`, each field operation includes the expected parent value
+and the resulting value(s). An object has one canonical label slot and one
+summary slot; multiple accepted label or summary assertions therefore fail
+closed. Aliases are list additions and fail closed when normalized values
+duplicate one another or an existing alias.
 
 Temporal scopes are copied as opaque JSON values. No Timeline interpretation is
 performed. Relationship IDs are not assigned; a pre-existing or duplicate

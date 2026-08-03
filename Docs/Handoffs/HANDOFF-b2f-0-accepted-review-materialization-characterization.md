@@ -41,7 +41,11 @@ In scope:
 - `create_new`, `confirm_existing`, and `reject_candidate` disposition mapping.
 - Accepted `label`, `alias`, `summary`, and `relationship` field preservation.
 - Existing-object reuse versus proposed creation, with existing-object output
-  represented as proposed deltas only rather than inherited parent fields.
+  represented as executable field operations rather than ambiguous field lists:
+  canonical label and summary assertions replace their single parent slots,
+  while aliases append to the parent alias list.
+- Multiple accepted canonical label/summary assertions and normalized alias
+  collisions fail closed.
 - Duplicate and pre-existing relationship triples fail closed because B.2d
   does not authorize evidence augmentation or silent merging.
 - Evidence references, source artifact/revision lineage, campaign scope,
@@ -49,7 +53,8 @@ In scope:
 - Exact review operation, intent digest, confirmation, parent, graph-schema,
   graph-payload, and semantic-profile pins.
 - Determinism, tamper rejection, changed-parent rejection, rejected-assertion
-  exclusion, pre-existing relationship reuse, and zero-write proof.
+  exclusion, pre-existing relationship rejection, duplicate relationship
+  rejection, and zero-write proof.
 
 Out of scope:
 

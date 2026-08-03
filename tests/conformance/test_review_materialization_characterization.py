@@ -35,6 +35,7 @@ from dungeonmind.domain.revision_ids import compute_revision_id
 from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
 
 from .review_materialization_characterization import (
+    ReviewEffectCharacterizationError,
     characterize_finalized_review,
 )
 
@@ -196,6 +197,57 @@ def _mutate_confirm_existing(payload: dict[str, Any]) -> None:
                 assertion["object_object_id"] = new_target
 
 
+def _mutate_relationship_to_existing_parent(payload: dict[str, Any]) -> None:
+    for contribution_key in ("candidate_contribution", "reviewed_contribution"):
+        relationship = next(
+            assertion
+            for assertion in payload[contribution_key]["assertions"]
+            if assertion["assertion_kind"] == "relationship"
+        )
+        relationship.update(
+            {
+                "subject_object_id": "obj:gatewatch-mustering",
+                "predicate": "dnd5e:located_at",
+                "object_object_id": "obj:gatewatch-keep",
+            }
+        )
+
+
+def _mutate_duplicate_accepted_relationship(payload: dict[str, Any]) -> None:
+    for contribution_key in ("candidate_contribution", "reviewed_contribution"):
+        relationships = [
+            assertion
+            for assertion in payload[contribution_key]["assertions"]
+            if assertion["assertion_kind"] == "relationship"
+        ]
+        relationships[1].update(
+            {
+                "subject_object_id": relationships[0]["subject_object_id"],
+                "predicate": relationships[0]["predicate"],
+                "object_object_id": relationships[0]["object_object_id"],
+            }
+        )
+
+
+def _revision_for_payload(
+    parent_revision: WorldGraphRevision,
+    payload: dict[str, Any],
+) -> WorldGraphRevision:
+    digest = canonical_sha256(payload)
+    return parent_revision.model_copy(
+        update={
+            "revision_id": compute_revision_id(
+                world_id=parent_revision.world_id,
+                parent_revision_id=parent_revision.parent_revision_id,
+                operation_ids=parent_revision.operation_ids,
+                graph_schema=parent_revision.graph_schema,
+                graph_payload_sha256=digest,
+            ),
+            "graph_payload_sha256": digest,
+        }
+    )
+
+
 def _mutate_reject_candidate(payload: dict[str, Any]) -> None:
     target = "obj:48e170969a2bb3980e437f7430b7b1c1"
     for verdict in payload["record"]["identity_verdicts"]:
@@ -240,7 +292,7 @@ def test_tripod_effect_spec_matches_derived_fixture() -> None:
 
 
 @pytest.mark.conformance
-def test_confirm_existing_variant_exercises_delta_only_reuse() -> None:
+def test_confirm_existing_variant_exercises_field_operations() -> None:
     parent_revision, graph_reader, parent_payload = _parent_inputs()
     actual = characterize_finalized_review(
         _derived_state(_mutate_confirm_existing),
@@ -265,7 +317,25 @@ def test_confirm_existing_variant_exercises_delta_only_reuse() -> None:
         "kind": "dnd5e:encounter",
     }
     assert breach_object["created_fields"] is None
-    assert breach_object["proposed_fields"]["labels"] == ["North Gate Breach"]
+    assert breach_object["proposed_fields"]["label"] == {
+        "operation": "replace",
+        "expected_parent_value": "Gatewatch Mustering",
+        "result_value": "North Gate Breach",
+        "assertion_ids": ["asrt:36e0d020cd3c37e8f4042f0d0bd07585"],
+    }
+    assert breach_object["proposed_fields"]["aliases"] == {
+        "operation": "append",
+        "expected_parent_values": [],
+        "added_values": ["the gate breach"],
+        "result_values": ["the gate breach"],
+        "assertion_ids": ["asrt:a13780ad18486b89e58db463aef5809f"],
+    }
+    assert breach_object["proposed_fields"]["summary"] == {
+        "operation": "replace",
+        "expected_parent_value": None,
+        "result_value": "A prepared situation in which the North Gate is forced open.",
+        "assertion_ids": ["asrt:fe4045c389c3dc28a34bff749ff75cc2"],
+    }
 
 
 @pytest.mark.conformance
@@ -425,17 +495,46 @@ def test_preexisting_relationship_in_parent_payload_fails_closed() -> None:
     changed_payload["relationships"].append(
         {
             "relationship_id": "rel:existing-tripod-at-gate",
-            "subject_object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+            "subject_object_id": "obj:gatewatch-mustering",
             "predicate": "dnd5e:located_at",
-            "object_object_id": "obj:north-gate",
+            "object_object_id": "obj:gatewatch-keep",
             "evidence_ref_ids": [],
         }
     )
-    with pytest.raises(ValueError, match="payload"):
+    changed_revision = _revision_for_payload(parent_revision, changed_payload)
+
+    def rebind_relationship_to_changed_parent(payload: dict[str, Any]) -> None:
+        _mutate_relationship_to_existing_parent(payload)
+        payload["record"]["plan_ref"].update(
+            {
+                "expected_parent_revision_id": changed_revision.revision_id,
+                "base_graph_payload_sha256": changed_revision.graph_payload_sha256,
+            }
+        )
+
+    with pytest.raises(
+        ReviewEffectCharacterizationError,
+        match="pre-existing relationship triples",
+    ):
         characterize_finalized_review(
-            _state(),
-            parent_revision=parent_revision,
+            _derived_state(rebind_relationship_to_changed_parent),
+            parent_revision=changed_revision,
             parent_graph_payload=changed_payload,
+            graph_reader=graph_reader,
+        )
+
+
+@pytest.mark.conformance
+def test_duplicate_accepted_relationship_triple_fails_closed() -> None:
+    parent_revision, graph_reader, parent_payload = _parent_inputs()
+    with pytest.raises(
+        ReviewEffectCharacterizationError,
+        match="duplicate accepted relationship triples",
+    ):
+        characterize_finalized_review(
+            _derived_state(_mutate_duplicate_accepted_relationship),
+            parent_revision=parent_revision,
+            parent_graph_payload=parent_payload,
             graph_reader=graph_reader,
         )
 

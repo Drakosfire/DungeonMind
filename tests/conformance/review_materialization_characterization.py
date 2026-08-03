@@ -233,30 +233,113 @@ def characterize_finalized_review(
             raise ReviewEffectCharacterizationError(
                 "create_new characterization requires exactly one accepted label"
             )
+        if len(label_assertions) > 1:
+            raise ReviewEffectCharacterizationError(
+                "characterization supports one canonical label slot per object"
+            )
+        summary_assertions = [
+            item for item in target_assertions if item.assertion_kind == "summary"
+        ]
+        if len(summary_assertions) > 1:
+            raise ReviewEffectCharacterizationError(
+                "characterization supports one canonical summary slot per object"
+            )
         aliases = sorted(
             item.value
             for item in target_assertions
             if item.assertion_kind == "alias" and item.value is not None
         )
-        summaries = [
-            item.value
-            for item in target_assertions
-            if item.assertion_kind == "summary" and item.value is not None
-        ]
+        normalized_aliases = [value.casefold().strip() for value in aliases]
+        if len(normalized_aliases) != len(set(normalized_aliases)):
+            raise ReviewEffectCharacterizationError(
+                "accepted aliases contain duplicate normalized values"
+            )
+        parent_aliases = [] if existing is None else list(existing.aliases)
+        if existing is not None:
+            parent_alias_keys = {
+                value.casefold().strip() for value in parent_aliases
+            }
+            if parent_alias_keys.intersection(normalized_aliases):
+                raise ReviewEffectCharacterizationError(
+                    "accepted alias collides with an existing alias"
+                )
+        label_value = (
+            label_assertions[0].label
+            if label_assertions
+            else (existing.label if existing is not None else None)
+        )
+        summary_value = (
+            summary_assertions[0].value
+            if summary_assertions
+            else (existing.summary if existing is not None else None)
+        )
+        label_operation = (
+            "replace"
+            if existing is not None and label_assertions
+            else "retain"
+            if existing is not None
+            else "set"
+        )
+        summary_operation = (
+            "replace"
+            if existing is not None and summary_assertions
+            else "retain"
+            if existing is not None
+            else "set"
+            if summary_assertions
+            else "omit"
+        )
+        alias_operation = (
+            "append"
+            if existing is not None and aliases
+            else "retain"
+            if existing is not None
+            else "set"
+        )
         proposed_fields = {
-            "labels": sorted(
-                item.label
-                for item in label_assertions
-                if item.label is not None
-            ),
-            "aliases": aliases,
-            "summaries": summaries,
+            "label": {
+                "operation": label_operation,
+                "expected_parent_value": (
+                    existing.label if existing is not None else None
+                ),
+                "result_value": label_value,
+                "assertion_ids": [
+                    item.assertion_id for item in label_assertions
+                ],
+            },
+            "aliases": {
+                "operation": alias_operation,
+                "expected_parent_values": parent_aliases,
+                "added_values": aliases if existing is not None else [],
+                "result_values": (
+                    parent_aliases + aliases if existing is not None else aliases
+                ),
+                "assertion_ids": [
+                    item.assertion_id
+                    for item in target_assertions
+                    if item.assertion_kind == "alias"
+                ],
+            },
+            "summary": {
+                "operation": summary_operation,
+                "expected_parent_value": (
+                    existing.summary if existing is not None else None
+                ),
+                "result_value": summary_value,
+                "assertion_ids": [
+                    item.assertion_id for item in summary_assertions
+                ],
+            },
         }
         created_fields = (
             {
                 "label": label_assertions[0].label,
                 "aliases": aliases,
-                "summaries": summaries,
+                "summary": (
+                    summary_assertions[0].value
+                    if summary_assertions
+                    else None
+                ),
             }
             if verdict.verdict.value == "create_new"
             else None
