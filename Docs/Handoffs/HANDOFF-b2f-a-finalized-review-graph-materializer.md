@@ -1,15 +1,32 @@
 # HANDOFF — B.2f-a Finalized-review Graph Materializer
 
 **Created:** 2026-08-03  
-**Status:** IMPLEMENTED — pending review  
-**Repository:** `Drakosfire/DungeonMind`  
-**Branch:** `founding/pr-b2f-a-finalized-review-graph-materializer`  
-**Implementation base:** `5a59f260626a0e901b58e4d033299746d1ead3e9`  
-**Predecessor:** PR #11, B.2f-0, merged into `main`  
-**Reviewed predecessor head:** `2ef26a4fe0b809ce8dc4dbe8c169655ec9e5c336`  
+**Status:** ACTIVE — dispatch exactly one implementation capability
+**Repository:** `Drakosfire/DungeonMind`
+**Canonical handoff path:** `Docs/Handoffs/HANDOFF-b2f-a-finalized-review-graph-materializer.md`
+**Suggested branch:** `founding/pr-b2f-a-finalized-review-graph-materializer`
+**Predecessor:** merged PR #11, B.2f-0 accepted-review materialization characterization
 **Parent decision:** `Docs/Decisions/ADR-0008-b2f-0-accepted-review-materialization-characterization.md`  
 **Decision:** `Docs/Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md`  
 **Named successor:** B.2f-b expected-parent CAS publication
+
+## §0 Capability decomposition and stop conditions
+
+B.2f-a is one implementation capability in a deliberately split lane:
+
+```text
+B.2f-a  pure finalized-review graph payload materializer
+B.2f-b  expected-parent current-head observation and CAS publication
+B.2f-c  durable publication operation identity and uncertain-outcome recovery
+B.2f-d  service transport and external consumer contract
+Buddy   shadow adoption and eventual authority migration
+```
+
+Only B.2f-a is dispatched here. The materializer must stop and remain pure if
+publication recovery, transport, or a new durable/public format becomes
+necessary to prove the payload transformation. It must also stop rather than
+interpret temporal semantics that have not stabilized, bind external
+mechanics resources, or import D&D-specific policy.
 
 ## §1 Mission and merge-ready invariant
 
@@ -69,6 +86,41 @@ Canonical labels have no graph assertion ID. Temporal payloads and full
 source/campaign/visibility/epistemic provenance remain in the reviewed
 contribution and result binding; no invented graph fields are added.
 
+## §2a Required payload rules
+
+The exact `dm_union_graph_v3` payload transformation is part of this
+dispatch—not an invitation to add a new graph schema:
+
+- `create_new` requires an absent target, the proposal's exact kind, and one
+  accepted label. The label becomes the canonical node label and its evidence
+  becomes core node evidence. Accepted aliases are sorted by source assertion
+  ID; one accepted summary is optional.
+- `confirm_existing` requires an existing target with the exact proposal kind.
+  An accepted label replaces the canonical label and core evidence; without one,
+  both are retained. Accepted aliases append after parent aliases, sorted by
+  source assertion ID. An accepted summary replaces the single summary slot;
+  without one, the parent summary is retained.
+- `reject_candidate` creates no node, relationship, or accepted-evidence
+  effect. Rejected review history is never graph truth.
+- Every accepted graph assertion requires at least one evidence reference.
+  Accepted evidence rows are emitted once, in evidence-ID order, and parent
+  evidence rows are never garbage-collected.
+- Accepted relationships require two resulting endpoints, one accepted
+  assertion per triple, a triple absent from the exact parent, and evidence.
+  Their IDs are `rel:` plus the first 32 hex characters of the canonical SHA-256
+  of the `dm_review_relationship_id_v1` material.
+- Parent nodes, relationships, and evidence remain byte-equivalent and in their
+  existing list positions. New nodes append by object ID and new relationships
+  append by derived relationship ID.
+- Accepted alias/summary assertion IDs and accepted evidence IDs must not
+  collide with the exact parent namespaces. Conflicting serialized evidence,
+  duplicate relationship triples, pre-existing relationship triples, dangling
+  endpoints, and derived relationship-ID collisions fail closed.
+
+The returned `FinalizedReviewGraphMaterialization.graph_payload` must be
+recursively immutable while remaining JSON-compatible. Its stored digest must
+continue to equal the canonical digest after any attempted caller mutation.
+
 ## §3 Explicitly false after this slice
 
 No path in B.2f-a:
@@ -83,15 +135,30 @@ No path in B.2f-a:
 - changes `dm_union_graph_v3`;
 - interprets Timeline, mechanics, resources, or D&D policy.
 
-## §4 Changed paths
+## §4 Dispatch scope and allowed paths
 
-Only the paths authorized by the handoff changed:
+The implementation dispatch is intentionally narrow. The production boundary
+may change only these paths:
 
 ```text
 src/dungeonmind/application/review_materialization.py
-src/dungeonmind/application/__init__.py       # bounded package export
 src/dungeonmind/domain/errors.py
-src/dungeonmind/domain/__init__.py             # bounded error export
+```
+
+At most one additional package-export file is allowed, solely for the public
+application seam:
+
+```text
+src/dungeonmind/application/__init__.py
+```
+
+The domain package export is intentionally outside this dispatch. Callers may
+import the typed error from `dungeonmind.domain.errors`; no
+`src/dungeonmind/domain/__init__.py` change is authorized.
+
+The proof and documentation paths are:
+
+```text
 tests/conformance/test_review_materialization.py
 tests/fixtures/contribution_reviews/tripod-null-calf-materialized-world-graph-v3.json
 Docs/Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md
@@ -100,19 +167,21 @@ Docs/Roadmaps/ROADMAP.md
 README.md
 ```
 
-The two `__init__.py` changes use existing centralized package-export
-conventions. No other path is required.
+No contract schema, graph reader, repository, migration, service, profile
+package, or external repository path is authorized by this handoff.
 
-## §5 Evidence
+## §5 Acceptance evidence and proof obligations
 
 The primary fixture is the complete production output for the real finalized
 Tripod Null-Calf review against the Gatewatch v3 parent. The owning test
-compares the full payload and independently compares accepted effects against
-the merged B.2f-0 characterization.
+compares the full payload and independently compares exact object fields,
+field provenance, relationship triples, relationship evidence, and accepted
+evidence rows against the merged B.2f-0 characterization.
 
-The focused suite proves:
+The owning conformance suite must prove:
 
 - exact payload and digest;
+- recursive result-payload immutability and digest binding;
 - deterministic replay and relationship IDs;
 - actual B.2d planner output through the B.2e review adapter for
   `confirm_existing`;
@@ -126,21 +195,13 @@ The focused suite proves:
 - orphan assertions;
 - duplicate and pre-existing relationship triples;
 - derived relationship-ID collisions;
-- output reparse failure;
+- output reparse and output-field/triple/evidence validation failure;
 - input parent immutability.
 
-Primary materialized payload:
-
-```text
-SHA-256: 75dd4d9f3425e6646d9141fde1ceea48d4574057bc0b5aada32b165de978adc5
-derived relationship IDs:
-  rel:7136b2aa4616bd0455f8fde084b5a1c0
-  rel:915b93b66a80e03522cbd789eac0cafc
-  rel:92889103c270dd357944b277ff126cc1
-```
-
-The owning materializer suite has 16 passing tests; the independent B.2f-0
-oracle suite has 18 passing tests.
+The fixture must be generated from the real finalized B.2e state and exact
+Gatewatch parent, not hand-authored as an approximation. The independent
+characterization remains test-only and must not be imported by production
+code.
 
 ## §6 Required verification
 
@@ -153,12 +214,6 @@ uv run pytest -q -m 'not integration'
 uv run ruff check .
 uv run pyright
 git diff --check
-```
-
-The base comparison is pinned to:
-
-```text
-5a59f260626a0e901b58e4d033299746d1ead3e9
 ```
 
 The implementation must remain green against the repository's core and

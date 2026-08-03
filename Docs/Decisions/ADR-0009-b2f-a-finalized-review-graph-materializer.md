@@ -23,7 +23,9 @@ expected-parent and semantic-profile pins, parses the exact parent payload,
 deep-copies that payload, realizes accepted review effects, reparses the
 candidate output through the supplied reader, and returns a result bound to
 the review, reviewed contribution, confirmation, operation, parent, schema,
-and payload digest.
+and payload digest. The returned JSON-compatible payload is recursively
+immutable, so callers cannot alter graph bytes while retaining the original
+digest.
 
 The materializer does not:
 
@@ -109,9 +111,12 @@ summaries, locators, or malformed payloads.
 
 The owning conformance suite compares the complete production payload with
 the checked-in Tripod Null-Calf materialized graph fixture and independently
-compares accepted effects with the B.2f-0 characterization. It also proves:
+compares exact object fields, field provenance, relationship triples,
+relationship evidence, and accepted evidence rows with the B.2f-0
+characterization. It also proves:
 
 - exact replay and deterministic relationship IDs;
+- recursive result-payload immutability and digest binding;
 - actual B.2d planner → B.2e review → materializer `confirm_existing`;
 - `create_new`, `confirm_existing`, and `reject_candidate`;
 - rejected assertion/evidence exclusion;
@@ -120,7 +125,7 @@ compares accepted effects with the B.2f-0 characterization. It also proves:
 - missing accepted graph evidence;
 - duplicate and pre-existing relationship rejection;
 - relationship-ID collision rejection;
-- output reparse failure sanitization;
+- output reparse and output-field/triple/evidence validation failure;
 - parent payload immutability and untouched-row preservation.
 
 Publication, CAS, persistence, recovery, identity-decision append, and

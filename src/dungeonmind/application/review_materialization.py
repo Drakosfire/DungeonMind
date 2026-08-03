@@ -29,6 +29,55 @@ GRAPH_SCHEMA_V3 = "dm_union_graph_v3"
 RELATIONSHIP_ID_SCHEMA = "dm_review_relationship_id_v1"
 
 
+class _FrozenDict(dict[str, Any]):
+    """JSON-compatible dictionary that rejects every ordinary mutation."""
+
+    def __init__(self, values: dict[str, Any]) -> None:
+        dict.__init__(self, values)
+
+    def _immutable(self, *_args: Any, **_kwargs: Any) -> NoReturn:
+        raise TypeError("materialization graph payload is immutable")
+
+    __delitem__ = __setitem__ = clear = pop = popitem = _immutable
+
+    def setdefault(self, _key: str, _default: Any = None) -> Any:
+        self._immutable()
+
+    def update(self, *_args: Any, **_kwargs: Any) -> None:
+        self._immutable()
+
+    def __ior__(self, _other: Any) -> NoReturn:
+        self._immutable()
+
+
+class _FrozenList(list[Any]):
+    """JSON-compatible list that rejects every ordinary mutation."""
+
+    def __init__(self, values: list[Any]) -> None:
+        list.__init__(self, values)
+
+    def _immutable(self, *_args: Any, **_kwargs: Any) -> NoReturn:
+        raise TypeError("materialization graph payload is immutable")
+
+    __delitem__ = __setitem__ = __iadd__ = __imul__ = _immutable
+    append = clear = extend = insert = pop = remove = reverse = _immutable
+
+    def sort(self, *, key: Any = None, reverse: bool = False) -> None:
+        self._immutable()
+
+
+def _freeze_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        return _FrozenDict(
+            {key: _freeze_payload(item) for key, item in value.items()}
+        )
+    if isinstance(value, list):
+        return _FrozenList([_freeze_payload(item) for item in value])
+    if isinstance(value, tuple):
+        return tuple(_freeze_payload(item) for item in value)
+    return value
+
+
 @dataclass(frozen=True)
 class FinalizedReviewGraphMaterialization:
     """Ephemeral, content-bound result of pure review materialization."""
@@ -48,11 +97,11 @@ class FinalizedReviewGraphMaterialization:
 
     def __post_init__(self) -> None:
         payload = copy.deepcopy(self.graph_payload)
-        object.__setattr__(self, "graph_payload", payload)
         if self.graph_schema != GRAPH_SCHEMA_V3:
             raise ValueError("materialization result has an unsupported graph schema")
         if canonical_sha256(payload) != self.graph_payload_sha256:
             raise ValueError("materialization result payload digest does not match")
+        object.__setattr__(self, "graph_payload", _freeze_payload(payload))
 
 
 def _fail(reason: str, **details: Any) -> NoReturn:
@@ -214,8 +263,10 @@ def _expected_object_fields(node: dict[str, Any]) -> dict[str, Any]:
         "alias_assertion_ids": [
             item.get("assertion_id") for item in node.get("alias_assertions", [])
         ],
+        "alias_assertions": copy.deepcopy(node.get("alias_assertions", [])),
         "summary": None if summary is None else summary.get("summary"),
         "summary_assertion_id": None if summary is None else summary.get("assertion_id"),
+        "summary_assertion": copy.deepcopy(summary),
     }
 
 
@@ -228,6 +279,23 @@ def _output_object_matches(
     obj = snapshot.objects.get(object_id)
     if obj is None:
         return False
+    actual_alias_assertions = [
+        {
+            "assertion_id": item.assertion_id,
+            "alias": item.alias,
+            "evidence_ref_ids": list(item.evidence_ref_ids),
+        }
+        for item in obj.admitted_alias_assertions
+    ]
+    actual_summary_assertion = (
+        None
+        if obj.admitted_summary_assertion is None
+        else {
+            "assertion_id": obj.admitted_summary_assertion.assertion_id,
+            "summary": obj.admitted_summary_assertion.summary,
+            "evidence_ref_ids": list(obj.admitted_summary_assertion.evidence_ref_ids),
+        }
+    )
     return (
         obj.kind == expected["kind"]
         and obj.label == expected["label"]
@@ -242,6 +310,8 @@ def _output_object_matches(
             else obj.admitted_summary_assertion.assertion_id
         )
         == expected["summary_assertion_id"]
+        and actual_alias_assertions == expected["alias_assertions"]
+        and actual_summary_assertion == expected["summary_assertion"]
     )
 
 
@@ -351,6 +421,7 @@ def materialize_finalized_review(
     created_nodes: dict[str, dict[str, Any]] = {}
     materialized_nodes: dict[str, dict[str, Any]] = {}
     expected_output_objects: dict[str, dict[str, Any]] = {}
+    expected_output_relationships: dict[str, dict[str, Any]] = {}
     created_object_ids: set[str] = set()
     updated_object_ids: set[str] = set()
 
@@ -524,6 +595,9 @@ def materialize_finalized_review(
             "object_object_id": object_id,
             "evidence_ref_ids": _evidence_ids(assertions[0]),
         }
+        expected_output_relationships[relationship_id] = copy.deepcopy(
+            new_relationships[relationship_id]
+        )
     payload["relationships"] = [
         *parent_relationships,
         *[new_relationships[key] for key in sorted(new_relationships)],
@@ -553,11 +627,20 @@ def materialize_finalized_review(
             expected=expected_output_objects[object_id],
         ):
             _fail("output_graph_validation")
-    if any(
-        relationship_id not in output_snapshot.relationships
-        for relationship_id in new_relationships
-    ):
-        _fail("output_graph_validation")
+    for relationship_id, expected in expected_output_relationships.items():
+        actual = output_snapshot.relationships.get(relationship_id)
+        if actual is None or (
+            actual.relationship_id != expected["relationship_id"]
+            or actual.subject_object_id != expected["subject_object_id"]
+            or actual.predicate != expected["predicate"]
+            or actual.object_object_id != expected["object_object_id"]
+            or actual.evidence_ref_ids != expected["evidence_ref_ids"]
+        ):
+            _fail("output_graph_validation")
+    for evidence_ref_id, expected in accepted_evidence.items():
+        actual = output_snapshot.evidence.get(evidence_ref_id)
+        if actual is None or actual.model_dump(mode="json") != expected:
+            _fail("output_graph_validation")
 
     result_payload = copy.deepcopy(payload)
     result_digest = canonical_sha256(result_payload)

@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import copy
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from dungeonmind.application.graph_snapshot import UnionGraphV3SnapshotReader
+from dungeonmind.application.graph_snapshot import (
+    GraphRelationshipView,
+    UnionGraphV3SnapshotReader,
+)
 from dungeonmind.application.review_materialization import (
     materialize_finalized_review,
 )
@@ -102,36 +106,155 @@ def _assert_reason(exc: pytest.ExceptionInfo[ContributionMaterializationError], 
     assert "fixture://" not in str(exc.value)
 
 
+def _assert_payload_matches_effect_oracle(
+    payload: dict[str, Any],
+    *,
+    oracle: dict[str, Any],
+    parent_payload: dict[str, Any],
+) -> None:
+    """Compare graph fields and provenance against the independent B.2f-0 spec."""
+    parent_nodes = {
+        node["object_id"]: node for node in parent_payload["nodes"]
+    }
+    output_nodes = {node["object_id"]: node for node in payload["nodes"]}
+    expected_effect_ids = {
+        effect["object_id"] for effect in oracle["object_effects"]
+    }
+    assert set(output_nodes) == set(parent_nodes) | expected_effect_ids
+
+    for effect in oracle["object_effects"]:
+        object_id = effect["object_id"]
+        node = output_nodes[object_id]
+        fields = effect["proposed_fields"]
+        assert node["kind"] == effect["kind"]
+        assert node["label"] == fields["label"]["result_value"]
+        assert node["evidence_ref_ids"] == fields["label"]["provenance"][
+            "result_evidence_ref_ids"
+        ]
+        assert [item["assertion_id"] for item in node["alias_assertions"]] == fields[
+            "aliases"
+        ]["provenance"]["result_assertion_ids"]
+        assert [item["alias"] for item in node["alias_assertions"]] == fields["aliases"][
+            "result_values"
+        ]
+        assert node["summary_assertion"] is None or node["summary_assertion"][
+            "summary"
+        ] == fields["summary"]["result_value"]
+        assert (
+            None
+            if node["summary_assertion"] is None
+            else node["summary_assertion"]["assertion_id"]
+        ) == (
+            fields["summary"]["provenance"]["result_assertion_ids"][0]
+            if fields["summary"]["provenance"]["result_assertion_ids"]
+            else None
+        )
+        assert (
+            []
+            if node["summary_assertion"] is None
+            else node["summary_assertion"]["evidence_ref_ids"]
+        ) == fields["summary"]["provenance"]["result_evidence_ref_ids"]
+
+        accepted_aliases = {
+            assertion["assertion_id"]: {
+                "assertion_id": assertion["assertion_id"],
+                "alias": assertion["value"],
+                "evidence_ref_ids": assertion["evidence_ref_ids"],
+            }
+            for assertion in effect["assertions"]
+            if assertion["assertion_kind"] == "alias"
+        }
+        expected_aliases = [
+            *(
+                parent_nodes[object_id].get("alias_assertions", [])
+                if object_id in parent_nodes
+                else []
+            ),
+            *[
+                accepted_aliases[assertion_id]
+                for assertion_id in fields["aliases"]["provenance"][
+                    "result_assertion_ids"
+                ]
+                if assertion_id in accepted_aliases
+            ],
+        ]
+        assert node["alias_assertions"] == expected_aliases
+
+        accepted_summary = next(
+            (
+                assertion
+                for assertion in effect["assertions"]
+                if assertion["assertion_kind"] == "summary"
+            ),
+            None,
+        )
+        if accepted_summary is not None:
+            assert node["summary_assertion"] == {
+                "assertion_id": accepted_summary["assertion_id"],
+                "summary": accepted_summary["value"],
+                "evidence_ref_ids": accepted_summary["evidence_ref_ids"],
+            }
+
+    parent_relationships = {
+        (
+            relationship["subject_object_id"],
+            relationship["predicate"],
+            relationship["object_object_id"],
+        )
+        for relationship in parent_payload["relationships"]
+    }
+    output_relationships = {
+        (
+            relationship["subject_object_id"],
+            relationship["predicate"],
+            relationship["object_object_id"],
+        ): relationship
+        for relationship in payload["relationships"]
+    }
+    expected_relationships = {
+        (
+            effect["relationship_key"]["subject_object_id"],
+            effect["relationship_key"]["predicate"],
+            effect["relationship_key"]["object_object_id"],
+        ): effect
+        for effect in oracle["relationship_effects"]
+    }
+    assert set(output_relationships) - parent_relationships == set(expected_relationships)
+    for relationship_key, effect in expected_relationships.items():
+        assert output_relationships[relationship_key]["evidence_ref_ids"] == effect[
+            "evidence_ref_ids"
+        ]
+
+    parent_evidence_ids = {
+        row["evidence_ref_id"] for row in parent_payload["evidence_refs"]
+    }
+    output_evidence = {
+        row["evidence_ref_id"]: row
+        for row in payload["evidence_refs"]
+        if row["evidence_ref_id"] not in parent_evidence_ids
+    }
+    assert output_evidence == oracle["accepted_evidence"]
+
+
 @pytest.mark.conformance
 def test_tripod_materializes_exact_payload_and_independent_effects() -> None:
     parent, reader = _parent_inputs()
-    result = _materialize(_state(), parent, reader)
+    state = _state()
+    result = _materialize(state, parent, reader)
     expected = json.loads(MATERIALIZED_FIXTURE.read_text(encoding="utf-8"))
     assert result.graph_payload == expected
     assert result.graph_payload_sha256 == canonical_sha256(expected)
 
     oracle = characterize_finalized_review(
-        _state(),
+        state,
         parent_revision=parent.revision,
         parent_graph_payload=parent.graph_payload,
         graph_reader=reader,
     )
-    assert set(oracle["accepted_evidence"]) == {
-        row["evidence_ref_id"]
-        for row in result.graph_payload["evidence_refs"]
-        if row["evidence_ref_id"]
-        not in {
-            "ev:gatewatch-north-gate-core",
-            "ev:gatewatch-north-gate-alias",
-            "ev:gatewatch-north-gate-summary",
-            "ev:gatewatch-keep-core",
-            "ev:gatewatch-mustering-core",
-            "ev:mustering-at-keep",
-        }
-    }
-    assert len(result.graph_payload["nodes"]) == len(oracle["object_effects"]) + 3
-    assert len(result.graph_payload["relationships"]) == 1 + len(
-        oracle["relationship_effects"]
+    _assert_payload_matches_effect_oracle(
+        result.graph_payload,
+        oracle=oracle,
+        parent_payload=parent.graph_payload,
     )
 
 
@@ -156,6 +279,22 @@ def test_result_binds_review_parent_and_is_replay_deterministic() -> None:
     assert first.expected_parent_revision_id == state.record.plan_ref.expected_parent_revision_id
     assert first.parent_graph_payload_sha256 == state.record.plan_ref.base_graph_payload_sha256
     assert first.graph_schema == state.record.plan_ref.base_graph_schema
+
+
+@pytest.mark.conformance
+def test_result_payload_is_recursively_immutable_and_digest_bound() -> None:
+    parent, reader = _parent_inputs()
+    result = _materialize(_state(), parent, reader)
+    digest = result.graph_payload_sha256
+
+    with pytest.raises(TypeError, match="immutable"):
+        result.graph_payload["nodes"][0]["label"] = "tampered"
+    with pytest.raises(TypeError, match="immutable"):
+        result.graph_payload["nodes"].append({"object_id": "tampered"})
+    with pytest.raises(TypeError, match="immutable"):
+        result.graph_payload["nodes"][0]["alias_assertions"].clear()
+
+    assert canonical_sha256(result.graph_payload) == digest
 
 
 @pytest.mark.conformance
@@ -450,6 +589,35 @@ class _RejectOutputReader:
         )
 
 
+class _TamperOutputReader:
+    def __init__(self, delegate: UnionGraphV3SnapshotReader) -> None:
+        self.delegate = delegate
+        self.calls = 0
+
+    def parse(self, *, graph_schema: str, graph_payload: dict[str, Any]):
+        self.calls += 1
+        snapshot = self.delegate.parse(
+            graph_schema=graph_schema,
+            graph_payload=graph_payload,
+        )
+        if self.calls == 2:
+            relationship_id = next(
+                relationship_id
+                for relationship_id, relationship in snapshot.relationships.items()
+                if relationship.subject_object_id
+                == "obj:48e170969a2bb3980e437f7430b7b1c1"
+            )
+            relationship = snapshot.relationships[relationship_id]
+            snapshot.relationships[relationship_id] = GraphRelationshipView(
+                relationship_id=relationship.relationship_id,
+                subject_object_id=relationship.subject_object_id,
+                predicate="dnd5e:located_at",
+                object_object_id=relationship.object_object_id,
+                evidence_ref_ids=relationship.evidence_ref_ids,
+            )
+        return replace(snapshot, relationships=snapshot.relationships)
+
+
 @pytest.mark.conformance
 def test_output_reparse_failure_is_sanitized_and_write_free() -> None:
     parent, reader = _parent_inputs()
@@ -458,3 +626,11 @@ def test_output_reparse_failure_is_sanitized_and_write_free() -> None:
         _materialize(_state(), parent, _RejectOutputReader(reader))
     _assert_reason(exc, "output_graph_validation")
     assert parent.graph_payload == before
+
+
+@pytest.mark.conformance
+def test_output_relationship_triple_and_evidence_are_revalidated() -> None:
+    parent, reader = _parent_inputs()
+    with pytest.raises(ContributionMaterializationError) as exc:
+        _materialize(_state(), parent, _TamperOutputReader(reader))
+    _assert_reason(exc, "output_graph_validation")

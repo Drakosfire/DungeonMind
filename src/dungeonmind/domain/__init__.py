@@ -4,7 +4,6 @@ from .canonical import canonical_json, canonical_sha256, sha256_text
 from .capability import evaluate_capability, permitted_tool_names
 from .errors import (
     CapabilityDeniedError,
-    ContributionMaterializationError,
     ContributionReviewAlreadyFinalizedError,
     ContributionReviewValidationError,
     DocumentNotFoundError,
@@ -23,7 +22,6 @@ from .revision_ids import compute_revision_id
 
 __all__ = [
     "CapabilityDeniedError",
-    "ContributionMaterializationError",
     "ContributionReviewAlreadyFinalizedError",
     "ContributionReviewValidationError",
     "DocumentNotFoundError",
