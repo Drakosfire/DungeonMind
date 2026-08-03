@@ -496,12 +496,63 @@ def _mutate_missing_graph_evidence(payload: dict[str, Any]) -> None:
                 assertion["evidence_refs"] = []
 
 
+def _mutate_conflicting_accepted_evidence(payload: dict[str, Any]) -> None:
+    target = "obj:48e170969a2bb3980e437f7430b7b1c1"
+    for contribution_key in ("candidate_contribution", "reviewed_contribution"):
+        for assertion in payload[contribution_key]["assertions"]:
+            if (
+                assertion["assertion_kind"] == "summary"
+                and assertion["subject_object_id"] == target
+            ):
+                assertion["evidence_refs"][0]["locator"] = (
+                    "fixture://synthetic-gatewatch-watchlog#conflicting-evidence"
+                )
+
+
+def _mutate_duplicate_accepted_aliases(payload: dict[str, Any]) -> None:
+    target = "obj:48e170969a2bb3980e437f7430b7b1c1"
+    alias_ids: list[str] = []
+    for contribution_key in ("candidate_contribution", "reviewed_contribution"):
+        aliases = [
+            assertion
+            for assertion in payload[contribution_key]["assertions"]
+            if (
+                assertion["assertion_kind"] == "alias"
+                and assertion["subject_object_id"] == target
+            )
+        ]
+        for assertion in aliases:
+            assertion["value"] = "duplicate-null-calf"
+            if contribution_key == "reviewed_contribution":
+                assertion["acceptance_state"] = "accepted"
+            alias_ids.append(assertion["assertion_id"])
+    for verdict in payload["record"]["assertion_verdicts"]:
+        if verdict["assertion_id"] in alias_ids:
+            verdict["acceptance_state"] = "accepted"
+
+
 @pytest.mark.conformance
 def test_accepted_assertion_without_graph_evidence_fails_closed() -> None:
     parent, reader = _parent_inputs()
     with pytest.raises(ContributionMaterializationError) as exc:
         _materialize(_derived_state(_mutate_missing_graph_evidence), parent, reader)
     _assert_reason(exc, "accepted_assertion_missing_graph_evidence")
+
+
+@pytest.mark.conformance
+def test_conflicting_accepted_evidence_fails_closed() -> None:
+    parent, reader = _parent_inputs()
+    with pytest.raises(ContributionMaterializationError) as exc:
+        _materialize(_derived_state(_mutate_conflicting_accepted_evidence), parent, reader)
+    _assert_reason(exc, "accepted_evidence_conflict")
+
+
+@pytest.mark.conformance
+def test_unsupported_field_shape_fails_closed() -> None:
+    parent, reader = _parent_inputs()
+    with pytest.raises(ContributionMaterializationError) as exc:
+        _materialize(_derived_state(_mutate_duplicate_accepted_aliases), parent, reader)
+    _assert_reason(exc, "unsupported_field_shape")
 
 
 def _mutate_orphan_relationship(payload: dict[str, Any]) -> None:
