@@ -349,5 +349,113 @@ B.2f-c scaffolding.
 
 ## Implementation handback
 
-This section is completed only after verification, commit, push, and PR
-creation. It must contain exact results rather than placeholders.
+- Branch: `founding/pr-b2f-b-finalized-review-expected-parent-cas-publication`
+- Base SHA: `8a955881603b2c5798b41825b461340367d3368e`
+- Implementation head before this handback-only documentation commit:
+  `ab28e82c22b8191dc8034afec0b0671a593e5c5d`
+- Pull request: https://github.com/Drakosfire/DungeonMind/pull/13
+
+The mission and merge-ready invariant are:
+
+> A trusted kernel caller can publish one exact durable finalized review so that
+> its deterministic B.2f-a payload becomes one immutable child revision and the
+> world head advances atomically only from the review’s pinned parent.
+
+```text
+exact world_id + review_id
+→ load one durable finalized ContributionReviewState
+→ current head == review.expected_parent_revision_id
+→ load that exact StoredGraphRevision
+→ B.2f-a materialization
+→ PublishRevisionCommand with:
+     parent == expected_parent == review parent
+     operation_ids == [review.operation_id]
+     schema/payload == materialization result
+→ atomic WorldGraphRepository CAS
+→ one exact FinalizedReviewPublication result
+```
+
+Primary fixture proof:
+
+```text
+world_id:                 world:synthetic-gatewatch
+review_id:                review:cff0162637b428e634e8cccaa9958dc2
+operation_id:             reviewop:11111111111111111111111111111111
+reviewed_contribution_id: contrib:65cdb14d13c40e5b8725fd5111509854
+confirmation_id:          confirm:fa0d200c9922caf3c7e925b320cf9dae
+parent_revision_id:       rev:f2d5164c176289c5f3df7e68b4f0e46d
+graph_payload_sha256:     75dd4d9f3425e6646d9141fde1ceea48d4574057bc0b5aada32b165de978adc5
+published_revision_id:    rev:6e02bd224f6b5616534f10026c8b9679
+```
+
+Command mapping is exact: `operation_ids == [record.operation_id]`, with
+`parent_revision_id == expected_parent_revision_id == record.plan_ref.expected_parent_revision_id`,
+`graph_schema == "dm_union_graph_v3"`, the fresh B.2f-a payload, and
+`created_at == published_at`. The returned envelope is checked before creating
+the ephemeral result.
+
+In-memory owning-boundary results:
+
+- `tests/conformance/test_review_publication.py`: 15 passed.
+- Exact publication stored the expected payload and revision, advanced the
+  head, and preserved the durable review byte-for-byte.
+- Missing, corrupt, stale, missing-head, missing-parent, materialization,
+  CAS-race, immediate-replay, mismatched-envelope, and unknown-outcome paths
+  were exercised without fallback or a second publish.
+- Same-review concurrency produced exactly one success and one stale loser.
+- Explicit rollback replayed the same content-addressed revision.
+- Success and envelope-failure spies proved one head read, one parent read,
+  one `publish_revision` call, and no post-commit repository read.
+
+PostgreSQL owning-boundary results:
+
+- The integration job passed exact Tripod publication, immediate stale replay,
+  and two independently connected callers racing reviews pinned to one parent.
+- The race uses separate `PostgresRepositoryBundle` instances and therefore
+  separate database connections/transactions.
+- CI run
+  [30870007389](https://github.com/Drakosfire/DungeonMind/actions/runs/30870007389)
+  passed both [core](https://github.com/Drakosfire/DungeonMind/actions/runs/30870007389/job/91869890666)
+  and [integration](https://github.com/Drakosfire/DungeonMind/actions/runs/30870007389/job/91869890689).
+
+Verification:
+
+```text
+uv run pytest -q tests/conformance/test_review_publication.py          15 passed
+uv run pytest -q tests/conformance/test_review_materialization.py      21 passed
+uv run pytest -q tests/conformance/test_review_materialization_characterization.py
+                                                                        18 passed
+uv run pytest -q -m 'not integration'                                  552 passed
+uv run ruff check .                                                     passed
+uv run pyright                                                          0 errors
+git diff --check                                                        passed
+```
+
+The local PostgreSQL command was attempted with the specified DSN but could
+not start migration because `localhost:54329` refused the connection; Docker
+was unavailable because no daemon was running. This is an environment
+baseline limitation, not a claimed integration result. The first PR core
+check also exposed that the new integration module imported optional `psycopg`
+during non-integration collection; runtime-only PostgreSQL imports fixed that
+regression, and the final CI run above is green.
+
+Changed paths are exactly the §5 allowlist:
+
+```text
+src/dungeonmind/application/review_publication.py
+src/dungeonmind/application/__init__.py
+src/dungeonmind/domain/errors.py
+tests/conformance/test_review_publication.py
+tests/integration/test_postgres_review_publication.py
+Docs/Decisions/ADR-0010-b2f-b-finalized-review-expected-parent-cas-publication.md
+Docs/Handoffs/HANDOFF-b2f-b-finalized-review-expected-parent-cas-publication.md
+Docs/Roadmaps/ROADMAP.md
+README.md
+```
+
+Still false after B.2f-b: durable publication identity, exact retry-as-success,
+uncertain-outcome recovery, publication receipts, public API/CLI/agent/UI
+transport, publication-time capability evaluation, global identity-decision
+append, contribution/review lifecycle mutation, and DungeonBuddy/product
+adoption. B.2f-c owns durable mapping, exact replay, and recovery; B.2f-d owns
+external write surfaces.
