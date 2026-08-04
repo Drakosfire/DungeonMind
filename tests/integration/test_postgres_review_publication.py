@@ -7,6 +7,7 @@ import json
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -34,11 +35,10 @@ from dungeonmind.contracts.semantic_profile import SemanticProfileDescriptor
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import StaleParentRevisionError
 from dungeonmind.domain.revision_ids import compute_revision_id
-from dungeonmind.infrastructure.postgres import (
-    PostgresDatabase,
-    PostgresRepositoryBundle,
-)
 from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
+
+if TYPE_CHECKING:
+    from dungeonmind.infrastructure.postgres import PostgresRepositoryBundle
 
 pytestmark = pytest.mark.integration
 
@@ -251,6 +251,11 @@ def test_postgres_two_finalized_reviews_pinned_to_one_parent_have_one_cas_winner
     migrated_database: str,
     pg,
 ) -> None:
+    from dungeonmind.infrastructure.postgres import (
+        PostgresDatabase,
+        PostgresRepositoryBundle,
+    )
+
     _seed_tripod(pg)
     second = _second_state()
     pg.contribution_reviews.finalize(second)
