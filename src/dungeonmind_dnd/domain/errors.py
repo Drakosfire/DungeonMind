@@ -47,3 +47,19 @@ class DndContributionPlanningError(DndError):
     """
 
     code = "dnd_contribution_planning_error"
+
+
+class DndThreatMechanicsHydrationError(DndError):
+    """Sanitized failure at the pinned Threat mechanics boundary.
+
+    The public message is intentionally fixed.  Callers may inspect only the
+    closed ``reason`` vocabulary and opaque identity fields supplied to the
+    operation; provider, graph, and payload diagnostics never cross this
+    boundary.
+    """
+
+    code = "dnd_threat_mechanics_hydration_error"
+    public_message = "D&D Threat mechanics hydration failed."
+
+    def __init__(self, *, details: dict[str, Any] | None = None) -> None:
+        super().__init__(self.public_message, details=details)

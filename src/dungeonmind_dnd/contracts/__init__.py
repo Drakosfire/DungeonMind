@@ -25,6 +25,17 @@ from .contribution_planning import (
     DndThreatContributionPlan,
     DndThreatPlanStatus,
 )
+from .mechanics_resources import (
+    MECHANICS_RESOURCE_ENVELOPE_SCHEMA,
+    MECHANICS_RESOURCE_REF_SCHEMA,
+    THREAT_MECHANICS_BINDING_SCHEMA,
+    THREAT_MECHANICS_HYDRATION_SCHEMA,
+    DndMechanicsResourceEnvelope,
+    DndMechanicsResourceRef,
+    DndMechanicsResourceResolver,
+    DndThreatMechanicsBinding,
+    DndThreatMechanicsHydration,
+)
 from .vocabulary import (
     SEMANTIC_VOCABULARY_SCHEMA,
     VOCABULARY_REF_SCHEMA,
@@ -37,12 +48,16 @@ from .vocabulary import (
 
 __all__ = [
     "FORBIDDEN_THREAT_KIND",
+    "MECHANICS_RESOURCE_ENVELOPE_SCHEMA",
+    "MECHANICS_RESOURCE_REF_SCHEMA",
     "NODE_CANDIDATE_SCHEMA",
     "RELATIONSHIP_CANDIDATE_SCHEMA",
     "REQUIRED_THREAT_PREDICATE",
     "SEMANTIC_VOCABULARY_SCHEMA",
     "THREAT_CANDIDATE_PACKET_SCHEMA",
     "THREAT_CONTRIBUTION_PLAN_SCHEMA",
+    "THREAT_MECHANICS_BINDING_SCHEMA",
+    "THREAT_MECHANICS_HYDRATION_SCHEMA",
     "VOCABULARY_REF_SCHEMA",
     "DndCandidateContractModel",
     "DndCandidateEndpointRef",
@@ -50,6 +65,9 @@ __all__ = [
     "DndExistingObjectVerification",
     "DndExistingObjectVerificationState",
     "DndMatchChannel",
+    "DndMechanicsResourceEnvelope",
+    "DndMechanicsResourceRef",
+    "DndMechanicsResourceResolver",
     "DndNodeCandidate",
     "DndPlanBlocker",
     "DndPlanBlockerCode",
@@ -59,6 +77,8 @@ __all__ = [
     "DndSemanticVocabulary",
     "DndThreatCandidatePacket",
     "DndThreatContributionPlan",
+    "DndThreatMechanicsBinding",
+    "DndThreatMechanicsHydration",
     "DndThreatPlanStatus",
     "DndVocabularyObjectKind",
     "DndVocabularyPredicate",

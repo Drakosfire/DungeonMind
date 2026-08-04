@@ -1,0 +1,36 @@
+{
+  "schema_version": "dmdnd_mechanics_resource_envelope_v1",
+  "resource_ref": {
+    "schema_version": "dmdnd_mechanics_resource_ref_v1",
+    "ruleset_id": "dnd5e",
+    "provider_id": "fixture.dungeonmind.statblocks",
+    "resource_id": "statblock:tripod-null-calf",
+    "resource_revision": "tripod-null-calf-v1",
+    "resource_schema": "fixture_dnd5e_statblock_v1",
+    "media_type": "application/json",
+    "payload_sha256": "11e6e581606ffdd1091cf6d515c1fd4288772451a74ec14a979660acdeffd932"
+  },
+  "mechanics_payload": {
+    "schema_version": "fixture_dnd5e_statblock_v1",
+    "name": "Tripod Null-Calf",
+    "size": "large",
+    "creature_type": "aberration",
+    "armor_class": 15,
+    "hit_points": {
+      "average": 95,
+      "formula": "10d10+40"
+    },
+    "speed": {
+      "walk_ft": 30
+    },
+    "skills": {
+      "athletics": 7,
+      "perception": 5,
+      "stealth": 5
+    },
+    "encounter_role": [
+      "gate_pinner",
+      "geometry_breaker"
+    ]
+  }
+}
