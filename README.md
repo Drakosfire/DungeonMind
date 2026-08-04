@@ -60,6 +60,7 @@ system. Decision records:
 [`Docs/Decisions/ADR-0006-pinned-profile-contribution-planning.md`](Docs/Decisions/ADR-0006-pinned-profile-contribution-planning.md).
 [`Docs/Decisions/ADR-0007-finalized-contribution-review-adoption.md`](Docs/Decisions/ADR-0007-finalized-contribution-review-adoption.md).
 [`Docs/Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md`](Docs/Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md).
+[`Docs/Decisions/ADR-0010-b2f-b-finalized-review-expected-parent-cas-publication.md`](Docs/Decisions/ADR-0010-b2f-b-finalized-review-expected-parent-cas-publication.md).
 
 The D&D package's first executable slice (B.2c) is intentionally tiny: one
 immutable `dnd5e-profile-v2` descriptor, one Threat vocabulary catalog
@@ -79,8 +80,9 @@ only as the contextual `dnd5e:threatens` relationship, never as an object kind.
 
 ## Status
 
-**Founding through B.2e and B.2f-0 landed; B.2f-a finalized-review graph
-payload materialization is the current capability. Publication remains false.**
+**Founding through B.2f-a landed; B.2f-b finalized-review expected-parent CAS
+publication is the current capability. Durable recovery and public transport
+remain false.**
 
 What exists today:
 
@@ -123,9 +125,13 @@ What exists today:
   `dm_union_graph_v3` parent, including deterministic accepted nodes, evidence,
   relationships, output reparse, and an ephemeral copy-on-read,
   digest-bound result;
+- one trusted application seam that loads a durable finalized review by
+  `(world_id, review_id)`, rechecks its exact parent, materializes it through
+  B.2f-a, and publishes one immutable child through the existing atomic graph
+  repository CAS, returning an ephemeral review-to-revision binding;
 
-What deliberately does **not** exist yet: expected-parent CAS publication,
-revision construction, publication recovery, or transport from finalized
+What deliberately does **not** exist yet: durable publication identity,
+retry-as-success, uncertain-outcome recovery, or transport from finalized
 reviews; mutable review drafts/editing/replacement, review API/UI/tooling,
 global identity-decision append, or target overrides; generic field/property
 assertion models, assertion-scoped relationships, assertion authoring or graph writes,

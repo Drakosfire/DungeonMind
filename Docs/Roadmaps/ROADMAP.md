@@ -1,11 +1,11 @@
 # DungeonMind — Roadmap and PR ladder
 
 **Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b / B.2c / B.2d /
-B.2e / B.2f-0 / B.2f-a landed or are in review. B.2f-a is the current
-DungeonMind-owned slice; expected-parent publication remains a separate
-successor. External RulesIngestion PR C and product-surface adoption of
+B.2e / B.2f-0 / B.2f-a / B.2f-b landed or are in review. B.2f-b is the
+current DungeonMind-owned slice; durable publication identity and recovery
+remain separate successors. External RulesIngestion PR C and product-surface adoption of
 `mind_turn_v1` remain independent successors. Ownership per ADR-0002,
-ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, and ADR-0009.
+ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, and ADR-0010.
 
 Each PR is independently reviewable, in its named repository. Cross-repo work
 is never one PR.
@@ -24,8 +24,8 @@ B.2c  DungeonMindDnD Threat vocabulary + extraction candidates ✅
 B.2d  pinned create-or-connect contribution plan ✅
 B.2e  finalized contribution review adoption ✅
 B.2f-0 accepted-review materialization characterization ✅
-B.2f-a finalized-review graph payload materializer ← current
-B.2f-b expected-parent CAS publication
+B.2f-a finalized-review graph payload materializer ✅
+B.2f-b expected-parent CAS publication ← current
 B.2f-c durable publication operation + uncertain-outcome recovery
 B.2f-d service transport + external consumer contract
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
@@ -330,15 +330,49 @@ Canonical handoff:
 Decision record:
 [`Docs/Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md`](../Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md).
 
+## PR B.2f-b — Finalized-review expected-parent CAS publication
+
+**Repository:** DungeonMind only
+
+Outcome:
+
+```text
+durable finalized review ID
++ exact current parent
++ B.2f-a materialization
+→ one PublishRevisionCommand
+→ atomic expected-parent CAS
+→ immutable child revision + advanced head
+→ ephemeral review/revision binding
+```
+
+B.2f-b is the first graph-head mutation for finalized reviews. The application
+seam accepts only `(world_id, review_id)` plus the caller's publication
+timestamp; it loads the exact durable B.2e review, rejects a stale preflight,
+loads the pinned parent, materializes through B.2f-a, maps
+`operation_ids=[review.operation_id]`, and invokes the existing repository CAS
+once. It verifies the returned revision envelope and performs no post-commit
+read, retry, recovery, identity-decision append, review mutation, or transport.
+
+Still false after this PR: durable review-to-revision identity, retry-as-success,
+uncertain-outcome recovery, public write surfaces, global identity-decision
+append, and product-surface adoption.
+
+Canonical handoff:
+[`Docs/Handoffs/HANDOFF-b2f-b-finalized-review-expected-parent-cas-publication.md`](../Handoffs/HANDOFF-b2f-b-finalized-review-expected-parent-cas-publication.md).
+Decision record:
+[`Docs/Decisions/ADR-0010-b2f-b-finalized-review-expected-parent-cas-publication.md`](../Decisions/ADR-0010-b2f-b-finalized-review-expected-parent-cas-publication.md).
+
 ## Named future lanes (no dates claimed)
 
 These lanes are named so successors can be dispatched deliberately. None is
 scheduled, and none may be smuggled into an unrelated PR.
 
-- **B.2f-b/c/d — expected-parent publication, recovery, and transport** —
-  B.2f-a's deterministic payload is a pure input to separate current-head CAS,
-  durable publication/recovery, and transport slices. These successors must
-  handle stale parents without silently replanning.
+- **B.2f-c/d — durable publication identity, recovery, and transport** —
+  B.2f-b now loads one durable finalized review, materializes it against its
+  exact parent, and performs one existing-repository CAS publication. Durable
+  operation identity, uncertain-outcome recovery, and external transport remain
+  separate slices and must not silently replan stale reviews.
 - **B.3 — Threat mechanics-resource binding** — approved Threat graph
   identity → exact external statblock/mechanics resource ref →
   revision/digest pin → profile-owned hydration contract. Mechanics stay
