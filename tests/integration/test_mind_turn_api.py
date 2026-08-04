@@ -151,6 +151,7 @@ def test_caller_mismatch_forbidden(seeded_client) -> None:
     )
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "capability_denied"
+    assert response.json()["error"]["message"] == "demo caller/scope mismatch"
 
 
 def test_admissibility_escalation_forbidden(seeded_client) -> None:

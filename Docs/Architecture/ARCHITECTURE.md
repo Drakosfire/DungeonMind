@@ -87,6 +87,16 @@ Kernel-side finalized-review publication layer (PR B.2f-c — DungeonMind)
         exact replay and response-loss recovery
         no pending lifecycle, worker, transport, or identity-ledger append
 
+Separate finalized-review publication transport (PR B.2f-d — DungeonMind)
+  one-world bearer-gated HTTP request
+  → world_id + review_id only
+  → server-owned UTC timestamp
+  → unchanged B.2f-c publication seam
+  → exact durable publication record response
+        separate from read-only Mind Turn
+        no CORS/browser write surface
+        no pending lifecycle or product adoption
+
 ## 2. Governing invariant
 
 > DungeonMind owns knowledge, retrieval, evidence, context assembly, and
@@ -158,6 +168,7 @@ These were proven in DungeonMindBuddy and are not reopened by this repo
 | Finalized review intent translation | **DungeonMindDnD** (`src/dungeonmind_dnd/`) | ready-plan adapter only; no persistence or capability authority (PR B.2e, ADR-0007) |
 | Review authority, receipts, successor contributions, atomic review persistence | **DungeonMind** (`src/dungeonmind/`) | generic kernel contracts; no D&D imports, graph materialization, or publication (PR B.2e, ADR-0007) |
 | Finalized-review materialization, expected-parent CAS, durable publication identity, and recovery | **DungeonMind** | `application/review_publication.py`, `infrastructure/*/review_publication.py` (PR B.2f-a/B.2f-b/B.2f-c, ADR-0009/0010/0011) |
+| Finalized-review publication HTTP transport and one-world access edge | **DungeonMind service boundary** | `service/api.py`, `service/bootstrap.py`, `service/publication_access.py` (PR B.2f-d, ADR-0012); consumes B.2f-c and adds no publication authority |
 | Which profiles a deployment loads; descriptor file locations | **Operator configuration** | local registry config; locators are never durable identity (PR B.2b) |
 | Schema, migrations, repository ports, PostgreSQL adapters, reconstruction tooling | **DungeonMind** | `migrations/`, `infrastructure/postgres` (PR B) |
 | Dev/CI PostgreSQL substrate definition (pinned pgvector compose) | **DungeonMind** | PR B |
@@ -440,6 +451,25 @@ retry-safe outcome-unknown error. The only predecessor recovery is adoption of
 the exact deterministic B.2f-b revision, with no head mutation or second head
 event.
 
+### 6.6 Finalized-review publication service transport (PR B.2f-d, ADR-0012)
+
+B.2f-d is a separate FastAPI host, not a write route on the read-only Mind Turn
+app. Its only write request is the strict
+`dm_finalized_review_publication_request_v1` contract containing `world_id` and
+`review_id`. A configured bearer digest authorizes exactly one configured world;
+this is a narrow service-to-service access binding, not production user
+authentication or a second semantic confirmation.
+
+After authorization the server reads one timezone-aware UTC instant and invokes
+the existing `publish_finalized_review` seam exactly once. Fresh success,
+durable replay, and recovered response loss all return the same terminal
+`dm_finalized_review_publication_v1` record with `Cache-Control: no-store`.
+The transport never inspects current head state, retries, polls, materializes
+graph bytes, mutates review lifecycle, or changes B.2f-c semantics. Readiness
+checks only database connectivity and required table visibility. There is no
+CORS middleware, browser write surface, GET publication endpoint, pending
+lifecycle, or product adoption.
+
 ## 7. Persistence strategy (summary of ADR-0001/0002/0003)
 
 - PostgreSQL + JSONB + pgvector. Relational identity/lifecycle columns;
@@ -472,16 +502,19 @@ planning policy; the full unscoped payload is required to prevent hidden
 duplicate identities; the expected parent is pinned but not checked against
 current head (future commit remains responsible for stale-parent CAS).
 Delivered next: durable contribution review adoption (B.2e), accepted
-contribution materialization and CAS publication (B.2f-a/B.2f-b), and durable
-finalized-review publication identity and response-loss recovery (B.2f-c).
-Remaining next: exact external
+contribution materialization and CAS publication (B.2f-a/B.2f-b), durable
+finalized-review publication identity and response-loss recovery (B.2f-c), and
+the narrow B.2f-d service transport. Remaining next: exact external
 mechanics/statblock binding for a Threat consumer (B.3), pgvector
 benchmark backend via RulesIngestion Option B (PR C), embedding bakeoff
 (PR D), DungeonMindServer retrieval seam (PR E), and production IaC
 integration (PR F). Conversation/chat history is never authoritative anywhere
-in this target state. Still false after B.2f-c: pending publication lifecycle,
-attempt logs, workers, queues, leases, retry schedulers, transport/API/CLI
-exposure, identity-ledger publication append, and product adoption. Generic
+in this target state. Still false after B.2f-d: pending publication lifecycle,
+attempt logs, workers, queues, leases, retry schedulers, GET polling, review
+creation/finalization transport, identity-ledger publication append, browser
+write access, and product adoption. The B.2f-d POST transport exists only for
+already-finalized reviews and does not change B.2f-c publication authority.
+Generic
 assertion frameworks,
 assertion-scoped relationships, assertion authoring, source opening, Hermes,
 and external product-surface adoption — plus, on the profile boundary: any

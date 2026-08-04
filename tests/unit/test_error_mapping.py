@@ -1,6 +1,12 @@
 """HTTP error envelopes must not leak persistence internals."""
 
-from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnavailableError
+from dungeonmind.domain.errors import (
+    CapabilityDeniedError,
+    IdempotencyConflictError,
+    PersistenceIntegrityError,
+    PersistenceUnavailableError,
+    RevisionNotFoundError,
+)
 from dungeonmind.service.error_mapping import error_envelope, http_status_for
 
 
@@ -30,3 +36,18 @@ def test_persistence_errors_use_fixed_public_messages() -> None:
         assert "mind_threads" not in rendered
         assert "SELECT *" not in rendered
         assert "password=" not in rendered
+
+
+def test_existing_mind_turn_error_wording_is_not_publication_specific() -> None:
+    errors = (
+        CapabilityDeniedError("mind-turn capability mismatch"),
+        RevisionNotFoundError("mind-turn revision missing"),
+        IdempotencyConflictError("mind-turn request conflict"),
+    )
+    assert [
+        error_envelope(error)["error"]["message"] for error in errors
+    ] == [
+        "mind-turn capability mismatch",
+        "mind-turn revision missing",
+        "mind-turn request conflict",
+    ]

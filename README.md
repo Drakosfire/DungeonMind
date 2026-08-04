@@ -62,6 +62,7 @@ system. Decision records:
 [`Docs/Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md`](Docs/Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md).
 [`Docs/Decisions/ADR-0010-b2f-b-finalized-review-expected-parent-cas-publication.md`](Docs/Decisions/ADR-0010-b2f-b-finalized-review-expected-parent-cas-publication.md).
 [`Docs/Decisions/ADR-0011-b2f-c-durable-finalized-review-publication-recovery.md`](Docs/Decisions/ADR-0011-b2f-c-durable-finalized-review-publication-recovery.md).
+[`Docs/Decisions/ADR-0012-b2f-d-finalized-review-publication-service-transport.md`](Docs/Decisions/ADR-0012-b2f-d-finalized-review-publication-service-transport.md).
 
 The D&D package's first executable slice (B.2c) is intentionally tiny: one
 immutable `dnd5e-profile-v2` descriptor, one Threat vocabulary catalog
@@ -81,9 +82,9 @@ only as the contextual `dnd5e:threatens` relationship, never as an object kind.
 
 ## Status
 
-**Founding through B.2f-c landed; finalized-review publication is now durable,
-exactly replayable, and recoverable after an uncertain adapter response.
-Transport and external consumer behavior remain false.**
+**Founding through B.2f-c landed; the B.2f-d finalized-review publication
+transport is implemented in the current branch for review. It exposes one
+separate, retry-safe HTTP write boundary; product adoption remains false.**
 
 What exists today:
 
@@ -134,11 +135,19 @@ What exists today:
   bounded adoption of an exact predecessor revision, same-review idempotent
   concurrency, different-review expected-parent CAS, and one response-loss
   recovery probe;
+- a separate B.2f-d publication host with `/healthz`, `/readyz`, and
+  `POST /v1/finalized-review-publications`; the request contains only
+  `world_id` and `review_id`, the server owns publication time, and the
+  response is the exact durable `dm_finalized_review_publication_v1` record;
+- one-world shared-secret transport access (not production user auth), sanitized
+  error envelopes, no CORS/browser write surface, infrastructure-only readiness,
+  and a standard-library-only external client with exact replay verification;
 
-What deliberately does **not** exist yet: pending/failed publication lifecycle,
+What deliberately does **not** exist yet: review creation/edit/finalization
+transport, pending/failed publication lifecycle,
 attempt logs, workers, queues, leases, retry schedulers, arbitrary history
-inference, or transport from finalized reviews; mutable review
-drafts/editing/replacement, review API/UI/tooling,
+inference, current-head success inference, GET publication polling, mutable
+review drafts/editing/replacement, review API/UI/tooling,
 global identity-decision append, or target overrides; generic field/property
 assertion models, assertion-scoped relationships, assertion authoring or graph writes,
 field-level semantic-document materialization, LandingPage or other
@@ -184,6 +193,29 @@ uv run python scripts/serve_curated_mind_turn_surface.py
 
 Exact browser proof steps:
 [`Docs/Runbooks/RUNBOOK-b1b-curated-browser-surface.md`](Docs/Runbooks/RUNBOOK-b1b-curated-browser-surface.md).
+
+### Finalized-review publication service (B.2f-d)
+
+The publication service is deployed separately from Mind Turn and is intended
+for a server-side/operator caller:
+
+```bash
+export DUNGEONMIND_PUBLICATION_WORLD_ID=world:synthetic-gatewatch
+export DUNGEONMIND_PUBLICATION_BEARER_TOKEN='local-secret-from-operator'
+uv run uvicorn dungeonmind.service.bootstrap:create_publication_service_app \
+  --factory --host 127.0.0.1 --port 8001
+
+uv run python examples/finalized_review_publication_client/client.py \
+  --base-url http://127.0.0.1:8001 \
+  --world-id world:synthetic-gatewatch \
+  --review-id review:cff0162637b428e634e8cccaa9958dc2 \
+  --verify-replay
+```
+
+The request has no caller timestamp, operation identity, expected parent,
+confirmation, graph payload, or token. An outcome-unknown 503 explicitly says
+that retrying the same request is safe. Current head is never success evidence.
+See the [B.2f-d runbook](Docs/Runbooks/RUNBOOK-b2f-d-finalized-review-publication-service.md).
 
 Integration tests (opt-in locally, required in CI):
 

@@ -1,6 +1,6 @@
 # DungeonMind — Authority and Source Precedence
 
-**Status:** founding (PR A)
+**Status:** current checked-in authority (B.2f-d)
 
 ## 1. Precedence rules
 
@@ -12,7 +12,8 @@
    create-or-connect contribution planning), ADR-0007 (finalized contribution
    review adoption), ADR-0009 (review graph materialization), ADR-0010
    (expected-parent CAS publication), and ADR-0011 (durable publication
-   identity and recovery) are the accepted decision set.
+   identity and recovery), and ADR-0012 (publication service transport) are
+   the accepted decision set.
 2. **GitHub current state beats local or Project Source copies** wherever
    they disagree (applies to sibling repos inspected during founding).
 3. **DungeonMindBuddy architecture docs** are authority for the *proven
@@ -145,6 +146,27 @@ extracted with citations in
    mutation. Arbitrary history scans and success inference are forbidden.
 7. B.2f-c does not append `IdentityDecisionRecord` rows, mutate review or
    contribution lifecycle, expose transport, or adopt a product surface.
+
+## 3.5 Finalized-review publication transport authority (PR B.2f-d)
+
+1. B.2f-c remains the sole authority for publication materialization, revision
+   identity, head CAS, durable publication records, exact replay, and response
+   loss recovery.
+2. The publication app is a separate service from the read-only Mind Turn host.
+   It accepts only `world_id` and `review_id` in the strict
+   `dm_finalized_review_publication_request_v1` body.
+3. The configured bearer digest authorizes one configured world at the edge. It
+   is transport access, not a second semantic confirmation, production user
+   identity, or a capability-policy decision inside the kernel.
+4. The server owns the one timezone-aware publication timestamp and delegates
+   once to `publish_finalized_review`. Fresh, replayed, and recovered success
+   return the existing `dm_finalized_review_publication_v1` record.
+5. The HTTP layer never reads current head state to infer success, performs
+   transport retries, exposes polling/list endpoints, mutates reviews, adds
+   pending lifecycle, installs CORS, or creates a browser write surface.
+6. Readiness is infrastructure/configuration readiness only. It checks database
+   connectivity and required table visibility, not review existence, head
+   equality, graph payloads, or publishability.
 
 ## 4. Known drift found at founding (do not re-import)
 
