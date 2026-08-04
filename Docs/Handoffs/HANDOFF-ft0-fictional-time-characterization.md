@@ -10,7 +10,7 @@ pr_body_template: |
   - PR / branch: timeline/ft0-fictional-time-characterization
 
   ## Verification pointer
-  - Base/head: 71156b630a4370039dc749b548eb43828cce0e6d → 928ac046869c28e40120ca2ac9b594307e6d43ea
+  - Base/head: 71156b630a4370039dc749b548eb43828cce0e6d → branch tip (this PR)
   - Changed paths: §4 allowlist only
   - Verification: §7 evidence ledger
 
@@ -198,9 +198,11 @@ commit: a0cb1c00206cc5a674b22dc2051bd4fcbe96811f
 
 | Source ID | Role | Path | Git blob SHA |
 |---|---|---|---|
-| `src:hempholm-session-04` | observed play recap | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 1/Session Recaps/_normalized/Session 04 - The Grotesque Tree of Hempholm.md` | `bc9ae016793efdd5614ebd88339b745d654e5b56` |
-| `src:lysandra-mireward-history` | authored dossier / prior-state source | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 2/NPCs/captain_lysandra_ironveil/lysandra_ironveil_mireward_history.md` | `1d7e7038a60d28af1215f2412e9378501bc07ba7` |
-| `src:mireward-session-22` | observed play recap / boundary occurrence source | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 2/Session Recaps/_normalized/Session 22 - Mireward Road and Lysandro.md` | `1c68ce991857ae47c0407e4852526fa55aa123b4` |
+| `src:hempholm-session-04` | `observed_session_recap` (corpus frontmatter) | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 1/Session Recaps/_normalized/Session 04 - The Grotesque Tree of Hempholm.md` | `bc9ae016793efdd5614ebd88339b745d654e5b56` |
+| `src:lysandra-mireward-history` | `authored_dossier` / prior-state source (corpus frontmatter `session: 22` is provenance only) | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 2/NPCs/captain_lysandra_ironveil/lysandra_ironveil_mireward_history.md` | `1d7e7038a60d28af1215f2412e9378501bc07ba7` |
+| `src:mireward-session-22` | `observed_session_recap` / boundary occurrence source | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 2/Session Recaps/_normalized/Session 22 - Mireward Road and Lysandro.md` | `1c68ce991857ae47c0407e4852526fa55aa123b4` |
+
+Manifest `campaign_id`, `source_class`, and `session_provenance` must copy the pinned corpus frontmatter verbatim (`longmont-c1` / `longmont-c2`, `observed_session_recap` / `authored_dossier`, sessions `4` / `22` / `22`). No invented `campaign:N` labels or renamed source classes.
 
 ### Source interpretation locked by this handoff
 
@@ -450,9 +452,7 @@ For an entailed result, return one deterministic proof path. Use the shortest nu
 
 #### Absolute fictional time
 
-Return a value only when the queried anchor contains a non-null explicit `absolute_fictional_time`. FT0 has none.
-
-A missing explicit value returns:
+FT0 fixtures must keep every `absolute_fictional_time` null. Validation rejects any non-null absolute anchor rather than evaluating it. The absolute-time query therefore always returns:
 
 ```text
 status: unresolved
@@ -462,7 +462,7 @@ evidence_ids: []
 reason: no_explicit_absolute_anchor
 ```
 
-No source/session metadata fallback is permitted.
+No source/session metadata fallback is permitted. Returning a Boolean `true` for a present absolute value is forbidden FT1 semantics.
 
 #### State at a boundary
 
@@ -483,13 +483,14 @@ Reject before evaluation when any rule fails:
 - blank or duplicate source, evidence, anchor, claim, or state IDs;
 - dangling source/evidence/anchor references;
 - unused evidence record;
+- empty `evidence_ids` on a strict-before claim;
 - strict-before self edge;
 - duplicate strict-before pair;
 - any cycle in the strict-before graph;
 - duplicate state boundary for the same `(state_id, boundary_anchor_id)`;
 - `before_value == after_value` in FT0;
 - missing prior or after evidence;
-- an absolute value constructed from `session_provenance` or any source-manifest field;
+- any non-null `absolute_fictional_time` (FT0 rejects absolute anchors entirely; no partial absolute semantics);
 - unexpected extra fields if strict local models are used.
 
 Validation errors may name safe IDs and rule names. They must not dump full fixture input or source locator text into a chained traceback if local Pydantic validation is used.
@@ -590,15 +591,15 @@ No fallback source exists.
 
 | ID | Guarantee / invariant clause | Owning boundary | Evidence class | Command/scenario | Expected evidence | Stop condition |
 |---|---|---|---|---|---|---|
-| E1 | Fixture pins the exact three source paths, commit, blob SHAs, classes, campaigns, and session provenance | fixture loader | contract | focused test | exact manifest equality | any drift or runtime fetch |
+| E1 | Fixture pins the exact three source paths, commit, blob SHAs, corpus frontmatter `source_class` / `campaign_id` / `session`, and session provenance | fixture loader | contract | focused test | exact manifest equality to transcribed pinned frontmatter | any drift, invented campaign labels, or runtime fetch |
 | E2 | Tree felling is before beetle attack via transitive closure, not redundant gold edge | evaluator | characterization | gold ordering test | entailed, proof path tree→revelry→beetles, exact evidence union | direct redundant edge or wrong proof |
 | E3 | Strict-before closure is deterministic and evidence-closed | evaluator | adversarial | path/proof tests | canonical shortest/lexicographic proof | invented/missing evidence |
-| E4 | Absolute tree time remains unresolved and Session 4 does not leak | evaluator | adversarial | metadata leakage test | `no_explicit_absolute_anchor` | any derived session/date value |
+| E4 | Absolute tree time remains unresolved; Session provenance does not leak; non-null absolute anchors are rejected | evaluator | adversarial | metadata leakage + absolute-forbid tests | `no_explicit_absolute_anchor`; `absolute_anchor_forbidden` | any derived session/date value or absolute entailment |
 | E5 | Lysandra prior/after state is false/true at exact gate boundary with source-role separation | evaluator | characterization | two gold state tests | prior evidence from dossier; after evidence from observed recap | lifetime claim, dossier-only arrival proof, or swapped evidence |
 | E6 | Partial order is not totalized | evaluator | adversarial | unrelated anchor and reverse-order tests | unresolved for incomparable; contradicted only when opposite path exists | fixture-order inference |
 | E7 | Replay, reorder, and returned-result mutation are safe | evaluator | regression | replay/shuffle/copy tests | byte-equivalent second result | stateful or order-sensitive output |
 | E8 | Cycles and self-before fail closed | validation | adversarial | mutated fixture cases | validation failure before query | closure proceeds |
-| E9 | Evidence ledger is closed | validation | adversarial | dangling + unused evidence mutations | validation failure | answer with missing/invented evidence |
+| E9 | Evidence ledger is closed (dangling, unused, and empty claim evidence) | validation | adversarial | dangling + unused + empty evidence mutations | validation failure | answer with missing/invented/empty evidence |
 | E10 | Existing temporal carrier round-trips opaquely without semantic claim | existing contract via test | compatibility | Pydantic round-trip test | exact dictionary equality | production change or queryability claim |
 | E11 | Zero production/durable/public changes | repository diff | scope | diff guards | no changes outside §4; no new deps | any production path/dependency change |
 | E12 | Full core suite remains green | repository | regression | non-integration suite | no new failures | new/broader failures |
@@ -655,7 +656,7 @@ For any required command already failing on the exact PR #14 merge base:
 
 - PR: https://github.com/Drakosfire/DungeonMind/pull/15
 - Branch: `timeline/ft0-fictional-time-characterization`
-- Head: `928ac046869c28e40120ca2ac9b594307e6d43ea`
+- Head: branch tip of `timeline/ft0-fictional-time-characterization` (this PR)
 - Exact PR #14 merge base: `71156b630a4370039dc749b548eb43828cce0e6d`
 - Predecessor gate: PR #14 is merged; `origin/main` contains the durable publication implementation and ADR-0011.
 - Open-PR search found no other owner of fictional-time contracts, temporal query semantics, or `GraphContributionAssertion.temporal_scope`.
@@ -677,13 +678,15 @@ one pinned source manifest
   publication, persistence, transport, providers, or product surfaces
 ```
 
-**3. Pinned source manifest**
+**3. Pinned source manifest (verbatim corpus frontmatter)**
 
 | Source ID | Repository | Commit | Path | Git blob SHA | Source class | Campaign | Session provenance |
 |---|---|---|---|---|---|---|---:|
-| `src:hempholm-session-04` | `Drakosfire/DungeonMindBuddy` | `a0cb1c00206cc5a674b22dc2051bd4fcbe96811f` | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 1/Session Recaps/_normalized/Session 04 - The Grotesque Tree of Hempholm.md` | `bc9ae016793efdd5614ebd88339b745d654e5b56` | `observed_play_recap` | `campaign:1` | `4` |
-| `src:lysandra-mireward-history` | `Drakosfire/DungeonMindBuddy` | `a0cb1c00206cc5a674b22dc2051bd4fcbe96811f` | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 2/NPCs/captain_lysandra_ironveil/lysandra_ironveil_mireward_history.md` | `1d7e7038a60d28af1215f2412e9378501bc07ba7` | `authored_dossier` | `campaign:2` | `null` |
-| `src:mireward-session-22` | `Drakosfire/DungeonMindBuddy` | `a0cb1c00206cc5a674b22dc2051bd4fcbe96811f` | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 2/Session Recaps/_normalized/Session 22 - Mireward Road and Lysandro.md` | `1c68ce991857ae47c0407e4852526fa55aa123b4` | `observed_play_recap` | `campaign:2` | `22` |
+| `src:hempholm-session-04` | `Drakosfire/DungeonMindBuddy` | `a0cb1c00206cc5a674b22dc2051bd4fcbe96811f` | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 1/Session Recaps/_normalized/Session 04 - The Grotesque Tree of Hempholm.md` | `bc9ae016793efdd5614ebd88339b745d654e5b56` | `observed_session_recap` | `longmont-c1` | `4` |
+| `src:lysandra-mireward-history` | `Drakosfire/DungeonMindBuddy` | `a0cb1c00206cc5a674b22dc2051bd4fcbe96811f` | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 2/NPCs/captain_lysandra_ironveil/lysandra_ironveil_mireward_history.md` | `1d7e7038a60d28af1215f2412e9378501bc07ba7` | `authored_dossier` | `longmont-c2` | `22` |
+| `src:mireward-session-22` | `Drakosfire/DungeonMindBuddy` | `a0cb1c00206cc5a674b22dc2051bd4fcbe96811f` | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 2/Session Recaps/_normalized/Session 22 - Mireward Road and Lysandro.md` | `1c68ce991857ae47c0407e4852526fa55aa123b4` | `observed_session_recap` | `longmont-c2` | `22` |
+
+E1 binds the sealed fixture to these corpus-frontmatter values via `PINNED_FRONTMATTER` transcribed from the three pinned blobs (no sibling-repo fetch at test time).
 
 **4. Four gold query results**
 
@@ -696,24 +699,24 @@ one pinned source manifest
 
 **5. E1–E12 evidence ledger**
 
-All rows below are independently rerun on 2026-08-04 from the recorded head unless marked `CI`.
+All rows below are independently rerun on 2026-08-04 from branch tip of `timeline/ft0-fictional-time-characterization` unless marked `CI`.
 
 | ID | Result | Provenance |
 |---|---|---|
-| E1 | PASS — exact three-source manifest, source roles, commits, blob SHAs, campaigns, and session provenance validated; no gold field present. | Independent rerun: focused FT0 suite, 5 passed |
-| E2 | PASS — tree felling reaches root-beetle attack through the two-claim chain; no redundant direct edge. | Independent rerun: focused FT0 suite, 5 passed |
-| E3 | PASS — shortest deterministic proof and sorted evidence union are returned. | Independent rerun: focused FT0 suite, 5 passed |
-| E4 | PASS — absolute tree time is unresolved with `no_explicit_absolute_anchor`; session 4 does not leak. | Independent rerun: focused FT0 suite, 5 passed |
-| E5 | PASS — Lysandra is false immediately before and true immediately after the Mireward gate; dossier and observed-recap evidence remain separated. | Independent rerun: focused FT0 suite, 5 passed |
-| E6 | PASS — incomparable anchors remain unresolved and reverse known ordering is contradicted. | Independent rerun: focused FT0 suite, 5 passed |
-| E7 | PASS — replay, harmless array reordering, and mutation of returned lists preserve byte-equivalent results. | Independent rerun: focused FT0 suite, 5 passed |
-| E8 | PASS — self-before and cyclic strict-before mutations fail before evaluation. | Independent rerun: focused FT0 suite, 5 passed |
-| E9 | PASS — dangling and unused evidence mutations fail closed. | Independent rerun: focused FT0 suite, 5 passed |
-| E10 | PASS — representative `temporal_scope` survives Pydantic dump/reload exactly; no production semantic claim is made. | Independent rerun: focused FT0 suite, 5 passed |
-| E11 | PASS — `git diff --check` is clean; cumulative changed paths are exactly the §4 allowlist; production-path guard is empty. | Independent rerun at base `71156b630a4370039dc749b548eb43828cce0e6d` |
-| E12 | PASS — full non-integration regression is green. | Independent rerun: `uv run pytest -q -m 'not integration'`; exit 0; CI: 2 checks passed |
+| E1 | PASS — sealed manifest equals transcribed pinned frontmatter (`longmont-c*`, `observed_session_recap` / `authored_dossier`, sessions `4`/`22`/`22`); no gold field. | Independent rerun: focused FT0 suite, 5 passed |
+| E2 | PASS — tree felling reaches root-beetle attack through the two-claim chain; no redundant direct edge. | Independent rerun |
+| E3 | PASS — shortest deterministic proof and sorted evidence union are returned. | Independent rerun |
+| E4 | PASS — absolute tree time unresolved (`no_explicit_absolute_anchor`); sessions `4`/`22` do not leak; non-null absolute anchors are rejected at validation. | Independent rerun |
+| E5 | PASS — Lysandra false before / true after gate; dossier vs observed-recap evidence separated. | Independent rerun |
+| E6 | PASS — incomparable anchors unresolved; reverse known ordering contradicted. | Independent rerun |
+| E7 | PASS — replay, reorder, and returned-list mutation preserve byte-equivalent results. | Independent rerun |
+| E8 | PASS — self-before and cyclic strict-before mutations fail before evaluation. | Independent rerun |
+| E9 | PASS — dangling, unused, and empty `evidence_ids` mutations fail closed. | Independent rerun |
+| E10 | PASS — opaque `temporal_scope` dump/reload exact; no production semantic claim. | Independent rerun |
+| E11 | PASS — changed paths exactly §4 allowlist; production-path guard empty. | Independent rerun |
+| E12 | PASS — full non-integration regression green. | Independent rerun + CI |
 
-Focused verification commands and results:
+Focused verification:
 
 ```text
 uv run pytest -q tests/characterization/test_fictional_time_characterization.py
@@ -726,7 +729,7 @@ uv run pyright
 0 errors, 0 warnings, 0 informations
 
 uv run pytest -q -m 'not integration'
-exit 0; full non-integration suite passed
+exit 0
 
 git diff --check
 clean
@@ -734,15 +737,16 @@ clean
 
 **6. Nano-commit story**
 
-1. `fb00ce0` — `docs: check in FT0 fictional-time characterization handoff`: checked in the design authority and strict scope.
-2. `9e1583e` — `test: seal FT0 corpus-derived fixture`: added the pinned, local, gold-free JSON fixture.
-3. `2bb7f76` — `test: characterize fictional-time ordering and state boundaries`: added local validation, closure, state-boundary evaluation, and gold/adversarial tests.
-4. `928ac04` — `test: prove abstention, leakage guards, and replay determinism`: added unresolved-time, metadata-leakage, reorder, copy-safety, and opaque-carrier proofs.
-5. This handback commit — `docs: complete FT0 implementation handback`: records this evidence ledger and disposition.
+1. `fb00ce0` — `docs: check in FT0 fictional-time characterization handoff`
+2. `9e1583e` — `test: seal FT0 corpus-derived fixture`
+3. `2bb7f76` — `test: characterize fictional-time ordering and state boundaries`
+4. `928ac04` — `test: prove abstention, leakage guards, and replay determinism`
+5. `85f0f8f` — `docs: complete FT0 implementation handback`
+6. `fix(timeline): bind FT0 manifest to corpus frontmatter` — corpus-frontmatter fidelity, empty-evidence rejection, absolute-anchor rejection, refreshed §8 handback.
 
 **7. Changed paths and focused diff**
 
-The cumulative implementation diff from `71156b630a4370039dc749b548eb43828cce0e6d` to `928ac046869c28e40120ca2ac9b594307e6d43ea` contains exactly:
+Cumulative paths from `71156b630a4370039dc749b548eb43828cce0e6d` remain exactly:
 
 ```text
 Docs/Handoffs/HANDOFF-ft0-fictional-time-characterization.md
@@ -750,21 +754,14 @@ tests/fixtures/fictional_time/ft0-two-case-characterization-v0.json
 tests/characterization/test_fictional_time_characterization.py
 ```
 
-Before this handback update, the focused implementation diff was `3 files changed, 1,409 insertions`; no production path, dependency, migration, schema, or product surface was changed. Final fixture/test nonblank line counts are:
+Nonblank line counts at this handback:
 
 ```text
 tests/fixtures/fictional_time/ft0-two-case-characterization-v0.json  121 / 250
-tests/characterization/test_fictional_time_characterization.py      438 / 450
+tests/characterization/test_fictional_time_characterization.py      443 / 450
 ```
 
-The production-path diff guard is empty:
-
-```text
-git diff --name-only 71156b630a4370039dc749b548eb43828cce0e6d...HEAD -- \
-  src/dungeonmind src/dungeonmind_dnd migrations pyproject.toml uv.lock \
-  Docs/Architecture Docs/Decisions Docs/Roadmaps README.md CONTRIBUTING.md
-→ no output
-```
+Production-path diff guard: empty.
 
 **8. Baseline, scope, and stop conditions**
 
@@ -779,52 +776,22 @@ git diff --name-only 71156b630a4370039dc749b548eb43828cce0e6d...HEAD -- \
 FT0_POSITIVE
 ```
 
-The implementation handback must include:
-
-1. Exact PR URL or branch/head SHA.
-2. Exact PR #14 merge SHA used as base.
-3. §1 mission and merge-ready invariant copied exactly.
-4. Source manifest table with exact commit and blob SHAs.
-5. The four gold query results, including proof claim IDs and evidence IDs.
-6. Every E1–E12 result with provenance: author-local, independent rerun, or CI.
-7. Nano-commit list and discrete story for each commit.
-8. Actual changed paths and focused diff stat.
-9. Confirmation that production-path diff guard is empty.
-10. Exact line counts for the fixture and characterization test.
-11. Baseline failures and waivers; `none` when none.
-12. Paths outside §4; `none` or stop report.
-13. Stop conditions encountered; `none` or exact disposition.
-14. Explicit statement that FT1, FT2, and FT3 remain false.
-15. A result disposition using exactly one value:
-
-```text
-FT0_POSITIVE
-FT0_INCONCLUSIVE
-FT0_NEGATIVE
-```
-
-Disposition rules:
-
-- `FT0_POSITIVE`: all four gold queries and all adversarial guards pass with a small, comprehensible implementation; the handback may recommend FT1 design but must not implement it.
-- `FT0_INCONCLUSIVE`: the fixture or semantics reveal unresolved modeling choices that prevent one coherent invariant; report them without expanding.
-- `FT0_NEGATIVE`: the minimum semantics are not useful or cannot be implemented without violating the cost/scope ceiling.
-
 ## §9 Acceptance rubric
 
-- [ ] Exactly one independently useful characterization from §1 was delivered — E1–E10.
-- [ ] All four gold questions return the exact required status/value/proof/evidence — E2, E4, E5.
-- [ ] Unresolved is preserved where no fictional anchor exists — E4, E6.
-- [ ] Source/session metadata cannot become fictional occurrence time — E4.
-- [ ] The Lysandra state is scoped to the current C1–C2 campaign arc and does not erase earlier visits — E5 and fixture inspection.
-- [ ] The observed recap, not the dossier, proves the gate-arrival occurrence — E5.
-- [ ] Proof paths use only fixture claims and closed evidence — E3, E9.
-- [ ] Results are deterministic, copy-safe, and independent of harmless array order — E7.
-- [ ] Cycles, self-edges, duplicate identities, and evidence defects fail before evaluation — E8, E9.
-- [ ] The existing `temporal_scope` field is characterized only as an opaque carrier — E10.
-- [ ] No production source, contract, schema, migration, dependency, API, UI, agent, or sibling repo changed — E11.
-- [ ] The implementation remains under the explicit code/fixture ceiling.
-- [ ] Full non-integration regression remains truthful and green or has an explicit base/head waiver — E12.
-- [ ] The named FT1 successor remains unimplemented and unclaimed.
+- [x] Exactly one independently useful characterization from §1 was delivered — E1–E10.
+- [x] All four gold questions return the exact required status/value/proof/evidence — E2, E4, E5.
+- [x] Unresolved is preserved where no fictional anchor exists — E4, E6.
+- [x] Source/session metadata cannot become fictional occurrence time — E4.
+- [x] The Lysandra state is scoped to the current C1–C2 campaign arc and does not erase earlier visits — E5 and fixture inspection.
+- [x] The observed recap, not the dossier, proves the gate-arrival occurrence — E5.
+- [x] Proof paths use only fixture claims and closed evidence — E3, E9.
+- [x] Results are deterministic, copy-safe, and independent of harmless array order — E7.
+- [x] Cycles, self-edges, duplicate identities, and evidence defects fail before evaluation — E8, E9.
+- [x] The existing `temporal_scope` field is characterized only as an opaque carrier — E10.
+- [x] No production source, contract, schema, migration, dependency, API, UI, agent, or sibling repo changed — E11.
+- [x] The implementation remains under the explicit code/fixture ceiling.
+- [x] Full non-integration regression remains truthful and green or has an explicit base/head waiver — E12.
+- [x] The named FT1 successor remains unimplemented and unclaimed.
 
 ## Stop conditions
 

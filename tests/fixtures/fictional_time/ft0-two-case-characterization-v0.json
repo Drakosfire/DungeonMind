@@ -8,8 +8,8 @@
       "repository_commit": "a0cb1c00206cc5a674b22dc2051bd4fcbe96811f",
       "path": "corpus/eldyrwild-markdown/Longmont Campaign/Campaign 1/Session Recaps/_normalized/Session 04 - The Grotesque Tree of Hempholm.md",
       "git_blob_sha": "bc9ae016793efdd5614ebd88339b745d654e5b56",
-      "source_class": "observed_play_recap",
-      "campaign_id": "campaign:1",
+      "source_class": "observed_session_recap",
+      "campaign_id": "longmont-c1",
       "session_provenance": 4
     },
     {
@@ -19,8 +19,8 @@
       "path": "corpus/eldyrwild-markdown/Longmont Campaign/Campaign 2/NPCs/captain_lysandra_ironveil/lysandra_ironveil_mireward_history.md",
       "git_blob_sha": "1d7e7038a60d28af1215f2412e9378501bc07ba7",
       "source_class": "authored_dossier",
-      "campaign_id": "campaign:2",
-      "session_provenance": null
+      "campaign_id": "longmont-c2",
+      "session_provenance": 22
     },
     {
       "source_id": "src:mireward-session-22",
@@ -28,8 +28,8 @@
       "repository_commit": "a0cb1c00206cc5a674b22dc2051bd4fcbe96811f",
       "path": "corpus/eldyrwild-markdown/Longmont Campaign/Campaign 2/Session Recaps/_normalized/Session 22 - Mireward Road and Lysandro.md",
       "git_blob_sha": "1c68ce991857ae47c0407e4852526fa55aa123b4",
-      "source_class": "observed_play_recap",
-      "campaign_id": "campaign:2",
+      "source_class": "observed_session_recap",
+      "campaign_id": "longmont-c2",
       "session_provenance": 22
     }
   ],

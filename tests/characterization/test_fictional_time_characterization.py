@@ -34,33 +34,31 @@ TREE = "anchor:hempholm-tree-felled"
 BEETLES = "anchor:hempholm-root-beetle-attack"
 BOUNDARY = "state-boundary:lysandra-returned-at-mireward-gate"
 Status = Literal["entailed", "contradicted", "unresolved"]
+# Transcribed from pinned Buddy blob frontmatter at PIN (no sibling fetch at test time).
 _PREFIX = "corpus/eldyrwild-markdown/Longmont Campaign/Campaign "
-_MANIFEST_TAIL = [
-    (
-        "src:hempholm-session-04",
-        "1/Session Recaps/_normalized/Session 04 - The Grotesque Tree of Hempholm.md",
-        "bc9ae016793efdd5614ebd88339b745d654e5b56",
-        "observed_play_recap",
-        "campaign:1",
-        4,
-    ),
-    (
-        "src:lysandra-mireward-history",
-        "2/NPCs/captain_lysandra_ironveil/lysandra_ironveil_mireward_history.md",
-        "1d7e7038a60d28af1215f2412e9378501bc07ba7",
-        "authored_dossier",
-        "campaign:2",
-        None,
-    ),
-    (
-        "src:mireward-session-22",
-        "2/Session Recaps/_normalized/Session 22 - Mireward Road and Lysandro.md",
-        "1c68ce991857ae47c0407e4852526fa55aa123b4",
-        "observed_play_recap",
-        "campaign:2",
-        22,
-    ),
-]
+PINNED_FRONTMATTER = {
+    "src:hempholm-session-04": {
+        "path_tail": "1/Session Recaps/_normalized/Session 04 - The Grotesque Tree of Hempholm.md",
+        "git_blob_sha": "bc9ae016793efdd5614ebd88339b745d654e5b56",
+        "source_class": "observed_session_recap",
+        "campaign_id": "longmont-c1",
+        "session": 4,
+    },
+    "src:lysandra-mireward-history": {
+        "path_tail": "2/NPCs/captain_lysandra_ironveil/lysandra_ironveil_mireward_history.md",
+        "git_blob_sha": "1d7e7038a60d28af1215f2412e9378501bc07ba7",
+        "source_class": "authored_dossier",
+        "campaign_id": "longmont-c2",
+        "session": 22,
+    },
+    "src:mireward-session-22": {
+        "path_tail": "2/Session Recaps/_normalized/Session 22 - Mireward Road and Lysandro.md",
+        "git_blob_sha": "1c68ce991857ae47c0407e4852526fa55aa123b4",
+        "source_class": "observed_session_recap",
+        "campaign_id": "longmont-c2",
+        "session": 22,
+    },
+}
 GOLD = json.loads(
     "["
     '{"query_id":"query:hempholm-tree-before-beetles",'
@@ -172,6 +170,8 @@ def _validate(raw: dict[str, Any]) -> dict[str, Any]:
         if (before, after) in pairs:
             raise FixtureValidationError(f"duplicate_strict_before_pair:{before}->{after}")
         pairs.add((before, after))
+        if not claim["evidence_ids"]:
+            raise FixtureValidationError(f"empty_claim_evidence:{claim['claim_id']}")
         for eid in claim["evidence_ids"]:
             if eid not in evidence_ids:
                 raise FixtureValidationError(f"dangling_claim_evidence:{claim['claim_id']}")
@@ -213,16 +213,10 @@ def _validate(raw: dict[str, Any]) -> dict[str, Any]:
     unused = evidence_ids - used
     if unused:
         raise FixtureValidationError(f"unused_evidence:{sorted(unused)}")
+    # FT0 forbids absolute anchors entirely (no partial FT1 absolute semantics).
     for anchor in anchors:
-        abs_t = anchor.get("absolute_fictional_time")
-        if abs_t is None:
-            continue
-        for src in sources:
-            sess = src.get("session_provenance")
-            if sess is not None and str(abs_t) in {str(sess), f"session:{sess}"}:
-                raise FixtureValidationError(
-                    f"absolute_from_session_provenance:{anchor['anchor_id']}"
-                )
+        if anchor.get("absolute_fictional_time") is not None:
+            raise FixtureValidationError(f"absolute_anchor_forbidden:{anchor['anchor_id']}")
     return raw
 
 
@@ -276,13 +270,12 @@ def evaluate_strict_before(
 
 
 def evaluate_absolute_time(fx: dict[str, Any], *, query_id: str, anchor_id: str) -> QueryResult:
-    # Ignores source_manifest / session_provenance by construction.
-    value = {a["anchor_id"]: a for a in fx["anchors"]}[anchor_id].get("absolute_fictional_time")
-    if value is None:
-        return _qr(
-            query_id, "absolute_fictional_time", "unresolved", reason="no_explicit_absolute_anchor"
-        )
-    return _qr(query_id, "absolute_fictional_time", "entailed", True)
+    # Valid FT0 fixtures have only null absolutes; never invent from provenance.
+    anchors = {a["anchor_id"]: a for a in fx["anchors"]}
+    assert anchors[anchor_id].get("absolute_fictional_time") is None
+    return _qr(
+        query_id, "absolute_fictional_time", "unresolved", reason="no_explicit_absolute_anchor"
+    )
 
 
 def evaluate_state_at_boundary(
@@ -340,22 +333,26 @@ def fixture() -> dict[str, Any]:
     return load_fixture()
 
 
-def test_e1_manifest_pin_and_no_gold(fixture: dict[str, Any]) -> None:
+def test_e1_manifest_matches_pinned_corpus_frontmatter(fixture: dict[str, Any]) -> None:
+    """E1: sealed manifest equals transcribed frontmatter from the pinned blobs."""
     assert "gold_answers" not in fixture
     assert all(a["absolute_fictional_time"] is None for a in fixture["anchors"])
-    for row, (sid, tail, blob, klass, campaign, session) in zip(
-        fixture["source_manifest"], _MANIFEST_TAIL, strict=True
-    ):
+    assert [r["source_id"] for r in fixture["source_manifest"]] == list(PINNED_FRONTMATTER)
+    for row in fixture["source_manifest"]:
+        pin = PINNED_FRONTMATTER[row["source_id"]]
         assert row == {
-            "source_id": sid,
+            "source_id": row["source_id"],
             "repository": "Drakosfire/DungeonMindBuddy",
             "repository_commit": PIN,
-            "path": _PREFIX + tail,
-            "git_blob_sha": blob,
-            "source_class": klass,
-            "campaign_id": campaign,
-            "session_provenance": session,
+            "path": _PREFIX + pin["path_tail"],
+            "git_blob_sha": pin["git_blob_sha"],
+            "source_class": pin["source_class"],
+            "campaign_id": pin["campaign_id"],
+            "session_provenance": pin["session"],
         }
+        # Explicit fidelity to corpus vocabulary (not invented campaign:N labels).
+        assert row["campaign_id"].startswith("longmont-c")
+        assert row["source_class"] in {"observed_session_recap", "authored_dossier"}
 
 
 def test_e2_e3_e4_e5_four_gold_queries(fixture: dict[str, Any]) -> None:
@@ -365,7 +362,7 @@ def test_e2_e3_e4_e5_four_gold_queries(fixture: dict[str, Any]) -> None:
     results = _run_gold(fixture)
     assert results == GOLD
     blob = json.dumps(results[1]).lower()
-    assert "4" not in blob and "session" not in blob
+    assert "4" not in blob and "22" not in blob and "session" not in blob
     evid = {e["evidence_id"]: e["source_id"] for e in fixture["evidence"]}
     assert evid["ev:lysandra-not-home-c1-c2"] == "src:lysandra-mireward-history"
     assert evid["ev:lysandra-mireward-gate-arrival"] == "src:mireward-session-22"
@@ -453,6 +450,14 @@ def test_e8_e9_fail_closed_validation(fixture: dict[str, Any]) -> None:
     })
     with pytest.raises(FixtureValidationError, match="unused_evidence"):
         _validate(unused)
+    empty = copy.deepcopy(fixture)
+    empty["strict_before_claims"][0]["evidence_ids"] = []
+    with pytest.raises(FixtureValidationError, match="empty_claim_evidence"):
+        _validate(empty)
+    absolute = copy.deepcopy(fixture)
+    absolute["anchors"][1]["absolute_fictional_time"] = "campaign-year-3"
+    with pytest.raises(FixtureValidationError, match="absolute_anchor_forbidden"):
+        _validate(absolute)
 
 
 def test_e10_opaque_temporal_scope_round_trip_without_semantic_claim() -> None:
