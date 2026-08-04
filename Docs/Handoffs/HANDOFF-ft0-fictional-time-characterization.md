@@ -10,7 +10,7 @@ pr_body_template: |
   - PR / branch: timeline/ft0-fictional-time-characterization
 
   ## Verification pointer
-  - Base/head: 71156b630a4370039dc749b548eb43828cce0e6d → d777877d55b229176f6512b3c558079a97b93249
+  - Base/head: 71156b630a4370039dc749b548eb43828cce0e6d → 65916b5a18adecbec028e503cad0fa22355cc854
   - Changed paths: §4 allowlist only
   - Verification: §7 evidence ledger
 
@@ -656,7 +656,7 @@ For any required command already failing on the exact PR #14 merge base:
 
 - PR: https://github.com/Drakosfire/DungeonMind/pull/15
 - Branch: `timeline/ft0-fictional-time-characterization`
-- Head: branch tip of `timeline/ft0-fictional-time-characterization` (this PR)
+- Head: `65916b5a18adecbec028e503cad0fa22355cc854`
 - Exact PR #14 merge base: `71156b630a4370039dc749b548eb43828cce0e6d`
 - Predecessor gate: PR #14 is merged; `origin/main` contains the durable publication implementation and ADR-0011.
 - Open-PR search found no other owner of fictional-time contracts, temporal query semantics, or `GraphContributionAssertion.temporal_scope`.
@@ -699,7 +699,7 @@ E1 binds the sealed fixture to these corpus-frontmatter values via `PINNED_FRONT
 
 **5. E1–E12 evidence ledger**
 
-All rows below are independently rerun on 2026-08-04 from head `timeline/ft0-fictional-time-characterization` unless marked `CI`.
+All rows below are independently rerun on 2026-08-04 from head `65916b5a18adecbec028e503cad0fa22355cc854` unless marked `CI`.
 
 | ID | Result | Provenance |
 |---|---|---|
@@ -742,7 +742,8 @@ clean
 3. `2bb7f76` — `test: characterize fictional-time ordering and state boundaries`
 4. `928ac04` — `test: prove abstention, leakage guards, and replay determinism`
 5. `85f0f8f` — `docs: complete FT0 implementation handback`
-6. `fix(timeline): bind FT0 manifest to corpus frontmatter` — corpus-frontmatter fidelity, empty-evidence rejection, absolute-anchor rejection, refreshed §8 handback.
+6. `d777877d55b229176f6512b3c558079a97b93249` — `fix(timeline): bind FT0 manifest to corpus frontmatter`: corpus-frontmatter fidelity, empty-evidence rejection, absolute-anchor rejection, refreshed §8 handback.
+7. `65916b5a18adecbec028e503cad0fa22355cc854` — `docs: pin FT0 handback head SHA` / tip pin.
 
 **7. Changed paths and focused diff**
 
