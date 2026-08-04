@@ -414,9 +414,9 @@ PostgreSQL owning-boundary results:
 - The race uses separate `PostgresRepositoryBundle` instances and therefore
   separate database connections/transactions.
 - CI run
-  [30870007389](https://github.com/Drakosfire/DungeonMind/actions/runs/30870007389)
-  passed both [core](https://github.com/Drakosfire/DungeonMind/actions/runs/30870007389/job/91869890666)
-  and [integration](https://github.com/Drakosfire/DungeonMind/actions/runs/30870007389/job/91869890689).
+  [30870180772](https://github.com/Drakosfire/DungeonMind/actions/runs/30870180772)
+  passed both [core](https://github.com/Drakosfire/DungeonMind/actions/runs/30870180772/job/91870401062)
+  and [integration](https://github.com/Drakosfire/DungeonMind/actions/runs/30870180772/job/91870401050).
 
 Verification:
 
