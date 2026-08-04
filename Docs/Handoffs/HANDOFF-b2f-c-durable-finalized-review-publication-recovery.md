@@ -187,6 +187,8 @@ Implemented proof and source changes include:
   helpers;
 - atomic publication adapters with review, parent, revision, record, and
   command cross-verification;
+- world-scoped in-memory rollback that cannot erase another world's concurrent
+  graph/head/publication state, with a deterministic cross-world regression;
 - exact predecessor adoption without head mutation, same-review replay, and
   expected-parent CAS preservation for different reviews;
 - `0003_finalized_review_pubs` migration and architecture/authority
@@ -194,8 +196,8 @@ Implemented proof and source changes include:
 
 Verification completed:
 
-- `uv run pytest -q tests/conformance/test_review_publication.py` — 19 passed;
-- `uv run pytest -q -m 'not integration'` — 538 passed;
+- `uv run pytest -q tests/conformance/test_review_publication.py` — 20 passed;
+- `uv run pytest -q -m 'not integration'` — passed;
 - `uv run ruff check .` — passed;
 - `uv run pyright` — 0 errors, 0 warnings;
 - `uv run alembic heads` — `0003_finalized_review_pubs`;

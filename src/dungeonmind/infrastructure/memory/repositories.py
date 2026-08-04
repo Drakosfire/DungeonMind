@@ -592,17 +592,17 @@ class InMemoryFinalizedReviewPublicationRepository:
     ) -> FinalizedReviewPublication | None:
         matches: dict[str, FinalizedReviewPublication] = {}
         if review_id is not None:
-            for key, value in self._records_by_review.items():
-                if key == (world_id, review_id):
-                    matches[_fingerprint(value)] = value
+            value = self._records_by_review.get((world_id, review_id))
+            if value is not None:
+                matches[_fingerprint(value)] = value
         if operation_id is not None:
-            for key, value in self._records_by_operation.items():
-                if key == (world_id, operation_id):
-                    matches[_fingerprint(value)] = value
+            value = self._records_by_operation.get((world_id, operation_id))
+            if value is not None:
+                matches[_fingerprint(value)] = value
         if revision_id is not None:
-            for key, value in self._records_by_revision.items():
-                if key == (world_id, revision_id):
-                    matches[_fingerprint(value)] = value
+            value = self._records_by_revision.get((world_id, revision_id))
+            if value is not None:
+                matches[_fingerprint(value)] = value
         if len(matches) > 1:
             raise PersistenceIntegrityError(
                 "multiple finalized publication identities conflict"
@@ -786,14 +786,20 @@ class InMemoryFinalizedReviewPublicationRepository:
                 self._store_unlocked(publication)
                 return self._reconstruct_unlocked(publication)
 
-            old_revisions = {
-                key: _copy(value) for key, value in self._graph._revisions.items()
-            }
-            old_heads = {key: _copy(value) for key, value in self._graph._heads.items()}
-            old_records = (
-                dict(self._records_by_review),
-                dict(self._records_by_operation),
-                dict(self._records_by_revision),
+            revision_key = (world_id, validated_command.expected_published_revision_id)
+            old_revision = self._graph._revisions.get(revision_key)
+            old_head = self._graph._heads.get(world_id)
+            record_keys = (
+                (self._records_by_review, (world_id, validated_command.review_id)),
+                (self._records_by_operation, (world_id, validated_command.operation_id)),
+                (
+                    self._records_by_revision,
+                    (world_id, validated_command.expected_published_revision_id),
+                ),
+            )
+            old_records = tuple(
+                (records, key, _copy(records[key]) if key in records else None)
+                for records, key in record_keys
             )
             try:
                 revision = self._graph._publish_revision_locked(
@@ -815,13 +821,19 @@ class InMemoryFinalizedReviewPublicationRepository:
                     self._failure_hook()
                 return self._reconstruct_unlocked(publication)
             except BaseException:
-                self._graph._revisions = old_revisions
-                self._graph._heads = old_heads
-                (
-                    self._records_by_review,
-                    self._records_by_operation,
-                    self._records_by_revision,
-                ) = old_records
+                if old_revision is None:
+                    self._graph._revisions.pop(revision_key, None)
+                else:
+                    self._graph._revisions[revision_key] = old_revision
+                if old_head is None:
+                    self._graph._heads.pop(world_id, None)
+                else:
+                    self._graph._heads[world_id] = old_head
+                for records, key, old_record in old_records:
+                    if old_record is None:
+                        records.pop(key, None)
+                    else:
+                        records[key] = old_record
                 raise
 
 

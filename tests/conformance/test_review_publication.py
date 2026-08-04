@@ -9,6 +9,7 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -811,3 +812,131 @@ def test_publication_command_is_payload_and_revision_bound() -> None:
                 "unexpected": "rejected",
             }
         )
+
+
+@pytest.mark.conformance
+def test_failed_world_rollback_preserves_concurrent_other_world_commit() -> None:
+    world_a = WORLD_ID
+    world_b = "world:synthetic-second"
+    parent, _reader = _parent_inputs()
+    graph = InMemoryWorldGraphRepository()
+    parent_ids: dict[str, str] = {}
+    for world_id in (world_a, world_b):
+        graph.publish_revision(
+            PublishRevisionCommand(
+                world_id=world_id,
+                parent_revision_id=None,
+                expected_parent_revision_id=None,
+                operation_ids=list(parent.revision.operation_ids),
+                graph_schema=parent.revision.graph_schema,
+                graph_payload=copy.deepcopy(parent.graph_payload),
+                created_at=parent.revision.created_at,
+            )
+        )
+        head = graph.get_head(world_id)
+        assert head is not None
+        parent_ids[world_id] = head.head_revision_id
+
+    base_record = _state().record
+
+    def command_for(world_id: str, review_id: str) -> FinalizedReviewPublicationCommand:
+        parent_id = parent_ids[world_id]
+        payload = copy.deepcopy(parent.graph_payload)
+        payload_sha256 = canonical_sha256(payload)
+        operation_id = base_record.operation_id
+        return FinalizedReviewPublicationCommand(
+            world_id=world_id,
+            review_id=review_id,
+            reviewed_contribution_id=base_record.reviewed_contribution_id,
+            reviewed_contribution_sha256=base_record.reviewed_contribution_sha256,
+            review_intent_sha256=base_record.review_intent_sha256,
+            confirmation_id=base_record.confirmation_id,
+            operation_id=operation_id,
+            expected_parent_revision_id=parent_id,
+            parent_graph_payload_sha256=base_record.plan_ref.base_graph_payload_sha256,
+            expected_published_revision_id=compute_revision_id(
+                world_id=world_id,
+                parent_revision_id=parent_id,
+                operation_ids=[operation_id],
+                graph_schema=base_record.plan_ref.base_graph_schema,
+                graph_payload_sha256=payload_sha256,
+            ),
+            graph_schema=base_record.plan_ref.base_graph_schema,
+            graph_payload=payload,
+            graph_payload_sha256=payload_sha256,
+            requested_published_at=PUBLISHED_AT,
+        )
+
+    def state_for(world_id: str, review_id: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            record=SimpleNamespace(
+                world_id=world_id,
+                review_id=review_id,
+                reviewed_contribution_id=base_record.reviewed_contribution_id,
+                reviewed_contribution_sha256=base_record.reviewed_contribution_sha256,
+                review_intent_sha256=base_record.review_intent_sha256,
+                confirmation_id=base_record.confirmation_id,
+                operation_id=base_record.operation_id,
+                plan_ref=SimpleNamespace(
+                    expected_parent_revision_id=parent_ids[world_id],
+                    base_graph_payload_sha256=base_record.plan_ref.base_graph_payload_sha256,
+                    base_graph_schema=base_record.plan_ref.base_graph_schema,
+                ),
+            )
+        )
+
+    review_repository = SimpleNamespace(
+        get=lambda world_id, review_id: {
+            (world_a, "review:a"): state_for(world_a, "review:a"),
+            (world_b, "review:b"): state_for(world_b, "review:b"),
+        }.get((world_id, review_id))
+    )
+    a_ready = threading.Event()
+    b_committed = threading.Event()
+    current_world = threading.local()
+
+    def fail_world_a_after_graph_commit() -> None:
+        if getattr(current_world, "value", None) == world_a:
+            a_ready.set()
+            assert b_committed.wait(timeout=5)
+            raise RuntimeError("synthetic world-A failure")
+
+    publication = InMemoryFinalizedReviewPublicationRepository(
+        review_repository,  # type: ignore[arg-type]
+        graph,
+        failure_hook=fail_world_a_after_graph_commit,
+    )
+    commands = {
+        world_a: command_for(world_a, "review:a"),
+        world_b: command_for(world_b, "review:b"),
+    }
+    outcomes: dict[str, object] = {}
+
+    def publish_world(world_id: str) -> None:
+        current_world.value = world_id
+        try:
+            outcomes[world_id] = publication.publish(commands[world_id])
+        except BaseException as exc:
+            outcomes[world_id] = exc
+
+    def publish_world_b() -> None:
+        assert a_ready.wait(timeout=5)
+        publish_world(world_b)
+        b_committed.set()
+
+    thread_a = threading.Thread(target=publish_world, args=(world_a,))
+    thread_b = threading.Thread(target=publish_world_b)
+    thread_a.start()
+    thread_b.start()
+    thread_a.join(timeout=5)
+    thread_b.join(timeout=5)
+
+    assert not thread_a.is_alive() and not thread_b.is_alive()
+    assert isinstance(outcomes[world_a], RuntimeError)
+    winning = outcomes[world_b]
+    assert isinstance(winning, FinalizedReviewPublication)
+    assert graph.get_head(world_a).head_revision_id == parent_ids[world_a]  # type: ignore[union-attr]
+    assert graph.get_head(world_b).head_revision_id == winning.published_revision_id  # type: ignore[union-attr]
+    assert graph.get_revision(world_a, commands[world_a].expected_published_revision_id) is None
+    assert publication.get_for_review(world_a, "review:a") is None
+    assert publication.get_for_review(world_b, "review:b") == winning
