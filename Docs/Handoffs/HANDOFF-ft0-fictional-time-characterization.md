@@ -10,7 +10,7 @@ pr_body_template: |
   - PR / branch: timeline/ft0-fictional-time-characterization
 
   ## Verification pointer
-  - Base/head: 71156b630a4370039dc749b548eb43828cce0e6d → branch tip (this PR)
+  - Base/head: 71156b630a4370039dc749b548eb43828cce0e6d → d777877d55b229176f6512b3c558079a97b93249
   - Changed paths: §4 allowlist only
   - Verification: §7 evidence ledger
 
@@ -699,7 +699,7 @@ E1 binds the sealed fixture to these corpus-frontmatter values via `PINNED_FRONT
 
 **5. E1–E12 evidence ledger**
 
-All rows below are independently rerun on 2026-08-04 from branch tip of `timeline/ft0-fictional-time-characterization` unless marked `CI`.
+All rows below are independently rerun on 2026-08-04 from head `timeline/ft0-fictional-time-characterization` unless marked `CI`.
 
 | ID | Result | Provenance |
 |---|---|---|
