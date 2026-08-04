@@ -68,7 +68,26 @@ def test_vector_extension_and_schema_tables(db) -> None:
             "SELECT version_num FROM dungeonmind.alembic_version"
         ).fetchone()
         assert version is not None
-        assert version["version_num"] == "0003_finalized_review_publications"
+        assert version["version_num"] == "0003_finalized_review_pubs"
+
+        constraints = conn.execute(
+            """
+            SELECT pg_get_constraintdef(oid) AS definition
+            FROM pg_constraint
+            WHERE conrelid = 'dungeonmind.finalized_review_publications'::regclass
+            """
+        ).fetchall()
+        constraint_text = "\n".join(
+            row["definition"].replace('"', "") for row in constraints
+        )
+        assert "PRIMARY KEY (world_id, operation_id)" in constraint_text
+        assert "UNIQUE (world_id, review_id)" in constraint_text
+        assert "UNIQUE (world_id, published_revision_id)" in constraint_text
+        assert (
+            "FOREIGN KEY (world_id, reviewed_contribution_id) "
+            "REFERENCES dungeonmind.graph_contributions(world_id, contribution_id)"
+            in constraint_text
+        )
 
 
 @pytest.mark.integration
@@ -117,7 +136,7 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
             version = conn.execute(
                 "SELECT version_num FROM dungeonmind.alembic_version"
             ).fetchone()
-            assert version["version_num"] == "0003_finalized_review_publications"
+            assert version["version_num"] == "0003_finalized_review_pubs"
             tables = conn.execute(
                 """
                 SELECT COUNT(*) AS n

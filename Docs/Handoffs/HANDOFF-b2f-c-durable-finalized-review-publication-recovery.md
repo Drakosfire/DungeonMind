@@ -189,7 +189,7 @@ Implemented proof and source changes include:
   command cross-verification;
 - exact predecessor adoption without head mutation, same-review replay, and
   expected-parent CAS preservation for different reviews;
-- `0003_finalized_review_publications` migration and architecture/authority
+- `0003_finalized_review_pubs` migration and architecture/authority
   documentation.
 
 Verification completed:
@@ -198,7 +198,7 @@ Verification completed:
 - `uv run pytest -q -m 'not integration'` — 538 passed;
 - `uv run ruff check .` — passed;
 - `uv run pyright` — 0 errors, 0 warnings;
-- `uv run alembic heads` — `0003_finalized_review_publications`;
+- `uv run alembic heads` — `0003_finalized_review_pubs`;
 - `git diff --check` — passed.
 
 PostgreSQL integration tests were collected successfully but could not run in

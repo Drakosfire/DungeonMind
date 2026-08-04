@@ -606,6 +606,8 @@ class PostgresFinalizedReviewPublicationRepository:
                 graph_command,
                 world_locked=True,
             )
+            if self._failure_hook is not None:
+                self._failure_hook()
             publication = _record_from_revision(validated_command, revision)
             row = self._insert_publication(conn, publication)
             if self._failure_hook is not None:

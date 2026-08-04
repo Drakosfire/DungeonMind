@@ -807,6 +807,8 @@ class InMemoryFinalizedReviewPublicationRepository:
                         created_at=validated_command.requested_published_at,
                     )
                 )
+                if self._failure_hook is not None:
+                    self._failure_hook()
                 publication = self._record_from_revision(validated_command, revision)
                 self._store_unlocked(publication)
                 if self._failure_hook is not None:
