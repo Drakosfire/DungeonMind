@@ -17,12 +17,18 @@ def _denied() -> CapabilityDeniedError:
     )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class PublicationAccessBinding:
     """A configured world and a digest, never the raw bearer secret."""
 
     world_id: str
     bearer_token_sha256: str
+
+    def __repr__(self) -> str:
+        return (
+            "PublicationAccessBinding("
+            "world_id=<redacted>, bearer_token_sha256=<redacted>)"
+        )
 
     @classmethod
     def from_secret(cls, world_id: str, bearer_token: str) -> PublicationAccessBinding:

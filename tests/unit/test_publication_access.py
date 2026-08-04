@@ -33,7 +33,10 @@ def test_correct_token_and_world_are_accepted_as_a_copy() -> None:
     assert authorized == request
     assert authorized is not request
     assert binding.bearer_token_sha256 == hashlib.sha256(SECRET.encode()).hexdigest()
-    assert SECRET not in repr(binding)
+    representation = f"{binding!r} {binding!s}"
+    assert SECRET not in representation
+    assert binding.bearer_token_sha256 not in representation
+    assert binding.world_id not in representation
 
 
 @pytest.mark.parametrize(

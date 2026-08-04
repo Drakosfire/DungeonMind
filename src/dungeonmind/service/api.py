@@ -27,7 +27,7 @@ from ..contracts.review_publication import FinalizedReviewPublication
 from ..contracts.review_publication_transport import FinalizedReviewPublicationRequest
 from ..domain.errors import DungeonMindError, PersistenceIntegrityError
 from .demo_access import DemoAccessBinding, authorize_demo_request
-from .error_mapping import error_envelope, http_status_for
+from .error_mapping import error_envelope, http_status_for, publication_error_envelope
 from .publication_access import PublicationAccessBinding, authorize_publication_request
 
 
@@ -154,7 +154,10 @@ def create_publication_app(
 
     @app.exception_handler(DungeonMindError)
     async def _dungeonmind_error(_request: Request, exc: DungeonMindError) -> JSONResponse:
-        return JSONResponse(status_code=http_status_for(exc), content=error_envelope(exc))
+        return JSONResponse(
+            status_code=http_status_for(exc),
+            content=publication_error_envelope(exc),
+        )
 
     def _validation_envelope(errors: list[Any]) -> dict[str, Any]:
         safe_errors = [
@@ -185,7 +188,7 @@ def create_publication_app(
 
     @app.exception_handler(Exception)
     async def _unexpected_error(_request: Request, exc: Exception) -> JSONResponse:
-        return JSONResponse(status_code=500, content=error_envelope(exc))
+        return JSONResponse(status_code=500, content=publication_error_envelope(exc))
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:

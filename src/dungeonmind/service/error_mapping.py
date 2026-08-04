@@ -40,6 +40,11 @@ _STATUS_BY_TYPE: dict[type[BaseException], int] = {
 }
 
 _PUBLIC_MESSAGES: dict[type[BaseException], str] = {
+    PersistenceUnavailableError: "Persistence backend is temporarily unavailable.",
+    PersistenceIntegrityError: "Stored data failed an integrity check.",
+}
+
+_PUBLICATION_MESSAGES: dict[type[BaseException], str] = {
     CapabilityDeniedError: "Publication access denied.",
     ContributionReviewNotFoundError: "Finalized contribution review was not found.",
     RevisionNotFoundError: "Pinned graph revision was not found.",
@@ -49,8 +54,6 @@ _PUBLIC_MESSAGES: dict[type[BaseException], str] = {
     FinalizedReviewPublicationOutcomeUnknownError: (
         "Publication outcome is unknown. Retrying the same request is safe."
     ),
-    PersistenceUnavailableError: "Persistence backend is temporarily unavailable.",
-    PersistenceIntegrityError: "Stored data failed an integrity check.",
 }
 
 _DETAIL_ALLOWLIST = frozenset(
@@ -105,8 +108,8 @@ def http_status_for(error: BaseException) -> int:
     return 500
 
 
-def _public_details(error: DungeonMindError) -> dict[str, Any]:
-    if isinstance(error, ContributionMaterializationError):
+def _public_details(error: DungeonMindError, *, publication: bool) -> dict[str, Any]:
+    if publication and isinstance(error, ContributionMaterializationError):
         reason = error.details.get("reason")
         return (
             {"reason": reason}
@@ -123,9 +126,10 @@ def _public_details(error: DungeonMindError) -> dict[str, Any]:
     return dict(error.details or {})
 
 
-def error_envelope(error: BaseException) -> dict[str, Any]:
+def _error_envelope(error: BaseException, *, publication: bool) -> dict[str, Any]:
     if isinstance(error, DungeonMindError):
-        message = _PUBLIC_MESSAGES.get(type(error))
+        messages = _PUBLICATION_MESSAGES if publication else {}
+        message = messages.get(type(error))
         if message is None:
             for cls, public in _PUBLIC_MESSAGES.items():
                 if isinstance(error, cls):
@@ -135,7 +139,7 @@ def error_envelope(error: BaseException) -> dict[str, Any]:
             "error": {
                 "code": error.code,
                 "message": message if message is not None else str(error),
-                "details": _public_details(error),
+                "details": _public_details(error, publication=publication),
             }
         }
     return {
@@ -145,3 +149,15 @@ def error_envelope(error: BaseException) -> dict[str, Any]:
             "details": {},
         }
     }
+
+
+def error_envelope(error: BaseException) -> dict[str, Any]:
+    """Map errors for the existing hosts without publication-specific wording."""
+
+    return _error_envelope(error, publication=False)
+
+
+def publication_error_envelope(error: BaseException) -> dict[str, Any]:
+    """Map errors for the finalized-review publication host."""
+
+    return _error_envelope(error, publication=True)

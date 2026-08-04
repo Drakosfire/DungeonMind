@@ -15,7 +15,10 @@ from dungeonmind.domain.errors import (
     RevisionNotFoundError,
     StaleParentRevisionError,
 )
-from dungeonmind.service.error_mapping import error_envelope, http_status_for
+from dungeonmind.service.error_mapping import (
+    http_status_for,
+    publication_error_envelope,
+)
 
 
 @pytest.mark.parametrize(
@@ -58,7 +61,7 @@ from dungeonmind.service.error_mapping import error_envelope, http_status_for
     ],
 )
 def test_publication_error_status_and_code_mapping(error, status: int, code: str) -> None:
-    envelope = error_envelope(error)
+    envelope = publication_error_envelope(error)
     assert http_status_for(error) == status
     assert envelope["error"]["code"] == code
 
@@ -71,7 +74,7 @@ def test_outcome_unknown_has_exact_retry_safe_public_contract() -> None:
         expected_published_revision_id="rev:expected",
         reason="publication_attempt_or_recovery_probe_failed",
     )
-    assert error_envelope(error) == {
+    assert publication_error_envelope(error) == {
         "error": {
             "code": "finalized_review_publication_outcome_unknown",
             "message": "Publication outcome is unknown. Retrying the same request is safe.",
@@ -88,7 +91,7 @@ def test_outcome_unknown_has_exact_retry_safe_public_contract() -> None:
 
 
 def test_materialization_and_persistence_errors_do_not_leak_sentinels() -> None:
-    materialization = error_envelope(
+    materialization = publication_error_envelope(
         ContributionMaterializationError(
             "source-locator-sentinel",
             details={
@@ -97,7 +100,7 @@ def test_materialization_and_persistence_errors_do_not_leak_sentinels() -> None:
             },
         )
     )
-    persistence = error_envelope(
+    persistence = publication_error_envelope(
         PersistenceIntegrityError(
             "sql-sentinel connection-string-sentinel",
             details={"sql": "sql-sentinel", "path": "filesystem-sentinel"},
@@ -113,7 +116,7 @@ def test_materialization_and_persistence_errors_do_not_leak_sentinels() -> None:
 
 
 def test_unexpected_error_is_empty_and_sanitized() -> None:
-    envelope = error_envelope(RuntimeError("unexpected-secret-sentinel"))
+    envelope = publication_error_envelope(RuntimeError("unexpected-secret-sentinel"))
     assert envelope == {
         "error": {
             "code": "internal_error",
