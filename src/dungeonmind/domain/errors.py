@@ -151,6 +151,27 @@ class ContributionReviewAlreadyFinalizedError(DungeonMindError):
     code = "contribution_review_already_finalized"
 
 
+class ContributionMaterializationError(DungeonMindError):
+    """A finalized review cannot be materialized into a valid graph payload."""
+
+    code = "contribution_materialization_error"
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        materialization_details = {"reason": reason}
+        if details:
+            materialization_details.update(details)
+        super().__init__(
+            "finalized review graph materialization failed",
+            details=materialization_details,
+        )
+        self.reason = reason
+
+
 class SemanticProfileNotFoundError(PersistenceIntegrityError):
     """Pinned profile identity is absent from the configured registry."""
 

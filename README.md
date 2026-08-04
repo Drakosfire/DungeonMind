@@ -59,6 +59,7 @@ system. Decision records:
 [`Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md`](Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md),
 [`Docs/Decisions/ADR-0006-pinned-profile-contribution-planning.md`](Docs/Decisions/ADR-0006-pinned-profile-contribution-planning.md).
 [`Docs/Decisions/ADR-0007-finalized-contribution-review-adoption.md`](Docs/Decisions/ADR-0007-finalized-contribution-review-adoption.md).
+[`Docs/Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md`](Docs/Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md).
 
 The D&D package's first executable slice (B.2c) is intentionally tiny: one
 immutable `dnd5e-profile-v2` descriptor, one Threat vocabulary catalog
@@ -78,8 +79,8 @@ only as the contextual `dnd5e:threatens` relationship, never as an object kind.
 
 ## Status
 
-**Founding through B.2d landed; B.2e finalized contribution review adoption is
-the current capability.**
+**Founding through B.2e and B.2f-0 landed; B.2f-a finalized-review graph
+payload materialization is the current capability. Publication remains false.**
 
 What exists today:
 
@@ -118,11 +119,16 @@ What exists today:
   atomic/idempotent in-memory review persistence, and a PostgreSQL review table
   that reloads the superseded candidate, active reviewed successor, and review
   record together;
+- pure generic materialization of one finalized review against one exact pinned
+  `dm_union_graph_v3` parent, including deterministic accepted nodes, evidence,
+  relationships, output reparse, and an ephemeral copy-on-read,
+  digest-bound result;
 
-What deliberately does **not** exist yet: graph materialization or publication
-from finalized reviews, mutable review drafts/editing/replacement, review
-API/UI/tooling, global identity-decision append, or target overrides; generic
-field/property assertion models, assertion-scoped relationships, assertion authoring or graph writes,
+What deliberately does **not** exist yet: expected-parent CAS publication,
+revision construction, publication recovery, or transport from finalized
+reviews; mutable review drafts/editing/replacement, review API/UI/tooling,
+global identity-decision append, or target overrides; generic field/property
+assertion models, assertion-scoped relationships, assertion authoring or graph writes,
 field-level semantic-document materialization, LandingPage or other
 product-surface adoption of `mind_turn_v1`, source-body opening, Hermes,
 production auth, multi-worker exactly-once adapter execution, the retrieval
