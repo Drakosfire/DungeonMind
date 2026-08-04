@@ -10,7 +10,7 @@ pr_body_template: |
   - PR / branch: timeline/ft0-fictional-time-characterization
 
   ## Verification pointer
-  - Base/head: TODO after PR #14 merges and implementation begins
+  - Base/head: 71156b630a4370039dc749b548eb43828cce0e6d → 928ac046869c28e40120ca2ac9b594307e6d43ea
   - Changed paths: §4 allowlist only
   - Verification: §7 evidence ledger
 
@@ -22,7 +22,7 @@ pr_body_template: |
 # HANDOFF — FT0 Corpus-grounded Fictional-time Characterization
 
 **Created:** 2026-08-03  
-**Status:** ACTIVE — implementation dispatch is permitted only after the base gate in §2 is satisfied.  
+**Status:** IMPLEMENTED — `FT0_POSITIVE`; review handback recorded in §8.
 **Canonical handoff path:** `Docs/Handoffs/HANDOFF-ft0-fictional-time-characterization.md`  
 **Conversation name:** `DungeonMind fictional-time characterization`  
 **Flow / agent:** `TIMELINE`  
@@ -648,6 +648,136 @@ For any required command already failing on the exact PR #14 merge base:
 - obtain an explicit operator waiver if the failure remains an acceptance gate.
 
 ## §8 Required review handback
+
+### Completed implementation handback
+
+**1. Exact PR and revision**
+
+- PR: https://github.com/Drakosfire/DungeonMind/pull/15
+- Branch: `timeline/ft0-fictional-time-characterization`
+- Head: `928ac046869c28e40120ca2ac9b594307e6d43ea`
+- Exact PR #14 merge base: `71156b630a4370039dc749b548eb43828cce0e6d`
+- Predecessor gate: PR #14 is merged; `origin/main` contains the durable publication implementation and ADR-0011.
+- Open-PR search found no other owner of fictional-time contracts, temporal query semantics, or `GraphContributionAssertion.temporal_scope`.
+
+**2. Mission and merge-ready invariant**
+
+A kernel maintainer can execute one sealed, test-only fictional-time characterization over two corpus-grounded cases so that four useful queries resolve deterministically, missing fictional time remains explicitly unresolved, and source/session metadata never becomes fictional occurrence time.
+
+```text
+one pinned source manifest
++ one sealed local characterization fixture
++ one test-local evaluator
+→ validate unique anchors, claims, state boundaries, queries, and closed evidence
+→ compute only strict-before transitive closure and exact boundary-side state values
+→ return deterministic answer + proof claim IDs + evidence IDs
+→ preserve unresolved absolute time and incomparable anchors
+→ produce byte-equivalent results under fixture replay and harmless list reordering
+→ make zero changes to production code, durable/public contracts, graph schemas,
+  publication, persistence, transport, providers, or product surfaces
+```
+
+**3. Pinned source manifest**
+
+| Source ID | Repository | Commit | Path | Git blob SHA | Source class | Campaign | Session provenance |
+|---|---|---|---|---|---|---|---:|
+| `src:hempholm-session-04` | `Drakosfire/DungeonMindBuddy` | `a0cb1c00206cc5a674b22dc2051bd4fcbe96811f` | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 1/Session Recaps/_normalized/Session 04 - The Grotesque Tree of Hempholm.md` | `bc9ae016793efdd5614ebd88339b745d654e5b56` | `observed_play_recap` | `campaign:1` | `4` |
+| `src:lysandra-mireward-history` | `Drakosfire/DungeonMindBuddy` | `a0cb1c00206cc5a674b22dc2051bd4fcbe96811f` | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 2/NPCs/captain_lysandra_ironveil/lysandra_ironveil_mireward_history.md` | `1d7e7038a60d28af1215f2412e9378501bc07ba7` | `authored_dossier` | `campaign:2` | `null` |
+| `src:mireward-session-22` | `Drakosfire/DungeonMindBuddy` | `a0cb1c00206cc5a674b22dc2051bd4fcbe96811f` | `corpus/eldyrwild-markdown/Longmont Campaign/Campaign 2/Session Recaps/_normalized/Session 22 - Mireward Road and Lysandro.md` | `1c68ce991857ae47c0407e4852526fa55aa123b4` | `observed_play_recap` | `campaign:2` | `22` |
+
+**4. Four gold query results**
+
+| Query | Status / value | Proof claim IDs | Evidence IDs | Reason |
+|---|---|---|---|---|
+| `query:hempholm-tree-before-beetles` | `entailed / true` | `claim:hempholm-tree-before-revelry`; `claim:hempholm-revelry-before-beetles` | `ev:hempholm-evening-revelry`; `ev:hempholm-root-beetle-attack`; `ev:hempholm-tree-felled` | `null` |
+| `query:hempholm-tree-absolute-time` | `unresolved / null` | `[]` | `[]` | `no_explicit_absolute_anchor` |
+| `query:lysandra-returned-before-gate` | `entailed / false` | `state-boundary:lysandra-returned-at-mireward-gate` | `ev:lysandra-not-home-c1-c2` | `null` |
+| `query:lysandra-returned-after-gate` | `entailed / true` | `state-boundary:lysandra-returned-at-mireward-gate` | `ev:lysandra-mireward-gate-arrival` | `null` |
+
+**5. E1–E12 evidence ledger**
+
+All rows below are independently rerun on 2026-08-04 from the recorded head unless marked `CI`.
+
+| ID | Result | Provenance |
+|---|---|---|
+| E1 | PASS — exact three-source manifest, source roles, commits, blob SHAs, campaigns, and session provenance validated; no gold field present. | Independent rerun: focused FT0 suite, 5 passed |
+| E2 | PASS — tree felling reaches root-beetle attack through the two-claim chain; no redundant direct edge. | Independent rerun: focused FT0 suite, 5 passed |
+| E3 | PASS — shortest deterministic proof and sorted evidence union are returned. | Independent rerun: focused FT0 suite, 5 passed |
+| E4 | PASS — absolute tree time is unresolved with `no_explicit_absolute_anchor`; session 4 does not leak. | Independent rerun: focused FT0 suite, 5 passed |
+| E5 | PASS — Lysandra is false immediately before and true immediately after the Mireward gate; dossier and observed-recap evidence remain separated. | Independent rerun: focused FT0 suite, 5 passed |
+| E6 | PASS — incomparable anchors remain unresolved and reverse known ordering is contradicted. | Independent rerun: focused FT0 suite, 5 passed |
+| E7 | PASS — replay, harmless array reordering, and mutation of returned lists preserve byte-equivalent results. | Independent rerun: focused FT0 suite, 5 passed |
+| E8 | PASS — self-before and cyclic strict-before mutations fail before evaluation. | Independent rerun: focused FT0 suite, 5 passed |
+| E9 | PASS — dangling and unused evidence mutations fail closed. | Independent rerun: focused FT0 suite, 5 passed |
+| E10 | PASS — representative `temporal_scope` survives Pydantic dump/reload exactly; no production semantic claim is made. | Independent rerun: focused FT0 suite, 5 passed |
+| E11 | PASS — `git diff --check` is clean; cumulative changed paths are exactly the §4 allowlist; production-path guard is empty. | Independent rerun at base `71156b630a4370039dc749b548eb43828cce0e6d` |
+| E12 | PASS — full non-integration regression is green. | Independent rerun: `uv run pytest -q -m 'not integration'`; exit 0; CI: 2 checks passed |
+
+Focused verification commands and results:
+
+```text
+uv run pytest -q tests/characterization/test_fictional_time_characterization.py
+5 passed
+
+uv run ruff check tests/characterization/test_fictional_time_characterization.py
+All checks passed
+
+uv run pyright
+0 errors, 0 warnings, 0 informations
+
+uv run pytest -q -m 'not integration'
+exit 0; full non-integration suite passed
+
+git diff --check
+clean
+```
+
+**6. Nano-commit story**
+
+1. `fb00ce0` — `docs: check in FT0 fictional-time characterization handoff`: checked in the design authority and strict scope.
+2. `9e1583e` — `test: seal FT0 corpus-derived fixture`: added the pinned, local, gold-free JSON fixture.
+3. `2bb7f76` — `test: characterize fictional-time ordering and state boundaries`: added local validation, closure, state-boundary evaluation, and gold/adversarial tests.
+4. `928ac04` — `test: prove abstention, leakage guards, and replay determinism`: added unresolved-time, metadata-leakage, reorder, copy-safety, and opaque-carrier proofs.
+5. This handback commit — `docs: complete FT0 implementation handback`: records this evidence ledger and disposition.
+
+**7. Changed paths and focused diff**
+
+The cumulative implementation diff from `71156b630a4370039dc749b548eb43828cce0e6d` to `928ac046869c28e40120ca2ac9b594307e6d43ea` contains exactly:
+
+```text
+Docs/Handoffs/HANDOFF-ft0-fictional-time-characterization.md
+tests/fixtures/fictional_time/ft0-two-case-characterization-v0.json
+tests/characterization/test_fictional_time_characterization.py
+```
+
+Before this handback update, the focused implementation diff was `3 files changed, 1,409 insertions`; no production path, dependency, migration, schema, or product surface was changed. Final fixture/test nonblank line counts are:
+
+```text
+tests/fixtures/fictional_time/ft0-two-case-characterization-v0.json  121 / 250
+tests/characterization/test_fictional_time_characterization.py      438 / 450
+```
+
+The production-path diff guard is empty:
+
+```text
+git diff --name-only 71156b630a4370039dc749b548eb43828cce0e6d...HEAD -- \
+  src/dungeonmind src/dungeonmind_dnd migrations pyproject.toml uv.lock \
+  Docs/Architecture Docs/Decisions Docs/Roadmaps README.md CONTRIBUTING.md
+→ no output
+```
+
+**8. Baseline, scope, and stop conditions**
+
+- Baseline failures and waivers: `none`.
+- Paths outside §4: `none`.
+- Stop conditions encountered: `none`.
+- FT1, FT2, and FT3 remain false and unimplemented.
+
+**9. Result disposition**
+
+```text
+FT0_POSITIVE
+```
 
 The implementation handback must include:
 
