@@ -441,12 +441,13 @@ This is not exported from a production package and is not serialized as a suppor
 
 ```text
 A before B:
-  reachable A → B     → entailed / true
+  A identical to B    → unresolved / null   (irreflexive; no zero-length path)
+  reachable A → B     → entailed / true     (positive-length path only)
   reachable B → A     → contradicted / false
   neither reachable   → unresolved / null
 ```
 
-Closure is transitive over explicit strict-before claims only. Fixture/source list order, labels, sessions, source timestamps, and IDs never add edges.
+Closure is transitive over explicit strict-before claims only. Fixture/source list order, labels, sessions, source timestamps, and IDs never add edges. Reachability never treats an anchor as before itself.
 
 For an entailed result, return one deterministic proof path. Use the shortest number of edges; break equal-length ties by lexicographic claim-ID sequence. Evidence is the sorted union of evidence IDs on that path.
 
@@ -709,7 +710,7 @@ All rows below are independently rerun on 2026-08-04 from evidence head `d777877
 | E3 | PASS — shortest deterministic proof and sorted evidence union are returned. | Independent rerun |
 | E4 | PASS — absolute tree time unresolved (`no_explicit_absolute_anchor`); sessions `4`/`22` do not leak; non-null absolute anchors are rejected at validation. | Independent rerun |
 | E5 | PASS — Lysandra false before / true after gate; dossier vs observed-recap evidence separated. | Independent rerun |
-| E6 | PASS — incomparable anchors unresolved; reverse known ordering contradicted. | Independent rerun |
+| E6 | PASS — incomparable anchors unresolved; reverse known ordering contradicted; identical-anchor query unresolved (irreflexive). | Independent rerun |
 | E7 | PASS — replay, reorder, and returned-list mutation preserve byte-equivalent results. | Independent rerun |
 | E8 | PASS — self-before and cyclic strict-before mutations fail before evaluation. | Independent rerun |
 | E9 | PASS — dangling, unused, and empty `evidence_ids` mutations fail closed. | Independent rerun |

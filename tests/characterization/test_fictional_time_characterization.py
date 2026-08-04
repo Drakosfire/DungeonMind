@@ -235,8 +235,9 @@ def _adj(fx: dict[str, Any]) -> dict[str, list[tuple[str, str]]]:
 
 
 def _shortest(adj: dict[str, list[tuple[str, str]]], start: str, goal: str) -> list[str] | None:
+    # Strict-before is irreflexive: identical anchors have no positive-length path.
     if start == goal:
-        return []
+        return None
     best: dict[str, list[str]] = {start: []}
     queue: deque[str] = deque([start])
     while queue:
@@ -382,6 +383,11 @@ def test_e6_e7_partial_order_replay_and_reorder(fixture: dict[str, Any]) -> None
         before="anchor:unrelated-market-day", after=TREE,
     )
     assert unresolved.status == "unresolved" and unresolved.value is None
+    reflexive = evaluate_strict_before(
+        fixture, query_id="query:tree-before-tree", before=TREE, after=TREE
+    )
+    assert reflexive.status == "unresolved" and reflexive.value is None
+    assert reflexive.proof_claim_ids == ()
     reverse = evaluate_strict_before(
         fixture, query_id="query:beetles-before-tree", before=BEETLES, after=TREE
     )
