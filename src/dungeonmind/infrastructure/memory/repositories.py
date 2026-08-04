@@ -31,6 +31,10 @@ from ...contracts.graph import (
 from ...contracts.identity import IdentityDecisionRecord
 from ...contracts.mind_turn import MindTurnRequest, MindTurnResponse
 from ...contracts.retrieval import GraphRetrievalSession
+from ...contracts.review_publication import (
+    FinalizedReviewPublication,
+    FinalizedReviewPublicationCommand,
+)
 from ...contracts.semantic import (
     CandidateChannel,
     EmbeddingRun,
@@ -43,6 +47,7 @@ from ...contracts.vocabulary import Visibility
 from ...domain.canonical import canonical_json, canonical_sha256
 from ...domain.errors import (
     ContributionReviewAlreadyFinalizedError,
+    ContributionReviewNotFoundError,
     DocumentNotFoundError,
     IdempotencyConflictError,
     ImmutableRevisionConflictError,
@@ -93,12 +98,12 @@ class InMemoryWorldGraphRepository:
     def __init__(self) -> None:
         self._revisions: dict[tuple[str, str], StoredGraphRevision] = {}
         self._heads: dict[str, WorldGraphHead] = {}
-        self._locks: dict[str, threading.Lock] = {}
+        self._locks: dict[str, threading.RLock] = {}
         self._guard = threading.Lock()
 
-    def _lock_for(self, world_id: str) -> threading.Lock:
+    def _lock_for(self, world_id: str) -> threading.RLock:
         with self._guard:
-            return self._locks.setdefault(world_id, threading.Lock())
+            return self._locks.setdefault(world_id, threading.RLock())
 
     def get_head(self, world_id: str) -> WorldGraphHead | None:
         head = self._heads.get(world_id)
@@ -108,7 +113,10 @@ class InMemoryWorldGraphRepository:
         stored = self._revisions.get((world_id, revision_id))
         return _copy(stored) if stored is not None else None
 
-    def publish_revision(self, command: PublishRevisionCommand) -> WorldGraphRevision:
+    def _publish_revision_locked(
+        self,
+        command: PublishRevisionCommand,
+    ) -> WorldGraphRevision:
         # Contract already requires parent == expected; CAS requires expected == head.
         payload_hash = canonical_sha256(command.graph_payload)
         revision_id = compute_revision_id(
@@ -168,6 +176,10 @@ class InMemoryWorldGraphRepository:
                 updated_at=command.created_at,
             )
             return _copy(envelope)
+
+    def publish_revision(self, command: PublishRevisionCommand) -> WorldGraphRevision:
+        with self._lock_for(command.world_id):
+            return self._publish_revision_locked(command)
 
     def rollback_head(
         self, world_id: str, target_revision_id: str, *, updated_at: datetime
@@ -388,6 +400,441 @@ class InMemoryContributionReviewRepository:
                 None,
             )
             return None if record is None else self._reconstruct_unlocked(record)
+
+
+class InMemoryFinalizedReviewPublicationRepository:
+    """Atomic in-memory review publication unit of work.
+
+    The graph repository owns the per-world lock and locked graph publication
+    helper. Publication records use that same lock, so a revision/head change
+    and its terminal identity are one reversible in-memory transaction.
+    """
+
+    def __init__(
+        self,
+        review_repository: InMemoryContributionReviewRepository,
+        world_graph_repository: InMemoryWorldGraphRepository,
+        *,
+        failure_hook: Callable[[], None] | None = None,
+    ) -> None:
+        self._reviews = review_repository
+        self._graph = world_graph_repository
+        self._records_by_review: dict[tuple[str, str], FinalizedReviewPublication] = {}
+        self._records_by_operation: dict[tuple[str, str], FinalizedReviewPublication] = {}
+        self._records_by_revision: dict[tuple[str, str], FinalizedReviewPublication] = {}
+        self._failure_hook = failure_hook
+
+    @staticmethod
+    def _reload_command(
+        command: FinalizedReviewPublicationCommand,
+    ) -> FinalizedReviewPublicationCommand:
+        try:
+            return FinalizedReviewPublicationCommand.model_validate(
+                command.model_dump(mode="json")
+            )
+        except Exception:
+            raise PersistenceIntegrityError(
+                "finalized publication command failed validation"
+            ) from None
+
+    @staticmethod
+    def _validate_review_binding(
+        command: FinalizedReviewPublicationCommand,
+        state: ContributionReviewState,
+    ) -> None:
+        record = state.record
+        expected = (
+            record.world_id,
+            record.review_id,
+            record.reviewed_contribution_id,
+            record.reviewed_contribution_sha256,
+            record.review_intent_sha256,
+            record.confirmation_id,
+            record.operation_id,
+            record.plan_ref.expected_parent_revision_id,
+            record.plan_ref.base_graph_payload_sha256,
+            record.plan_ref.base_graph_schema,
+        )
+        actual = (
+            command.world_id,
+            command.review_id,
+            command.reviewed_contribution_id,
+            command.reviewed_contribution_sha256,
+            command.review_intent_sha256,
+            command.confirmation_id,
+            command.operation_id,
+            command.expected_parent_revision_id,
+            command.parent_graph_payload_sha256,
+            command.graph_schema,
+        )
+        if actual != expected:
+            raise IdempotencyConflictError(
+                "finalized publication command disagrees with its durable review"
+            )
+
+    @staticmethod
+    def _validate_revision(
+        stored: StoredGraphRevision,
+        *,
+        command: FinalizedReviewPublicationCommand,
+    ) -> None:
+        revision = stored.revision
+        if (
+            revision.world_id != command.world_id
+            or revision.revision_id != command.expected_published_revision_id
+            or revision.parent_revision_id != command.expected_parent_revision_id
+            or revision.operation_ids != [command.operation_id]
+            or revision.graph_schema != command.graph_schema
+            or revision.status != "published"
+            or canonical_sha256(stored.graph_payload) != command.graph_payload_sha256
+            or revision.graph_payload_sha256 != command.graph_payload_sha256
+            or stored.graph_payload != command.graph_payload
+        ):
+            raise PersistenceIntegrityError(
+                "finalized publication revision does not match its command"
+            )
+
+    @staticmethod
+    def _validate_parent_revision(
+        stored: StoredGraphRevision,
+        *,
+        world_id: str,
+        parent_revision_id: str,
+        graph_schema: str,
+        graph_payload_sha256: str,
+    ) -> None:
+        revision = stored.revision
+        if (
+            revision.world_id != world_id
+            or revision.revision_id != parent_revision_id
+            or revision.graph_schema != graph_schema
+            or revision.status != "published"
+            or revision.graph_payload_sha256 != graph_payload_sha256
+            or canonical_sha256(stored.graph_payload) != graph_payload_sha256
+        ):
+            raise PersistenceIntegrityError(
+                "finalized publication parent revision does not match its binding"
+            )
+
+    @classmethod
+    def _validate_record_review(
+        cls,
+        publication: FinalizedReviewPublication,
+        state: ContributionReviewState,
+    ) -> None:
+        record = state.record
+        if (
+            publication.world_id != record.world_id
+            or publication.review_id != record.review_id
+            or publication.reviewed_contribution_id != record.reviewed_contribution_id
+            or publication.reviewed_contribution_sha256
+            != record.reviewed_contribution_sha256
+            or publication.review_intent_sha256 != record.review_intent_sha256
+            or publication.confirmation_id != record.confirmation_id
+            or publication.operation_id != record.operation_id
+            or publication.expected_parent_revision_id
+            != record.plan_ref.expected_parent_revision_id
+            or publication.parent_graph_payload_sha256
+            != record.plan_ref.base_graph_payload_sha256
+            or publication.graph_schema != record.plan_ref.base_graph_schema
+        ):
+            raise PersistenceIntegrityError(
+                "finalized publication record disagrees with its durable review"
+            )
+
+    @staticmethod
+    def _validate_command_record(
+        command: FinalizedReviewPublicationCommand,
+        publication: FinalizedReviewPublication,
+    ) -> None:
+        if (
+            publication.world_id != command.world_id
+            or publication.review_id != command.review_id
+            or publication.reviewed_contribution_id != command.reviewed_contribution_id
+            or publication.reviewed_contribution_sha256
+            != command.reviewed_contribution_sha256
+            or publication.review_intent_sha256 != command.review_intent_sha256
+            or publication.confirmation_id != command.confirmation_id
+            or publication.operation_id != command.operation_id
+            or publication.expected_parent_revision_id
+            != command.expected_parent_revision_id
+            or publication.parent_graph_payload_sha256
+            != command.parent_graph_payload_sha256
+            or publication.published_revision_id
+            != command.expected_published_revision_id
+            or publication.graph_schema != command.graph_schema
+            or publication.graph_payload_sha256 != command.graph_payload_sha256
+        ):
+            raise IdempotencyConflictError(
+                "finalized publication identity conflicts with the requested content"
+            )
+
+    def _validate_record(
+        self,
+        publication: FinalizedReviewPublication,
+    ) -> FinalizedReviewPublication:
+        try:
+            return FinalizedReviewPublication.model_validate(
+                publication.model_dump(mode="json")
+            )
+        except Exception:
+            raise PersistenceIntegrityError(
+                "finalized publication record failed reconstruction"
+            ) from None
+
+    def _find_matching_unlocked(
+        self,
+        *,
+        world_id: str,
+        review_id: str | None = None,
+        operation_id: str | None = None,
+        revision_id: str | None = None,
+    ) -> FinalizedReviewPublication | None:
+        matches: dict[str, FinalizedReviewPublication] = {}
+        if review_id is not None:
+            value = self._records_by_review.get((world_id, review_id))
+            if value is not None:
+                matches[_fingerprint(value)] = value
+        if operation_id is not None:
+            value = self._records_by_operation.get((world_id, operation_id))
+            if value is not None:
+                matches[_fingerprint(value)] = value
+        if revision_id is not None:
+            value = self._records_by_revision.get((world_id, revision_id))
+            if value is not None:
+                matches[_fingerprint(value)] = value
+        if len(matches) > 1:
+            raise PersistenceIntegrityError(
+                "multiple finalized publication identities conflict"
+            )
+        return next(iter(matches.values()), None)
+
+    def _reconstruct_unlocked(
+        self,
+        publication: FinalizedReviewPublication,
+    ) -> FinalizedReviewPublication:
+        verified = self._validate_record(publication)
+        state = self._reviews.get(verified.world_id, verified.review_id)
+        if state is None:
+            raise PersistenceIntegrityError(
+                "finalized publication references a missing review"
+            )
+        self._validate_record_review(verified, state)
+        stored = self._graph._revisions.get(
+            (verified.world_id, verified.published_revision_id)
+        )
+        if stored is None:
+            raise PersistenceIntegrityError(
+                "finalized publication references a missing revision"
+            )
+        parent = self._graph._revisions.get(
+            (verified.world_id, verified.expected_parent_revision_id)
+        )
+        if parent is None:
+            raise PersistenceIntegrityError(
+                "finalized publication references a missing parent revision"
+            )
+        self._validate_parent_revision(
+            parent,
+            world_id=verified.world_id,
+            parent_revision_id=verified.expected_parent_revision_id,
+            graph_schema=verified.graph_schema,
+            graph_payload_sha256=verified.parent_graph_payload_sha256,
+        )
+        command = FinalizedReviewPublicationCommand(
+            world_id=verified.world_id,
+            review_id=verified.review_id,
+            reviewed_contribution_id=verified.reviewed_contribution_id,
+            reviewed_contribution_sha256=verified.reviewed_contribution_sha256,
+            review_intent_sha256=verified.review_intent_sha256,
+            confirmation_id=verified.confirmation_id,
+            operation_id=verified.operation_id,
+            expected_parent_revision_id=verified.expected_parent_revision_id,
+            parent_graph_payload_sha256=verified.parent_graph_payload_sha256,
+            expected_published_revision_id=verified.published_revision_id,
+            graph_schema=verified.graph_schema,
+            graph_payload=stored.graph_payload,
+            graph_payload_sha256=verified.graph_payload_sha256,
+            requested_published_at=verified.published_at,
+        )
+        self._validate_revision(stored, command=command)
+        if stored.revision.created_at != verified.published_at:
+            raise PersistenceIntegrityError(
+                "finalized publication timestamp disagrees with its revision"
+            )
+        return _copy(verified)
+
+    def get(
+        self,
+        world_id: str,
+        operation_id: str,
+    ) -> FinalizedReviewPublication | None:
+        with self._graph._lock_for(world_id):
+            publication = self._find_matching_unlocked(
+                world_id=world_id,
+                operation_id=operation_id,
+            )
+            return (
+                None
+                if publication is None
+                else self._reconstruct_unlocked(publication)
+            )
+
+    def get_for_review(
+        self,
+        world_id: str,
+        review_id: str,
+    ) -> FinalizedReviewPublication | None:
+        with self._graph._lock_for(world_id):
+            publication = self._find_matching_unlocked(
+                world_id=world_id,
+                review_id=review_id,
+            )
+            return (
+                None
+                if publication is None
+                else self._reconstruct_unlocked(publication)
+            )
+
+    @staticmethod
+    def _record_from_revision(
+        command: FinalizedReviewPublicationCommand,
+        revision: WorldGraphRevision,
+    ) -> FinalizedReviewPublication:
+        return FinalizedReviewPublication(
+            world_id=command.world_id,
+            review_id=command.review_id,
+            reviewed_contribution_id=command.reviewed_contribution_id,
+            reviewed_contribution_sha256=command.reviewed_contribution_sha256,
+            review_intent_sha256=command.review_intent_sha256,
+            confirmation_id=command.confirmation_id,
+            operation_id=command.operation_id,
+            expected_parent_revision_id=command.expected_parent_revision_id,
+            parent_graph_payload_sha256=command.parent_graph_payload_sha256,
+            published_revision_id=command.expected_published_revision_id,
+            graph_schema=command.graph_schema,
+            graph_payload_sha256=command.graph_payload_sha256,
+            published_at=revision.created_at,
+        )
+
+    def _store_unlocked(self, publication: FinalizedReviewPublication) -> None:
+        keys = (
+            (self._records_by_review, (publication.world_id, publication.review_id)),
+            (self._records_by_operation, (publication.world_id, publication.operation_id)),
+            (
+                self._records_by_revision,
+                (publication.world_id, publication.published_revision_id),
+            ),
+        )
+        for records, key in keys:
+            prior = records.get(key)
+            if prior is not None and _fingerprint(prior) != _fingerprint(publication):
+                raise IdempotencyConflictError(
+                    "finalized publication identity conflicts with existing content"
+                )
+        for records, key in keys:
+            records[key] = _copy(publication)
+
+    def publish(
+        self,
+        command: FinalizedReviewPublicationCommand,
+    ) -> FinalizedReviewPublication:
+        validated_command = self._reload_command(command)
+        world_id = validated_command.world_id
+        with self._graph._lock_for(world_id):
+            state = self._reviews.get(world_id, validated_command.review_id)
+            if state is None:
+                raise ContributionReviewNotFoundError(
+                    "finalized contribution review was not found",
+                    details={"world_id": world_id, "review_id": validated_command.review_id},
+                )
+            self._validate_review_binding(validated_command, state)
+            parent = self._graph._revisions.get(
+                (world_id, validated_command.expected_parent_revision_id)
+            )
+            if parent is None:
+                raise PersistenceIntegrityError(
+                    "finalized publication references a missing parent revision"
+                )
+            self._validate_parent_revision(
+                parent,
+                world_id=world_id,
+                parent_revision_id=validated_command.expected_parent_revision_id,
+                graph_schema=validated_command.graph_schema,
+                graph_payload_sha256=validated_command.parent_graph_payload_sha256,
+            )
+            existing = self._find_matching_unlocked(
+                world_id=world_id,
+                review_id=validated_command.review_id,
+                operation_id=validated_command.operation_id,
+                revision_id=validated_command.expected_published_revision_id,
+            )
+            if existing is not None:
+                self._validate_record_review(existing, state)
+                self._validate_command_record(validated_command, existing)
+                return self._reconstruct_unlocked(existing)
+
+            existing_revision = self._graph._revisions.get(
+                (world_id, validated_command.expected_published_revision_id)
+            )
+            if existing_revision is not None:
+                self._validate_revision(existing_revision, command=validated_command)
+                publication = self._record_from_revision(
+                    validated_command,
+                    existing_revision.revision,
+                )
+                self._store_unlocked(publication)
+                return self._reconstruct_unlocked(publication)
+
+            revision_key = (world_id, validated_command.expected_published_revision_id)
+            old_revision = self._graph._revisions.get(revision_key)
+            old_head = self._graph._heads.get(world_id)
+            record_keys = (
+                (self._records_by_review, (world_id, validated_command.review_id)),
+                (self._records_by_operation, (world_id, validated_command.operation_id)),
+                (
+                    self._records_by_revision,
+                    (world_id, validated_command.expected_published_revision_id),
+                ),
+            )
+            old_records = tuple(
+                (records, key, _copy(records[key]) if key in records else None)
+                for records, key in record_keys
+            )
+            try:
+                revision = self._graph._publish_revision_locked(
+                    PublishRevisionCommand(
+                        world_id=world_id,
+                        parent_revision_id=validated_command.expected_parent_revision_id,
+                        expected_parent_revision_id=validated_command.expected_parent_revision_id,
+                        operation_ids=[validated_command.operation_id],
+                        graph_schema=validated_command.graph_schema,
+                        graph_payload=validated_command.graph_payload,
+                        created_at=validated_command.requested_published_at,
+                    )
+                )
+                if self._failure_hook is not None:
+                    self._failure_hook()
+                publication = self._record_from_revision(validated_command, revision)
+                self._store_unlocked(publication)
+                if self._failure_hook is not None:
+                    self._failure_hook()
+                return self._reconstruct_unlocked(publication)
+            except BaseException:
+                if old_revision is None:
+                    self._graph._revisions.pop(revision_key, None)
+                else:
+                    self._graph._revisions[revision_key] = old_revision
+                if old_head is None:
+                    self._graph._heads.pop(world_id, None)
+                else:
+                    self._graph._heads[world_id] = old_head
+                for records, key, old_record in old_records:
+                    if old_record is None:
+                        records.pop(key, None)
+                    else:
+                        records[key] = old_record
+                raise
 
 
 class InMemoryIdentityDecisionRepository:

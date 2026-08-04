@@ -77,6 +77,16 @@ Kernel-side finalized review layer (PR B.2e — DungeonMind)
         no mutable review workspace
 ```
 
+Kernel-side finalized-review publication layer (PR B.2f-c — DungeonMind)
+  exact finalized review + pinned parent
+  → B.2f-a materialization
+  → one durable publication unit of work
+        immutable graph revision
+        expected-parent head CAS + head event
+        terminal publication record
+        exact replay and response-loss recovery
+        no pending lifecycle, worker, transport, or identity-ledger append
+
 ## 2. Governing invariant
 
 > DungeonMind owns knowledge, retrieval, evidence, context assembly, and
@@ -147,6 +157,7 @@ These were proven in DungeonMindBuddy and are not reopened by this repo
 | D&D create-or-connect planning and candidate-only contribution preview against a passed exact revision | **DungeonMindDnD** (`src/dungeonmind_dnd/`) | repository-blind; graph-aware through passed values only (PR B.2d, ADR-0006) |
 | Finalized review intent translation | **DungeonMindDnD** (`src/dungeonmind_dnd/`) | ready-plan adapter only; no persistence or capability authority (PR B.2e, ADR-0007) |
 | Review authority, receipts, successor contributions, atomic review persistence | **DungeonMind** (`src/dungeonmind/`) | generic kernel contracts; no D&D imports, graph materialization, or publication (PR B.2e, ADR-0007) |
+| Finalized-review materialization, expected-parent CAS, durable publication identity, and recovery | **DungeonMind** | `application/review_publication.py`, `infrastructure/*/review_publication.py` (PR B.2f-a/B.2f-b/B.2f-c, ADR-0009/0010/0011) |
 | Which profiles a deployment loads; descriptor file locations | **Operator configuration** | local registry config; locators are never durable identity (PR B.2b) |
 | Schema, migrations, repository ports, PostgreSQL adapters, reconstruction tooling | **DungeonMind** | `migrations/`, `infrastructure/postgres` (PR B) |
 | Dev/CI PostgreSQL substrate definition (pinned pgvector compose) | **DungeonMind** | PR B |
@@ -410,12 +421,34 @@ not graph canon: no `IdentityDecisionRecord`, graph payload, head mutation, or
 publication command is created. B.2f owns accepted materialization and
 expected-parent CAS publication.
 
+### 6.5 Durable finalized-review publication (PR B.2f-c, ADR-0011)
+
+B.2f-c binds one finalized review operation to one immutable graph revision
+through a terminal `dm_finalized_review_publication_v1` record. The publication
+repository is the sole owner of the atomic revision insert, expected-parent
+head CAS, head event, and publication-record insert. It cross-verifies the
+command against the durable review and reconstructs both the publication and
+revision before returning.
+
+The application checks the durable record by world and review before loading
+any review, parent, or graph reader. An existing record is historical
+publication identity: replay preserves its original timestamp and succeeds
+after descendants or explicit head rollback without reading current-head state.
+If an adapter raises after an attempt, one exact record probe recovers a
+committed result; otherwise the application returns a sanitized,
+retry-safe outcome-unknown error. The only predecessor recovery is adoption of
+the exact deterministic B.2f-b revision, with no head mutation or second head
+event.
+
 ## 7. Persistence strategy (summary of ADR-0001/0002/0003)
 
 - PostgreSQL + JSONB + pgvector. Relational identity/lifecycle columns;
   canonical graph snapshots as JSONB payloads in v1. No premature
   normalization of nodes/edges/assertions.
 - Head publication: transaction + row-level lock (CAS), never timestamp.
+- Finalized-review publication: the same transaction/lock atomically owns the
+  immutable revision, head transition, head event, and terminal publication
+  record; the record is historical correspondence, not current-head state.
 - Source bodies: identity/hashes/locators durable in PostgreSQL; bodies may
   live in object storage behind the source port.
 - pgvector: exact search while the corpus is small; HNSW/IVFFlat only after
@@ -438,13 +471,18 @@ state, not D&D meaning; the D&D package supplies exact term semantics and
 planning policy; the full unscoped payload is required to prevent hidden
 duplicate identities; the expected parent is pinned but not checked against
 current head (future commit remains responsible for stale-parent CAS).
-Next: durable contribution review adoption (B.2e), accepted contribution
-materialization and CAS publication (B.2f), exact external
+Delivered next: durable contribution review adoption (B.2e), accepted
+contribution materialization and CAS publication (B.2f-a/B.2f-b), and durable
+finalized-review publication identity and response-loss recovery (B.2f-c).
+Remaining next: exact external
 mechanics/statblock binding for a Threat consumer (B.3), pgvector
 benchmark backend via RulesIngestion Option B (PR C), embedding bakeoff
 (PR D), DungeonMindServer retrieval seam (PR E), and production IaC
 integration (PR F). Conversation/chat history is never authoritative anywhere
-in this target state. Still false after B.2d: generic assertion frameworks,
+in this target state. Still false after B.2f-c: pending publication lifecycle,
+attempt logs, workers, queues, leases, retry schedulers, transport/API/CLI
+exposure, identity-ledger publication append, and product adoption. Generic
+assertion frameworks,
 assertion-scoped relationships, assertion authoring, source opening, Hermes,
 and external product-surface adoption — plus, on the profile boundary: any
 LLM-backed extraction runtime, durable identity decisions, contribution

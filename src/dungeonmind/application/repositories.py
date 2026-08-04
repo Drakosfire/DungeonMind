@@ -28,6 +28,10 @@ from ..contracts.graph import (
 from ..contracts.identity import IdentityDecisionRecord
 from ..contracts.mind_turn import MindTurnRequest, MindTurnResponse
 from ..contracts.retrieval import GraphRetrievalSession
+from ..contracts.review_publication import (
+    FinalizedReviewPublication,
+    FinalizedReviewPublicationCommand,
+)
 from ..contracts.semantic import (
     EmbeddingRun,
     SemanticCandidate,
@@ -116,6 +120,32 @@ class ContributionReviewRepository(Protocol):
     def get_for_plan(
         self, world_id: str, source_plan_id: str
     ) -> ContributionReviewState | None: ...
+
+
+class FinalizedReviewPublicationRepository(Protocol):
+    """Atomic terminal publication unit of work.
+
+    The adapter owns review cross-verification, immutable graph revision
+    reconciliation, head CAS, and publication-record persistence in one store
+    transaction or one shared in-memory lock.
+    """
+
+    def publish(
+        self,
+        command: FinalizedReviewPublicationCommand,
+    ) -> FinalizedReviewPublication: ...
+
+    def get(
+        self,
+        world_id: str,
+        operation_id: str,
+    ) -> FinalizedReviewPublication | None: ...
+
+    def get_for_review(
+        self,
+        world_id: str,
+        review_id: str,
+    ) -> FinalizedReviewPublication | None: ...
 
 
 class IdentityDecisionRepository(Protocol):

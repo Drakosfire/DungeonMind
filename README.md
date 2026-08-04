@@ -61,6 +61,7 @@ system. Decision records:
 [`Docs/Decisions/ADR-0007-finalized-contribution-review-adoption.md`](Docs/Decisions/ADR-0007-finalized-contribution-review-adoption.md).
 [`Docs/Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md`](Docs/Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md).
 [`Docs/Decisions/ADR-0010-b2f-b-finalized-review-expected-parent-cas-publication.md`](Docs/Decisions/ADR-0010-b2f-b-finalized-review-expected-parent-cas-publication.md).
+[`Docs/Decisions/ADR-0011-b2f-c-durable-finalized-review-publication-recovery.md`](Docs/Decisions/ADR-0011-b2f-c-durable-finalized-review-publication-recovery.md).
 
 The D&D package's first executable slice (B.2c) is intentionally tiny: one
 immutable `dnd5e-profile-v2` descriptor, one Threat vocabulary catalog
@@ -80,9 +81,9 @@ only as the contextual `dnd5e:threatens` relationship, never as an object kind.
 
 ## Status
 
-**Founding through B.2f-a landed; B.2f-b finalized-review expected-parent CAS
-publication is the current capability. Durable recovery and public transport
-remain false.**
+**Founding through B.2f-c landed; finalized-review publication is now durable,
+exactly replayable, and recoverable after an uncertain adapter response.
+Transport and external consumer behavior remain false.**
 
 What exists today:
 
@@ -125,14 +126,19 @@ What exists today:
   `dm_union_graph_v3` parent, including deterministic accepted nodes, evidence,
   relationships, output reparse, and an ephemeral copy-on-read,
   digest-bound result;
-- one trusted application seam that loads a durable finalized review by
-  `(world_id, review_id)`, rechecks its exact parent, materializes it through
-  B.2f-a, and publishes one immutable child through the existing atomic graph
-  repository CAS, returning an ephemeral review-to-revision binding;
+- one trusted application seam that first replays a durable publication by
+  `(world_id, review_id)`, otherwise loads the exact review and parent,
+  materializes through B.2f-a, and commits one immutable child, head CAS, and
+  terminal `dm_finalized_review_publication_v1` record atomically;
+- in-memory and PostgreSQL publication repositories with exact replay,
+  bounded adoption of an exact predecessor revision, same-review idempotent
+  concurrency, different-review expected-parent CAS, and one response-loss
+  recovery probe;
 
-What deliberately does **not** exist yet: durable publication identity,
-retry-as-success, uncertain-outcome recovery, or transport from finalized
-reviews; mutable review drafts/editing/replacement, review API/UI/tooling,
+What deliberately does **not** exist yet: pending/failed publication lifecycle,
+attempt logs, workers, queues, leases, retry schedulers, arbitrary history
+inference, or transport from finalized reviews; mutable review
+drafts/editing/replacement, review API/UI/tooling,
 global identity-decision append, or target overrides; generic field/property
 assertion models, assertion-scoped relationships, assertion authoring or graph writes,
 field-level semantic-document materialization, LandingPage or other
