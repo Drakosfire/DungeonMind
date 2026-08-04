@@ -83,9 +83,9 @@ def test_vector_extension_and_schema_tables(db) -> None:
         assert "PRIMARY KEY (world_id, operation_id)" in constraint_text
         assert "UNIQUE (world_id, review_id)" in constraint_text
         assert "UNIQUE (world_id, published_revision_id)" in constraint_text
+        assert "FOREIGN KEY (world_id, reviewed_contribution_id)" in constraint_text
         assert (
-            "FOREIGN KEY (world_id, reviewed_contribution_id) "
-            "REFERENCES dungeonmind.graph_contributions(world_id, contribution_id)"
+            "REFERENCES graph_contributions(world_id, contribution_id)"
             in constraint_text
         )
 
