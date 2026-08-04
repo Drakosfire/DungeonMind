@@ -372,3 +372,112 @@ def test_e2_e3_e4_e5_four_gold_queries(fixture: dict[str, Any]) -> None:
     assert "current-campaign-arc" in STATE
 
 
+def test_e6_e7_partial_order_replay_and_reorder(fixture: dict[str, Any]) -> None:
+    mutated = copy.deepcopy(fixture)
+    mutated["anchors"].append({
+        "anchor_id": "anchor:unrelated-market-day",
+        "label": "Unrelated",
+        "absolute_fictional_time": None,
+    })
+    _validate(mutated)
+    unresolved = evaluate_strict_before(
+        mutated, query_id="query:unrelated-vs-tree",
+        before="anchor:unrelated-market-day", after=TREE,
+    )
+    assert unresolved.status == "unresolved" and unresolved.value is None
+    reverse = evaluate_strict_before(
+        fixture, query_id="query:beetles-before-tree", before=BEETLES, after=TREE
+    )
+    assert reverse.status == "contradicted" and reverse.value is False
+    assert _run_gold(fixture) == GOLD
+    shuffled = copy.deepcopy(fixture)
+    keys = (
+        "source_manifest",
+        "evidence",
+        "anchors",
+        "strict_before_claims",
+        "state_boundaries",
+    )
+    for key in keys:
+        shuffled[key] = list(reversed(shuffled[key]))
+    _validate(shuffled)
+    assert _run_gold(shuffled) == GOLD
+    result = evaluate_strict_before(
+        fixture, query_id="query:hempholm-tree-before-beetles", before=TREE, after=BEETLES
+    )
+    poisoned = list(result.proof_claim_ids)
+    poisoned.append("claim:invented")
+    evid = list(result.evidence_ids)
+    evid.clear()
+    again = evaluate_strict_before(
+        fixture, query_id="query:hempholm-tree-before-beetles", before=TREE, after=BEETLES
+    )
+    assert _canon(again) == _canon(result)
+
+
+def test_e8_e9_fail_closed_validation(fixture: dict[str, Any]) -> None:
+    cases = [
+        (
+            "strict_before_cycle",
+            {
+                "claim_id": "claim:beetles-before-tree-cycle",
+                "before_anchor_id": BEETLES,
+                "after_anchor_id": TREE,
+                "evidence_ids": ["ev:hempholm-root-beetle-attack"],
+            },
+        ),
+        (
+            "self_before",
+            {
+                "claim_id": "claim:tree-before-tree",
+                "before_anchor_id": TREE,
+                "after_anchor_id": TREE,
+                "evidence_ids": ["ev:hempholm-tree-felled"],
+            },
+        ),
+    ]
+    for match, claim in cases:
+        bad = copy.deepcopy(fixture)
+        bad["strict_before_claims"].append(claim)
+        with pytest.raises(FixtureValidationError, match=match):
+            _validate(bad)
+    dangling = copy.deepcopy(fixture)
+    dangling["strict_before_claims"][0]["evidence_ids"] = ["ev:missing"]
+    with pytest.raises(FixtureValidationError, match="dangling_claim_evidence"):
+        _validate(dangling)
+    unused = copy.deepcopy(fixture)
+    unused["evidence"].append({
+        "evidence_id": "ev:orphan",
+        "source_id": "src:hempholm-session-04",
+        "locator_hint": "unused",
+    })
+    with pytest.raises(FixtureValidationError, match="unused_evidence"):
+        _validate(unused)
+
+
+def test_e10_opaque_temporal_scope_round_trip_without_semantic_claim() -> None:
+    """Carriage only: no production semantic validation, materialization, or queryability."""
+    payload = {
+        "fixture_version": VERSION,
+        "claim_type": "strict_before",
+        "claim_id": "claim:hempholm-tree-before-revelry",
+        "before_anchor_id": TREE,
+        "after_anchor_id": "anchor:hempholm-evening-revelry",
+    }
+    assertion = GraphContributionAssertion(
+        assertion_id="assertion:ft0-opaque-carrier-probe",
+        assertion_kind="fictional_time_probe",
+        acceptance_state=AcceptanceState.ACCEPTED,
+        temporal_scope=payload,
+        evidence_refs=[
+            EvidenceRef(
+                evidence_ref_id="evidence:ft0-carrier",
+                source_artifact_id="source:ft0-carrier",
+                source_domain=SourceDomain.MANUAL,
+            )
+        ],
+    )
+    dumped = assertion.model_dump(mode="json")
+    reloaded = GraphContributionAssertion.model_validate(dumped)
+    assert reloaded.temporal_scope == payload
+    assert reloaded.assertion_kind == "fictional_time_probe"
