@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -33,8 +34,9 @@ from ..infrastructure.semantic_profiles import (
     FilesystemSemanticProfileRegistry,
     StaticSemanticProfileRegistry,
 )
-from .api import create_app
+from .api import create_app, create_publication_app
 from .demo_access import DemoAccessBinding
+from .publication_access import PublicationAccessBinding
 
 
 def _require_database_url() -> str:
@@ -153,6 +155,89 @@ def build_readiness_probe(
     return probe
 
 
+class UtcSystemClock:
+    """Server-owned timezone-aware publication clock."""
+
+    def now(self) -> datetime:
+        return datetime.now(UTC)
+
+
+def build_publication_readiness_probe(
+    *,
+    bundle: PostgresRepositoryBundle,
+    world_id: str,
+) -> Callable[[], dict[str, Any]]:
+    """Check publication infrastructure without reading or mutating world state."""
+
+    if not world_id.strip():
+        raise ValueError("publication world must be non-blank")
+    required_tables = {
+        "contribution_reviews",
+        "graph_revisions",
+        "world_graph_heads",
+        "finalized_review_publications",
+    }
+
+    def probe() -> dict[str, Any]:
+        try:
+            with bundle.database.connect() as conn:
+                conn.execute("SELECT 1")
+                rows = conn.execute(
+                    """
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema = %s
+                      AND table_name = ANY(%s)
+                    """,
+                    ("dungeonmind", list(required_tables)),
+                ).fetchall()
+        except Exception as exc:
+            if isinstance(exc, (PersistenceUnavailableError, PersistenceIntegrityError)):
+                raise
+            raise PersistenceUnavailableError(
+                "publication readiness database check failed",
+                details={"reason": type(exc).__name__},
+            ) from None
+        visible_tables = {str(row["table_name"]) for row in rows}
+        missing = required_tables - visible_tables
+        if missing:
+            raise PersistenceIntegrityError(
+                "publication readiness tables are unavailable",
+                details={"reason": "publication_tables_missing"},
+            )
+        return {
+            "status": "ready",
+            "world_id": world_id,
+            "publication_schema": "dm_finalized_review_publication_v1",
+        }
+
+    return probe
+
+
+def _require_publication_world() -> str:
+    world_id = os.environ.get("DUNGEONMIND_PUBLICATION_WORLD_ID", "")
+    if not world_id.strip():
+        raise ValueError("DUNGEONMIND_PUBLICATION_WORLD_ID is required")
+    return world_id
+
+
+def _require_publication_token() -> str:
+    token = os.environ.get("DUNGEONMIND_PUBLICATION_BEARER_TOKEN", "")
+    if not token.strip():
+        raise ValueError("DUNGEONMIND_PUBLICATION_BEARER_TOKEN is required")
+    return token
+
+
+def _require_publication_database_url() -> str:
+    url = os.environ.get("DUNGEONMIND_DATABASE_URL", "")
+    if not url.strip():
+        raise PersistenceUnavailableError(
+            "publication database configuration is unavailable",
+            details={"reason": "database_url_missing"},
+        )
+    return url
+
+
 def create_demo_app() -> FastAPI:
     """Uvicorn factory: ``uvicorn dungeonmind.service.bootstrap:create_demo_app --factory``.
 
@@ -188,4 +273,29 @@ def create_demo_app() -> FastAPI:
             graph_reader=graph_reader,
         ),
         cors_origin=cors_origin,
+    )
+
+
+def create_publication_service_app() -> FastAPI:
+    """Uvicorn factory for the separate finalized-review publication host."""
+
+    world_id = _require_publication_world()
+    access_binding = PublicationAccessBinding.from_secret(
+        world_id,
+        _require_publication_token(),
+    )
+    database = PostgresDatabase(_require_publication_database_url())
+    bundle = PostgresRepositoryBundle(database)
+    graph_reader = build_configured_graph_reader()
+    return create_publication_app(
+        review_repository=bundle.contribution_reviews,
+        world_graph_repository=bundle.world_graph,
+        publication_repository=bundle.finalized_review_publications,
+        graph_reader=graph_reader,
+        clock=UtcSystemClock(),
+        access_binding=access_binding,
+        readiness_probe=build_publication_readiness_probe(
+            bundle=bundle,
+            world_id=world_id,
+        ),
     )

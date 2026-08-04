@@ -6,8 +6,11 @@ from typing import Any
 
 from ..domain.errors import (
     CapabilityDeniedError,
+    ContributionMaterializationError,
+    ContributionReviewNotFoundError,
     DocumentNotFoundError,
     DungeonMindError,
+    FinalizedReviewPublicationOutcomeUnknownError,
     HeadNotFoundError,
     IdempotencyConflictError,
     InvalidLifecycleTransitionError,
@@ -15,23 +18,37 @@ from ..domain.errors import (
     PersistenceUnavailableError,
     RevisionNotFoundError,
     ScopeResolutionError,
+    StaleParentRevisionError,
     ThreadContextMismatchError,
 )
 
 _STATUS_BY_TYPE: dict[type[BaseException], int] = {
     CapabilityDeniedError: 403,
+    ContributionReviewNotFoundError: 404,
     HeadNotFoundError: 404,
     RevisionNotFoundError: 404,
     DocumentNotFoundError: 404,
     ScopeResolutionError: 409,
     ThreadContextMismatchError: 409,
+    StaleParentRevisionError: 409,
     IdempotencyConflictError: 409,
     InvalidLifecycleTransitionError: 409,
+    ContributionMaterializationError: 409,
+    FinalizedReviewPublicationOutcomeUnknownError: 503,
     PersistenceUnavailableError: 503,
     PersistenceIntegrityError: 500,
 }
 
 _PUBLIC_MESSAGES: dict[type[BaseException], str] = {
+    CapabilityDeniedError: "Publication access denied.",
+    ContributionReviewNotFoundError: "Finalized contribution review was not found.",
+    RevisionNotFoundError: "Pinned graph revision was not found.",
+    StaleParentRevisionError: "Publication lost the expected-parent race.",
+    IdempotencyConflictError: "Publication identity conflicts with requested content.",
+    ContributionMaterializationError: "Finalized review could not be materialized.",
+    FinalizedReviewPublicationOutcomeUnknownError: (
+        "Publication outcome is unknown. Retrying the same request is safe."
+    ),
     PersistenceUnavailableError: "Persistence backend is temporarily unavailable.",
     PersistenceIntegrityError: "Stored data failed an integrity check.",
 }
@@ -50,6 +67,31 @@ _DETAIL_ALLOWLIST = frozenset(
         "record_id",
         "current_status",
         "requested_status",
+        "review_id",
+        "operation_id",
+        "expected_parent_revision_id",
+        "actual_head_revision_id",
+        "expected_published_revision_id",
+        "retry_safe",
+    }
+)
+
+_SAFE_MATERIALIZATION_REASONS = frozenset(
+    {
+        "accepted_assertion_missing_graph_evidence",
+        "accepted_evidence_conflict",
+        "duplicate_relationship_triple",
+        "orphan_accepted_assertion",
+        "output_graph_validation",
+        "parent_assertion_id_collision",
+        "parent_binding_mismatch",
+        "parent_evidence_id_collision",
+        "parent_reload_validation",
+        "preexisting_relationship_triple",
+        "relationship_id_collision",
+        "state_reload_validation",
+        "unsupported_graph_schema",
+        "unsupported_field_shape",
     }
 )
 
@@ -64,6 +106,13 @@ def http_status_for(error: BaseException) -> int:
 
 
 def _public_details(error: DungeonMindError) -> dict[str, Any]:
+    if isinstance(error, ContributionMaterializationError):
+        reason = error.details.get("reason")
+        return (
+            {"reason": reason}
+            if isinstance(reason, str) and reason in _SAFE_MATERIALIZATION_REASONS
+            else {}
+        )
     if isinstance(error, (PersistenceUnavailableError, PersistenceIntegrityError)):
         details = error.details or {}
         return {

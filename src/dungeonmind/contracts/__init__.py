@@ -109,6 +109,10 @@ from .review_publication import (
     FinalizedReviewPublication,
     FinalizedReviewPublicationCommand,
 )
+from .review_publication_transport import (
+    FINALIZED_REVIEW_PUBLICATION_REQUEST_SCHEMA,
+    FinalizedReviewPublicationRequest,
+)
 from .semantic import (
     EMBEDDING_RUN_SCHEMA,
     SEMANTIC_DOCUMENT_SCHEMA,
@@ -136,6 +140,7 @@ __all__ = [
     "EMBEDDING_RUN_SCHEMA",
     "EVIDENCE_REF_SCHEMA",
     "FINALIZED_REVIEW_PUBLICATION_COMMAND_SCHEMA",
+    "FINALIZED_REVIEW_PUBLICATION_REQUEST_SCHEMA",
     "FINALIZED_REVIEW_PUBLICATION_SCHEMA",
     "GRAPH_CONTRIBUTION_SCHEMA",
     "GRAPH_HEAD_SCHEMA",
@@ -181,6 +186,7 @@ __all__ = [
     "EvidenceRole",
     "FinalizedReviewPublication",
     "FinalizedReviewPublicationCommand",
+    "FinalizedReviewPublicationRequest",
     "FocusKind",
     "GraphContribution",
     "GraphContributionAssertion",

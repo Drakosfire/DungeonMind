@@ -1,12 +1,11 @@
 # DungeonMind — Roadmap and PR ladder
 
 **Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b / B.2c / B.2d /
-B.2e / B.2f-0 / B.2f-a / B.2f-b / B.2f-c landed or are in review. B.2f-c is
-the current DungeonMind-owned slice; transport and external consumer behavior
-remain separate successors. External RulesIngestion PR C and product-surface adoption of
+B.2e / B.2f-0 / B.2f-a / B.2f-b / B.2f-c landed. B.2f-d transport and
+external consumer proof are in the current implementation branch; product-surface adoption remains a separate successor. External RulesIngestion PR C and product-surface adoption of
 `mind_turn_v1` remain independent successors. Ownership per ADR-0002,
 ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, and
-ADR-0011.
+ADR-0011, and ADR-0012.
 
 Each PR is independently reviewable, in its named repository. Cross-repo work
 is never one PR.
@@ -27,8 +26,8 @@ B.2e  finalized contribution review adoption ✅
 B.2f-0 accepted-review materialization characterization ✅
 B.2f-a finalized-review graph payload materializer ✅
 B.2f-b expected-parent CAS publication ✅
-B.2f-c durable publication identity + uncertain-outcome recovery ← current
-B.2f-d service transport + external consumer contract
+B.2f-c durable publication identity + uncertain-outcome recovery ✅
+B.2f-d service transport + external consumer contract ← current branch
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
 D     embedding model bakeoff
@@ -405,6 +404,34 @@ Canonical handoff:
 [`Docs/Handoffs/HANDOFF-b2f-c-durable-finalized-review-publication-recovery.md`](../Handoffs/HANDOFF-b2f-c-durable-finalized-review-publication-recovery.md).
 Decision record:
 [`Docs/Decisions/ADR-0011-b2f-c-durable-finalized-review-publication-recovery.md`](../Decisions/ADR-0011-b2f-c-durable-finalized-review-publication-recovery.md).
+
+## PR B.2f-d — Finalized-review publication service transport
+
+**Repository:** DungeonMind only
+
+The separate publication host exposes `/healthz`, `/readyz`, and one
+`POST /v1/finalized-review-publications` route. Callers submit only the strict
+versioned `world_id + review_id` request. A one-world bearer digest authorizes
+the edge, the server owns publication time, and the route delegates unchanged
+to B.2f-c. Fresh success, exact durable replay, and response-loss recovery
+return the same terminal publication record with `Cache-Control: no-store`.
+
+The implementation includes sanitized error mappings, infrastructure-only
+readiness, no CORS/browser write surface, OpenAPI separation, and a
+standard-library-only external client with exact replay verification.
+
+Still false after B.2f-d: review creation/edit/finalization transport, pending
+or failed publication lifecycle, attempts, queues, workers, leases, schedulers,
+automatic retries, GET polling, current-head success inference, identity-ledger
+append, production auth, product adoption, and Threat mechanics/resource
+binding.
+
+Canonical handoff:
+[`Docs/Handoffs/HANDOFF-b2f-d-finalized-review-publication-service-transport.md`](../Handoffs/HANDOFF-b2f-d-finalized-review-publication-service-transport.md).
+Decision record:
+[`Docs/Decisions/ADR-0012-b2f-d-finalized-review-publication-service-transport.md`](../Decisions/ADR-0012-b2f-d-finalized-review-publication-service-transport.md).
+Runbook:
+[`Docs/Runbooks/RUNBOOK-b2f-d-finalized-review-publication-service.md`](../Runbooks/RUNBOOK-b2f-d-finalized-review-publication-service.md).
 
 ## Named future lanes (no dates claimed)
 
