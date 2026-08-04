@@ -481,6 +481,21 @@ def test_explicit_rollback_allows_same_content_addressed_revision_replay() -> No
 
 
 @pytest.mark.conformance
+def test_success_path_has_no_post_commit_repository_read() -> None:
+    graph = InMemoryWorldGraphRepository()
+    _parent, reader = _seed_graph(graph)
+    reviews, _state_value = _seed_review()
+    spy = _SpyWorldGraphRepository(graph)
+
+    result = _publish(reviews, spy, reader)
+
+    assert result.published_revision_id == PUBLISHED_REVISION_ID
+    assert spy.get_head_calls == 1
+    assert spy.get_revision_calls == 1
+    assert spy.publish_calls == 1
+
+
+@pytest.mark.conformance
 def test_mismatched_returned_envelope_fails_without_retry_or_post_commit_read() -> None:
     graph = InMemoryWorldGraphRepository()
     _parent, reader = _seed_graph(graph)
