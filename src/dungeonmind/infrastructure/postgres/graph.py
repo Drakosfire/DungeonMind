@@ -80,7 +80,13 @@ class PostgresWorldGraphRepository:
             return None
         return _reconstruct_stored_revision(row)
 
-    def publish_revision(self, command: PublishRevisionCommand) -> WorldGraphRevision:
+    def _publish_revision_in_transaction(
+        self,
+        conn: Connection[Any],
+        command: PublishRevisionCommand,
+        *,
+        world_locked: bool,
+    ) -> WorldGraphRevision:
         payload_hash = canonical_sha256(command.graph_payload)
         revision_id = compute_revision_id(
             world_id=command.world_id,
@@ -89,108 +95,55 @@ class PostgresWorldGraphRepository:
             graph_schema=command.graph_schema,
             graph_payload_sha256=payload_hash,
         )
-        with self._database.transaction() as conn:
+        if not world_locked:
             lock_world(conn, command.world_id, created_at=command.created_at)
 
-            head_row = conn.execute(
-                sql.SQL(
-                    f"""
-                    SELECT {_HEAD_SELECT}
-                    FROM {{}}.world_graph_heads
-                    WHERE world_id = %s
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (command.world_id,),
-            ).fetchone()
-            if head_row is None:
-                current_head_id = None
-            else:
-                current_head_id = _head_from_row(head_row).head_revision_id
+        head_row = conn.execute(
+            sql.SQL(
+                f"""
+                SELECT {_HEAD_SELECT}
+                FROM {{}}.world_graph_heads
+                WHERE world_id = %s
+                """
+            ).format(sql.Identifier(SCHEMA)),
+            (command.world_id,),
+        ).fetchone()
+        current_head_id = (
+            None if head_row is None else _head_from_row(head_row).head_revision_id
+        )
 
-            if command.expected_parent_revision_id != current_head_id:
-                raise StaleParentRevisionError(
-                    world_id=command.world_id,
-                    expected_parent_revision_id=command.expected_parent_revision_id,
-                    actual_head_revision_id=current_head_id,
-                )
-            if command.parent_revision_id != current_head_id:
-                raise StaleParentRevisionError(
-                    world_id=command.world_id,
-                    expected_parent_revision_id=command.parent_revision_id,
-                    actual_head_revision_id=current_head_id,
-                )
-
-            existing_row = conn.execute(
-                sql.SQL(
-                    f"""
-                    SELECT {_REVISION_SELECT}
-                    FROM {{}}.graph_revisions
-                    WHERE world_id = %s AND revision_id = %s
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (command.world_id, revision_id),
-            ).fetchone()
-
-            if existing_row is not None:
-                # Reconstruct first so column/payload corruption fails closed as
-                # PersistenceIntegrityError, not ImmutableRevisionConflictError.
-                stored = _reconstruct_stored_revision(existing_row)
-                if stored.revision.graph_payload_sha256 != payload_hash:
-                    raise ImmutableRevisionConflictError(
-                        f"revision {revision_id!r} already exists with different payload"
-                    )
-                _upsert_head(
-                    conn,
-                    world_id=command.world_id,
-                    head_revision_id=revision_id,
-                    updated_at=command.created_at,
-                    previous_revision_id=current_head_id,
-                )
-                return stored.revision.model_copy(deep=True)
-
-            envelope = WorldGraphRevision(
+        if command.expected_parent_revision_id != current_head_id:
+            raise StaleParentRevisionError(
                 world_id=command.world_id,
-                revision_id=revision_id,
-                parent_revision_id=command.parent_revision_id,
-                created_at=command.created_at,
-                operation_ids=list(command.operation_ids),
-                graph_schema=command.graph_schema,
-                graph_payload_sha256=payload_hash,
+                expected_parent_revision_id=command.expected_parent_revision_id,
+                actual_head_revision_id=current_head_id,
             )
-            frozen_payload = copy.deepcopy(command.graph_payload)
-            stored = StoredGraphRevision(revision=envelope, graph_payload=frozen_payload)
-            fingerprint = model_fingerprint(stored)
+        if command.parent_revision_id != current_head_id:
+            raise StaleParentRevisionError(
+                world_id=command.world_id,
+                expected_parent_revision_id=command.parent_revision_id,
+                actual_head_revision_id=current_head_id,
+            )
 
-            conn.execute(
-                sql.SQL(
-                    """
-                    INSERT INTO {}.graph_revisions (
-                        world_id,
-                        revision_id,
-                        parent_revision_id,
-                        created_at,
-                        graph_schema,
-                        graph_payload_sha256,
-                        schema_version,
-                        record_fingerprint,
-                        revision_payload,
-                        graph_payload
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (
-                    command.world_id,
-                    revision_id,
-                    command.parent_revision_id,
-                    command.created_at,
-                    command.graph_schema,
-                    payload_hash,
-                    envelope.schema_version,
-                    fingerprint,
-                    jsonb(dump_payload(envelope)),
-                    jsonb(frozen_payload),
-                ),
-            )
+        existing_row = conn.execute(
+            sql.SQL(
+                f"""
+                SELECT {_REVISION_SELECT}
+                FROM {{}}.graph_revisions
+                WHERE world_id = %s AND revision_id = %s
+                """
+            ).format(sql.Identifier(SCHEMA)),
+            (command.world_id, revision_id),
+        ).fetchone()
+
+        if existing_row is not None:
+            # Reconstruct first so column/payload corruption fails closed as
+            # PersistenceIntegrityError, not ImmutableRevisionConflictError.
+            stored = _reconstruct_stored_revision(existing_row)
+            if stored.revision.graph_payload_sha256 != payload_hash:
+                raise ImmutableRevisionConflictError(
+                    f"revision {revision_id!r} already exists with different payload"
+                )
             _upsert_head(
                 conn,
                 world_id=command.world_id,
@@ -198,7 +151,67 @@ class PostgresWorldGraphRepository:
                 updated_at=command.created_at,
                 previous_revision_id=current_head_id,
             )
-            return envelope.model_copy(deep=True)
+            return stored.revision.model_copy(deep=True)
+
+        envelope = WorldGraphRevision(
+            world_id=command.world_id,
+            revision_id=revision_id,
+            parent_revision_id=command.parent_revision_id,
+            created_at=command.created_at,
+            operation_ids=list(command.operation_ids),
+            graph_schema=command.graph_schema,
+            graph_payload_sha256=payload_hash,
+        )
+        frozen_payload = copy.deepcopy(command.graph_payload)
+        stored = StoredGraphRevision(revision=envelope, graph_payload=frozen_payload)
+        fingerprint = model_fingerprint(stored)
+
+        conn.execute(
+            sql.SQL(
+                """
+                INSERT INTO {}.graph_revisions (
+                    world_id,
+                    revision_id,
+                    parent_revision_id,
+                    created_at,
+                    graph_schema,
+                    graph_payload_sha256,
+                    schema_version,
+                    record_fingerprint,
+                    revision_payload,
+                    graph_payload
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+            ).format(sql.Identifier(SCHEMA)),
+            (
+                command.world_id,
+                revision_id,
+                command.parent_revision_id,
+                command.created_at,
+                command.graph_schema,
+                payload_hash,
+                envelope.schema_version,
+                fingerprint,
+                jsonb(dump_payload(envelope)),
+                jsonb(frozen_payload),
+            ),
+        )
+        _upsert_head(
+            conn,
+            world_id=command.world_id,
+            head_revision_id=revision_id,
+            updated_at=command.created_at,
+            previous_revision_id=current_head_id,
+        )
+        return envelope.model_copy(deep=True)
+
+    def publish_revision(self, command: PublishRevisionCommand) -> WorldGraphRevision:
+        with self._database.transaction() as conn:
+            return self._publish_revision_in_transaction(
+                conn,
+                command,
+                world_locked=False,
+            )
 
     def rollback_head(
         self, world_id: str, target_revision_id: str, *, updated_at: datetime

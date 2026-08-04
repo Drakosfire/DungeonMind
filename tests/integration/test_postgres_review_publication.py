@@ -193,6 +193,7 @@ def _publish(
         published_at=PUBLISHED_AT,
         review_repository=bundle.contribution_reviews,
         world_graph_repository=bundle.world_graph,
+        publication_repository=bundle.finalized_review_publications,
         graph_reader=reader,
     )
 
@@ -235,14 +236,21 @@ def test_postgres_publishes_exact_tripod_review_and_preserves_review(
 
 
 @pytest.mark.integration
-def test_postgres_immediate_replay_is_stale_and_keeps_one_child(pg) -> None:
+def test_postgres_immediate_replay_returns_original_publication(pg) -> None:
     _seed_tripod(pg)
     first = _publish(pg, _reader())
 
-    with pytest.raises(StaleParentRevisionError):
-        _publish(pg, _reader())
+    replay = publish_finalized_review(
+        WORLD_ID,
+        REVIEW_ID,
+        published_at=datetime(2026, 8, 4, tzinfo=UTC),
+        review_repository=pg.contribution_reviews,
+        world_graph_repository=pg.world_graph,
+        publication_repository=pg.finalized_review_publications,
+        graph_reader=_reader(),
+    )
 
-    assert first.published_revision_id == PUBLISHED_REVISION_ID
+    assert replay == first
     assert pg.world_graph.get_head(WORLD_ID).head_revision_id == PUBLISHED_REVISION_ID  # type: ignore[union-attr]
 
 
@@ -287,5 +295,10 @@ def test_postgres_two_finalized_reviews_pinned_to_one_parent_have_one_cas_winner
     assert len(successes) == 1
     assert len(errors) == 1
     assert isinstance(errors[0], StaleParentRevisionError)
-    assert pg.world_graph.get_head(WORLD_ID).head_revision_id == successes[0].published_revision_id  # type: ignore[union-attr]
+    winner = successes[0]
+    loser_review_id = (
+        second.record.review_id if winner.review_id == REVIEW_ID else REVIEW_ID
+    )
+    assert pg.finalized_review_publications.get_for_review(WORLD_ID, loser_review_id) is None
+    assert pg.world_graph.get_head(WORLD_ID).head_revision_id == winner.published_revision_id  # type: ignore[union-attr]
     assert pg.world_graph.get_revision(WORLD_ID, PARENT_REVISION_ID) is not None

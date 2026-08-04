@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from dungeonmind.application import (
     FinalizedReviewPublication,
@@ -25,12 +26,13 @@ from dungeonmind.contracts.graph import (
     WorldGraphHead,
     WorldGraphRevision,
 )
+from dungeonmind.contracts.review_publication import FinalizedReviewPublicationCommand
 from dungeonmind.contracts.semantic_profile import SemanticProfileDescriptor
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import (
     ContributionMaterializationError,
     ContributionReviewNotFoundError,
-    HeadNotFoundError,
+    FinalizedReviewPublicationOutcomeUnknownError,
     PersistenceIntegrityError,
     RevisionNotFoundError,
     StaleParentRevisionError,
@@ -39,6 +41,7 @@ from dungeonmind.domain.revision_ids import compute_revision_id
 from dungeonmind.infrastructure.memory import (
     InMemoryContributionRepository,
     InMemoryContributionReviewRepository,
+    InMemoryFinalizedReviewPublicationRepository,
     InMemoryWorldGraphRepository,
 )
 from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
@@ -162,6 +165,74 @@ class _SpyWorldGraphRepository:
         return revision
 
 
+class _SpyPublicationRepository:
+    def __init__(
+        self,
+        inner: InMemoryFinalizedReviewPublicationRepository,
+        *,
+        raise_after_publish: bool = False,
+        alter_return: Callable[[FinalizedReviewPublication], FinalizedReviewPublication]
+        | None = None,
+        fail_recovery_probe: bool = False,
+    ) -> None:
+        self.inner = inner
+        self.get_calls = 0
+        self.publish_calls = 0
+        self.raise_after_publish = raise_after_publish
+        self.alter_return = alter_return
+        self.fail_recovery_probe = fail_recovery_probe
+
+    def get_for_review(self, world_id: str, review_id: str):
+        self.get_calls += 1
+        if self.fail_recovery_probe and self.publish_calls:
+            raise RuntimeError("synthetic recovery outage")
+        return self.inner.get_for_review(world_id, review_id)
+
+    def get(self, world_id: str, operation_id: str):
+        return self.inner.get(world_id, operation_id)
+
+    def publish(self, command):
+        self.publish_calls += 1
+        publication = self.inner.publish(command)
+        if self.raise_after_publish:
+            raise RuntimeError("synthetic response loss")
+        if self.alter_return is not None:
+            return self.alter_return(publication)
+        return publication
+
+
+class _EmptyPublicationRepository:
+    def get_for_review(self, world_id: str, review_id: str):
+        del world_id, review_id
+        return None
+
+    def get(self, world_id: str, operation_id: str):
+        del world_id, operation_id
+        return None
+
+    def publish(self, command):
+        del command
+        raise AssertionError("publication must not be reached")
+
+
+class _RacePublicationRepository:
+    def __init__(self, inner: InMemoryFinalizedReviewPublicationRepository, competitor):
+        self.inner = inner
+        self.competitor = competitor
+        self.publish_calls = 0
+
+    def get_for_review(self, world_id: str, review_id: str):
+        return self.inner.get_for_review(world_id, review_id)
+
+    def get(self, world_id: str, operation_id: str):
+        return self.inner.get(world_id, operation_id)
+
+    def publish(self, command):
+        self.publish_calls += 1
+        self.competitor()
+        return self.inner.publish(command)
+
+
 class _HeadBarrierWorldGraphRepository(_SpyWorldGraphRepository):
     def __init__(
         self,
@@ -225,13 +296,24 @@ def _publish(
     *,
     published_at: datetime = PUBLISHED_AT,
     review_id: str = REVIEW_ID,
+    publication_repository: Any | None = None,
 ) -> FinalizedReviewPublication:
+    if publication_repository is None:
+        owner = getattr(repository, "inner", repository)
+        publication_repository = getattr(owner, "_publication_repository", None)
+        if publication_repository is None:
+            publication_repository = InMemoryFinalizedReviewPublicationRepository(
+                reviews,
+                owner,
+            )
+            owner._publication_repository = publication_repository
     return publish_finalized_review(
         WORLD_ID,
         review_id,
         published_at=published_at,
         review_repository=reviews,
         world_graph_repository=repository,
+        publication_repository=publication_repository,
         graph_reader=reader,
     )
 
@@ -250,14 +332,19 @@ def test_exact_tripod_publication_maps_one_review_to_one_revision() -> None:
         world_id=WORLD_ID,
         review_id=REVIEW_ID,
         reviewed_contribution_id="contrib:65cdb14d13c40e5b8725fd5111509854",
+        reviewed_contribution_sha256=state.record.reviewed_contribution_sha256,
         review_intent_sha256=state.record.review_intent_sha256,
         confirmation_id="confirm:fa0d200c9922caf3c7e925b320cf9dae",
         operation_id="reviewop:11111111111111111111111111111111",
         expected_parent_revision_id=PARENT_REVISION_ID,
+        parent_graph_payload_sha256=state.record.plan_ref.base_graph_payload_sha256,
         published_revision_id=PUBLISHED_REVISION_ID,
         graph_schema="dm_union_graph_v3",
         graph_payload_sha256=PAYLOAD_SHA256,
         published_at=PUBLISHED_AT,
+    )
+    assert canonical_sha256(result.model_dump(mode="json")) == (
+        "3e7a632142c41066d3866c8682290fdc8e57b8f08b3324689c2964f6b045958c"
     )
     published = graph.get_revision(WORLD_ID, PUBLISHED_REVISION_ID)
     assert published is not None
@@ -284,6 +371,7 @@ def test_public_seam_accepts_only_durable_review_identifiers() -> None:
         "published_at",
         "review_repository",
         "world_graph_repository",
+        "publication_repository",
         "graph_reader",
     }
     assert not names & {
@@ -332,10 +420,11 @@ def test_invalid_durable_review_is_a_sanitized_integrity_failure() -> None:
 @pytest.mark.conformance
 def test_missing_head_fails_before_parent_load_or_publish() -> None:
     graph = InMemoryWorldGraphRepository()
-    _parent, reader = _parent_inputs()
+    _parent, reader = _seed_graph(graph)
     reviews, _state_value = _seed_review()
+    graph._heads.pop(WORLD_ID)
 
-    with pytest.raises(HeadNotFoundError):
+    with pytest.raises(StaleParentRevisionError):
         _publish(reviews, graph, reader)
 
     assert graph.get_head(WORLD_ID) is None
@@ -348,7 +437,12 @@ def test_missing_exact_parent_fails_without_publish() -> None:
     graph = _MissingParentWorldGraphRepository(PARENT_REVISION_ID)
 
     with pytest.raises(RevisionNotFoundError):
-        _publish(reviews, graph, reader)
+        _publish(
+            reviews,
+            graph,
+            reader,
+            publication_repository=_EmptyPublicationRepository(),
+        )
 
     assert graph.publish_calls == 0
 
@@ -370,13 +464,19 @@ def test_known_stale_parent_fails_before_materialization_or_publish() -> None:
         )
     )
     spy = _SpyWorldGraphRepository(graph)
+    publication = InMemoryFinalizedReviewPublicationRepository(reviews, graph)
 
     with pytest.raises(StaleParentRevisionError):
-        _publish(reviews, spy, _RejectingReader())
+        _publish(
+            reviews,
+            spy,
+            _parent_inputs()[1],
+            publication_repository=publication,
+        )
 
-    assert spy.get_head_calls == 1
-    assert spy.get_revision_calls == 0
-    assert spy.publish_calls == 0
+    assert spy.get_head_calls == 0
+    assert spy.get_revision_calls == 1
+    assert graph.get_revision(WORLD_ID, PUBLISHED_REVISION_ID) is None
 
 
 @pytest.mark.conformance
@@ -385,14 +485,23 @@ def test_materialization_failure_is_write_free() -> None:
     _parent, _reader = _seed_graph(graph)
     reviews, _state_value = _seed_review()
     spy = _SpyWorldGraphRepository(graph)
+    publication = _SpyPublicationRepository(
+        InMemoryFinalizedReviewPublicationRepository(reviews, graph)
+    )
 
     with pytest.raises(ContributionMaterializationError) as exc:
-        _publish(reviews, spy, _RejectingReader())
+        _publish(
+            reviews,
+            spy,
+            _RejectingReader(),
+            publication_repository=publication,
+        )
 
     assert exc.value.details["reason"] == "parent_reload_validation"
-    assert spy.get_head_calls == 1
+    assert spy.get_head_calls == 0
     assert spy.get_revision_calls == 1
-    assert spy.publish_calls == 0
+    assert publication.get_calls == 1
+    assert publication.publish_calls == 0
     assert graph.get_head(WORLD_ID).head_revision_id == PARENT_REVISION_ID  # type: ignore[union-attr]
 
 
@@ -415,11 +524,14 @@ def test_cas_race_rejects_stale_materialization_without_a_child() -> None:
             )
         )
 
-    spy = _SpyWorldGraphRepository(graph, before_publish=competitor_wins)
+    publication = _RacePublicationRepository(
+        InMemoryFinalizedReviewPublicationRepository(reviews, graph),
+        competitor_wins,
+    )
     with pytest.raises(StaleParentRevisionError):
-        _publish(reviews, spy, reader)
+        _publish(reviews, graph, reader, publication_repository=publication)
 
-    assert spy.publish_calls == 1
+    assert publication.publish_calls == 1
     assert graph.get_head(WORLD_ID).head_revision_id != PARENT_REVISION_ID  # type: ignore[union-attr]
     assert graph.get_revision(WORLD_ID, PUBLISHED_REVISION_ID) is None
 
@@ -429,12 +541,21 @@ def test_concurrent_same_review_calls_have_one_winner_and_one_stale_loser() -> N
     graph = InMemoryWorldGraphRepository()
     _parent, reader = _seed_graph(graph)
     reviews, _state_value = _seed_review()
-    repository = _HeadBarrierWorldGraphRepository(graph, threading.Barrier(2))
+    publication = InMemoryFinalizedReviewPublicationRepository(reviews, graph)
+    barrier = threading.Barrier(2)
     outcomes: list[object] = []
 
     def call() -> None:
         try:
-            outcomes.append(_publish(reviews, repository, reader))
+            barrier.wait(timeout=5)
+            outcomes.append(
+                _publish(
+                    reviews,
+                    graph,
+                    reader,
+                    publication_repository=publication,
+                )
+            )
         except BaseException as exc:
             outcomes.append(exc)
 
@@ -446,23 +567,28 @@ def test_concurrent_same_review_calls_have_one_winner_and_one_stale_loser() -> N
     second.join(timeout=5)
 
     assert not first.is_alive() and not second.is_alive()
-    assert sum(isinstance(item, FinalizedReviewPublication) for item in outcomes) == 1
-    assert sum(isinstance(item, StaleParentRevisionError) for item in outcomes) == 1
+    assert len(outcomes) == 2
+    assert all(isinstance(item, FinalizedReviewPublication) for item in outcomes)
+    assert outcomes[0] == outcomes[1]
     assert graph.get_head(WORLD_ID).head_revision_id == PUBLISHED_REVISION_ID  # type: ignore[union-attr]
 
 
 @pytest.mark.conformance
-def test_immediate_replay_after_success_is_stale_not_idempotent_success() -> None:
+def test_immediate_replay_returns_original_record_without_rematerialization() -> None:
     graph = InMemoryWorldGraphRepository()
     _parent, reader = _seed_graph(graph)
     reviews, _state_value = _seed_review()
     first = _publish(reviews, graph, reader)
     before = graph.get_head(WORLD_ID)
 
-    with pytest.raises(StaleParentRevisionError):
-        _publish(reviews, graph, _RejectingReader())
+    replay = _publish(
+        reviews,
+        graph,
+        _RejectingReader(),
+        published_at=datetime(2026, 8, 4, tzinfo=UTC),
+    )
 
-    assert first.published_revision_id == PUBLISHED_REVISION_ID
+    assert replay == first
     assert graph.get_head(WORLD_ID) == before
 
 
@@ -474,10 +600,15 @@ def test_explicit_rollback_allows_same_content_addressed_revision_replay() -> No
     first = _publish(reviews, graph, reader)
     graph.rollback_head(WORLD_ID, PARENT_REVISION_ID, updated_at=PUBLISHED_AT)
 
-    replay = _publish(reviews, graph, reader, published_at=PUBLISHED_AT)
+    replay = _publish(
+        reviews,
+        graph,
+        _RejectingReader(),
+        published_at=datetime(2026, 8, 4, tzinfo=UTC),
+    )
 
-    assert replay.published_revision_id == first.published_revision_id == PUBLISHED_REVISION_ID
-    assert graph.get_head(WORLD_ID).head_revision_id == PUBLISHED_REVISION_ID  # type: ignore[union-attr]
+    assert replay == first
+    assert graph.get_head(WORLD_ID).head_revision_id == PARENT_REVISION_ID  # type: ignore[union-attr]
 
 
 @pytest.mark.conformance
@@ -486,44 +617,197 @@ def test_success_path_has_no_post_commit_repository_read() -> None:
     _parent, reader = _seed_graph(graph)
     reviews, _state_value = _seed_review()
     spy = _SpyWorldGraphRepository(graph)
+    publication = _SpyPublicationRepository(
+        InMemoryFinalizedReviewPublicationRepository(reviews, graph)
+    )
 
-    result = _publish(reviews, spy, reader)
+    result = _publish(
+        reviews,
+        spy,
+        reader,
+        publication_repository=publication,
+    )
 
     assert result.published_revision_id == PUBLISHED_REVISION_ID
-    assert spy.get_head_calls == 1
+    assert spy.get_head_calls == 0
     assert spy.get_revision_calls == 1
-    assert spy.publish_calls == 1
+    assert publication.get_calls == 1
+    assert publication.publish_calls == 1
 
 
 @pytest.mark.conformance
-def test_mismatched_returned_envelope_fails_without_retry_or_post_commit_read() -> None:
+def test_mismatched_returned_envelope_recovers_durable_record_without_republish() -> None:
     graph = InMemoryWorldGraphRepository()
     _parent, reader = _seed_graph(graph)
     reviews, _state_value = _seed_review()
 
-    def alter(revision: WorldGraphRevision) -> WorldGraphRevision:
-        return revision.model_copy(update={"operation_ids": ["reviewop:" + "2" * 32]})
+    def alter(publication: FinalizedReviewPublication) -> FinalizedReviewPublication:
+        return publication.model_copy(
+            update={"operation_id": "reviewop:" + "2" * 32}
+        )
 
-    spy = _SpyWorldGraphRepository(graph, alter_return=alter)
-    with pytest.raises(PersistenceIntegrityError) as exc:
-        _publish(reviews, spy, reader)
+    publication = _SpyPublicationRepository(
+        InMemoryFinalizedReviewPublicationRepository(reviews, graph),
+        alter_return=alter,
+    )
+    result = _publish(
+        reviews,
+        graph,
+        reader,
+        publication_repository=publication,
+    )
 
-    assert exc.value.details == {"reason": "published_revision_envelope_mismatch"}
-    assert spy.get_head_calls == 1
-    assert spy.get_revision_calls == 1
-    assert spy.publish_calls == 1
+    assert result.published_revision_id == PUBLISHED_REVISION_ID
+    assert publication.get_calls == 2
+    assert publication.publish_calls == 1
 
 
 @pytest.mark.conformance
-def test_unknown_publish_outcome_is_propagated_without_retry_or_inference() -> None:
+def test_response_loss_recovers_or_returns_sanitized_unknown_outcome() -> None:
     graph = InMemoryWorldGraphRepository()
     _parent, reader = _seed_graph(graph)
     reviews, _state_value = _seed_review()
-    spy = _SpyWorldGraphRepository(graph, raise_after_publish=True)
+    inner = InMemoryFinalizedReviewPublicationRepository(reviews, graph)
+    spy = _SpyPublicationRepository(
+        inner,
+        raise_after_publish=True,
+        fail_recovery_probe=True,
+    )
 
-    with pytest.raises(RuntimeError, match="synthetic response loss"):
-        _publish(reviews, spy, reader)
+    with pytest.raises(FinalizedReviewPublicationOutcomeUnknownError) as exc:
+        _publish(
+            reviews,
+            graph,
+            reader,
+            publication_repository=spy,
+        )
 
+    assert exc.value.details == {
+        "world_id": WORLD_ID,
+        "review_id": REVIEW_ID,
+        "operation_id": "reviewop:11111111111111111111111111111111",
+        "expected_published_revision_id": PUBLISHED_REVISION_ID,
+        "reason": "publication_attempt_or_recovery_probe_failed",
+        "retry_safe": True,
+    }
     assert spy.publish_calls == 1
-    assert spy.get_head_calls == 1
-    assert spy.get_revision_calls == 1
+    assert spy.get_calls == 2
+
+    recovered = _publish(
+        reviews,
+        graph,
+        _RejectingReader(),
+        publication_repository=_SpyPublicationRepository(inner),
+    )
+    assert recovered.published_revision_id == PUBLISHED_REVISION_ID
+
+
+@pytest.mark.conformance
+def test_failed_atomic_publication_rolls_back_graph_and_record() -> None:
+    graph = InMemoryWorldGraphRepository()
+    _parent, reader = _seed_graph(graph)
+    reviews, _state_value = _seed_review()
+    publication = InMemoryFinalizedReviewPublicationRepository(
+        reviews,
+        graph,
+        failure_hook=lambda: (_ for _ in ()).throw(RuntimeError("synthetic abort")),
+    )
+
+    with pytest.raises(FinalizedReviewPublicationOutcomeUnknownError):
+        _publish(
+            reviews,
+            graph,
+            reader,
+            publication_repository=publication,
+        )
+
+    assert graph.get_head(WORLD_ID).head_revision_id == PARENT_REVISION_ID  # type: ignore[union-attr]
+    assert graph.get_revision(WORLD_ID, PUBLISHED_REVISION_ID) is None
+    assert publication.get_for_review(WORLD_ID, REVIEW_ID) is None
+
+    retry = _publish(
+        reviews,
+        graph,
+        reader,
+        publication_repository=InMemoryFinalizedReviewPublicationRepository(
+            reviews,
+            graph,
+        ),
+    )
+    assert retry.published_revision_id == PUBLISHED_REVISION_ID
+
+
+@pytest.mark.conformance
+def test_exact_predecessor_revision_is_adopted_without_head_mutation() -> None:
+    graph = InMemoryWorldGraphRepository()
+    _parent, reader = _seed_graph(graph)
+    reviews, _state_value = _seed_review()
+    first = _publish(reviews, graph, reader)
+    child = graph.get_revision(WORLD_ID, first.published_revision_id)
+    assert child is not None
+
+    publication = InMemoryFinalizedReviewPublicationRepository(reviews, graph)
+    adopted = _publish(
+        reviews,
+        graph,
+        reader,
+        publication_repository=publication,
+    )
+
+    assert adopted == first
+    assert graph.get_head(WORLD_ID).head_revision_id == PUBLISHED_REVISION_ID  # type: ignore[union-attr]
+
+
+@pytest.mark.conformance
+def test_historical_replay_ignores_descendant_head() -> None:
+    graph = InMemoryWorldGraphRepository()
+    _parent, reader = _seed_graph(graph)
+    reviews, _state_value = _seed_review()
+    first = _publish(reviews, graph, reader)
+    graph.publish_revision(
+        PublishRevisionCommand(
+            world_id=WORLD_ID,
+            parent_revision_id=first.published_revision_id,
+            expected_parent_revision_id=first.published_revision_id,
+            operation_ids=["op:descendant"],
+            graph_schema="dm_union_graph_v3",
+            graph_payload=copy.deepcopy(
+                graph.get_revision(WORLD_ID, first.published_revision_id).graph_payload  # type: ignore[union-attr]
+            ),
+            created_at=datetime(2026, 8, 4, tzinfo=UTC),
+        )
+    )
+
+    replay = _publish(
+        reviews,
+        graph,
+        _RejectingReader(),
+        published_at=datetime(2026, 8, 5, tzinfo=UTC),
+    )
+
+    assert replay == first
+    assert graph.get_head(WORLD_ID).head_revision_id != first.published_revision_id  # type: ignore[union-attr]
+
+
+@pytest.mark.conformance
+def test_publication_command_is_payload_and_revision_bound() -> None:
+    with pytest.raises(ValidationError):
+        FinalizedReviewPublicationCommand.model_validate(
+            {
+                "world_id": WORLD_ID,
+                "review_id": REVIEW_ID,
+                "reviewed_contribution_id": "contrib:" + "1" * 32,
+                "reviewed_contribution_sha256": "0" * 64,
+                "review_intent_sha256": "1" * 64,
+                "confirmation_id": "confirm:" + "2" * 32,
+                "operation_id": "reviewop:" + "3" * 32,
+                "expected_parent_revision_id": PARENT_REVISION_ID,
+                "parent_graph_payload_sha256": "4" * 64,
+                "expected_published_revision_id": "rev:" + "5" * 32,
+                "graph_schema": "dm_union_graph_v3",
+                "graph_payload": {"tampered": True},
+                "graph_payload_sha256": "6" * 64,
+                "requested_published_at": "2026-08-03T23:00:00Z",
+                "unexpected": "rejected",
+            }
+        )

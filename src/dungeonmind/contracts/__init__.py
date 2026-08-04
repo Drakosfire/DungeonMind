@@ -103,6 +103,12 @@ from .retrieval import (
     SourceAnchor,
     SourceRead,
 )
+from .review_publication import (
+    FINALIZED_REVIEW_PUBLICATION_COMMAND_SCHEMA,
+    FINALIZED_REVIEW_PUBLICATION_SCHEMA,
+    FinalizedReviewPublication,
+    FinalizedReviewPublicationCommand,
+)
 from .semantic import (
     EMBEDDING_RUN_SCHEMA,
     SEMANTIC_DOCUMENT_SCHEMA,
@@ -129,6 +135,8 @@ __all__ = [
     "CONTRIBUTION_REVIEW_SUBMISSION_SCHEMA",
     "EMBEDDING_RUN_SCHEMA",
     "EVIDENCE_REF_SCHEMA",
+    "FINALIZED_REVIEW_PUBLICATION_COMMAND_SCHEMA",
+    "FINALIZED_REVIEW_PUBLICATION_SCHEMA",
     "GRAPH_CONTRIBUTION_SCHEMA",
     "GRAPH_HEAD_SCHEMA",
     "GRAPH_REVISION_SCHEMA",
@@ -171,6 +179,8 @@ __all__ = [
     "EpistemicKind",
     "EvidenceRef",
     "EvidenceRole",
+    "FinalizedReviewPublication",
+    "FinalizedReviewPublicationCommand",
     "FocusKind",
     "GraphContribution",
     "GraphContributionAssertion",

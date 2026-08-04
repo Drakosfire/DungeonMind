@@ -157,6 +157,33 @@ class ContributionReviewAlreadyFinalizedError(DungeonMindError):
     code = "contribution_review_already_finalized"
 
 
+class FinalizedReviewPublicationOutcomeUnknownError(DungeonMindError):
+    """A publication call may have committed, but exact recovery was unavailable."""
+
+    code = "finalized_review_publication_outcome_unknown"
+
+    def __init__(
+        self,
+        *,
+        world_id: str,
+        review_id: str,
+        operation_id: str,
+        expected_published_revision_id: str,
+        reason: str,
+    ) -> None:
+        super().__init__(
+            "finalized review publication outcome is unknown",
+            details={
+                "world_id": world_id,
+                "review_id": review_id,
+                "operation_id": operation_id,
+                "expected_published_revision_id": expected_published_revision_id,
+                "reason": reason,
+                "retry_safe": True,
+            },
+        )
+
+
 class ContributionMaterializationError(DungeonMindError):
     """A finalized review cannot be materialized into a valid graph payload."""
 

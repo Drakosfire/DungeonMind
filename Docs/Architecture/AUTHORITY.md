@@ -9,8 +9,10 @@
    (persistence lifecycle ownership), ADR-0003 (pgvector as derived index),
    ADR-0004 (semantic profile boundary), ADR-0005 (executable D&D profile
    boundary and Threat semantics), and ADR-0006 (pinned profile
-   create-or-connect contribution planning), and ADR-0007 (finalized
-   contribution review adoption) are the accepted decision set.
+   create-or-connect contribution planning), ADR-0007 (finalized contribution
+   review adoption), ADR-0009 (review graph materialization), ADR-0010
+   (expected-parent CAS publication), and ADR-0011 (durable publication
+   identity and recovery) are the accepted decision set.
 2. **GitHub current state beats local or Project Source copies** wherever
    they disagree (applies to sibling repos inspected during founding).
 3. **DungeonMindBuddy architecture docs** are authority for the *proven
@@ -119,6 +121,30 @@ extracted with citations in
    second finalized review for one source plan are conflicts, not replacement
    semantics. No draft, cancellation, retraction, target override, or review
    supersession exists in B.2e.
+
+## 3.4 Finalized-review publication authority (PR B.2f-c)
+
+1. The finalized review is governance authority for the reviewed contribution,
+   intent digest, confirmation, operation, and expected parent.
+2. The immutable published revision is graph authority for its exact payload,
+   parent, schema, operation binding, and creation timestamp.
+3. The terminal `FinalizedReviewPublication` record is durable correspondence
+   and commit receipt between the review and revision. It is immutable once
+   committed and contains no pending, retry, worker, transport, or error
+   state.
+4. The publication repository owns one atomic unit containing revision insert,
+   expected-parent head CAS, normal head event, and publication-record insert.
+   It must cross-verify the command against the durable review before mutation.
+5. Publication identity is historical. A later descendant or explicit head
+   rollback does not invalidate a record, and current-head equality is not
+   required for replay or reconstruction. Replay returns the original record
+   without rematerialization or graph mutation.
+6. Recovery is exact and bounded: a thrown publication call gets one
+   `get_for_review` probe; only the exact durable record proves success. The
+   exact deterministic predecessor revision may be adopted without head
+   mutation. Arbitrary history scans and success inference are forbidden.
+7. B.2f-c does not append `IdentityDecisionRecord` rows, mutate review or
+   contribution lifecycle, expose transport, or adopt a product surface.
 
 ## 4. Known drift found at founding (do not re-import)
 

@@ -1,11 +1,12 @@
 # DungeonMind — Roadmap and PR ladder
 
 **Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b / B.2c / B.2d /
-B.2e / B.2f-0 / B.2f-a / B.2f-b landed or are in review. B.2f-b is the
-current DungeonMind-owned slice; durable publication identity and recovery
+B.2e / B.2f-0 / B.2f-a / B.2f-b / B.2f-c landed or are in review. B.2f-c is
+the current DungeonMind-owned slice; transport and external consumer behavior
 remain separate successors. External RulesIngestion PR C and product-surface adoption of
 `mind_turn_v1` remain independent successors. Ownership per ADR-0002,
-ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, and ADR-0010.
+ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, and
+ADR-0011.
 
 Each PR is independently reviewable, in its named repository. Cross-repo work
 is never one PR.
@@ -25,8 +26,8 @@ B.2d  pinned create-or-connect contribution plan ✅
 B.2e  finalized contribution review adoption ✅
 B.2f-0 accepted-review materialization characterization ✅
 B.2f-a finalized-review graph payload materializer ✅
-B.2f-b expected-parent CAS publication ← current
-B.2f-c durable publication operation + uncertain-outcome recovery
+B.2f-b expected-parent CAS publication ✅
+B.2f-c durable publication identity + uncertain-outcome recovery ← current
 B.2f-d service transport + external consumer contract
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
@@ -363,16 +364,57 @@ Canonical handoff:
 Decision record:
 [`Docs/Decisions/ADR-0010-b2f-b-finalized-review-expected-parent-cas-publication.md`](../Decisions/ADR-0010-b2f-b-finalized-review-expected-parent-cas-publication.md).
 
+## PR B.2f-c — Durable finalized-review publication identity and recovery
+
+**Repository:** DungeonMind only
+
+Outcome:
+
+```text
+durable finalized review ID
++ exact pinned parent
++ B.2f-a materialization
+→ deterministic revision identity
+→ one atomic revision + head CAS + publication record
+→ exact durable replay or bounded predecessor adoption
+→ one recovery probe after response loss
+```
+
+B.2f-c promotes the ephemeral B.2f-b binding to a versioned terminal
+`dm_finalized_review_publication_v1` contract. A publication repository
+cross-verifies the command against the finalized review and owns the same
+transaction/lock as graph revision insertion, head advancement, and the normal
+head event. Exact replay returns the original record before reading the parent
+or graph reader, preserves its original timestamp, and remains valid after
+descendants or explicit rollback.
+
+If a publication call raises, the application probes once for the exact
+durable record. A recovered record is success; otherwise an unexpected or
+unavailable outcome becomes a sanitized retry-safe
+`finalized_review_publication_outcome_unknown` error. The only predecessor
+recovery is adoption of the exact deterministic B.2f-b revision, with no head
+mutation or second head event. Same-review concurrency returns one record;
+different reviews still rely on expected-parent CAS.
+
+Still false after this PR: pending or failed publication lifecycle, attempts,
+workers, queues, leases, retry schedulers, arbitrary history inference,
+identity-decision append, review/contribution lifecycle mutation, public
+transport, or product-surface adoption.
+
+Canonical handoff:
+[`Docs/Handoffs/HANDOFF-b2f-c-durable-finalized-review-publication-recovery.md`](../Handoffs/HANDOFF-b2f-c-durable-finalized-review-publication-recovery.md).
+Decision record:
+[`Docs/Decisions/ADR-0011-b2f-c-durable-finalized-review-publication-recovery.md`](../Decisions/ADR-0011-b2f-c-durable-finalized-review-publication-recovery.md).
+
 ## Named future lanes (no dates claimed)
 
 These lanes are named so successors can be dispatched deliberately. None is
 scheduled, and none may be smuggled into an unrelated PR.
 
-- **B.2f-c/d — durable publication identity, recovery, and transport** —
-  B.2f-b now loads one durable finalized review, materializes it against its
-  exact parent, and performs one existing-repository CAS publication. Durable
-  operation identity, uncertain-outcome recovery, and external transport remain
-  separate slices and must not silently replan stale reviews.
+- **B.2f-d — service transport and external consumer contract** —
+  expose the already-proven terminal publication/recovery seam to an external
+  caller. Transport must not add a pending lifecycle, second confirmation,
+  identity-ledger append, or product-specific authority.
 - **B.3 — Threat mechanics-resource binding** — approved Threat graph
   identity → exact external statblock/mechanics resource ref →
   revision/digest pin → profile-owned hydration contract. Mechanics stay
