@@ -32,12 +32,17 @@ from .review_materialization import (
     FinalizedReviewGraphMaterialization,
     materialize_finalized_review,
 )
+from .review_publication import (
+    FinalizedReviewPublication,
+    publish_finalized_review,
+)
 
 __all__ = [
     "ContributionRepository",
     "ContributionReviewRepository",
     "EmbeddingRunRepository",
     "FinalizedReviewGraphMaterialization",
+    "FinalizedReviewPublication",
     "FixedClock",
     "GraphObjectView",
     "GraphRelationshipView",
@@ -56,4 +61,5 @@ __all__ = [
     "finalize_contribution_review",
     "load_contribution_review",
     "materialize_finalized_review",
+    "publish_finalized_review",
 ]

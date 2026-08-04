@@ -145,6 +145,12 @@ class ContributionReviewValidationError(DungeonMindError):
     code = "contribution_review_validation_error"
 
 
+class ContributionReviewNotFoundError(DungeonMindError):
+    """The requested durable finalized review does not exist."""
+
+    code = "contribution_review_not_found"
+
+
 class ContributionReviewAlreadyFinalizedError(DungeonMindError):
     """A source plan already has one finalized review."""
 
