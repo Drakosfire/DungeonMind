@@ -170,6 +170,17 @@ def test_e3_binding_integrity_errors(revision, bundle) -> None:
         _eval(poison, bundle, _gold_queries()[0])
     assert exc.value.reason == "revision_reload_validation"
     assert SENTINEL not in f"{exc.value!s}{exc.value!r}{exc.value.details}"
+    null_injected = FictionalTimeQuery.model_validate(_gold_queries()[0]).model_copy(
+        update={"state_id": None}
+    )
+    with pytest.raises(FictionalTimeIntegrityError) as exc:
+        evaluate_fictional_time_query(
+            stored_revision=revision,
+            claim_bundle=bundle,
+            query=null_injected,
+            graph_reader=READER,
+        )
+    assert exc.value.reason == "query_reload_validation"
 
 
 def _rebind_revision_bundle(

@@ -45,7 +45,7 @@ def _reload_bundle(bundle: FictionalTimeClaimBundle) -> FictionalTimeClaimBundle
 def _reload_query(query: FictionalTimeQuery) -> FictionalTimeQuery:
     try:
         return FictionalTimeQuery.model_validate(
-            query.model_dump(mode="json", exclude_none=True)
+            query.model_dump(mode="json", exclude_unset=True)
         )
     except Exception:
         raise _integrity("query_reload_validation") from None
