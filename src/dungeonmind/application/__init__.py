@@ -8,6 +8,7 @@ following the statblocks_v1 discipline in DungeonMindServer.
 
 from .contribution_review import finalize_contribution_review, load_contribution_review
 from .fictional_time import evaluate_fictional_time_query
+from .fictional_time_query_service import query_fictional_time_shadow_at_revision
 from .graph_snapshot import (
     GraphObjectView,
     GraphRelationshipView,
@@ -66,4 +67,5 @@ __all__ = [
     "load_contribution_review",
     "materialize_finalized_review",
     "publish_finalized_review",
+    "query_fictional_time_shadow_at_revision",
 ]
