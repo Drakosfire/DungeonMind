@@ -7,6 +7,7 @@ following the statblocks_v1 discipline in DungeonMindServer.
 """
 
 from .contribution_review import finalize_contribution_review, load_contribution_review
+from .fictional_time import evaluate_fictional_time_query
 from .graph_snapshot import (
     GraphObjectView,
     GraphRelationshipView,
@@ -42,6 +43,7 @@ __all__ = [
     "ContributionRepository",
     "ContributionReviewRepository",
     "EmbeddingRunRepository",
+    "evaluate_fictional_time_query",
     "FinalizedReviewGraphMaterialization",
     "FinalizedReviewPublication",
     "FinalizedReviewPublicationRepository",
