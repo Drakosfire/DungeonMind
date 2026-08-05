@@ -71,10 +71,10 @@ def _gold_queries() -> list[dict[str, Any]]:
          "query_kind": "absolute_fictional_time", "anchor_id": TREE},
         {"schema_version": FICTIONAL_TIME_QUERY_SCHEMA, "query_id": "query:lysandra-returned-before-gate",
          "query_kind": "state_at_boundary", "state_id": STATE, "boundary_anchor_id": GATE,
-         "boundary_position": "immediately_before"},
+         "position": "immediately_before"},
         {"schema_version": FICTIONAL_TIME_QUERY_SCHEMA, "query_id": "query:lysandra-returned-after-gate",
          "query_kind": "state_at_boundary", "state_id": STATE, "boundary_anchor_id": GATE,
-         "boundary_position": "immediately_after"},
+         "position": "immediately_after"},
     ]
 
 
@@ -123,6 +123,10 @@ def test_e1_schemas_reload_and_closed_query_shape(revision, bundle) -> None:
         (lambda b: b.model_copy(update={"state_boundaries": [
             b.state_boundaries[0].model_copy(update={"before_value": True, "after_value": True}),
         ]}), "before_value and after_value must differ"),
+        (lambda b: b.model_copy(update={"evidence_refs": [
+            *b.evidence_refs,
+            b.evidence_refs[0].model_copy(),
+        ]}), "duplicate evidence_ref_id"),
     ],
 )
 def test_e2_bundle_mutation_matrix(bundle, mutator, match) -> None:
@@ -285,8 +289,7 @@ def test_e12_package_import_smoke() -> None:
         text=True,
         check=False,
     )
-    if proc.returncode != 0:
-        import dungeonmind  # noqa: F401
+    assert proc.returncode == 0, proc.stderr
 
 
 def test_e13_result_schema_constant() -> None:

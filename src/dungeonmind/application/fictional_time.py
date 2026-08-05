@@ -194,8 +194,6 @@ def _eval_strict_before(
     assert before is not None and after is not None
     anchors = _anchor_ids(bundle)
     if before not in anchors or after not in anchors:
-        missing = before if before not in anchors else after
-        _ = missing
         return _result(
             query, bundle,
             status=FictionalTimeResultStatus.UNRESOLVED,
@@ -243,7 +241,7 @@ def _eval_state_at_boundary(
 ) -> FictionalTimeQueryResult:
     state_id = query.state_id
     boundary_anchor_id = query.boundary_anchor_id
-    position = query.boundary_position
+    position = query.position
     assert state_id is not None and boundary_anchor_id is not None and position is not None
     if boundary_anchor_id not in _anchor_ids(bundle):
         return _result(

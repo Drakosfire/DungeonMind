@@ -1,6 +1,6 @@
 # HANDOFF — FT1a revision-pinned fictional-time query
 
-**Status:** ACTIVE  
+**Status:** IMPLEMENTED — FT1A_READY_FOR_SHADOW_CONSUMER  
 **Implementation base:** `56d7263950a406d2fff88fc8d1bf77a85ab72abf`  
 **Branch:** `timeline/ft1a-revision-pinned-fictional-time-query`
 
@@ -109,9 +109,45 @@ Unknown anchor → `unknown_anchor`. No `(state_id, boundary_anchor_id)` → `no
 
 Unknown anchor → `unknown_anchor`. Known anchor without explicit absolute → `no_explicit_absolute_anchor` (never invent from metadata/locators).
 
-## 8. Handback stub
+## 8. Completed implementation handback
 
-**TODO (future FT1b+):** wire bundle ingestion, promotion from shadow, graph publication of fictional-time claims, planner/retrieval surfacing. This handoff completes contracts + evaluator + conformance only.
+**PR / branch / head:** (filled at push) `timeline/ft1a-revision-pinned-fictional-time-query`  
+**Base SHA:** `56d7263950a406d2fff88fc8d1bf77a85ab72abf` (PR #15 merge)
+
+**Mission / invariant:** Caller-supplied `StoredGraphRevision` + shadow `dm_fictional_time_claim_bundle_v1` + `dm_fictional_time_query_v1` + matching `GraphSnapshotReader` → deterministic `dm_fictional_time_query_result_v1` with exact proof/evidence; stale/malformed/unanchored inputs fail closed; no repository/current-head/persistence/publication.
+
+**Changed paths (exactly §4 allowlist):**
+- `Docs/Handoffs/HANDOFF-ft1a-revision-pinned-fictional-time-query.md`
+- `src/dungeonmind/contracts/fictional_time.py` (+ `__init__.py` exports)
+- `src/dungeonmind/application/fictional_time.py` (+ `__init__.py` export)
+- `src/dungeonmind/domain/errors.py` (`FictionalTimeIntegrityError`)
+- `tests/fixtures/fictional_time/ft1-two-case-graph-v1.json`
+- `tests/fixtures/fictional_time/ft1-two-case-claim-bundle-v1.json`
+- `tests/conformance/test_fictional_time_query.py`
+
+**Public schemas / symbols:** `dm_fictional_time_claim_bundle_v1`, `dm_fictional_time_query_v1`, `dm_fictional_time_query_result_v1`; enums and models listed in §6; `evaluate_fictional_time_query`; `FictionalTimeIntegrityError`.
+
+**Graph fixture binding:** `revision_id=rev:79c9791e9fcab4515d4cf5f09cc61f10`, `graph_schema=dm_union_graph_v1`, `graph_payload_sha256=e70eb8c7530f010469271a965df860e24f1d39148069cbddf0f6ce590444909f`.
+
+**Claim bundle:** `bundle:ft1-two-case-v1`, `world:ft1-fictional-time`, `campaign:ft1-two-case`, same revision/digest binding.
+
+**Four primary query results:** Appendix A (exact).
+
+**E1–E14:** author-local green on focused suite + ruff + pyright + import smoke; CI pending PR.
+
+**Nano-commits:**
+1. `feat(timeline): add fictional-time claim contracts`
+2. `feat(timeline): add revision-pinned query evaluator`
+3. `test(timeline): prove binding abstention and deterministic proofs`
+4. `fix(timeline): reject duplicate FT1a evidence ids; align query position`
+
+**Confirmations:** `GraphContributionAssertion.temporal_scope` unchanged and unused; graph schemas, B.2f materialization, repositories, migrations, API, agents, `dungeonmind_dnd`, Buddy unchanged. FT1b/FT2/FT3 remain false.
+
+**Nonblank line counts:** contracts ≤300, application ≤325, conformance ≤525, fixtures ≤250 (verified).
+
+**Baseline failures / stop conditions:** none.
+
+**Disposition:** `FT1A_READY_FOR_SHADOW_CONSUMER`
 
 ## 9. Verification
 

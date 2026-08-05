@@ -160,8 +160,10 @@ class FictionalTimeClaimBundle(DungeonMindModel):
 
         _uniq_nonempty([a.anchor_id for a in self.anchors], "anchor_id")
         anchor_ids = {a.anchor_id for a in self.anchors}
+        _uniq_nonempty(
+            [e.evidence_ref_id for e in self.evidence_refs], "evidence_ref_id"
+        )
         evidence_ids = {e.evidence_ref_id for e in self.evidence_refs}
-        _uniq_nonempty(list(evidence_ids), "evidence_ref_id")
 
         claim_ids: list[str] = []
         for claim in self.strict_before_claims:
@@ -216,7 +218,7 @@ class FictionalTimeQuery(DungeonMindModel):
     after_anchor_id: str | None = None
     state_id: str | None = None
     boundary_anchor_id: str | None = None
-    boundary_position: FictionalTimeBoundaryPosition | None = None
+    position: FictionalTimeBoundaryPosition | None = None
     anchor_id: str | None = None
 
     @model_validator(mode="after")
@@ -228,20 +230,20 @@ class FictionalTimeQuery(DungeonMindModel):
             "after_anchor_id": self.after_anchor_id,
             "state_id": self.state_id,
             "boundary_anchor_id": self.boundary_anchor_id,
-            "boundary_position": self.boundary_position,
+            "position": self.position,
             "anchor_id": self.anchor_id,
         }
         if kind is FictionalTimeQueryKind.STRICT_BEFORE:
             required = ("before_anchor_id", "after_anchor_id")
-            forbidden = ("state_id", "boundary_anchor_id", "boundary_position", "anchor_id")
+            forbidden = ("state_id", "boundary_anchor_id", "position", "anchor_id")
         elif kind is FictionalTimeQueryKind.STATE_AT_BOUNDARY:
-            required = ("state_id", "boundary_anchor_id", "boundary_position")
+            required = ("state_id", "boundary_anchor_id", "position")
             forbidden = ("before_anchor_id", "after_anchor_id", "anchor_id")
         else:
             required = ("anchor_id",)
             forbidden = (
                 "before_anchor_id", "after_anchor_id", "state_id",
-                "boundary_anchor_id", "boundary_position",
+                "boundary_anchor_id", "position",
             )
         for name in required:
             if fields[name] is None:
