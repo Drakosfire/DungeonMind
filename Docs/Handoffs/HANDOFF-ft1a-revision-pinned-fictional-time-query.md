@@ -111,7 +111,7 @@ Unknown anchor → `unknown_anchor`. Known anchor without explicit absolute → 
 
 ## 8. Completed implementation handback
 
-**PR / branch / head:** `timeline/ft1a-revision-pinned-fictional-time-query` @ `6712705208f4c6230009ae112c08a201c6e4c46f`
+**PR / branch / head:** `timeline/ft1a-revision-pinned-fictional-time-query` @ `35af7d643802ff669d9e2307877b2b40d57ef7f2`
 **Base SHA:** `56d7263950a406d2fff88fc8d1bf77a85ab72abf` (PR #15 merge)
 
 **Mission / invariant:** Caller-supplied `StoredGraphRevision` + shadow `dm_fictional_time_claim_bundle_v1` + `dm_fictional_time_query_v1` + matching `GraphSnapshotReader` → deterministic `dm_fictional_time_query_result_v1` with exact proof/evidence; stale/malformed/unanchored inputs fail closed; no repository/current-head/persistence/publication.
