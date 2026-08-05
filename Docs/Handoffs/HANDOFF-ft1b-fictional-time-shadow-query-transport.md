@@ -83,7 +83,7 @@ See dispatch brief: transport strictness; auth-before-read; exact get_revision/n
 
 ## 8. Completed implementation handback
 
-**PR / branch / head:** open on `timeline/ft1b-fictional-time-shadow-query-transport` (use PR head SHA; do not treat this line as a frozen tip).  
+**PR / branch / head:** [PR #19](https://github.com/Drakosfire/DungeonMind/pull/19) on `timeline/ft1b-fictional-time-shadow-query-transport` (use PR head SHA; do not treat this line as a frozen tip).  
 **Exact base SHA (PR #18 merge):** `52a683755b9af0a8b54b65018fa64cd9c2b91f96`
 
 **Mission / invariant:** Bearer-authorized exact `get_revision` + unchanged FT1a evaluation over a separate no-store host; no head, persistence, CORS, or product adoption.
