@@ -1,0 +1,138 @@
+{
+  "schema_version": "dm_fictional_time_claim_bundle_v1",
+  "bundle_id": "bundle:ft1-two-case-v1",
+  "world_id": "world:ft1-fictional-time",
+  "campaign_id": "campaign:ft1-two-case",
+  "authority_mode": "shadow",
+  "graph_schema": "dm_union_graph_v1",
+  "graph_revision_id": "rev:79c9791e9fcab4515d4cf5f09cc61f10",
+  "graph_payload_sha256": "e70eb8c7530f010469271a965df860e24f1d39148069cbddf0f6ce590444909f",
+  "anchors": [
+    {
+      "anchor_id": "anchor:hempholm-tree-felled",
+      "label": "Grotesque tree felled",
+      "related_object_ids": [
+        "obj:hempholm-tree"
+      ]
+    },
+    {
+      "anchor_id": "anchor:hempholm-evening-revelry",
+      "label": "Evening revelry",
+      "related_object_ids": [
+        "obj:hempholm-revelry"
+      ]
+    },
+    {
+      "anchor_id": "anchor:hempholm-root-beetle-attack",
+      "label": "Root-beetle attack",
+      "related_object_ids": [
+        "obj:hempholm-root-beetle-attack"
+      ]
+    },
+    {
+      "anchor_id": "anchor:lysandra-mireward-gate-arrival",
+      "label": "Lysandra arrives at Mireward gate",
+      "related_object_ids": [
+        "obj:lysandra-ironveil",
+        "obj:mireward-gate"
+      ]
+    }
+  ],
+  "strict_before_claims": [
+    {
+      "claim_id": "claim:hempholm-tree-before-revelry",
+      "before_anchor_id": "anchor:hempholm-tree-felled",
+      "after_anchor_id": "anchor:hempholm-evening-revelry",
+      "evidence_ref_ids": [
+        "ev:hempholm-tree-felled",
+        "ev:hempholm-evening-revelry"
+      ]
+    },
+    {
+      "claim_id": "claim:hempholm-revelry-before-beetles",
+      "before_anchor_id": "anchor:hempholm-evening-revelry",
+      "after_anchor_id": "anchor:hempholm-root-beetle-attack",
+      "evidence_ref_ids": [
+        "ev:hempholm-evening-revelry",
+        "ev:hempholm-root-beetle-attack"
+      ]
+    }
+  ],
+  "state_boundaries": [
+    {
+      "claim_id": "state-boundary:lysandra-returned-at-mireward-gate",
+      "state_id": "state:lysandra-returned-home-current-campaign-arc",
+      "boundary_anchor_id": "anchor:lysandra-mireward-gate-arrival",
+      "before_value": false,
+      "after_value": true,
+      "before_evidence_ref_ids": [
+        "ev:lysandra-not-home-c1-c2"
+      ],
+      "after_evidence_ref_ids": [
+        "ev:lysandra-mireward-gate-arrival"
+      ]
+    }
+  ],
+  "evidence_refs": [
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:hempholm-tree-felled",
+      "source_artifact_id": "src:hempholm-session-04",
+      "source_revision_id": "srcrev:hempholm-session-04-v1",
+      "source_domain": "session_recap",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": false,
+      "locator": "Session 04 recap: party fells the grotesque tree",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:hempholm-evening-revelry",
+      "source_artifact_id": "src:hempholm-session-04",
+      "source_revision_id": "srcrev:hempholm-session-04-v1",
+      "source_domain": "session_recap",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": false,
+      "locator": "Session 04 recap: evening revelry after the felling",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:hempholm-root-beetle-attack",
+      "source_artifact_id": "src:hempholm-session-04",
+      "source_revision_id": "srcrev:hempholm-session-04-v1",
+      "source_domain": "session_recap",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": false,
+      "locator": "Session 04 recap: root-beetle attack after revelry",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:lysandra-not-home-c1-c2",
+      "source_artifact_id": "src:lysandra-mireward-history",
+      "source_revision_id": "srcrev:lysandra-mireward-history-v1",
+      "source_domain": "worldbuilding",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": false,
+      "locator": "dossier span __FT1A_SENTINEL_LEAK_PROBE__: not home until S22 forced march",
+      "uri": null
+    },
+    {
+      "schema_version": "dm_evidence_ref_v1",
+      "evidence_ref_id": "ev:lysandra-mireward-gate-arrival",
+      "source_artifact_id": "src:mireward-session-22",
+      "source_revision_id": "srcrev:mireward-session-22-v1",
+      "source_domain": "session_recap",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": false,
+      "locator": "Session 22 recap: observed Mireward gate arrival",
+      "uri": null
+    }
+  ]
+}
