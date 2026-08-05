@@ -20,6 +20,7 @@ from dungeonmind.contracts.graph import StoredGraphRevision
 from dungeonmind.contracts.projection import Admissibility
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.domain.canonical import canonical_sha256
+from dungeonmind.domain.revision_ids import compute_revision_id
 
 from ..contracts.mechanics_resources import (
     THREAT_MECHANICS_BINDING_SCHEMA,
@@ -169,6 +170,26 @@ def _verify_revision(
     if payload_digest != revision.graph_payload_sha256:
         _failure(
             "graph_payload_digest_mismatch",
+            world_id=revision.world_id,
+            graph_revision_id=revision.revision_id,
+        )
+    try:
+        expected_revision_id = compute_revision_id(
+            world_id=revision.world_id,
+            parent_revision_id=revision.parent_revision_id,
+            operation_ids=revision.operation_ids,
+            graph_schema=revision.graph_schema,
+            graph_payload_sha256=revision.graph_payload_sha256,
+        )
+    except Exception:
+        _failure(
+            "graph_revision_binding_mismatch",
+            world_id=revision.world_id,
+            graph_revision_id=revision.revision_id,
+        )
+    if revision.revision_id != expected_revision_id:
+        _failure(
+            "graph_revision_binding_mismatch",
             world_id=revision.world_id,
             graph_revision_id=revision.revision_id,
         )

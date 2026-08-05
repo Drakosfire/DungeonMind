@@ -250,6 +250,7 @@ DND_MECHANICS_ALLOWED_KERNEL_MODULES = DND_ALLOWED_KERNEL_MODULES | {
     "dungeonmind.application.graph_snapshot",
     "dungeonmind.contracts.graph",
     "dungeonmind.contracts.projection",
+    "dungeonmind.domain.revision_ids",
 }
 
 DND_FORBIDDEN_KERNEL_PREFIXES = (

@@ -17,6 +17,7 @@ from dungeonmind.contracts.graph import StoredGraphRevision, WorldGraphRevision
 from dungeonmind.contracts.projection import Admissibility
 from dungeonmind.contracts.semantic_profile import SemanticProfileDescriptor, SemanticProfileRef
 from dungeonmind.domain.canonical import canonical_sha256
+from dungeonmind.domain.revision_ids import compute_revision_id
 from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
 from dungeonmind_dnd.application.threat_mechanics import (
     derive_threat_mechanics_binding,
@@ -76,9 +77,9 @@ def _stored_revision() -> StoredGraphRevision:
         revision=WorldGraphRevision(
             world_id="world:synthetic-gatewatch",
             revision_id="rev:6e02bd224f6b5616534f10026c8b9679",
-            parent_revision_id=None,
+            parent_revision_id="rev:f2d5164c176289c5f3df7e68b4f0e46d",
             created_at=datetime(2026, 8, 1, 18, 0, tzinfo=UTC),
-            operation_ids=["op:materialize-tripod-null-calf-v1"],
+            operation_ids=["reviewop:11111111111111111111111111111111"],
             graph_schema="dm_union_graph_v3",
             graph_payload_sha256=(
                 "75dd4d9f3425e6646d9141fde1ceea48d4574057bc0b5aada32b165de978adc5"
@@ -225,16 +226,15 @@ def test_hydration_matches_fixture_and_resolves_once_with_isolated_payload() -> 
     ("field", "value"),
     [
         ("ruleset_id", "pathfinder"),
-        ("provider_id", "Fixture.dungeonmind.statblocks"),
-        ("provider_id", "fixture:dungeonmind.statblocks"),
-        ("provider_id", "fixture.dungeonmind.statblocks."),
-        ("resource_schema", "Fixture_dnd5e_statblock_v1"),
-        ("resource_schema", "fixture:dnd5e_statblock_v1"),
-        ("resource_schema", "fixture_dnd5e_statblock_v1."),
-        ("resource_revision", "tripod-null-calf-v1."),
+        ("provider_id", "fixture/provider"),
+        ("provider_id", "https://provider.invalid/resource"),
+        ("resource_id", "statblock/Tripod Null-Calf"),
+        ("resource_revision", "tripod/null-calf-v1"),
+        ("resource_schema", "fixture\\dnd5e_statblock_v1"),
+        ("resource_schema", "latest"),
     ],
 )
-def test_resource_ref_rejects_noncanonical_identity_tokens(
+def test_resource_ref_rejects_locator_or_invalid_identity_tokens(
     field: str, value: str
 ) -> None:
     payload = _json(RESOURCE_FIXTURE)["resource_ref"]
@@ -242,6 +242,27 @@ def test_resource_ref_rejects_noncanonical_identity_tokens(
 
     with pytest.raises(ValidationError):
         DndMechanicsResourceRef.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("provider_id", "Fixture.dungeonmind.statblocks"),
+        ("provider_id", "fixture:dungeonmind.statblocks"),
+        ("resource_id", "Statblock:Tripod-Null-Calf"),
+        ("resource_revision", "tripod:null-calf-v1"),
+        ("resource_schema", "Fixture:dnd5e_statblock_v1."),
+    ],
+)
+def test_resource_ref_accepts_opaque_non_locator_identity_tokens(
+    field: str, value: str
+) -> None:
+    payload = _json(RESOURCE_FIXTURE)["resource_ref"]
+    payload[field] = value
+
+    reference = DndMechanicsResourceRef.model_validate(payload)
+
+    assert getattr(reference, field) == value
 
 
 def test_resource_envelope_rejects_payload_digest_mismatch() -> None:
@@ -351,6 +372,62 @@ def test_graph_payload_mutation_fails_before_reader_access() -> None:
 
     _assert_failure(exc_info.value, reason="graph_payload_digest_mismatch")
     assert reader.calls == 0
+
+
+def test_graph_revision_parent_mutation_fails_before_reader_access() -> None:
+    stored = _stored_revision()
+    mutated_revision = stored.revision.model_copy(update={"parent_revision_id": None})
+    mutated = StoredGraphRevision(
+        revision=mutated_revision,
+        graph_payload=copy.deepcopy(stored.graph_payload),
+    )
+    reader = _GuardedReader()
+
+    with pytest.raises(DndThreatMechanicsHydrationError) as exc_info:
+        derive_threat_mechanics_binding(
+            _binding().object_id,
+            _resource_ref(),
+            graph_revision=mutated,
+            graph_reader=cast(Any, reader),
+        )
+
+    _assert_failure(exc_info.value, reason="graph_revision_binding_mismatch")
+    assert reader.calls == 0
+
+
+def test_graph_revision_operation_mutation_fails_before_reader_access() -> None:
+    stored = _stored_revision()
+    mutated_revision = stored.revision.model_copy(
+        update={"operation_ids": ["op:materialize-tripod-null-calf-v1"]}
+    )
+    mutated = StoredGraphRevision(
+        revision=mutated_revision,
+        graph_payload=copy.deepcopy(stored.graph_payload),
+    )
+    reader = _GuardedReader()
+
+    with pytest.raises(DndThreatMechanicsHydrationError) as exc_info:
+        derive_threat_mechanics_binding(
+            _binding().object_id,
+            _resource_ref(),
+            graph_revision=mutated,
+            graph_reader=cast(Any, reader),
+        )
+
+    _assert_failure(exc_info.value, reason="graph_revision_binding_mismatch")
+    assert reader.calls == 0
+
+
+def test_revision_fixture_identity_is_verified_by_compute_revision_id() -> None:
+    revision = _stored_revision().revision
+
+    assert compute_revision_id(
+        world_id=revision.world_id,
+        parent_revision_id=revision.parent_revision_id,
+        operation_ids=revision.operation_ids,
+        graph_schema=revision.graph_schema,
+        graph_payload_sha256=revision.graph_payload_sha256,
+    ) == revision.revision_id
 
 
 def test_resolver_returns_none_after_exactly_one_call() -> None:
