@@ -304,12 +304,19 @@ def test_readiness_probe_missing_table_and_db_error() -> None:
             return self._ok
 
     class _Conn:
-        def __init__(self, row):
-            self._row = row
+        def __init__(self, *, table_row, deny_select=False):
+            self._table_row = table_row
+            self._deny_select = deny_select
+            self.selects: list[str] = []
 
         def execute(self, sql, params=()):
+            self.selects.append(sql)
             if "information_schema" in sql:
-                return _Row(self._row)
+                return _Row(self._table_row)
+            if "graph_revisions" in sql and "WHERE FALSE" in sql:
+                if self._deny_select:
+                    raise PermissionError("permission denied for table graph_revisions")
+                return _Row(None)
             return _Row({"ok": 1})
 
         def __enter__(self):
@@ -319,14 +326,19 @@ def test_readiness_probe_missing_table_and_db_error() -> None:
             return False
 
     class _Db:
-        def __init__(self, *, row=None, fail=False):
-            self._row = row
+        def __init__(self, *, table_row=None, fail=False, deny_select=False):
+            self._table_row = table_row
             self._fail = fail
+            self._deny_select = deny_select
+            self.last_conn: _Conn | None = None
 
         def connect(self):
             if self._fail:
                 raise OSError("down")
-            return _Conn(self._row)
+            self.last_conn = _Conn(
+                table_row=self._table_row, deny_select=self._deny_select
+            )
+            return self.last_conn
 
     class _Bundle:
         def __init__(self, database):
@@ -334,11 +346,25 @@ def test_readiness_probe_missing_table_and_db_error() -> None:
 
     with pytest.raises(PersistenceIntegrityError):
         build_fictional_time_readiness_probe(
-            bundle=_Bundle(_Db(row=None)), world_id=WORLD
+            bundle=_Bundle(_Db(table_row=None)), world_id=WORLD
         )()
     with pytest.raises(PersistenceUnavailableError):
         build_fictional_time_readiness_probe(
             bundle=_Bundle(_Db(fail=True)), world_id=WORLD
+        )()
+    ready_db = _Db(table_row={"ok": 1})
+    assert build_fictional_time_readiness_probe(
+        bundle=_Bundle(ready_db), world_id=WORLD
+    )()["status"] == "ready"
+    assert ready_db.last_conn is not None
+    assert any(
+        "WHERE FALSE" in sql and "graph_revisions" in sql
+        for sql in ready_db.last_conn.selects
+    )
+    with pytest.raises(PersistenceUnavailableError):
+        build_fictional_time_readiness_probe(
+            bundle=_Bundle(_Db(table_row={"ok": 1}, deny_select=True)),
+            world_id=WORLD,
         )()
 
 

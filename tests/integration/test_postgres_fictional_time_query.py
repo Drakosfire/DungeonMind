@@ -136,7 +136,7 @@ def test_postgres_pinned_r1_survives_r2_head_and_restart(pg, database_url: str) 
     with TestClient(_app(pg)) as client:
         http = client.post(
             "/v1/fictional-time-shadow-queries",
-            json=request.model_dump(mode="json"),
+            json=request.model_dump(mode="json", exclude_unset=True),
             headers={"Authorization": f"Bearer {SECRET}"},
         )
     assert http.status_code == 200

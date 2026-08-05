@@ -325,6 +325,19 @@ def build_fictional_time_readiness_probe(
                     """,
                     ("dungeonmind", "graph_revisions"),
                 ).fetchone()
+                if row is None:
+                    raise PersistenceIntegrityError(
+                        "fictional-time readiness tables are unavailable",
+                        details={"reason": "graph_revisions_missing"},
+                    )
+                # Prove SELECT privilege on exact-revision storage (zero rows).
+                conn.execute(
+                    """
+                    SELECT revision_id
+                    FROM dungeonmind.graph_revisions
+                    WHERE FALSE
+                    """
+                )
         except Exception as exc:
             if isinstance(exc, (PersistenceUnavailableError, PersistenceIntegrityError)):
                 raise
@@ -332,11 +345,6 @@ def build_fictional_time_readiness_probe(
                 "fictional-time readiness database check failed",
                 details={"reason": type(exc).__name__},
             ) from None
-        if row is None:
-            raise PersistenceIntegrityError(
-                "fictional-time readiness tables are unavailable",
-                details={"reason": "graph_revisions_missing"},
-            )
         return {
             "status": "ready",
             "world_id": world_id,
