@@ -226,10 +226,16 @@ def test_hydration_matches_fixture_and_resolves_once_with_isolated_payload() -> 
     ("field", "value"),
     [
         ("ruleset_id", "pathfinder"),
+        ("provider_id", "Fixture.dungeonmind.statblocks"),
+        ("provider_id", "fixture:dungeonmind.statblocks"),
+        ("provider_id", "fixture.dungeonmind.statblocks."),
         ("provider_id", "fixture/provider"),
         ("provider_id", "https://provider.invalid/resource"),
         ("resource_id", "statblock/Tripod Null-Calf"),
         ("resource_revision", "tripod/null-calf-v1"),
+        ("resource_schema", "Fixture_dnd5e_statblock_v1"),
+        ("resource_schema", "fixture:dnd5e_statblock_v1"),
+        ("resource_schema", "fixture_dnd5e_statblock_v1."),
         ("resource_schema", "fixture\\dnd5e_statblock_v1"),
         ("resource_schema", "latest"),
     ],
@@ -247,11 +253,8 @@ def test_resource_ref_rejects_locator_or_invalid_identity_tokens(
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("provider_id", "Fixture.dungeonmind.statblocks"),
-        ("provider_id", "fixture:dungeonmind.statblocks"),
         ("resource_id", "Statblock:Tripod-Null-Calf"),
         ("resource_revision", "tripod:null-calf-v1"),
-        ("resource_schema", "Fixture:dnd5e_statblock_v1."),
     ],
 )
 def test_resource_ref_accepts_opaque_non_locator_identity_tokens(
@@ -416,6 +419,32 @@ def test_graph_revision_operation_mutation_fails_before_reader_access() -> None:
 
     _assert_failure(exc_info.value, reason="graph_revision_binding_mismatch")
     assert reader.calls == 0
+
+
+def test_graph_revision_id_mutation_fails_before_reader_or_resolver_access() -> None:
+    stored = _stored_revision()
+    mutated_revision = stored.revision.model_copy(
+        update={"revision_id": "rev:00000000000000000000000000000000"}
+    )
+    mutated = StoredGraphRevision(
+        revision=mutated_revision,
+        graph_payload=copy.deepcopy(stored.graph_payload),
+    )
+    reader = _GuardedReader()
+    resolver = _GuardedResolver()
+
+    with pytest.raises(DndThreatMechanicsHydrationError) as exc_info:
+        hydrate_threat_mechanics(
+            _binding(),
+            admissibility=Admissibility.GM,
+            graph_revision=mutated,
+            graph_reader=cast(Any, reader),
+            resource_resolver=cast(Any, resolver),
+        )
+
+    _assert_failure(exc_info.value, reason="graph_revision_binding_mismatch")
+    assert reader.calls == 0
+    assert resolver.calls == 0
 
 
 def test_revision_fixture_identity_is_verified_by_compute_revision_id() -> None:

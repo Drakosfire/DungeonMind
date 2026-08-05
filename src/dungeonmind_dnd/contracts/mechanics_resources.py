@@ -31,6 +31,7 @@ _REVISION_ID = re.compile(r"^rev:[0-9a-f]{32}$")
 _OBJECT_ID = re.compile(r"^obj:[A-Za-z0-9._:-]+$")
 _RELATIONSHIP_ID = re.compile(r"^rel:[A-Za-z0-9._:-]+$")
 _OPAQUE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+_LOWER_IDENTITY_TOKEN = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 
 
 def _validate_opaque_token(value: str, *, field_name: str) -> str:
@@ -46,6 +47,23 @@ def _validate_opaque_token(value: str, *, field_name: str) -> str:
         raise ValueError(f"{field_name} must not be a path")
     if not _OPAQUE_TOKEN.fullmatch(value):
         raise ValueError(f"{field_name} must be an opaque identity token")
+    return value
+
+
+def _validate_canonical_token(value: str, *, field_name: str) -> str:
+    """Validate a lowercase canonical token, not a locator."""
+    if not value.strip() or value != value.strip():
+        raise ValueError(f"{field_name} must be a non-blank identity token")
+    if value.casefold() == "latest":
+        raise ValueError(f"{field_name} must not be 'latest'")
+    if "://" in value or value.casefold().startswith(
+        ("http:", "https:", "file:", "ftp:")
+    ):
+        raise ValueError(f"{field_name} must not be a URI")
+    if "/" in value or "\\" in value:
+        raise ValueError(f"{field_name} must not be a path")
+    if not _LOWER_IDENTITY_TOKEN.fullmatch(value):
+        raise ValueError(f"{field_name} must be a lowercase identity token")
     return value
 
 
@@ -84,14 +102,14 @@ class DndMechanicsResourceRef(DungeonMindModel):
     media_type: Literal["application/json"] = "application/json"
     payload_sha256: str = Field(min_length=64, max_length=64)
 
-    @field_validator(
-        "provider_id",
-        "resource_id",
-        "resource_revision",
-        "resource_schema",
-    )
+    @field_validator("provider_id", "resource_schema")
     @classmethod
-    def _validate_identity(cls, value: str, info: Any) -> str:
+    def _validate_canonical_identity(cls, value: str, info: Any) -> str:
+        return _validate_canonical_token(value, field_name=info.field_name)
+
+    @field_validator("resource_id", "resource_revision")
+    @classmethod
+    def _validate_opaque_identity(cls, value: str, info: Any) -> str:
         return _validate_opaque_token(value, field_name=info.field_name)
 
     @field_validator("payload_sha256")
