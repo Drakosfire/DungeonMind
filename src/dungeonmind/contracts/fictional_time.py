@@ -251,7 +251,7 @@ class FictionalTimeQuery(DungeonMindModel):
             if isinstance(fields[name], str):
                 _reject_blank(fields[name], name)
         for name in forbidden:
-            if fields[name] is not None:
+            if name in self.model_fields_set:
                 raise ValueError(f"{name} must be absent for query_kind {kind.value}")
         return self
 

@@ -6,8 +6,6 @@ import copy
 from collections import defaultdict, deque
 from typing import Any
 
-from pydantic import ValidationError
-
 from ..contracts.fictional_time import (
     FictionalTimeAuthorityMode,
     FictionalTimeBoundaryPosition,
@@ -21,6 +19,7 @@ from ..contracts.fictional_time import (
 from ..contracts.graph import StoredGraphRevision
 from ..domain.canonical import canonical_sha256
 from ..domain.errors import FictionalTimeIntegrityError
+from ..domain.revision_ids import compute_revision_id
 from .graph_snapshot import GraphSnapshotReader, ParsedGraphSnapshot
 
 
@@ -32,21 +31,23 @@ def _integrity(reason: str, **details: Any) -> FictionalTimeIntegrityError:
 def _reload_revision(stored: StoredGraphRevision) -> StoredGraphRevision:
     try:
         return StoredGraphRevision.model_validate(stored.model_dump(mode="json"))
-    except ValidationError:
+    except Exception:
         raise _integrity("revision_reload_validation") from None
 
 
 def _reload_bundle(bundle: FictionalTimeClaimBundle) -> FictionalTimeClaimBundle:
     try:
         return FictionalTimeClaimBundle.model_validate(bundle.model_dump(mode="json"))
-    except ValidationError:
+    except Exception:
         raise _integrity("bundle_reload_validation") from None
 
 
 def _reload_query(query: FictionalTimeQuery) -> FictionalTimeQuery:
     try:
-        return FictionalTimeQuery.model_validate(query.model_dump(mode="json"))
-    except ValidationError:
+        return FictionalTimeQuery.model_validate(
+            query.model_dump(mode="json", exclude_none=True)
+        )
+    except Exception:
         raise _integrity("query_reload_validation") from None
 
 
@@ -58,6 +59,15 @@ def _verify_binding(
     digest = canonical_sha256(revision.graph_payload)
     if digest != rev.graph_payload_sha256:
         raise _integrity("graph_payload_digest_mismatch")
+    expected_revision_id = compute_revision_id(
+        world_id=rev.world_id,
+        parent_revision_id=rev.parent_revision_id,
+        operation_ids=list(rev.operation_ids),
+        graph_schema=rev.graph_schema,
+        graph_payload_sha256=digest,
+    )
+    if rev.revision_id != expected_revision_id:
+        raise _integrity("revision_binding_mismatch")
     checks = (
         (bundle.world_id, rev.world_id, "world_id"),
         (bundle.graph_schema, rev.graph_schema, "graph_schema"),

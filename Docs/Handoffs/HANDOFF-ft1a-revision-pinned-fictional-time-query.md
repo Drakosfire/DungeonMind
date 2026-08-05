@@ -37,7 +37,7 @@ StoredGraphRevision + FictionalTimeClaimBundle + FictionalTimeQuery
                     FictionalTimeQueryResult
 ```
 
-Evaluator reload-validates inputs, recomputes payload digest, verifies bundle↔revision binding, parses snapshot via injected `GraphSnapshotReader`, verifies anchor objects and evidence JSON equality, then evaluates query semantics.
+Evaluator reload-validates inputs, recomputes payload digest and content-addressed `revision_id`, verifies bundle↔revision binding, parses snapshot via injected `GraphSnapshotReader`, verifies anchor objects and evidence JSON equality, then evaluates query semantics.
 
 ## 4. Patterns
 

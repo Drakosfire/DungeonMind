@@ -92,6 +92,18 @@ def test_e1_schemas_reload_and_closed_query_shape(revision, bundle) -> None:
             "before_anchor_id": TREE,
             "anchor_id": TREE,
         })
+    for payload in (
+        {"schema_version": FICTIONAL_TIME_QUERY_SCHEMA, "query_id": "query:null-strict",
+         "query_kind": "strict_before", "before_anchor_id": TREE, "after_anchor_id": BEETLES,
+         "state_id": None},
+        {"schema_version": FICTIONAL_TIME_QUERY_SCHEMA, "query_id": "query:null-boundary",
+         "query_kind": "state_at_boundary", "state_id": STATE, "boundary_anchor_id": GATE,
+         "position": "immediately_before", "before_anchor_id": None},
+        {"schema_version": FICTIONAL_TIME_QUERY_SCHEMA, "query_id": "query:null-absolute",
+         "query_kind": "absolute_fictional_time", "anchor_id": TREE, "state_id": None},
+    ):
+        with pytest.raises(ValidationError, match="must be absent"):
+            FictionalTimeQuery.model_validate(payload)
 
 
 @pytest.mark.parametrize(
@@ -145,6 +157,19 @@ def test_e3_binding_integrity_errors(revision, bundle) -> None:
     with pytest.raises(FictionalTimeIntegrityError) as exc:
         _eval(revision, bad_world, _gold_queries()[0])
     assert exc.value.reason == "revision_binding_mismatch"
+    forged_id = "rev:" + "a" * 32
+    forged = revision.model_copy(deep=True)
+    forged.revision.revision_id = forged_id
+    forged_bundle = bundle.model_copy(update={"graph_revision_id": forged_id})
+    with pytest.raises(FictionalTimeIntegrityError) as exc:
+        _eval(forged, forged_bundle, _gold_queries()[0])
+    assert exc.value.reason == "revision_binding_mismatch"
+    poison = revision.model_copy(deep=True)
+    poison.revision.__dict__["world_id"] = object()
+    with pytest.raises(FictionalTimeIntegrityError) as exc:
+        _eval(poison, bundle, _gold_queries()[0])
+    assert exc.value.reason == "revision_reload_validation"
+    assert SENTINEL not in f"{exc.value!s}{exc.value!r}{exc.value.details}"
 
 
 def _rebind_revision_bundle(
@@ -237,6 +262,37 @@ def test_e7_deterministic_proof_and_replay(revision, bundle) -> None:
     dumped["proof_claim_ids"] = ["claim:invented"]
     again = _eval(revision, bundle, q)
     assert _canon(again) == _canon(first)
+    base_proof = first.proof_claim_ids
+    assert len(base_proof) == 2
+    ev = bundle.evidence_refs[0].evidence_ref_id
+    larger = bundle.model_copy(deep=True)
+    larger.strict_before_claims = [
+        *larger.strict_before_claims,
+        larger.strict_before_claims[0].model_copy(update={
+            "claim_id": "claim:zzz-tree-before-gate",
+            "before_anchor_id": TREE, "after_anchor_id": GATE, "evidence_ref_ids": [ev],
+        }),
+        larger.strict_before_claims[0].model_copy(update={
+            "claim_id": "claim:zzz-gate-before-beetles",
+            "before_anchor_id": GATE, "after_anchor_id": BEETLES, "evidence_ref_ids": [ev],
+        }),
+    ]
+    assert _eval(revision, larger, q).proof_claim_ids == base_proof
+    smaller = bundle.model_copy(deep=True)
+    smaller.strict_before_claims = [
+        *smaller.strict_before_claims,
+        smaller.strict_before_claims[0].model_copy(update={
+            "claim_id": "claim:aaa-tree-before-gate",
+            "before_anchor_id": TREE, "after_anchor_id": GATE, "evidence_ref_ids": [ev],
+        }),
+        smaller.strict_before_claims[0].model_copy(update={
+            "claim_id": "claim:aaa-gate-before-beetles",
+            "before_anchor_id": GATE, "after_anchor_id": BEETLES, "evidence_ref_ids": [ev],
+        }),
+    ]
+    assert _eval(revision, smaller, q).proof_claim_ids == [
+        "claim:aaa-tree-before-gate", "claim:aaa-gate-before-beetles",
+    ]
 
 
 def test_e8_invalid_bundle_rejected_before_query(bundle) -> None:
