@@ -15,10 +15,18 @@ from .threat_candidates import (
     validate_threat_candidate_packet,
     vocabulary_sha256,
 )
+from .threat_mechanics import (
+    derive_threat_mechanics_binding,
+    derive_threat_mechanics_binding_id,
+    hydrate_threat_mechanics,
+)
 
 __all__ = [
     "build_threat_contribution_review_intent",
     "builtin_threat_vocabulary_ref",
+    "derive_threat_mechanics_binding",
+    "derive_threat_mechanics_binding_id",
+    "hydrate_threat_mechanics",
     "load_builtin_threat_vocabulary",
     "parse_threat_candidate_packet",
     "plan_threat_candidate_contribution",

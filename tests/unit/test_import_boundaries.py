@@ -209,7 +209,9 @@ def test_dungeonmind_does_not_import_dungeonmind_dnd() -> None:
 # ADR-0007). Most modules retain the B.2c contract/canonical allowlist. Only
 # B.2d contribution-planning modules may import the expanded graph /
 # contribution / identity / vocabulary / graph_snapshot surface. The B.2e
-# review adapter has its own narrower generic-review allowlist. No blanket
+# review adapter has its own narrower generic-review allowlist. The B.3a
+# mechanics binder may import only the graph snapshot, graph contract,
+# semantic-profile contract, and canonical hashing surface. No blanket
 # allowance exists for dungeonmind.application.* or any repository /
 # infrastructure / service / agent.
 DND_ALLOWED_KERNEL_MODULES = {
@@ -242,6 +244,15 @@ DND_REVIEW_ALLOWED_KERNEL_MODULES = DND_ALLOWED_KERNEL_MODULES | {
     "dungeonmind.contracts.identity",
 }
 
+DND_MECHANICS_MODULES = frozenset({"dungeonmind_dnd.application.threat_mechanics"})
+
+DND_MECHANICS_ALLOWED_KERNEL_MODULES = DND_ALLOWED_KERNEL_MODULES | {
+    "dungeonmind.application.graph_snapshot",
+    "dungeonmind.contracts.graph",
+    "dungeonmind.contracts.projection",
+    "dungeonmind.domain.revision_ids",
+}
+
 DND_FORBIDDEN_KERNEL_PREFIXES = (
     "dungeonmind.application.repositories",
     "dungeonmind.infrastructure",
@@ -266,6 +277,8 @@ def _dnd_module_name(path: Path) -> tuple[str, bool]:
 def _dnd_allowed_for(module_name: str) -> set[str]:
     if module_name in DND_REVIEW_MODULES:
         return DND_REVIEW_ALLOWED_KERNEL_MODULES
+    if module_name in DND_MECHANICS_MODULES:
+        return DND_MECHANICS_ALLOWED_KERNEL_MODULES
     if module_name in DND_PLANNING_MODULES:
         return DND_PLANNING_ALLOWED_KERNEL_MODULES
     return DND_ALLOWED_KERNEL_MODULES

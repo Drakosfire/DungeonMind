@@ -1,0 +1,61 @@
+{
+  "schema_version": "dmdnd_threat_mechanics_hydration_v1",
+  "binding": {
+    "schema_version": "dmdnd_threat_mechanics_binding_v1",
+    "binding_id": "mechbind:872167afbc6e6a6b242c6d93036767ab",
+    "world_id": "world:synthetic-gatewatch",
+    "graph_revision_id": "rev:6e02bd224f6b5616534f10026c8b9679",
+    "graph_payload_sha256": "75dd4d9f3425e6646d9141fde1ceea48d4574057bc0b5aada32b165de978adc5",
+    "semantic_profile": {
+      "schema_version": "dm_semantic_profile_ref_v1",
+      "profile_id": "dungeonmind.dnd5e",
+      "profile_revision": "dnd5e-profile-v2",
+      "descriptor_sha256": "57de5bc922503571d781f0de00d0a26b7aabcb3c363518e269f6c7a52a6c0086"
+    },
+    "threat_vocabulary": {
+      "schema_version": "dmdnd_vocabulary_ref_v1",
+      "vocabulary_id": "dungeonmind.dnd5e.threat",
+      "vocabulary_revision": "threat-v1",
+      "catalog_sha256": "0edaeee9dc6ccb0c507e79339ce74cbea7e3734bb42ae00b4833d02ac8ea6047"
+    },
+    "object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+    "object_kind": "dnd5e:creature",
+    "threat_relationship_ids": [
+      "rel:7136b2aa4616bd0455f8fde084b5a1c0"
+    ],
+    "visibility": "gm",
+    "resource_ref": {
+      "schema_version": "dmdnd_mechanics_resource_ref_v1",
+      "ruleset_id": "dnd5e",
+      "provider_id": "fixture.dungeonmind.statblocks",
+      "resource_id": "statblock:tripod-null-calf",
+      "resource_revision": "tripod-null-calf-v1",
+      "resource_schema": "fixture_dnd5e_statblock_v1",
+      "media_type": "application/json",
+      "payload_sha256": "11e6e581606ffdd1091cf6d515c1fd4288772451a74ec14a979660acdeffd932"
+    }
+  },
+  "mechanics_payload": {
+    "schema_version": "fixture_dnd5e_statblock_v1",
+    "name": "Tripod Null-Calf",
+    "size": "large",
+    "creature_type": "aberration",
+    "armor_class": 15,
+    "hit_points": {
+      "average": 95,
+      "formula": "10d10+40"
+    },
+    "speed": {
+      "walk_ft": 30
+    },
+    "skills": {
+      "athletics": 7,
+      "perception": 5,
+      "stealth": 5
+    },
+    "encounter_role": [
+      "gate_pinner",
+      "geometry_breaker"
+    ]
+  }
+}
