@@ -7,6 +7,7 @@ following the statblocks_v1 discipline in DungeonMindServer.
 """
 
 from .contribution_review import finalize_contribution_review, load_contribution_review
+from .fictional_time import evaluate_fictional_time_query
 from .graph_snapshot import (
     GraphObjectView,
     GraphRelationshipView,
@@ -60,6 +61,7 @@ __all__ = [
     "SourceRepository",
     "UnionGraphV1SnapshotReader",
     "WorldGraphRepository",
+    "evaluate_fictional_time_query",
     "finalize_contribution_review",
     "load_contribution_review",
     "materialize_finalized_review",

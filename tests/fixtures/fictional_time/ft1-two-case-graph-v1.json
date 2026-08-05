@@ -1,0 +1,129 @@
+{
+  "revision": {
+    "schema_version": "dm_graph_revision_v1",
+    "world_id": "world:ft1-fictional-time",
+    "revision_id": "rev:79c9791e9fcab4515d4cf5f09cc61f10",
+    "parent_revision_id": null,
+    "created_at": "2026-08-04T00:00:00+00:00",
+    "operation_ids": [
+      "op:ft1-two-case-seed"
+    ],
+    "graph_schema": "dm_union_graph_v1",
+    "graph_payload_sha256": "e70eb8c7530f010469271a965df860e24f1d39148069cbddf0f6ce590444909f",
+    "status": "published"
+  },
+  "graph_payload": {
+    "world_id": "world:ft1-fictional-time",
+    "nodes": [
+      {
+        "object_id": "obj:hempholm-tree",
+        "kind": "event",
+        "label": "Grotesque tree felled",
+        "aliases": [],
+        "evidence_ref_ids": [
+          "ev:hempholm-tree-felled"
+        ]
+      },
+      {
+        "object_id": "obj:hempholm-revelry",
+        "kind": "event",
+        "label": "Evening revelry",
+        "aliases": [],
+        "evidence_ref_ids": [
+          "ev:hempholm-evening-revelry"
+        ]
+      },
+      {
+        "object_id": "obj:hempholm-root-beetle-attack",
+        "kind": "event",
+        "label": "Root-beetle attack",
+        "aliases": [],
+        "evidence_ref_ids": [
+          "ev:hempholm-root-beetle-attack"
+        ]
+      },
+      {
+        "object_id": "obj:lysandra-ironveil",
+        "kind": "npc",
+        "label": "Lysandra Ironveil __FT1A_SENTINEL_LEAK_PROBE__",
+        "aliases": [],
+        "evidence_ref_ids": [
+          "ev:lysandra-not-home-c1-c2",
+          "ev:lysandra-mireward-gate-arrival"
+        ]
+      },
+      {
+        "object_id": "obj:mireward-gate",
+        "kind": "location",
+        "label": "Mireward gate",
+        "aliases": [],
+        "evidence_ref_ids": [
+          "ev:lysandra-mireward-gate-arrival"
+        ]
+      }
+    ],
+    "relationships": [],
+    "evidence_refs": [
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:hempholm-tree-felled",
+        "source_artifact_id": "src:hempholm-session-04",
+        "source_revision_id": "srcrev:hempholm-session-04-v1",
+        "source_domain": "session_recap",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": false,
+        "locator": "Session 04 recap: party fells the grotesque tree",
+        "uri": null
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:hempholm-evening-revelry",
+        "source_artifact_id": "src:hempholm-session-04",
+        "source_revision_id": "srcrev:hempholm-session-04-v1",
+        "source_domain": "session_recap",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": false,
+        "locator": "Session 04 recap: evening revelry after the felling",
+        "uri": null
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:hempholm-root-beetle-attack",
+        "source_artifact_id": "src:hempholm-session-04",
+        "source_revision_id": "srcrev:hempholm-session-04-v1",
+        "source_domain": "session_recap",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": false,
+        "locator": "Session 04 recap: root-beetle attack after revelry",
+        "uri": null
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:lysandra-not-home-c1-c2",
+        "source_artifact_id": "src:lysandra-mireward-history",
+        "source_revision_id": "srcrev:lysandra-mireward-history-v1",
+        "source_domain": "worldbuilding",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": false,
+        "locator": "dossier span __FT1A_SENTINEL_LEAK_PROBE__: not home until S22 forced march",
+        "uri": null
+      },
+      {
+        "schema_version": "dm_evidence_ref_v1",
+        "evidence_ref_id": "ev:lysandra-mireward-gate-arrival",
+        "source_artifact_id": "src:mireward-session-22",
+        "source_revision_id": "srcrev:mireward-session-22-v1",
+        "source_domain": "session_recap",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": false,
+        "locator": "Session 22 recap: observed Mireward gate arrival",
+        "uri": null
+      }
+    ]
+  }
+}

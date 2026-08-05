@@ -221,3 +221,17 @@ class SemanticTermValidationError(PersistenceIntegrityError):
     """A graph term is malformed or not admitted by the pinned profile."""
 
     code = "semantic_term_validation_error"
+
+
+class FictionalTimeIntegrityError(DungeonMindError):
+    code = "fictional_time_integrity_error"
+
+    def __init__(self, *, reason: str, details: dict[str, Any] | None = None) -> None:
+        safe = {"reason": reason}
+        if details:
+            safe.update(details)
+        super().__init__(
+            "fictional-time query integrity validation failed",
+            details=safe,
+        )
+        self.reason = reason
