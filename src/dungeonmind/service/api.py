@@ -14,6 +14,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from ..application.fictional_time_query_service import (
+    query_fictional_time_shadow_at_revision,
+)
 from ..application.graph_snapshot import GraphSnapshotReader
 from ..application.mind_turn import Clock, MindTurnService
 from ..application.repositories import (
@@ -22,12 +25,23 @@ from ..application.repositories import (
     WorldGraphRepository,
 )
 from ..application.review_publication import publish_finalized_review
+from ..contracts.fictional_time import FictionalTimeQueryResult
+from ..contracts.fictional_time_transport import FictionalTimeShadowQueryRequest
 from ..contracts.mind_turn import MindTurnRequest, MindTurnResponse
 from ..contracts.review_publication import FinalizedReviewPublication
 from ..contracts.review_publication_transport import FinalizedReviewPublicationRequest
 from ..domain.errors import DungeonMindError, PersistenceIntegrityError
 from .demo_access import DemoAccessBinding, authorize_demo_request
-from .error_mapping import error_envelope, http_status_for, publication_error_envelope
+from .error_mapping import (
+    error_envelope,
+    fictional_time_error_envelope,
+    http_status_for,
+    publication_error_envelope,
+)
+from .fictional_time_access import (
+    FictionalTimeQueryAccessBinding,
+    authorize_fictional_time_query_request,
+)
 from .publication_access import PublicationAccessBinding, authorize_publication_request
 
 
@@ -228,6 +242,112 @@ def create_publication_app(
         return JSONResponse(
             status_code=200,
             content=publication.model_dump(mode="json"),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    return app
+
+
+class FictionalTimeQueryAppState:
+    def __init__(
+        self,
+        *,
+        world_graph_repository: WorldGraphRepository,
+        graph_reader: GraphSnapshotReader,
+        access_binding: FictionalTimeQueryAccessBinding,
+        readiness_probe: Callable[[], dict[str, Any]],
+    ) -> None:
+        self.world_graph_repository = world_graph_repository
+        self.graph_reader = graph_reader
+        self.access_binding = access_binding
+        self.readiness_probe = readiness_probe
+
+
+def create_fictional_time_query_app(
+    *,
+    world_graph_repository: WorldGraphRepository,
+    graph_reader: GraphSnapshotReader,
+    access_binding: FictionalTimeQueryAccessBinding,
+    readiness_probe: Callable[[], dict[str, Any]],
+) -> FastAPI:
+    """Create the separate bearer-gated fictional-time shadow query host."""
+
+    app = FastAPI(title="DungeonMind Fictional-Time Shadow Query", version="0.1.0")
+    app.state.fictional_time = FictionalTimeQueryAppState(
+        world_graph_repository=world_graph_repository,
+        graph_reader=graph_reader,
+        access_binding=access_binding,
+        readiness_probe=readiness_probe,
+    )
+
+    @app.exception_handler(DungeonMindError)
+    async def _dungeonmind_error(_request: Request, exc: DungeonMindError) -> JSONResponse:
+        return JSONResponse(
+            status_code=http_status_for(exc),
+            content=fictional_time_error_envelope(exc),
+        )
+
+    def _validation_envelope(errors: list[Any]) -> dict[str, Any]:
+        safe_errors = [
+            {
+                key: value
+                for key, value in error.items()
+                if key not in {"input", "ctx", "url"}
+            }
+            for error in errors
+        ]
+        return {
+            "error": {
+                "code": "request_validation_error",
+                "message": "Request validation failed.",
+                "details": {"errors": safe_errors},
+            }
+        }
+
+    @app.exception_handler(RequestValidationError)
+    async def _request_validation_error(
+        _request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=422, content=_validation_envelope(exc.errors()))
+
+    @app.exception_handler(ValidationError)
+    async def _validation_error(_request: Request, exc: ValidationError) -> JSONResponse:
+        return JSONResponse(status_code=422, content=_validation_envelope(exc.errors()))
+
+    @app.exception_handler(Exception)
+    async def _unexpected_error(_request: Request, exc: Exception) -> JSONResponse:
+        return JSONResponse(status_code=500, content=fictional_time_error_envelope(exc))
+
+    @app.get("/healthz")
+    def healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/readyz")
+    def readyz() -> dict[str, Any]:
+        state: FictionalTimeQueryAppState = app.state.fictional_time
+        return state.readiness_probe()
+
+    @app.post(
+        "/v1/fictional-time-shadow-queries",
+        response_model=FictionalTimeQueryResult,
+    )
+    def query_shadow(
+        body: FictionalTimeShadowQueryRequest, request: Request
+    ) -> JSONResponse:
+        state: FictionalTimeQueryAppState = app.state.fictional_time
+        authorized = authorize_fictional_time_query_request(
+            body,
+            authorization_header=request.headers.get("authorization"),
+            binding=state.access_binding,
+        )
+        result = query_fictional_time_shadow_at_revision(
+            authorized,
+            world_graph_repository=state.world_graph_repository,
+            graph_reader=state.graph_reader,
+        )
+        return JSONResponse(
+            status_code=200,
+            content=result.model_dump(mode="json"),
             headers={"Cache-Control": "no-store"},
         )
 

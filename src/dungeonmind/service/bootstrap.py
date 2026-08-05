@@ -34,8 +34,9 @@ from ..infrastructure.semantic_profiles import (
     FilesystemSemanticProfileRegistry,
     StaticSemanticProfileRegistry,
 )
-from .api import create_app, create_publication_app
+from .api import create_app, create_fictional_time_query_app, create_publication_app
 from .demo_access import DemoAccessBinding
+from .fictional_time_access import FictionalTimeQueryAccessBinding
 from .publication_access import PublicationAccessBinding
 
 
@@ -295,6 +296,87 @@ def create_publication_service_app() -> FastAPI:
         clock=UtcSystemClock(),
         access_binding=access_binding,
         readiness_probe=build_publication_readiness_probe(
+            bundle=bundle,
+            world_id=world_id,
+        ),
+    )
+
+
+def build_fictional_time_readiness_probe(
+    *,
+    bundle: PostgresRepositoryBundle,
+    world_id: str,
+) -> Callable[[], dict[str, Any]]:
+    """Check exact-revision read substrate without requiring a world head."""
+
+    if not world_id.strip():
+        raise ValueError("fictional-time world must be non-blank")
+
+    def probe() -> dict[str, Any]:
+        try:
+            with bundle.database.connect() as conn:
+                conn.execute("SELECT 1")
+                row = conn.execute(
+                    """
+                    SELECT 1 AS ok
+                    FROM information_schema.tables
+                    WHERE table_schema = %s
+                      AND table_name = %s
+                    """,
+                    ("dungeonmind", "graph_revisions"),
+                ).fetchone()
+        except Exception as exc:
+            if isinstance(exc, (PersistenceUnavailableError, PersistenceIntegrityError)):
+                raise
+            raise PersistenceUnavailableError(
+                "fictional-time readiness database check failed",
+                details={"reason": type(exc).__name__},
+            ) from None
+        if row is None:
+            raise PersistenceIntegrityError(
+                "fictional-time readiness tables are unavailable",
+                details={"reason": "graph_revisions_missing"},
+            )
+        return {
+            "status": "ready",
+            "world_id": world_id,
+            "request_schema": "dm_fictional_time_shadow_query_request_v1",
+            "result_schema": "dm_fictional_time_query_result_v1",
+        }
+
+    return probe
+
+
+def _require_fictional_time_world() -> str:
+    world_id = os.environ.get("DUNGEONMIND_FICTIONAL_TIME_WORLD_ID", "")
+    if not world_id.strip():
+        raise ValueError("DUNGEONMIND_FICTIONAL_TIME_WORLD_ID is required")
+    return world_id
+
+
+def _require_fictional_time_token() -> str:
+    token = os.environ.get("DUNGEONMIND_FICTIONAL_TIME_BEARER_TOKEN", "")
+    if not token.strip():
+        raise ValueError("DUNGEONMIND_FICTIONAL_TIME_BEARER_TOKEN is required")
+    return token
+
+
+def create_fictional_time_query_service_app() -> FastAPI:
+    """Uvicorn factory for the separate fictional-time shadow query host."""
+
+    world_id = _require_fictional_time_world()
+    access_binding = FictionalTimeQueryAccessBinding.from_secret(
+        world_id,
+        _require_fictional_time_token(),
+    )
+    database = PostgresDatabase(_require_publication_database_url())
+    bundle = PostgresRepositoryBundle(database)
+    graph_reader = build_configured_graph_reader()
+    return create_fictional_time_query_app(
+        world_graph_repository=bundle.world_graph,
+        graph_reader=graph_reader,
+        access_binding=access_binding,
+        readiness_probe=build_fictional_time_readiness_probe(
             bundle=bundle,
             world_id=world_id,
         ),
