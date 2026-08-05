@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from dungeonmind.application.graph_snapshot import GRAPH_SCHEMA_V3, GraphSnapshotReader
 from dungeonmind.contracts.graph import StoredGraphRevision
+from dungeonmind.contracts.projection import Admissibility
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.domain.canonical import canonical_sha256
 
@@ -433,6 +434,37 @@ def _resolver_envelope(
             if isinstance(value, DndMechanicsResourceEnvelope)
             else value
         )
+    except Exception:
+        _failure(
+            "resource_envelope_reload_validation",
+            world_id=binding.world_id,
+            graph_revision_id=binding.graph_revision_id,
+            object_id=binding.object_id,
+            binding_id=binding.binding_id,
+            resource_id=binding.resource_ref.resource_id,
+            resource_revision=binding.resource_ref.resource_revision,
+        )
+    if isinstance(data, Mapping):
+        try:
+            raw_ref = data.get("resource_ref")
+            raw_payload = data.get("mechanics_payload")
+            if isinstance(raw_ref, Mapping) and isinstance(raw_payload, dict):
+                ref = DndMechanicsResourceRef.model_validate(copy.deepcopy(raw_ref))
+                if canonical_sha256(raw_payload) != ref.payload_sha256:
+                    _failure(
+                        "resource_payload_digest_mismatch",
+                        world_id=binding.world_id,
+                        graph_revision_id=binding.graph_revision_id,
+                        object_id=binding.object_id,
+                        binding_id=binding.binding_id,
+                        resource_id=binding.resource_ref.resource_id,
+                        resource_revision=binding.resource_ref.resource_revision,
+                    )
+        except DndThreatMechanicsHydrationError:
+            raise
+        except Exception:
+            pass
+    try:
         return DndMechanicsResourceEnvelope.model_validate(copy.deepcopy(data))
     except Exception:
         _failure(
@@ -449,7 +481,7 @@ def _resolver_envelope(
 def hydrate_threat_mechanics(
     binding: DndThreatMechanicsBinding,
     *,
-    admissibility: Any,
+    admissibility: Admissibility,
     graph_revision: StoredGraphRevision,
     graph_reader: GraphSnapshotReader,
     resource_resolver: DndMechanicsResourceResolver,
@@ -460,11 +492,7 @@ def hydrate_threat_mechanics(
         DndThreatMechanicsBinding,
         reason="binding_reload_validation",
     )
-    try:
-        is_gm = str(admissibility) == "gm"
-    except Exception:
-        is_gm = False
-    if not is_gm:
+    if admissibility is not Admissibility.GM:
         _failure(
             "non_gm_admissibility",
             world_id=supplied_binding.world_id,

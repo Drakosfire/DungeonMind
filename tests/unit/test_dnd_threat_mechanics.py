@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import copy
 import json
+import traceback
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+import pytest
+from pydantic import ValidationError
 
 from dungeonmind.application.graph_snapshot import UnionGraphV3SnapshotReader
 from dungeonmind.contracts.graph import StoredGraphRevision, WorldGraphRevision
@@ -26,6 +30,7 @@ from dungeonmind_dnd.contracts.mechanics_resources import (
     DndThreatMechanicsHydration,
 )
 from dungeonmind_dnd.contracts.vocabulary import DndVocabularyRef
+from dungeonmind_dnd.domain.errors import DndThreatMechanicsHydrationError
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "dungeonmind_dnd"
 PROFILE_DESCRIPTOR = (
@@ -96,6 +101,14 @@ def _resource_ref() -> DndMechanicsResourceRef:
     return DndMechanicsResourceRef.model_validate(_json(RESOURCE_FIXTURE)["resource_ref"])
 
 
+def _resource() -> DndMechanicsResourceEnvelope:
+    return DndMechanicsResourceEnvelope.model_validate(_json(RESOURCE_FIXTURE))
+
+
+def _binding() -> DndThreatMechanicsBinding:
+    return DndThreatMechanicsBinding.model_validate(_json(BINDING_FIXTURE))
+
+
 class _Resolver:
     def __init__(self, envelope: DndMechanicsResourceEnvelope) -> None:
         self.envelope = envelope
@@ -106,6 +119,26 @@ class _Resolver:
     ) -> DndMechanicsResourceEnvelope:
         self.calls.append(resource_ref)
         return self.envelope
+
+
+def _assert_failure(
+    error: DndThreatMechanicsHydrationError,
+    *,
+    reason: str,
+    secret: str | None = None,
+) -> None:
+    assert error.details["reason"] == reason
+    assert str(error) == "D&D Threat mechanics hydration failed."
+    surfaces = (
+        str(error),
+        repr(error),
+        "".join(traceback.format_exception(error)),
+        json.dumps(error.details, sort_keys=True),
+    )
+    if secret is not None:
+        assert all(secret not in surface for surface in surfaces)
+    assert error.__cause__ is None
+    assert error.__suppress_context__ is True
 
 
 def test_complete_fixture_hashes_and_nested_defaults_are_canonical() -> None:
@@ -165,8 +198,8 @@ def test_binding_id_helper_uses_complete_nested_contract_dumps() -> None:
 
 
 def test_hydration_matches_fixture_and_resolves_once_with_isolated_payload() -> None:
-    resource = DndMechanicsResourceEnvelope.model_validate(_json(RESOURCE_FIXTURE))
-    binding = DndThreatMechanicsBinding.model_validate(_json(BINDING_FIXTURE))
+    resource = _resource()
+    binding = _binding()
     expected = DndThreatMechanicsHydration.model_validate(_json(HYDRATION_FIXTURE))
     resolver = _Resolver(resource)
 
@@ -184,3 +217,235 @@ def test_hydration_matches_fixture_and_resolves_once_with_isolated_payload() -> 
         "166dfe01ad0e2f4b57de3c74cfd50160e34a29591957f85b4a786c9f2edd6e16"
     )
     assert actual.mechanics_payload is not resource.mechanics_payload
+    actual.mechanics_payload["name"] = "mutated"
+    assert resource.mechanics_payload["name"] == "Tripod Null-Calf"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("ruleset_id", "pathfinder"),
+        ("provider_id", "Fixture.dungeonmind.statblocks"),
+        ("provider_id", "fixture:dungeonmind.statblocks"),
+        ("provider_id", "fixture.dungeonmind.statblocks."),
+        ("resource_schema", "Fixture_dnd5e_statblock_v1"),
+        ("resource_schema", "fixture:dnd5e_statblock_v1"),
+        ("resource_schema", "fixture_dnd5e_statblock_v1."),
+        ("resource_revision", "tripod-null-calf-v1."),
+    ],
+)
+def test_resource_ref_rejects_noncanonical_identity_tokens(
+    field: str, value: str
+) -> None:
+    payload = _json(RESOURCE_FIXTURE)["resource_ref"]
+    payload[field] = value
+
+    with pytest.raises(ValidationError):
+        DndMechanicsResourceRef.model_validate(payload)
+
+
+def test_resource_envelope_rejects_payload_digest_mismatch() -> None:
+    payload = _json(RESOURCE_FIXTURE)
+    payload["mechanics_payload"]["armor_class"] = 16
+
+    with pytest.raises(ValidationError):
+        DndMechanicsResourceEnvelope.model_validate(payload)
+
+
+def test_hydration_contract_rejects_payload_digest_mismatch() -> None:
+    payload = _json(HYDRATION_FIXTURE)
+    payload["mechanics_payload"]["armor_class"] = 16
+
+    with pytest.raises(ValidationError):
+        DndThreatMechanicsHydration.model_validate(payload)
+
+
+def test_binding_contract_rejects_nonderived_binding_id() -> None:
+    payload = _json(BINDING_FIXTURE)
+    payload["binding_id"] = "mechbind:" + ("0" * 32)
+
+    with pytest.raises(ValidationError):
+        DndThreatMechanicsBinding.model_validate(payload)
+
+
+def test_binding_id_helper_rejects_unsorted_or_duplicate_relationship_ids() -> None:
+    binding = _binding()
+    for relationship_ids in (
+        ["rel:z", "rel:a"],
+        ["rel:a", "rel:a"],
+        [],
+    ):
+        with pytest.raises(ValueError):
+            derive_threat_mechanics_binding_id(
+                world_id=binding.world_id,
+                graph_revision_id=binding.graph_revision_id,
+                graph_payload_sha256=binding.graph_payload_sha256,
+                semantic_profile=binding.semantic_profile,
+                threat_vocabulary=binding.threat_vocabulary,
+                object_id=binding.object_id,
+                object_kind=binding.object_kind,
+                threat_relationship_ids=relationship_ids,
+                resource_ref=binding.resource_ref,
+                visibility=binding.visibility,
+            )
+
+
+class _SpoofedAdmissibility:
+    def __str__(self) -> str:
+        return "gm"
+
+
+class _GuardedReader:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def parse(self, **_: Any) -> None:
+        self.calls += 1
+        raise AssertionError("graph parsing must not occur")
+
+
+class _GuardedResolver:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def resolve(self, _: DndMechanicsResourceRef) -> None:
+        self.calls += 1
+        raise AssertionError("resource resolution must not occur")
+
+
+def test_gm_gate_requires_enum_identity_before_graph_or_resource_access() -> None:
+    reader = _GuardedReader()
+    resolver = _GuardedResolver()
+
+    with pytest.raises(DndThreatMechanicsHydrationError) as exc_info:
+        hydrate_threat_mechanics(
+            _binding(),
+            admissibility=cast(Admissibility, _SpoofedAdmissibility()),
+            graph_revision=_stored_revision(),
+            graph_reader=cast(Any, reader),
+            resource_resolver=cast(Any, resolver),
+        )
+
+    _assert_failure(exc_info.value, reason="non_gm_admissibility")
+    assert reader.calls == 0
+    assert resolver.calls == 0
+
+
+def test_graph_payload_mutation_fails_before_reader_access() -> None:
+    stored = _stored_revision()
+    mutated_payload = copy.deepcopy(stored.graph_payload)
+    mutated_payload["nodes"][0]["label"] = "SENTINEL_GRAPH_LABEL"
+    mutated = StoredGraphRevision(
+        revision=stored.revision,
+        graph_payload=mutated_payload,
+    )
+    reader = _GuardedReader()
+
+    with pytest.raises(DndThreatMechanicsHydrationError) as exc_info:
+        derive_threat_mechanics_binding(
+            _binding().object_id,
+            _resource_ref(),
+            graph_revision=mutated,
+            graph_reader=cast(Any, reader),
+        )
+
+    _assert_failure(exc_info.value, reason="graph_payload_digest_mismatch")
+    assert reader.calls == 0
+
+
+def test_resolver_returns_none_after_exactly_one_call() -> None:
+    class _MissingResolver:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def resolve(self, _: DndMechanicsResourceRef) -> None:
+            self.calls += 1
+            return None
+
+    resolver = _MissingResolver()
+    with pytest.raises(DndThreatMechanicsHydrationError) as exc_info:
+        hydrate_threat_mechanics(
+            _binding(),
+            admissibility=Admissibility.GM,
+            graph_revision=_stored_revision(),
+            graph_reader=_reader(),
+            resource_resolver=cast(Any, resolver),
+        )
+
+    _assert_failure(exc_info.value, reason="resource_not_found")
+    assert resolver.calls == 1
+
+
+def test_resolver_resource_identity_mutation_fails_after_one_call() -> None:
+    resource = _resource()
+    changed_ref = resource.resource_ref.model_copy(
+        update={"resource_id": "statblock:other-creature"}
+    )
+    changed_resource = DndMechanicsResourceEnvelope(
+        resource_ref=changed_ref,
+        mechanics_payload=copy.deepcopy(resource.mechanics_payload),
+    )
+    resolver = _Resolver(changed_resource)
+
+    with pytest.raises(DndThreatMechanicsHydrationError) as exc_info:
+        hydrate_threat_mechanics(
+            _binding(),
+            admissibility=Admissibility.GM,
+            graph_revision=_stored_revision(),
+            graph_reader=_reader(),
+            resource_resolver=resolver,
+        )
+
+    _assert_failure(exc_info.value, reason="resource_identity_mismatch")
+    assert len(resolver.calls) == 1
+
+
+def test_resolver_payload_mutation_reports_digest_failure_after_one_call() -> None:
+    resource = _resource()
+    changed_payload = copy.deepcopy(resource.mechanics_payload)
+    changed_payload["armor_class"] = 16
+    resolver = _Resolver(
+        cast(
+            Any,
+            {
+                "schema_version": resource.schema_version,
+                "resource_ref": resource.resource_ref.model_dump(mode="json"),
+                "mechanics_payload": changed_payload,
+            },
+        )
+    )
+
+    with pytest.raises(DndThreatMechanicsHydrationError) as exc_info:
+        hydrate_threat_mechanics(
+            _binding(),
+            admissibility=Admissibility.GM,
+            graph_revision=_stored_revision(),
+            graph_reader=_reader(),
+            resource_resolver=cast(Any, resolver),
+        )
+
+    _assert_failure(exc_info.value, reason="resource_payload_digest_mismatch")
+    assert len(resolver.calls) == 1
+
+
+def test_resolver_exception_is_sanitized_and_suppressed() -> None:
+    secret = "https://provider.invalid/token=SECRET_PATH"
+
+    class _ExplodingResolver:
+        def resolve(self, _: DndMechanicsResourceRef) -> None:
+            raise RuntimeError(secret)
+
+    with pytest.raises(DndThreatMechanicsHydrationError) as exc_info:
+        hydrate_threat_mechanics(
+            _binding(),
+            admissibility=Admissibility.GM,
+            graph_revision=_stored_revision(),
+            graph_reader=_reader(),
+            resource_resolver=cast(Any, _ExplodingResolver()),
+        )
+
+    _assert_failure(
+        exc_info.value,
+        reason="resource_resolver_failure",
+        secret=secret,
+    )

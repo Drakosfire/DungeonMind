@@ -249,6 +249,7 @@ DND_MECHANICS_MODULES = frozenset({"dungeonmind_dnd.application.threat_mechanics
 DND_MECHANICS_ALLOWED_KERNEL_MODULES = DND_ALLOWED_KERNEL_MODULES | {
     "dungeonmind.application.graph_snapshot",
     "dungeonmind.contracts.graph",
+    "dungeonmind.contracts.projection",
 }
 
 DND_FORBIDDEN_KERNEL_PREFIXES = (

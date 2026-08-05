@@ -31,6 +31,10 @@ _REVISION_ID = re.compile(r"^rev:[0-9a-f]{32}$")
 _OBJECT_ID = re.compile(r"^obj:[A-Za-z0-9._:-]+$")
 _RELATIONSHIP_ID = re.compile(r"^rel:[A-Za-z0-9._:-]+$")
 _OPAQUE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+_LOWER_IDENTITY_TOKEN = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+_QUALIFIED_IDENTITY_TOKEN = re.compile(
+    r"^[a-z0-9]+:[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+)
 
 
 def _validate_opaque_token(value: str, *, field_name: str) -> str:
@@ -49,6 +53,27 @@ def _validate_opaque_token(value: str, *, field_name: str) -> str:
     return value
 
 
+def _validate_identity_token(
+    value: str,
+    *,
+    field_name: str,
+    pattern: re.Pattern[str] = _LOWER_IDENTITY_TOKEN,
+) -> str:
+    """Validate a lowercase immutable identity token, not a locator."""
+    lowered = value.casefold()
+    if not value.strip() or value != value.strip():
+        raise ValueError(f"{field_name} must be a non-blank identity token")
+    if lowered == "latest":
+        raise ValueError(f"{field_name} must not be 'latest'")
+    if "://" in value or lowered.startswith(("http:", "https:", "file:", "ftp:")):
+        raise ValueError(f"{field_name} must not be a URI")
+    if "/" in value or "\\" in value:
+        raise ValueError(f"{field_name} must not be a path")
+    if not pattern.fullmatch(value):
+        raise ValueError(f"{field_name} must be a lowercase identity token")
+    return value
+
+
 def _validate_json_payload(value: dict[str, Any]) -> dict[str, Any]:
     """Reject non-JSON payload values without echoing the rejected value."""
     try:
@@ -59,6 +84,8 @@ def _validate_json_payload(value: dict[str, Any]) -> dict[str, Any]:
 
 
 def _require_sorted_unique(values: list[str], *, field_name: str) -> list[str]:
+    if not values:
+        raise ValueError(f"{field_name} must be non-empty")
     if len(values) != len(set(values)):
         raise ValueError(f"{field_name} must be unique")
     if values != sorted(values):
@@ -74,7 +101,7 @@ class DndMechanicsResourceRef(DungeonMindModel):
     schema_version: Literal["dmdnd_mechanics_resource_ref_v1"] = (
         MECHANICS_RESOURCE_REF_SCHEMA
     )
-    ruleset_id: str = Field(min_length=1)
+    ruleset_id: Literal["dnd5e"]
     provider_id: str = Field(min_length=1)
     resource_id: str = Field(min_length=1)
     resource_revision: str = Field(min_length=1)
@@ -82,16 +109,19 @@ class DndMechanicsResourceRef(DungeonMindModel):
     media_type: Literal["application/json"] = "application/json"
     payload_sha256: str = Field(min_length=64, max_length=64)
 
-    @field_validator(
-        "ruleset_id",
-        "provider_id",
-        "resource_id",
-        "resource_revision",
-        "resource_schema",
-    )
+    @field_validator("provider_id", "resource_revision", "resource_schema")
     @classmethod
     def _validate_identity(cls, value: str, info: Any) -> str:
-        return _validate_opaque_token(value, field_name=info.field_name)
+        return _validate_identity_token(value, field_name=info.field_name)
+
+    @field_validator("resource_id")
+    @classmethod
+    def _validate_resource_id(cls, value: str) -> str:
+        return _validate_identity_token(
+            value,
+            field_name="resource_id",
+            pattern=_QUALIFIED_IDENTITY_TOKEN,
+        )
 
     @field_validator("payload_sha256")
     @classmethod
@@ -99,6 +129,67 @@ class DndMechanicsResourceRef(DungeonMindModel):
         if not _SHA256_HEX.fullmatch(value):
             raise ValueError("payload_sha256 must be exactly 64 lowercase hex characters")
         return value
+
+
+def _binding_id_material(
+    *,
+    world_id: str,
+    graph_revision_id: str,
+    graph_payload_sha256: str,
+    semantic_profile: SemanticProfileRef,
+    threat_vocabulary: DndVocabularyRef,
+    object_id: str,
+    object_kind: str,
+    threat_relationship_ids: list[str],
+    visibility: str,
+    resource_ref: DndMechanicsResourceRef,
+) -> dict[str, Any]:
+    return {
+        "schema": THREAT_MECHANICS_BINDING_SCHEMA,
+        "world_id": world_id,
+        "graph_revision_id": graph_revision_id,
+        "graph_payload_sha256": graph_payload_sha256,
+        "semantic_profile": semantic_profile.model_dump(mode="json"),
+        "threat_vocabulary": threat_vocabulary.model_dump(mode="json"),
+        "object_id": object_id,
+        "object_kind": object_kind,
+        "threat_relationship_ids": list(threat_relationship_ids),
+        "resource_ref": resource_ref.model_dump(mode="json"),
+        "visibility": visibility,
+    }
+
+
+def _derive_threat_mechanics_binding_id(
+    *,
+    world_id: str,
+    graph_revision_id: str,
+    graph_payload_sha256: str,
+    semantic_profile: SemanticProfileRef,
+    threat_vocabulary: DndVocabularyRef,
+    object_id: str,
+    object_kind: str,
+    threat_relationship_ids: list[str],
+    visibility: str,
+    resource_ref: DndMechanicsResourceRef,
+) -> str:
+    """Derive the binding ID without repairing relationship ordering."""
+    _require_sorted_unique(
+        threat_relationship_ids,
+        field_name="threat_relationship_ids",
+    )
+    material = _binding_id_material(
+        world_id=world_id,
+        graph_revision_id=graph_revision_id,
+        graph_payload_sha256=graph_payload_sha256,
+        semantic_profile=semantic_profile,
+        threat_vocabulary=threat_vocabulary,
+        object_id=object_id,
+        object_kind=object_kind,
+        threat_relationship_ids=threat_relationship_ids,
+        resource_ref=resource_ref,
+        visibility=visibility,
+    )
+    return f"mechbind:{canonical_sha256(material)[:32]}"
 
 
 class DndMechanicsResourceEnvelope(DungeonMindModel):
@@ -116,6 +207,12 @@ class DndMechanicsResourceEnvelope(DungeonMindModel):
     @classmethod
     def _validate_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
         return _validate_json_payload(value)
+
+    @model_validator(mode="after")
+    def _payload_matches_resource_ref(self) -> Self:
+        if canonical_sha256(self.mechanics_payload) != self.resource_ref.payload_sha256:
+            raise ValueError("mechanics_payload digest must match resource_ref")
+        return self
 
 
 class DndMechanicsResourceResolver(Protocol):
@@ -195,6 +292,24 @@ class DndThreatMechanicsBinding(DungeonMindModel):
             raise ValueError("resource_ref ruleset_id must be dnd5e")
         return self
 
+    @model_validator(mode="after")
+    def _binding_id_is_content_addressed(self) -> Self:
+        expected_id = _derive_threat_mechanics_binding_id(
+            world_id=self.world_id,
+            graph_revision_id=self.graph_revision_id,
+            graph_payload_sha256=self.graph_payload_sha256,
+            semantic_profile=self.semantic_profile,
+            threat_vocabulary=self.threat_vocabulary,
+            object_id=self.object_id,
+            object_kind=self.object_kind,
+            threat_relationship_ids=self.threat_relationship_ids,
+            resource_ref=self.resource_ref,
+            visibility=self.visibility,
+        )
+        if self.binding_id != expected_id:
+            raise ValueError("binding_id must match canonical binding derivation")
+        return self
+
 
 class DndThreatMechanicsHydration(DungeonMindModel):
     """Isolated, digest-verified mechanics bytes for one exact binding."""
@@ -211,6 +326,15 @@ class DndThreatMechanicsHydration(DungeonMindModel):
     @classmethod
     def _validate_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
         return _validate_json_payload(value)
+
+    @model_validator(mode="after")
+    def _payload_matches_binding(self) -> Self:
+        if (
+            canonical_sha256(self.mechanics_payload)
+            != self.binding.resource_ref.payload_sha256
+        ):
+            raise ValueError("mechanics_payload digest must match binding.resource_ref")
+        return self
 
     @property
     def mechanics_payload_sha256(self) -> str:
