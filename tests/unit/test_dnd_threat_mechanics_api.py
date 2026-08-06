@@ -63,15 +63,29 @@ class _Resolver:
         return None if self.envelope is None else self.envelope.model_copy(deep=True)
 
 
+class _CountingReader:
+    def __init__(self) -> None:
+        self.inner = _reader()
+        self.calls = 0
+
+    def parse(self, *, graph_schema: str, graph_payload: dict[str, Any]):
+        self.calls += 1
+        return self.inner.parse(
+            graph_schema=graph_schema,
+            graph_payload=graph_payload,
+        )
+
+
 def _app(
     repository: _Repository,
     resolver: _Resolver,
     *,
     readiness=None,
+    reader=None,
 ):
     return create_threat_mechanics_app(
         graph_repository=cast(Any, repository),
-        graph_reader=_reader(),
+        graph_reader=_reader() if reader is None else reader,
         resource_resolver=resolver,
         access_binding=ThreatMechanicsAccessBinding.from_secret(WORLD, SECRET),
         readiness_probe=readiness or (lambda: {"status": "ready"}),
@@ -166,6 +180,41 @@ def test_valid_bearer_then_invalid_request_hides_rejected_values() -> None:
     assert response.json()["error"]["code"] == "request_validation_error"
     assert "SENTINEL_REJECTED_REVISION" not in response.text
     assert repository.get_revision_calls == []
+    assert resolver.calls == []
+
+
+@pytest.mark.parametrize(
+    ("field_location", "sentinel"),
+    [
+        ("top-level", "TOP_LEVEL_SECRET_SENTINEL"),
+        ("nested", "NESTED_SECRET_SENTINEL"),
+    ],
+)
+def test_validation_hides_malicious_extra_keys_before_dependencies(
+    field_location: str,
+    sentinel: str,
+) -> None:
+    repository = _Repository(_stored_revision())
+    resolver = _Resolver(_resource())
+    reader = _CountingReader()
+    body = _body()
+    if field_location == "top-level":
+        body[sentinel] = "attacker-controlled"
+    else:
+        body["resource_ref"][sentinel] = "attacker-controlled"
+
+    with TestClient(_app(repository, resolver, reader=reader)) as client:
+        response = _post(client, body)
+
+    assert response.status_code == 422
+    assert response.json()["error"] == {
+        "code": "request_validation_error",
+        "message": "Request validation failed.",
+        "details": {"errors": [{"type": "request_validation_error"}]},
+    }
+    assert sentinel not in response.text
+    assert repository.get_revision_calls == []
+    assert reader.calls == 0
     assert resolver.calls == []
 
 

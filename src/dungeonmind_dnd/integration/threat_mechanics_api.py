@@ -121,18 +121,11 @@ def _error_body(
 
 
 def _validation_body(errors: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    safe_errors = [
-        {
-            key: value
-            for key, value in error.items()
-            if key not in {"input", "ctx", "url"}
-        }
-        for error in errors
-    ]
+    del errors
     return _error_body(
         "request_validation_error",
         "Request validation failed.",
-        details={"errors": safe_errors},
+        details={"errors": [{"type": "request_validation_error"}]},
     )
 
 
