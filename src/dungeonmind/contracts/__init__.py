@@ -68,6 +68,10 @@ from .fictional_time import (
     FictionalTimeStrictBeforeClaim,
     FictionalTimeUnresolvedReason,
 )
+from .fictional_time_transport import (
+    FICTIONAL_TIME_SHADOW_QUERY_REQUEST_SCHEMA,
+    FictionalTimeShadowQueryRequest,
+)
 from .graph import (
     GRAPH_HEAD_SCHEMA,
     GRAPH_REVISION_SCHEMA,
@@ -158,6 +162,7 @@ __all__ = [
     "FICTIONAL_TIME_CLAIM_BUNDLE_SCHEMA",
     "FICTIONAL_TIME_QUERY_RESULT_SCHEMA",
     "FICTIONAL_TIME_QUERY_SCHEMA",
+    "FICTIONAL_TIME_SHADOW_QUERY_REQUEST_SCHEMA",
     "FINALIZED_REVIEW_PUBLICATION_COMMAND_SCHEMA",
     "FINALIZED_REVIEW_PUBLICATION_REQUEST_SCHEMA",
     "FINALIZED_REVIEW_PUBLICATION_SCHEMA",
@@ -211,6 +216,7 @@ __all__ = [
     "FictionalTimeQueryKind",
     "FictionalTimeQueryResult",
     "FictionalTimeResultStatus",
+    "FictionalTimeShadowQueryRequest",
     "FictionalTimeStateBoundaryClaim",
     "FictionalTimeStrictBeforeClaim",
     "FictionalTimeUnresolvedReason",

@@ -10,6 +10,7 @@ from ..domain.errors import (
     ContributionReviewNotFoundError,
     DocumentNotFoundError,
     DungeonMindError,
+    FictionalTimeIntegrityError,
     FinalizedReviewPublicationOutcomeUnknownError,
     HeadNotFoundError,
     IdempotencyConflictError,
@@ -34,6 +35,7 @@ _STATUS_BY_TYPE: dict[type[BaseException], int] = {
     IdempotencyConflictError: 409,
     InvalidLifecycleTransitionError: 409,
     ContributionMaterializationError: 409,
+    FictionalTimeIntegrityError: 409,
     FinalizedReviewPublicationOutcomeUnknownError: 503,
     PersistenceUnavailableError: 503,
     PersistenceIntegrityError: 500,
@@ -56,11 +58,18 @@ _PUBLICATION_MESSAGES: dict[type[BaseException], str] = {
     ),
 }
 
+_FICTIONAL_TIME_MESSAGES: dict[type[BaseException], str] = {
+    CapabilityDeniedError: "Fictional-time query access denied.",
+    RevisionNotFoundError: "Pinned graph revision was not found.",
+    FictionalTimeIntegrityError: "Fictional-time query integrity validation failed.",
+}
+
 _DETAIL_ALLOWLIST = frozenset(
     {
         "reason",
         "world_id",
         "revision_id",
+        "object_id",
         "thread_id",
         "request_id",
         "expected",
@@ -108,14 +117,24 @@ def http_status_for(error: BaseException) -> int:
     return 500
 
 
-def _public_details(error: DungeonMindError, *, publication: bool) -> dict[str, Any]:
-    if publication and isinstance(error, ContributionMaterializationError):
+def _public_details(error: DungeonMindError, *, host: str) -> dict[str, Any]:
+    if host == "publication" and isinstance(error, ContributionMaterializationError):
         reason = error.details.get("reason")
         return (
             {"reason": reason}
             if isinstance(reason, str) and reason in _SAFE_MATERIALIZATION_REASONS
             else {}
         )
+    if host == "fictional_time" and isinstance(error, FictionalTimeIntegrityError):
+        details = error.details or {}
+        out: dict[str, Any] = {}
+        reason = details.get("reason")
+        if isinstance(reason, str):
+            out["reason"] = reason
+        object_id = details.get("object_id")
+        if isinstance(object_id, str):
+            out["object_id"] = object_id
+        return out
     if isinstance(error, (PersistenceUnavailableError, PersistenceIntegrityError)):
         details = error.details or {}
         return {
@@ -123,12 +142,24 @@ def _public_details(error: DungeonMindError, *, publication: bool) -> dict[str, 
             for key in _DETAIL_ALLOWLIST
             if key in details and isinstance(details[key], (str, int, float, bool, type(None)))
         }
+    if host == "fictional_time" and isinstance(error, RevisionNotFoundError):
+        details = error.details or {}
+        return {
+            key: details[key]
+            for key in ("world_id", "revision_id")
+            if key in details and isinstance(details[key], str)
+        }
     return dict(error.details or {})
 
 
-def _error_envelope(error: BaseException, *, publication: bool) -> dict[str, Any]:
+def _error_envelope(error: BaseException, *, host: str) -> dict[str, Any]:
     if isinstance(error, DungeonMindError):
-        messages = _PUBLICATION_MESSAGES if publication else {}
+        if host == "publication":
+            messages = _PUBLICATION_MESSAGES
+        elif host == "fictional_time":
+            messages = _FICTIONAL_TIME_MESSAGES
+        else:
+            messages = {}
         message = messages.get(type(error))
         if message is None:
             for cls, public in _PUBLIC_MESSAGES.items():
@@ -139,7 +170,7 @@ def _error_envelope(error: BaseException, *, publication: bool) -> dict[str, Any
             "error": {
                 "code": error.code,
                 "message": message if message is not None else str(error),
-                "details": _public_details(error, publication=publication),
+                "details": _public_details(error, host=host),
             }
         }
     return {
@@ -154,10 +185,16 @@ def _error_envelope(error: BaseException, *, publication: bool) -> dict[str, Any
 def error_envelope(error: BaseException) -> dict[str, Any]:
     """Map errors for the existing hosts without publication-specific wording."""
 
-    return _error_envelope(error, publication=False)
+    return _error_envelope(error, host="default")
 
 
 def publication_error_envelope(error: BaseException) -> dict[str, Any]:
     """Map errors for the finalized-review publication host."""
 
-    return _error_envelope(error, publication=True)
+    return _error_envelope(error, host="publication")
+
+
+def fictional_time_error_envelope(error: BaseException) -> dict[str, Any]:
+    """Map errors for the fictional-time shadow query host."""
+
+    return _error_envelope(error, host="fictional_time")
