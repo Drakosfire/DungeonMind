@@ -1,0 +1,16 @@
+{
+  "schema_version": "dmdnd_threat_mechanics_hydration_request_v1",
+  "world_id": "world:synthetic-gatewatch",
+  "graph_revision_id": "rev:6e02bd224f6b5616534f10026c8b9679",
+  "object_id": "obj:48e170969a2bb3980e437f7430b7b1c1",
+  "resource_ref": {
+    "schema_version": "dmdnd_mechanics_resource_ref_v1",
+    "ruleset_id": "dnd5e",
+    "provider_id": "fixture.dungeonmind.statblocks",
+    "resource_id": "statblock:tripod-null-calf",
+    "resource_revision": "tripod-null-calf-v1",
+    "resource_schema": "fixture_dnd5e_statblock_v1",
+    "media_type": "application/json",
+    "payload_sha256": "11e6e581606ffdd1091cf6d515c1fd4288772451a74ec14a979660acdeffd932"
+  }
+}
