@@ -11,6 +11,7 @@ import pytest
 
 from dungeonmind.contracts.graph import StoredGraphRevision
 from dungeonmind.domain.canonical import canonical_sha256
+from dungeonmind.domain.revision_ids import compute_revision_id
 from dungeonmind_dnd.application.threat_mechanics_transport import (
     DndThreatMechanicsTransportError,
     hydrate_threat_mechanics_request,
@@ -111,7 +112,7 @@ def test_missing_revision_is_closed_and_does_not_call_resolver() -> None:
     assert resolver.calls == []
 
 
-def test_repository_exception_is_sanitized_and_does_not_call_resolver() -> None:
+def test_unexpected_repository_exception_is_internal_and_does_not_call_resolver() -> None:
     secret = "postgresql://user:secret@db.invalid/path"
 
     class _UnavailableRepository(_Repository):
@@ -125,10 +126,45 @@ def test_repository_exception_is_sanitized_and_does_not_call_resolver() -> None:
     with pytest.raises(DndThreatMechanicsTransportError) as raised:
         _invoke(_request(), repository, resolver)
 
-    assert raised.value.reason == "graph_repository_unavailable"
+    assert raised.value.reason == "internal_error"
     assert secret not in str(raised.value)
     assert secret not in repr(raised.value)
     assert secret not in str(raised.value.details)
+    assert resolver.calls == []
+
+
+def test_valid_alternate_revision_is_rejected_before_resolver_access() -> None:
+    original = _stored_revision()
+    alternate_world = "world:alternate-gatewatch"
+    alternate_payload = copy.deepcopy(original.graph_payload)
+    alternate_payload["world_id"] = alternate_world
+    alternate_payload_sha256 = canonical_sha256(alternate_payload)
+    alternate_revision = original.revision.model_copy(
+        update={
+            "world_id": alternate_world,
+            "revision_id": compute_revision_id(
+                world_id=alternate_world,
+                parent_revision_id=original.revision.parent_revision_id,
+                operation_ids=original.revision.operation_ids,
+                graph_schema=original.revision.graph_schema,
+                graph_payload_sha256=alternate_payload_sha256,
+            ),
+            "graph_payload_sha256": alternate_payload_sha256,
+        }
+    )
+    repository = _Repository(
+        StoredGraphRevision(
+            revision=alternate_revision,
+            graph_payload=alternate_payload,
+        )
+    )
+    resolver = _Resolver(_resource())
+
+    with pytest.raises(DndThreatMechanicsTransportError) as raised:
+        _invoke(_request(), repository, resolver)
+
+    assert raised.value.reason == "threat_mechanics_binding_invalid"
+    assert len(repository.get_revision_calls) == 1
     assert resolver.calls == []
 
 

@@ -182,12 +182,7 @@ def hydrate_threat_mechanics_request(
             object_id=verified.object_id,
         )
     except Exception:
-        _failure(
-            "graph_repository_unavailable",
-            world_id=verified.world_id,
-            graph_revision_id=verified.graph_revision_id,
-            object_id=verified.object_id,
-        )
+        _failure("internal_error")
     if stored is None:
         _failure(
             "graph_revision_not_found",
@@ -203,6 +198,23 @@ def hydrate_threat_mechanics_request(
             graph_revision=stored,
             graph_reader=graph_reader,
         )
+    except DndThreatMechanicsHydrationError as error:
+        _raise_b3a_failure(error, request=verified)
+    except Exception:
+        _failure("internal_error")
+
+    if (
+        binding.world_id != verified.world_id
+        or binding.graph_revision_id != verified.graph_revision_id
+    ):
+        _failure(
+            "threat_mechanics_binding_invalid",
+            world_id=verified.world_id,
+            graph_revision_id=verified.graph_revision_id,
+            object_id=verified.object_id,
+        )
+
+    try:
         return hydrate_threat_mechanics(
             binding,
             admissibility=Admissibility.GM,

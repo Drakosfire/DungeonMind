@@ -146,7 +146,8 @@ def main(argv: list[str] | None = None) -> int:
     first, status = _post(args.base_url, body, token)
     if status != 0 or first is None:
         return status
-    if _canonical_sha256(first) != EXPECTED_HYDRATION_SHA256:
+    hydration_sha256 = _canonical_sha256(first)
+    if hydration_sha256 != EXPECTED_HYDRATION_SHA256:
         print("Hydration response digest did not match the expected fixture.", file=sys.stderr)
         return 1
     if args.verify_replay:
@@ -156,6 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         if _canonical_json(first) != _canonical_json(second):
             print("Replay response was not byte-equivalent JSON.", file=sys.stderr)
             return 1
+    print(f"hydration_sha256={hydration_sha256}")
     print(json.dumps(first, sort_keys=True))
     return 0
 

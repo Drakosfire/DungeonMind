@@ -287,6 +287,9 @@ def test_health_readiness_and_openapi_surface_are_narrow() -> None:
     with TestClient(app) as client:
         assert client.get("/healthz").json() == {"status": "ok"}
         assert client.get("/readyz").json() == {"status": "ready"}
+        docs = client.get("/docs")
+        redoc = client.get("/redoc")
+        oauth2_redirect = client.get("/docs/oauth2-redirect")
         preflight = client.options(
             PATH,
             headers={
@@ -297,8 +300,21 @@ def test_health_readiness_and_openapi_surface_are_narrow() -> None:
         schema = client.get("/openapi.json").json()
 
     assert readiness_calls == 1
+    assert docs.status_code == 404
+    assert redoc.status_code == 404
+    assert oauth2_redirect.status_code == 404
     assert preflight.headers.get("access-control-allow-origin") is None
     assert set(schema["paths"]) == {"/healthz", "/readyz", PATH}
+    route_paths = {route.path for route in app.routes}
+    assert route_paths == {"/openapi.json", "/healthz", "/readyz", PATH}
+    route_methods = {
+        route.path: set(route.methods or ())
+        for route in app.routes
+    }
+    assert route_methods[PATH] == {"POST"}
+    assert "GET" in route_methods["/healthz"]
+    assert "GET" in route_methods["/readyz"]
+    assert "GET" in route_methods["/openapi.json"]
     assert repository.get_revision_calls == []
     assert repository.get_head_calls == 0
     assert resolver.calls == []

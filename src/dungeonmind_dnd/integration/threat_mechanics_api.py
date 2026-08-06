@@ -1,5 +1,7 @@
 """Separate bearer-gated FastAPI host for exact Threat mechanics hydration."""
 
+# pyright: reportMissingImports=false
+
 from __future__ import annotations
 
 import hashlib
@@ -155,7 +157,12 @@ def create_threat_mechanics_app(
     readiness_probe: Callable[[], dict[str, Any]],
 ) -> FastAPI:
     """Create a separate, read-only, server-to-server mechanics host."""
-    app = FastAPI(title="DungeonMind D&D Threat Mechanics", version="0.1.0")
+    app = FastAPI(
+        title="DungeonMind D&D Threat Mechanics",
+        version="0.1.0",
+        docs_url=None,
+        redoc_url=None,
+    )
     app.state.threat_mechanics = _ThreatMechanicsAppState(
         graph_repository=graph_repository,
         graph_reader=graph_reader,

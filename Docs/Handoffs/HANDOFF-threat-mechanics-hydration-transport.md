@@ -207,6 +207,7 @@ tests/fixtures/dungeonmind_dnd/tripod-null-calf-threat-mechanics-request-v1.json
 tests/unit/test_dnd_threat_mechanics_transport_contract.py
 tests/unit/test_dnd_threat_mechanics_transport_service.py
 tests/unit/test_dnd_threat_mechanics_api.py
+tests/unit/test_dnd_threat_mechanics_client.py
 tests/integration/test_dnd_threat_mechanics_api.py
 tests/unit/test_import_boundaries.py
 ```
