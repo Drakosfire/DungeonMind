@@ -36,6 +36,10 @@ from .mechanics_resources import (
     DndThreatMechanicsBinding,
     DndThreatMechanicsHydration,
 )
+from .mechanics_transport import (
+    THREAT_MECHANICS_HYDRATION_REQUEST_SCHEMA,
+    DndThreatMechanicsHydrationRequest,
+)
 from .vocabulary import (
     SEMANTIC_VOCABULARY_SCHEMA,
     VOCABULARY_REF_SCHEMA,
@@ -57,6 +61,7 @@ __all__ = [
     "THREAT_CANDIDATE_PACKET_SCHEMA",
     "THREAT_CONTRIBUTION_PLAN_SCHEMA",
     "THREAT_MECHANICS_BINDING_SCHEMA",
+    "THREAT_MECHANICS_HYDRATION_REQUEST_SCHEMA",
     "THREAT_MECHANICS_HYDRATION_SCHEMA",
     "VOCABULARY_REF_SCHEMA",
     "DndCandidateContractModel",
@@ -79,6 +84,7 @@ __all__ = [
     "DndThreatContributionPlan",
     "DndThreatMechanicsBinding",
     "DndThreatMechanicsHydration",
+    "DndThreatMechanicsHydrationRequest",
     "DndThreatPlanStatus",
     "DndVocabularyObjectKind",
     "DndVocabularyPredicate",
