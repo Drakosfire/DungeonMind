@@ -174,7 +174,7 @@ def test_exact_provider_miss_is_one_call_and_returns_none(status_code: int) -> N
 
 
 @pytest.mark.parametrize("status_code", [302, 401, 403, 408, 409, 422, 429, 500, 503])
-def test_non_miss_status_is_one_shot_and_sanitized(status_code: int) -> None:
+def test_non_miss_status_is_one_shot_and_sanitized(status_code: int, caplog) -> None:
     redirect_target_calls: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -199,6 +199,7 @@ def test_non_miss_status_is_one_shot_and_sanitized(status_code: int) -> None:
     assert len(calls) == 1
     assert redirect_target_calls == []
     assert all(SECRET not in surface for surface in _error_surfaces(error))
+    assert SECRET not in caplog.text
     assert error.__cause__ is None
     assert error.__context__ is None
 
