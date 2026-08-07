@@ -338,3 +338,93 @@ Play surface-shell work that is purely visual/routing may proceed independently 
 - Named next slice: Buddy conformance bridge mission only
 
 **Implementation note:** keep world-object semantics + hostility-independent exact mechanics attachment atomic in one implementation PR unless the diff proves unexpectedly large. Prefer not to split into a long micro-PR chain before Play can consume the corrected substrate.
+
+---
+
+## §11 Implementation handback — 2026-08-07
+
+**Status:** COMPLETE (implementation branch; awaiting PR review)
+
+### Repository identity
+
+| Field | Value |
+| --- | --- |
+| Repo | `Drakosfire/DungeonMind` |
+| Base SHA | `9b40c76f15a9934a7c0868a4522a30d44d24545e` (#22 merge / `main`) |
+| Branch | `dnd/world-object-mechanics-reanchor-implementation` |
+| Predecessors | Buddy #515 merged `46d3677d…` (`NOT_READY_FOR_BRIDGE`); DM #22 merged `9b40c76f…` |
+| Buddy main | `46d3677d9ade0b7a83ab2cb07d2b6c635fb50f40` |
+
+### Nine freeze answers
+
+| # | Answer |
+| --- | --- |
+| 1 | Peer kinds under `world-object-v1`: `dnd5e:threat`, `dnd5e:npc`, `dnd5e:player_character` (+ retained peers) |
+| 2 | `dnd5e:threatens` remains contextual; expanded domains; never defines Threat identity or mechanics eligibility |
+| 3 | `DndWorldObjectMechanicsBinding` (`dmdnd_world_object_mechanics_binding_v1`) retains full exactness; **vocabulary pin on generic binding (Decision A)**; no `threat_relationship_ids` |
+| 4 | `DndStatblockMechanicsAttachment` with content-addressed `attachment_id` from `binding_id+role+phase_key+variant_label`; requires exact PR #21 statblock resource via shared predicate |
+| 5 | PC kind valid; not eligible for world-object mechanics binding; no CharacterRevision invented |
+| 6 | Superseded for new work: v2+threat-v1 as *historical*; new pins `dnd5e-profile-v3` + `world-object-v1` (old bytes unchanged) |
+| 7 | Bridge must map Threat/NPC/PC → kinds; `uses_statblock` → mechanics binding + attachment (`attachment_id`/role/phase/variant); never → `threatens` |
+| 8 | Zero/one/many; same resource may specialize many times; enumerate by `attachment_id`; CombatantSeed selection = later consumer |
+| 9 | `dnd5e:creature` remains peer kind (Option A); intentionally non-mechanics-bearing under v3 (does not fall through to B.3a) |
+
+### Exact semantic artifacts
+
+| Artifact | ID / revision | Digest |
+| --- | --- | --- |
+| Profile v3 | `dungeonmind.dnd5e` / `dnd5e-profile-v3` | `2199e8fb96e917c22718e6aec59cbbf55a37ee81575e1bcf16ce13fae0393496` |
+| Vocabulary | `dungeonmind.dnd5e.world_object` / `world-object-v1` | `7cc3b285611ed13eb01e0cdc8a963cfa0bea3130abe0ce816204ab67186cb880` |
+| Profile v1 (unchanged) | `dnd5e-profile-v1` | `582851c0fc41897fff5a57a4fd6dd7fb7078b865315a30bc21552c82e7596967` |
+| Profile v2 (unchanged) | `dnd5e-profile-v2` | `57de5bc922503571d781f0de00d0a26b7aabcb3c363518e269f6c7a52a6c0086` |
+| threat-v1 (unchanged) | `threat-v1` | `0edaeee9dc6ccb0c507e79339ce74cbea7e3734bb42ae00b4833d02ac8ea6047` |
+
+### Exact mechanics contract
+
+- Schema: `dmdnd_world_object_mechanics_binding_v1`
+- Eligible kinds: `dnd5e:threat`, `dnd5e:npc`
+- Binding ID material: schema + world_id + graph_revision_id + graph_payload_sha256 + semantic_profile + world_object_vocabulary + object_id + object_kind + visibility + resource_ref
+- Hydration: `hydrate_world_object_mechanics` (transport-neutral; no new HTTP route)
+- Statblock specialization schema: `dmdnd_statblock_mechanics_attachment_v1`
+- Attachment ID material: exact `binding_id` + `role` + `phase_key` + `variant_label` (Buddy string grammar; no trim)
+- Statblock resource gate: shared `is_exact_dungeonmind_statblock_resource_ref` (PR #21 identity)
+- Enumeration: `enumerate_statblock_mechanics_attachments` (no first-winner; uniqueness on `attachment_id`)
+
+### Compatibility evidence
+
+- Old profile/vocab raw bytes pinned (`V1_RAW_SHA256` / `V2_RAW_SHA256` / `THREAT_VOCAB_RAW_SHA256`)
+- B.3a golden binding fixture still validates and hydrates
+- Import boundaries extended only for `world_object_mechanics` under existing mechanics allowlist
+
+### New proof matrix
+
+| Fixture | Result |
+| --- | --- |
+| A Threat + mechanics + zero threatens | PASS |
+| B NPC + mechanics + zero threatens | PASS |
+| C Threat + threatens + zero mechanics | PASS (axes independent) |
+| D NPC + threatens remains NPC | PASS |
+| E multiple attachments no first-winner | PASS |
+| Same resource as primary + alternate | PASS (distinct `attachment_id`) |
+| Same resource as two phase keys | PASS |
+| `variant_label` round-trip / identity | PASS |
+| Buddy `phase_key=" enraged "` preserved | PASS |
+| Buddy `variant_label=""` preserved | PASS |
+| Buddy `variant_label=" night raid "` preserved | PASS |
+| Duplicate specialization rejected | PASS |
+| Generic D&D resource ≠ statblock attachment | PASS |
+| F PlayerCharacter identity, no invented mechanics | PASS (`object_kind_not_eligible`) |
+| G historical B.3a | PASS |
+| v3 creature intentionally non-mechanics-bearing | PASS |
+| Adversarial forged binding / digest mismatch | PASS |
+| Published raw bytes pinned | PASS |
+
+### Named successor
+
+```text
+STATBLOCK: adapt exact DungeonBuddy world-object/mechanics identity into the re-anchored DungeonMind D&D contract
+```
+
+### Remains false
+
+Buddy→DM production mapping; shadow hydration; authority promotion; Play CombatSourceLocator; PC mechanics cutover; new generic mechanics HTTP endpoint; demolition of Buddy hydration.

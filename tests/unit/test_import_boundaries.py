@@ -244,7 +244,12 @@ DND_REVIEW_ALLOWED_KERNEL_MODULES = DND_ALLOWED_KERNEL_MODULES | {
     "dungeonmind.contracts.identity",
 }
 
-DND_MECHANICS_MODULES = frozenset({"dungeonmind_dnd.application.threat_mechanics"})
+DND_MECHANICS_MODULES = frozenset(
+    {
+        "dungeonmind_dnd.application.threat_mechanics",
+        "dungeonmind_dnd.application.world_object_mechanics",
+    }
+)
 
 DND_MECHANICS_ALLOWED_KERNEL_MODULES = DND_ALLOWED_KERNEL_MODULES | {
     "dungeonmind.application.graph_snapshot",

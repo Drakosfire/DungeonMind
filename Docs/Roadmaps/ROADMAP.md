@@ -442,14 +442,21 @@ scheduled, and none may be smuggled into an unrelated PR.
   expose the already-proven terminal publication/recovery seam to an external
   caller. Transport must not add a pending lifecycle, second confirmation,
   identity-ledger append, or product-specific authority.
-- **B.3 — Threat mechanics-resource binding** — approved Threat graph
+- **B.3a — Threat mechanics-resource binding** ✅ — approved Threat graph
   identity → exact external statblock/mechanics resource ref →
-  revision/digest pin → profile-owned hydration contract. Mechanics stay
-  outside the graph body. Only after a Threat identity can be durably
-  published.
+  revision/digest pin → profile-owned hydration contract (historical
+  `dnd5e-profile-v2` / `threat-v1` path; hostility-gated).
+- **World-object mechanics re-anchor (ADR-0013)** ✅ — additive
+  `dnd5e-profile-v3` / `world-object-v1` with persistent Threat/NPC/PC kinds
+  and hostility-independent exact mechanics attachment (zero/one/many
+  statblock roles). Transport, Buddy bridge, shadow, and Play remain
+  successors.
 - **DungeonMindDnD further concrete semantics** — additional D&D
-  vocabulary slices (classification, mechanics), owned by the profile
-  package and landed only when demanded by a real consumer.
+  vocabulary slices, owned by the profile package and landed only when
+  demanded by a real consumer.
+- **Buddy → DungeonMind conformance bridge** — adapt exact Buddy
+  world-object/mechanics identity into the re-anchored D&D contract
+  (fixture/test-backed first; not live shadow).
 - **Profile interpretation layer** — anything beyond admit/reject
   (taxonomy reasoning, cross-profile mapping), only after a concrete
   second-system pressure proves what abstraction is needed.

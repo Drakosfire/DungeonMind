@@ -6,6 +6,7 @@ from .errors import (
     DndError,
     DndThreatMechanicsHydrationError,
     DndVocabularyIntegrityError,
+    DndWorldObjectMechanicsHydrationError,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "DndError",
     "DndThreatMechanicsHydrationError",
     "DndVocabularyIntegrityError",
+    "DndWorldObjectMechanicsHydrationError",
 ]
