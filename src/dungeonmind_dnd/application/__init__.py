@@ -20,6 +20,7 @@ from .threat_mechanics import (
     derive_threat_mechanics_binding_id,
     hydrate_threat_mechanics,
 )
+from .threat_mechanics_transport import hydrate_threat_mechanics_request
 
 __all__ = [
     "build_threat_contribution_review_intent",
@@ -27,6 +28,7 @@ __all__ = [
     "derive_threat_mechanics_binding",
     "derive_threat_mechanics_binding_id",
     "hydrate_threat_mechanics",
+    "hydrate_threat_mechanics_request",
     "load_builtin_threat_vocabulary",
     "parse_threat_candidate_packet",
     "plan_threat_candidate_contribution",

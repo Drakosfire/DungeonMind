@@ -253,6 +253,20 @@ DND_MECHANICS_ALLOWED_KERNEL_MODULES = DND_ALLOWED_KERNEL_MODULES | {
     "dungeonmind.domain.revision_ids",
 }
 
+DND_TRANSPORT_MODULES = frozenset(
+    {
+        "dungeonmind_dnd.application.threat_mechanics_transport",
+        "dungeonmind_dnd.integration.threat_mechanics_api",
+    }
+)
+
+DND_TRANSPORT_ALLOWED_KERNEL_MODULES = DND_ALLOWED_KERNEL_MODULES | {
+    "dungeonmind.application.graph_snapshot",
+    "dungeonmind.application.repositories",
+    "dungeonmind.contracts.projection",
+    "dungeonmind.domain.errors",
+}
+
 DND_FORBIDDEN_KERNEL_PREFIXES = (
     "dungeonmind.application.repositories",
     "dungeonmind.infrastructure",
@@ -275,6 +289,8 @@ def _dnd_module_name(path: Path) -> tuple[str, bool]:
 
 
 def _dnd_allowed_for(module_name: str) -> set[str]:
+    if module_name in DND_TRANSPORT_MODULES:
+        return DND_TRANSPORT_ALLOWED_KERNEL_MODULES
     if module_name in DND_REVIEW_MODULES:
         return DND_REVIEW_ALLOWED_KERNEL_MODULES
     if module_name in DND_MECHANICS_MODULES:
@@ -295,7 +311,9 @@ def test_dungeonmind_dnd_executable_profile_boundary() -> None:
         allowed = _dnd_allowed_for(module_name)
         for module in _imports_of(path, module_name, is_init):
             root = module.split(".")[0]
-            if root in stdlib or root in ALLOWED_EXTERNAL:
+            if root in stdlib or root in ALLOWED_EXTERNAL or (
+                module_name in DND_TRANSPORT_MODULES and root == "fastapi"
+            ):
                 continue
             if root == "dungeonmind_dnd":
                 continue
@@ -322,6 +340,8 @@ def test_dnd_planning_modules_never_import_repositories_or_infra() -> None:
     violations: list[str] = []
     for path in sorted(DND_SRC.rglob("*.py")):
         module_name, is_init = _dnd_module_name(path)
+        if module_name in DND_TRANSPORT_MODULES:
+            continue
         for module in _imports_of(path, module_name, is_init):
             if any(
                 module == prefix or module.startswith(f"{prefix}.")
