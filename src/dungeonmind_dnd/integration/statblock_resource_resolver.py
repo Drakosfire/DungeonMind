@@ -81,6 +81,8 @@ def _normalize_base_url(value: str) -> str:
     if not isinstance(value, str):
         raise _invalid_config() from None
     cleaned = value.strip()
+    parsed = None
+    invalid = False
     try:
         parsed = urlparse(cleaned)
         has_host = bool(parsed.hostname)
@@ -94,10 +96,12 @@ def _normalize_base_url(value: str) -> str:
             or has_credentials
             or has_forbidden_suffix
         ):
-            raise ValueError
+            invalid = True
         # Accessing port rejects malformed ports without exposing the value.
         _ = parsed.port
     except (TypeError, ValueError):
+        invalid = True
+    if invalid or parsed is None:
         raise _invalid_config() from None
     return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
 
@@ -124,9 +128,12 @@ def _normalize_timeout(value: float) -> float:
 def _parse_timeout(value: str | None) -> float:
     if value is None or not value.strip():
         return STATBLOCKS_DEFAULT_TIMEOUT_SECONDS
+    parsed: float | None = None
     try:
         parsed = float(value.strip())
     except (TypeError, ValueError):
+        parsed = None
+    if parsed is None:
         raise _invalid_config() from None
     return _normalize_timeout(parsed)
 
@@ -200,7 +207,7 @@ def _observed_mechanics_payload(
 ) -> Any:
     canonical_definition = provider_response.get("canonical_definition")
     if not isinstance(canonical_definition, str):
-        return canonical_definition
+        return None
     try:
         return json.loads(canonical_definition)
     except (TypeError, ValueError):
