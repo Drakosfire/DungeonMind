@@ -87,8 +87,9 @@ class _Repository:
 
 
 class _ProviderServer:
-    def __init__(self, body: bytes) -> None:
+    def __init__(self, body: bytes, *, status_code: int = 200) -> None:
         self.body = body
+        self.status_code = status_code
         self.calls: list[dict[str, str]] = []
         owner = self
 
@@ -105,7 +106,7 @@ class _ProviderServer:
                     self.send_response(404)
                     self.end_headers()
                     return
-                self.send_response(200)
+                self.send_response(owner.status_code)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(owner.body)))
                 self.end_headers()
@@ -207,6 +208,63 @@ def test_repeated_exact_posts_are_isolated_and_uncached() -> None:
     assert len(repository.get_revision_calls) == 2
     assert repository.get_head_calls == 0
     assert len(provider.calls) == 2
+
+
+@pytest.mark.parametrize(
+    ("status_code", "provider_body", "expected_status", "expected_code"),
+    [
+        (
+            404,
+            b"provider miss secret sentinel",
+            404,
+            "mechanics_resource_not_found",
+        ),
+        (
+            410,
+            b"provider gone secret sentinel",
+            404,
+            "mechanics_resource_not_found",
+        ),
+        (
+            503,
+            b"provider failure secret sentinel",
+            503,
+            "mechanics_resource_unavailable",
+        ),
+        (
+            200,
+            b'{"diagnostic":NaN}',
+            503,
+            "mechanics_resource_unavailable",
+        ),
+    ],
+)
+def test_provider_miss_and_unavailable_paths_are_exact_and_sanitized(
+    status_code: int,
+    provider_body: bytes,
+    expected_status: int,
+    expected_code: str,
+) -> None:
+    repository = _Repository(_stored_revision())
+    with _ProviderServer(provider_body, status_code=status_code) as provider:
+        resolver = _resolver(provider)
+        try:
+            with TestClient(_app(repository, resolver)) as client:
+                response = _post(client)
+        finally:
+            resolver.close()
+
+    assert response.status_code == expected_status
+    assert response.json()["error"]["code"] == expected_code
+    assert "secret sentinel" not in response.text
+    assert repository.get_revision_calls == [(WORLD_ID, REVISION_ID)]
+    assert repository.get_head_calls == 0
+    assert len(provider.calls) == 1
+    assert provider.calls[0] == {
+        "method": "GET",
+        "path": PATH,
+        "authorization": PROVIDER_KEY,
+    }
 
 
 @pytest.mark.parametrize(

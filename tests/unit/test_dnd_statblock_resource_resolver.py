@@ -72,10 +72,13 @@ def _resolver(
         calls.append(request)
         return handler(request)
 
-    client = httpx.Client(transport=httpx.MockTransport(recording_handler))
+    resolver = DndStatblockResourceResolver(
+        config=_config(),
+        http_transport=httpx.MockTransport(recording_handler),
+    )
     return (
-        DndStatblockResourceResolver(config=_config(), http_client=client),
-        client,
+        resolver,
+        resolver._client,
         calls,
     )
 
@@ -252,6 +255,40 @@ def test_invalid_response_body_is_closed_without_echoing_body(body: bytes) -> No
     assert all(SECRET not in surface for surface in _error_surfaces(error))
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"diagnostic":NaN}',
+        b'{"canonical_definition":"{}","canonical_definition":"{}"}',
+        json.dumps(
+            {"canonical_definition": '{"diagnostic":NaN}'},
+            separators=(",", ":"),
+        ).encode("utf-8"),
+        json.dumps(
+            {
+                "canonical_definition": (
+                    '{"identity":{"name":"Ironhide Brute"},'
+                    '"identity":{"name":"ignored"}}'
+                )
+            },
+            separators=(",", ":"),
+        ).encode("utf-8"),
+    ],
+)
+def test_strict_json_rejects_non_finite_constants_and_duplicate_keys(
+    body: bytes,
+) -> None:
+    resolver, client, calls = _resolver(lambda _: httpx.Response(200, content=body))
+    try:
+        with pytest.raises(DndStatblockResourceResolverError) as raised:
+            resolver.resolve(_resource_ref())
+    finally:
+        client.close()
+
+    assert raised.value.category == "resolver_response_invalid"
+    assert len(calls) == 1
+
+
 def test_invalid_canonical_definition_is_not_repaired() -> None:
     resolver, client, calls = _resolver(
         lambda _: httpx.Response(
@@ -366,6 +403,14 @@ def test_configuration_is_frozen_redacted_and_uses_grounded_default() -> None:
     assert SECRET not in repr(config)
     with pytest.raises((AttributeError, TypeError)):
         config.base_url = "https://changed.invalid"
+
+
+def test_resolver_owned_client_disables_ambient_proxy_discovery() -> None:
+    _, client, _ = _resolver(lambda _: httpx.Response(404))
+    try:
+        assert client._trust_env is False
+    finally:
+        client.close()
 
 
 def test_repeated_resolution_is_fresh_and_observed_mapping_is_isolated() -> None:

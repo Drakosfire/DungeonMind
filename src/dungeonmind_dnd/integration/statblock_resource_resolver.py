@@ -16,7 +16,7 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
 from urllib.parse import urlparse
 
 import httpx
@@ -138,6 +138,34 @@ def _parse_timeout(value: str | None) -> float:
     return _normalize_timeout(parsed)
 
 
+class _StrictJsonViolation(ValueError):
+    """Raised when JSON uses non-standard constants or duplicate object keys."""
+
+
+def _reject_non_finite_constant(value: str) -> NoReturn:
+    del value
+    raise _StrictJsonViolation("non-finite JSON constants are not permitted")
+
+
+def _reject_duplicate_keys(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _StrictJsonViolation("duplicate JSON object keys are not permitted")
+        result[key] = value
+    return result
+
+
+def _strict_json_loads(value: str | bytes) -> Any:
+    return json.loads(
+        value,
+        object_pairs_hook=_reject_duplicate_keys,
+        parse_constant=_reject_non_finite_constant,
+    )
+
+
 @dataclass(frozen=True, slots=True, repr=False)
 class DndStatblockResourceResolverConfig:
     """Frozen provider endpoint configuration with a redacted representation."""
@@ -209,7 +237,9 @@ def _observed_mechanics_payload(
     if not isinstance(canonical_definition, str):
         return None
     try:
-        return json.loads(canonical_definition)
+        return _strict_json_loads(canonical_definition)
+    except _StrictJsonViolation:
+        raise
     except (TypeError, ValueError):
         return canonical_definition
 
@@ -274,17 +304,18 @@ class DndStatblockResourceResolver:
         self,
         *,
         config: DndStatblockResourceResolverConfig | None = None,
-        http_client: httpx.Client | None = None,
+        http_transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._config = (
             config
             if config is not None
             else load_dnd_statblock_resource_resolver_config()
         )
-        self._owns_client = http_client is None
-        self._client = http_client or httpx.Client(
+        self._client = httpx.Client(
+            transport=http_transport,
             timeout=self._config.timeout_seconds,
             follow_redirects=False,
+            trust_env=False,
         )
 
     @property
@@ -292,8 +323,7 @@ class DndStatblockResourceResolver:
         return self._config
 
     def close(self) -> None:
-        if self._owns_client:
-            self._client.close()
+        self._client.close()
 
     def __enter__(self) -> DndStatblockResourceResolver:
         return self
@@ -336,13 +366,16 @@ class DndStatblockResourceResolver:
                         decoded: Any = None
                         decoded_ok = True
                         try:
-                            decoded = json.loads(body)
+                            decoded = _strict_json_loads(body)
                         except (TypeError, ValueError):
                             decoded_ok = False
                         if not decoded_ok or not isinstance(decoded, Mapping):
                             failure = _resolver_failure("resolver_response_invalid")
                         else:
-                            result = _observed_envelope(decoded)
+                            try:
+                                result = _observed_envelope(decoded)
+                            except _StrictJsonViolation:
+                                failure = _resolver_failure("resolver_response_invalid")
         except httpx.TimeoutException:
             failure = _resolver_failure("resolver_unavailable")
         except httpx.HTTPError:
