@@ -666,7 +666,8 @@ Tracker or authority update needed:
 - PR #20 merged predecessor SHA: `c9849e2123589679beba2c063e197342962dd67a`
 - `git rev-parse origin/main`: `c9849e2123589679beba2c063e197342962dd67a`
 - `git merge-base origin/main HEAD` before this handback commit: `c9849e2123589679beba2c063e197342962dd67a`
-- Implementation head before the handback commit: `11668d3bb71d7a8cac18251d9a1f2683cd8a1675`
+- Implementation head before this review-cycle handback update:
+  `0829d4c7e319406ad90aff6b8f45101cf876790c`
 
 The branch was created from the merged `origin/main` SHA before any resolver
 code commit. The predecessor B.3a and PR #20 production files are unchanged.
@@ -694,13 +695,14 @@ existing B.3a and PR #20 authority boundaries.
 5. `c78b89c test(statblock): compose resolver through exact Threat hydration`
 6. `11668d3 test(statblock): prove resolver log sanitization`
 7. This handback commit: `docs(statblock): complete resolver handback`
+8. `0829d4c fix(statblock): remove public transport injection`
+9. This review-cycle handback update: `docs(statblock): refresh resolver evidence`
 
 ### Changed paths and focused cumulative diff
 
-Against `c9849e2123589679beba2c063e197342962dd67a`, the implementation
-cumulative diff before this handback is 6 paths, 1,872 insertions, and 3
-deletions. This handback appends the required evidence to the same handoff
-path:
+Against `c9849e2123589679beba2c063e197342962dd67a`, the current cumulative
+diff is 6 paths, 2,309 insertions, and no deletions. This review-cycle handback
+appends the required evidence to the same handoff path:
 
 ```text
 Docs/Handoffs/HANDOFF-exact-statblock-resource-resolver.md
@@ -778,7 +780,10 @@ Exact B.3a ref:
 - **E5:** 302, 401, 403, 408, 409, 422, 429, 500, and 503 each make one
   request and produce `resolver_unavailable`. Connect and read timeout
   failures are also one-shot. Redirect target calls remain zero. Error text,
-  repr, details, cause, and context contain no secret.
+  repr, details, cause, and context contain no secret. The public resolver
+  constructor owns the constrained client with `trust_env=False`; a real
+  hostile proxy loopback receives zero calls while the provider receives one
+  exact GET.
 - **E6:** Declared oversized bodies fail before reading content. Streamed
   bodies stop after the first chunk beyond one MiB; no partial envelope is
   returned.
@@ -798,7 +803,9 @@ Exact B.3a ref:
   and zero head reads.
 - **E11:** Core no-extra import checks pass without `httpx` loaded. Only the
   concrete integration module is allowed to own the optional `httpx` import;
-  import-boundary tests pass.
+  import-boundary tests pass. The public constructor has no transport
+  injection; focused unit tests use only the module-private `MockTransport`
+  seam.
 - **E12:** The cumulative diff is the six-path allowlist above. No persistence,
   discovery, retry, cache, UI, graph mapping, Buddy code, bootstrap, route,
   registry, or durable format was added.
@@ -825,9 +832,9 @@ uv sync --locked --extra api --extra postgres
 uv run pyright src/dungeonmind_dnd/integration/statblock_resource_resolver.py
   passed: 0 errors, 0 warnings, 0 informations.
 uv run pytest -q tests/unit/test_dnd_statblock_resource_resolver.py
-  passed: 36 tests.
+  passed: 40 tests.
 uv run pytest -q tests/integration/test_dnd_statblock_resource_resolver.py
-  passed: 8 tests.
+  passed: 13 tests.
 uv run pytest -q -m integration
   passed; database-backed tests skipped because DUNGEONMIND_DATABASE_URL was unset.
 uv run pytest -q -m "not integration"
