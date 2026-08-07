@@ -656,3 +656,220 @@ Affected observable paths or ownership layers:
 Proposed successor slice:
 Tracker or authority update needed:
 ```
+
+## §10 Implementation handback
+
+### Merge base and PR
+
+- Resolver PR: https://github.com/Drakosfire/DungeonMind/pull/21
+- Branch: `statblock/dungeonmind-statblock-resource-resolver`
+- PR #20 merged predecessor SHA: `c9849e2123589679beba2c063e197342962dd67a`
+- `git rev-parse origin/main`: `c9849e2123589679beba2c063e197342962dd67a`
+- `git merge-base origin/main HEAD` before this handback commit: `c9849e2123589679beba2c063e197342962dd67a`
+- Implementation head before the handback commit: `11668d3bb71d7a8cac18251d9a1f2683cd8a1675`
+
+The branch was created from the merged `origin/main` SHA before any resolver
+code commit. The predecessor B.3a and PR #20 production files are unchanged.
+
+### Mission and merge-ready invariant
+
+An authorized DungeonMind mechanics host can resolve one exact accepted
+DungeonMind statblock revision so the existing B.3a/PR #20 hydration seam can
+serve real content-addressed mechanics rather than fixture-only resources.
+
+Merge-ready invariant: One supported `DndMechanicsResourceRef` causes at most
+one bounded, authenticated, non-redirecting GET for its exact provider
+resource and revision; the resolver returns only an unmodified observed
+resource identity plus the provider’s canonical mechanics object, while
+misses, transport failures, response disagreements, secrets, retries,
+locators, current-head inference, and fallback remain closed under the
+existing B.3a and PR #20 authority boundaries.
+
+### Nano commits
+
+1. `51c8cec docs(statblock): add exact resource resolver handoff`
+2. `12fd09c feat(statblock): add exact statblock resource resolver contract`
+3. `be54a88 feat(statblock): resolve one exact provider revision without fallback`
+4. `72a3e76 test(statblock): prove provider disagreement and transport boundaries`
+5. `c78b89c test(statblock): compose resolver through exact Threat hydration`
+6. `11668d3 test(statblock): prove resolver log sanitization`
+7. This handback commit: `docs(statblock): complete resolver handback`
+
+### Changed paths and focused cumulative diff
+
+Against `c9849e2123589679beba2c063e197342962dd67a`, the implementation
+cumulative diff before this handback is 6 paths, 1,872 insertions, and 3
+deletions. This handback appends the required evidence to the same handoff
+path:
+
+```text
+Docs/Handoffs/HANDOFF-exact-statblock-resource-resolver.md
+src/dungeonmind_dnd/integration/statblock_resource_resolver.py
+tests/fixtures/dungeonmind_dnd/dungeonmind-statblock-exact-revision-v1.json
+tests/integration/test_dnd_statblock_resource_resolver.py
+tests/unit/test_dnd_statblock_resource_resolver.py
+tests/unit/test_import_boundaries.py
+```
+
+No path outside §4 changed. No `pyproject.toml`, `uv.lock`, migration, CI,
+kernel, B.3a, or PR #20 production file changed.
+
+### Provider grounding and exact constants
+
+Source: `Drakosfire/DungeonMindBuddy`, commit
+`d50d0c3a45761376185d36fb39ae3a098a5b8cfc`, path
+`tests/fixtures/statblocks/v1/exact-revision-response.json`.
+
+Copied fixture SHA-256:
+
+```text
+9e777f98e25e8a1a4e38f01b08528bfd2a4c99e9bf3d00853cfb0a88b8221c6c
+```
+
+The copied file and source file hashes are byte-identical. Parsed
+`canonical_definition` under DungeonMind canonical JSON produces:
+
+```text
+935dc0dff1ac7cc8405836764469761a1d26e9e38dd74cd856b8a8a31f0fae51
+```
+
+```text
+provider_id:       dungeonmind.statblocks
+resource_schema:   dungeonmind.dungeonbuddy-statblocks.1.0.0
+media_type:        application/json
+resource_id:       ^sb_[a-z0-9]+$
+resource_revision: ^rev_[a-z0-9]+$
+route:             /api/internal/dungeonbuddy/v1/statblocks/{resource_id}/revisions/{resource_revision}
+auth header:       X-DungeonBuddy-Internal-Key
+default timeout:   90.0 seconds
+maximum timeout:   120.0 seconds
+maximum body:      1,048,576 bytes
+redirects:         refused; follow_redirects=False
+```
+
+Exact B.3a ref:
+
+```json
+{
+  "schema_version": "dmdnd_mechanics_resource_ref_v1",
+  "ruleset_id": "dnd5e",
+  "provider_id": "dungeonmind.statblocks",
+  "resource_id": "sb_000001",
+  "resource_revision": "rev_000002",
+  "resource_schema": "dungeonmind.dungeonbuddy-statblocks.1.0.0",
+  "media_type": "application/json",
+  "payload_sha256": "935dc0dff1ac7cc8405836764469761a1d26e9e38dd74cd856b8a8a31f0fae51"
+}
+```
+
+### E1–E12 evidence
+
+- **E1:** The captured response maps the real Buddy fields without vocabulary
+  rewriting. The raw copied-file hash and parsed payload digest are recorded
+  above; `definition` is absent from the observed envelope.
+- **E2:** URL credentials, path, query, fragment, unsupported scheme, blank
+  key, NaN, zero, and over-limit timeout configurations fail before HTTP.
+  Config repr and resolver errors redact the internal key.
+- **E3:** Four unsupported refs make zero HTTP calls. 404 and 410 each make
+  exactly one GET and return `None`; no list, search, or fallback exists.
+- **E4:** The valid fixture makes one GET with the exact method, path, and
+  `X-DungeonBuddy-Internal-Key`; observed identity and parsed canonical
+  mechanics match the exact ref and digest.
+- **E5:** 302, 401, 403, 408, 409, 422, 429, 500, and 503 each make one
+  request and produce `resolver_unavailable`. Connect and read timeout
+  failures are also one-shot. Redirect target calls remain zero. Error text,
+  repr, details, cause, and context contain no secret.
+- **E6:** Declared oversized bodies fail before reading content. Streamed
+  bodies stop after the first chunk beyond one MiB; no partial envelope is
+  returned.
+- **E7:** Loopback mutations of `statblock_id`, `revision_id`, and
+  `contract_version` produce PR #20 HTTP 502
+  `mechanics_resource_integrity_failure`, one provider call, and no mechanics
+  bytes in the error.
+- **E8:** Independent digest, canonical-byte, and non-object canonical JSON
+  mutations produce the same B.3a integrity failure. The request digest is
+  never substituted and changed mechanics do not appear in the error.
+- **E9:** The exact provider response hydrates through the unchanged PR #20
+  host with HTTP 200 and `Cache-Control: no-store`; one exact graph revision
+  read, one provider GET, and zero head reads. Returned mechanics hash to
+  `935dc0...`.
+- **E10:** Two identical POSTs produce isolated byte-equivalent mechanics and
+  two provider GETs; the graph repository performs two exact revision reads
+  and zero head reads.
+- **E11:** Core no-extra import checks pass without `httpx` loaded. Only the
+  concrete integration module is allowed to own the optional `httpx` import;
+  import-boundary tests pass.
+- **E12:** The cumulative diff is the six-path allowlist above. No persistence,
+  discovery, retry, cache, UI, graph mapping, Buddy code, bootstrap, route,
+  registry, or durable format was added.
+
+### Verification provenance
+
+```text
+uv sync --locked
+  passed; removed optional api/postgres packages.
+uv run ruff check .
+  passed.
+uv run pyright
+  passed: 0 errors, 0 warnings, 0 informations.
+uv run --no-dev python -c "import sys, dungeonmind; assert 'dungeonmind_dnd' not in sys.modules; assert 'httpx' not in sys.modules"
+  passed.
+uv run --no-dev python -c "import sys, dungeonmind_dnd; assert 'httpx' not in sys.modules"
+  passed.
+uv run pytest -q tests/unit/test_dnd_threat_mechanics.py tests/unit/test_dnd_threat_mechanics_transport_service.py tests/unit/test_dnd_threat_mechanics_api.py tests/unit/test_import_boundaries.py
+  passed.
+uv run pytest -q -m "not integration"
+  passed in the core no-extra environment.
+uv sync --locked --extra api --extra postgres
+  passed.
+uv run pyright src/dungeonmind_dnd/integration/statblock_resource_resolver.py
+  passed: 0 errors, 0 warnings, 0 informations.
+uv run pytest -q tests/unit/test_dnd_statblock_resource_resolver.py
+  passed: 36 tests.
+uv run pytest -q tests/integration/test_dnd_statblock_resource_resolver.py
+  passed: 8 tests.
+uv run pytest -q -m integration
+  passed; database-backed tests skipped because DUNGEONMIND_DATABASE_URL was unset.
+uv run pytest -q -m "not integration"
+  passed in the API-enabled environment.
+uv run ruff check .
+  passed.
+uv build
+  passed; source distribution and wheel built.
+git diff --check
+  passed.
+```
+
+The focused resolver command in the no-extra environment is intentionally
+skipped because its test module requires the optional `api` extra; the
+complete no-extra suite passed, and the focused resolver command passed after
+`uv sync --locked --extra api --extra postgres`. This is an environment
+qualification, not a resolver or predecessor waiver. The real loopback proof
+passed without a database.
+
+### Scope, stop conditions, and successors
+
+No stop condition was encountered. No bounded discovery exception was used.
+No PR #20/B.3a production file changed. No retry, cache, discovery,
+persistence, bootstrap, graph bridge, Buddy code, or UI was added.
+
+The named successor remains false and unclaimed:
+
+```text
+STATBLOCK: adapt published Buddy Threat identity into DungeonMind D&D profile
+```
+
+The later shadow consumer remains false and unclaimed:
+
+```text
+STATBLOCK: shadow verify Buddy Threat hydration through DungeonMind
+```
+
+The handoff constraints were retained in this checked-in document; no
+constraint was intentionally omitted or broadened.
+
+Disposition:
+
+```text
+READY_FOR_BUDDY_THREAT_IDENTITY_PROFILE_BRIDGE
+```
