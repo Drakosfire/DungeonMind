@@ -269,17 +269,6 @@ class DndStatblockMechanicsAttachment(DungeonMindModel):
             raise ValueError("attachment_id must be mechattach:<32 lowercase hex>")
         return value
 
-    @field_validator("variant_label")
-    @classmethod
-    def _validate_variant_label(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        if not value.strip() or value != value.strip():
-            raise ValueError(
-                "variant_label must be a non-blank token without surrounding whitespace"
-            )
-        return value
-
     @model_validator(mode="after")
     def _requires_exact_statblock_resource(self) -> Self:
         if not is_exact_dungeonmind_statblock_resource_ref(self.binding.resource_ref):
@@ -291,12 +280,12 @@ class DndStatblockMechanicsAttachment(DungeonMindModel):
 
     @model_validator(mode="after")
     def _phase_key_rules(self) -> Self:
+        # Match Buddy ThreatStatblockBindingV1 grammar exactly: require a
+        # non-whitespace-only phase_key when role == phase, but preserve the
+        # stored string verbatim (no trim / silent repair).
         if self.role == "phase":
-            phase_key = self.phase_key
-            if phase_key is None or not phase_key.strip():
+            if not (self.phase_key or "").strip():
                 raise ValueError("phase_key is required when role is phase")
-            if phase_key != phase_key.strip():
-                raise ValueError("phase_key must not include surrounding whitespace")
         elif self.phase_key is not None:
             raise ValueError("phase_key is only allowed when role is phase")
         return self

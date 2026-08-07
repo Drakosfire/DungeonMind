@@ -386,7 +386,7 @@ Play surface-shell work that is purely visual/routing may proceed independently 
 - Binding ID material: schema + world_id + graph_revision_id + graph_payload_sha256 + semantic_profile + world_object_vocabulary + object_id + object_kind + visibility + resource_ref
 - Hydration: `hydrate_world_object_mechanics` (transport-neutral; no new HTTP route)
 - Statblock specialization schema: `dmdnd_statblock_mechanics_attachment_v1`
-- Attachment ID material: `binding_id` + `role` + `phase_key` + `variant_label`
+- Attachment ID material: exact `binding_id` + `role` + `phase_key` + `variant_label` (Buddy string grammar; no trim)
 - Statblock resource gate: shared `is_exact_dungeonmind_statblock_resource_ref` (PR #21 identity)
 - Enumeration: `enumerate_statblock_mechanics_attachments` (no first-winner; uniqueness on `attachment_id`)
 
@@ -408,6 +408,9 @@ Play surface-shell work that is purely visual/routing may proceed independently 
 | Same resource as primary + alternate | PASS (distinct `attachment_id`) |
 | Same resource as two phase keys | PASS |
 | `variant_label` round-trip / identity | PASS |
+| Buddy `phase_key=" enraged "` preserved | PASS |
+| Buddy `variant_label=""` preserved | PASS |
+| Buddy `variant_label=" night raid "` preserved | PASS |
 | Duplicate specialization rejected | PASS |
 | Generic D&D resource ≠ statblock attachment | PASS |
 | F PlayerCharacter identity, no invented mechanics | PASS (`object_kind_not_eligible`) |

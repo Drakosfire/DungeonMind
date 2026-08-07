@@ -592,6 +592,96 @@ def test_variant_label_round_trip_and_identity() -> None:
     assert unlabeled.attachment_id != labeled.attachment_id
 
 
+def test_buddy_compatible_phase_key_whitespace_preserved() -> None:
+    """Buddy accepts phase_key with surrounding whitespace; do not trim."""
+    stored = _stored_revision(_fixture_e_graph())
+    envelope = _exact_statblock_resource_for(
+        "sb_phasews01", "rev_phasews01", {"name": "Whitespace Phase", "hp": 90}
+    )
+    binding = derive_world_object_mechanics_binding(
+        "obj:threat-a",
+        envelope.resource_ref,
+        graph_revision=stored,
+        graph_reader=_reader(),
+    )
+    phase_key = " enraged "
+    attachment = _attachment(binding, role="phase", phase_key=phase_key)
+    assert attachment.phase_key == " enraged "
+    restored = DndStatblockMechanicsAttachment.model_validate(
+        attachment.model_dump(mode="json")
+    )
+    assert restored.phase_key == " enraged "
+    assert restored.attachment_id == derive_statblock_mechanics_attachment_id(
+        binding_id=binding.binding_id,
+        role="phase",
+        phase_key=" enraged ",
+        variant_label=None,
+    )
+    trimmed = _attachment(binding, role="phase", phase_key="enraged")
+    assert trimmed.attachment_id != attachment.attachment_id
+
+
+def test_buddy_compatible_empty_variant_label_preserved() -> None:
+    """Buddy accepts variant_label=''; preserve exactly in identity."""
+    stored = _stored_revision(_fixture_e_graph())
+    envelope = _exact_statblock_resource_for(
+        "sb_varempty1", "rev_varempty1", {"name": "Empty Variant", "hp": 11}
+    )
+    binding = derive_world_object_mechanics_binding(
+        "obj:threat-a",
+        envelope.resource_ref,
+        graph_revision=stored,
+        graph_reader=_reader(),
+    )
+    empty = _attachment(binding, role="alternate", variant_label="")
+    assert empty.variant_label == ""
+    restored = DndStatblockMechanicsAttachment.model_validate(
+        empty.model_dump(mode="json")
+    )
+    assert restored.variant_label == ""
+    assert restored.attachment_id == derive_statblock_mechanics_attachment_id(
+        binding_id=binding.binding_id,
+        role="alternate",
+        phase_key=None,
+        variant_label="",
+    )
+    absent = _attachment(binding, role="alternate", variant_label=None)
+    assert absent.attachment_id != empty.attachment_id
+
+
+def test_buddy_compatible_variant_label_whitespace_preserved() -> None:
+    """Buddy accepts variant_label with surrounding whitespace; do not trim."""
+    stored = _stored_revision(_fixture_e_graph())
+    envelope = _exact_statblock_resource_for(
+        "sb_varws0001", "rev_varws0001", {"name": "WS Variant", "hp": 22}
+    )
+    binding = derive_world_object_mechanics_binding(
+        "obj:threat-a",
+        envelope.resource_ref,
+        graph_revision=stored,
+        graph_reader=_reader(),
+    )
+    variant_label = " night raid "
+    labeled = _attachment(
+        binding, role="encounter_variant", variant_label=variant_label
+    )
+    assert labeled.variant_label == " night raid "
+    restored = DndStatblockMechanicsAttachment.model_validate(
+        labeled.model_dump(mode="json")
+    )
+    assert restored.variant_label == " night raid "
+    assert restored.attachment_id == derive_statblock_mechanics_attachment_id(
+        binding_id=binding.binding_id,
+        role="encounter_variant",
+        phase_key=None,
+        variant_label=" night raid ",
+    )
+    trimmed = _attachment(
+        binding, role="encounter_variant", variant_label="night raid"
+    )
+    assert trimmed.attachment_id != labeled.attachment_id
+
+
 def test_duplicate_statblock_specialization_rejected() -> None:
     stored = _stored_revision(_fixture_e_graph())
     envelope = _exact_statblock_resource_for(

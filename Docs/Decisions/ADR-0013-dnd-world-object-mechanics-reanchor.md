@@ -97,15 +97,18 @@ world-object mechanics binding with:
 attachment_id          # content-addressed from binding_id + role + phase_key + variant_label
 binding
 role ∈ {primary, alternate, phase, encounter_variant, template}
-phase_key required iff role == phase
-variant_label optional qualifier (Buddy-compatible)
+phase_key required iff role == phase (Buddy grammar: strip() nonempty only;
+no stored-string trim; surrounding whitespace preserved)
+variant_label optional ``str | None`` exactly as Buddy (including ``""`` and
+surrounding whitespace; no nonblank restriction)
 ```
 
 The generic binding remains role-free and may be shared by multiple
 specializations of the same exact resource. Distinct
 `(role, phase_key, variant_label)` tuples produce distinct
-`attachment_id` values; enumeration uniqueness rejects identical
-specializations, not shared generic `binding_id` values.
+`attachment_id` values using the **exact** stored strings (no silent
+repair/trim); enumeration uniqueness rejects identical specializations,
+not shared generic `binding_id` values.
 
 `DndStatblockMechanicsAttachment` additionally requires
 `binding.resource_ref` to match the exact PR #21 DungeonMind statblock
