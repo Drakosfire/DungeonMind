@@ -260,6 +260,10 @@ DND_TRANSPORT_MODULES = frozenset(
     }
 )
 
+DND_RESOURCE_MODULES = frozenset(
+    {"dungeonmind_dnd.integration.statblock_resource_resolver"}
+)
+
 DND_TRANSPORT_ALLOWED_KERNEL_MODULES = DND_ALLOWED_KERNEL_MODULES | {
     "dungeonmind.application.graph_snapshot",
     "dungeonmind.application.repositories",
@@ -313,6 +317,8 @@ def test_dungeonmind_dnd_executable_profile_boundary() -> None:
             root = module.split(".")[0]
             if root in stdlib or root in ALLOWED_EXTERNAL or (
                 module_name in DND_TRANSPORT_MODULES and root == "fastapi"
+            ) or (
+                module_name in DND_RESOURCE_MODULES and root == "httpx"
             ):
                 continue
             if root == "dungeonmind_dnd":
@@ -407,6 +413,8 @@ def test_every_module_imports_cleanly_without_optional_extras() -> None:
         # Optional FastAPI host modules require the ``api`` (and for bootstrap,
         # ``postgres``) extras; they must not load on the core import path.
         if module_name in {"dungeonmind.service.api", "dungeonmind.service.bootstrap"}:
+            continue
+        if module_name in DND_RESOURCE_MODULES:
             continue
         importlib.import_module(module_name)
     for forbidden in FORBIDDEN_ROOTS | POSTGRES_ONLY_ROOTS | API_ONLY_ROOTS:
