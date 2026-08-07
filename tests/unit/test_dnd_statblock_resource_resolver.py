@@ -27,6 +27,7 @@ from dungeonmind_dnd.integration.statblock_resource_resolver import (
     DndStatblockResourceResolver,
     DndStatblockResourceResolverConfig,
     DndStatblockResourceResolverError,
+    _resolver_for_test,
     load_dnd_statblock_resource_resolver_config,
 )
 
@@ -65,22 +66,18 @@ def _config() -> DndStatblockResourceResolverConfig:
 
 def _resolver(
     handler,
-) -> tuple[DndStatblockResourceResolver, httpx.Client, list[httpx.Request]]:
+) -> tuple[DndStatblockResourceResolver, list[httpx.Request]]:
     calls: list[httpx.Request] = []
 
     def recording_handler(request: httpx.Request) -> httpx.Response:
         calls.append(request)
         return handler(request)
 
-    resolver = DndStatblockResourceResolver(
+    resolver = _resolver_for_test(
         config=_config(),
-        http_transport=httpx.MockTransport(recording_handler),
+        transport=httpx.MockTransport(recording_handler),
     )
-    return (
-        resolver,
-        resolver._client,
-        calls,
-    )
+    return resolver, calls
 
 
 def _error_surfaces(error: DndStatblockResourceResolverError) -> tuple[str, ...]:
@@ -93,13 +90,13 @@ def _error_surfaces(error: DndStatblockResourceResolverError) -> tuple[str, ...]
 
 def test_captured_fixture_maps_observed_fields_and_canonical_mechanics() -> None:
     provider_response = _provider_response()
-    resolver, client, calls = _resolver(
+    resolver, calls = _resolver(
         lambda _: httpx.Response(200, json=provider_response)
     )
     try:
         observed = resolver.resolve(_resource_ref())
     finally:
-        client.close()
+        resolver.close()
 
     assert observed is not None
     assert observed["schema_version"] == "dmdnd_mechanics_resource_envelope_v1"
@@ -130,13 +127,13 @@ def test_captured_fixture_maps_observed_fields_and_canonical_mechanics() -> None
 def test_fixture_mapping_does_not_use_definition_fallback() -> None:
     provider_response = _provider_response()
     provider_response["definition"]["identity"]["name"] = SECRET
-    resolver, client, _ = _resolver(
+    resolver, _ = _resolver(
         lambda _: httpx.Response(200, json=provider_response)
     )
     try:
         observed = resolver.resolve(_resource_ref())
     finally:
-        client.close()
+        resolver.close()
 
     assert observed is not None
     assert observed["mechanics_payload"]["identity"]["name"] == "Ironhide Brute"
@@ -153,26 +150,26 @@ def test_fixture_mapping_does_not_use_definition_fallback() -> None:
     ],
 )
 def test_unsupported_ref_is_a_zero_call_miss(field: str, value: str) -> None:
-    resolver, client, calls = _resolver(
+    resolver, calls = _resolver(
         lambda _: pytest.fail("unsupported ref must not issue HTTP")
     )
     ref = _resource_ref().model_copy(update={field: value})
     try:
         assert resolver.resolve(ref) is None
     finally:
-        client.close()
+        resolver.close()
     assert calls == []
 
 
 @pytest.mark.parametrize("status_code", [404, 410])
 def test_exact_provider_miss_is_one_call_and_returns_none(status_code: int) -> None:
-    resolver, client, calls = _resolver(
+    resolver, calls = _resolver(
         lambda _: httpx.Response(status_code, text="secret provider body")
     )
     try:
         assert resolver.resolve(_resource_ref()) is None
     finally:
-        client.close()
+        resolver.close()
     assert len(calls) == 1
 
 
@@ -189,12 +186,12 @@ def test_non_miss_status_is_one_shot_and_sanitized(status_code: int, caplog) -> 
             text=SECRET,
         )
 
-    resolver, client, calls = _resolver(handler)
+    resolver, calls = _resolver(handler)
     try:
         with pytest.raises(DndStatblockResourceResolverError) as raised:
             resolver.resolve(_resource_ref())
     finally:
-        client.close()
+        resolver.close()
 
     error = raised.value
     assert error.category == "resolver_unavailable"
@@ -217,12 +214,12 @@ def test_non_miss_status_is_one_shot_and_sanitized(status_code: int, caplog) -> 
 def test_transport_failure_is_one_shot_and_has_no_exception_context(
     transport_error: httpx.HTTPError,
 ) -> None:
-    resolver, client, calls = _resolver(lambda _: (_ for _ in ()).throw(transport_error))
+    resolver, calls = _resolver(lambda _: (_ for _ in ()).throw(transport_error))
     try:
         with pytest.raises(DndStatblockResourceResolverError) as raised:
             resolver.resolve(_resource_ref())
     finally:
-        client.close()
+        resolver.close()
 
     error = raised.value
     assert error.category == "resolver_unavailable"
@@ -240,14 +237,14 @@ def test_transport_failure_is_one_shot_and_has_no_exception_context(
     ],
 )
 def test_invalid_response_body_is_closed_without_echoing_body(body: bytes) -> None:
-    resolver, client, calls = _resolver(
+    resolver, calls = _resolver(
         lambda _: httpx.Response(200, content=body)
     )
     try:
         with pytest.raises(DndStatblockResourceResolverError) as raised:
             resolver.resolve(_resource_ref())
     finally:
-        client.close()
+        resolver.close()
 
     error = raised.value
     assert error.category == "resolver_response_invalid"
@@ -278,19 +275,19 @@ def test_invalid_response_body_is_closed_without_echoing_body(body: bytes) -> No
 def test_strict_json_rejects_non_finite_constants_and_duplicate_keys(
     body: bytes,
 ) -> None:
-    resolver, client, calls = _resolver(lambda _: httpx.Response(200, content=body))
+    resolver, calls = _resolver(lambda _: httpx.Response(200, content=body))
     try:
         with pytest.raises(DndStatblockResourceResolverError) as raised:
             resolver.resolve(_resource_ref())
     finally:
-        client.close()
+        resolver.close()
 
     assert raised.value.category == "resolver_response_invalid"
     assert len(calls) == 1
 
 
 def test_invalid_canonical_definition_is_not_repaired() -> None:
-    resolver, client, calls = _resolver(
+    resolver, calls = _resolver(
         lambda _: httpx.Response(
             200,
             json={"canonical_definition": "not-json"},
@@ -299,7 +296,7 @@ def test_invalid_canonical_definition_is_not_repaired() -> None:
     try:
         observed = resolver.resolve(_resource_ref())
     finally:
-        client.close()
+        resolver.close()
 
     assert observed is not None
     assert observed["mechanics_payload"] == "not-json"
@@ -307,7 +304,7 @@ def test_invalid_canonical_definition_is_not_repaired() -> None:
 
 
 def test_declared_oversized_response_is_rejected_before_reading_body() -> None:
-    resolver, client, calls = _resolver(
+    resolver, calls = _resolver(
         lambda _: httpx.Response(
             200,
             headers={"content-length": str(STATBLOCKS_MAX_RESPONSE_BODY_BYTES + 1)},
@@ -318,7 +315,7 @@ def test_declared_oversized_response_is_rejected_before_reading_body() -> None:
         with pytest.raises(DndStatblockResourceResolverError) as raised:
             resolver.resolve(_resource_ref())
     finally:
-        client.close()
+        resolver.close()
 
     assert raised.value.category == "resolver_response_invalid"
     assert len(calls) == 1
@@ -339,14 +336,14 @@ def test_streamed_oversized_response_stops_after_first_over_limit_chunk() -> Non
             yielded.append(b"should-not-be-read")
             yield b"should-not-be-read"
 
-    resolver, client, calls = _resolver(
+    resolver, calls = _resolver(
         lambda _: httpx.Response(200, stream=OversizedStream())
     )
     try:
         with pytest.raises(DndStatblockResourceResolverError) as raised:
             resolver.resolve(_resource_ref())
     finally:
-        client.close()
+        resolver.close()
 
     assert raised.value.category == "resolver_response_invalid"
     assert len(calls) == 1
@@ -405,17 +402,9 @@ def test_configuration_is_frozen_redacted_and_uses_grounded_default() -> None:
         config.base_url = "https://changed.invalid"
 
 
-def test_resolver_owned_client_disables_ambient_proxy_discovery() -> None:
-    _, client, _ = _resolver(lambda _: httpx.Response(404))
-    try:
-        assert client._trust_env is False
-    finally:
-        client.close()
-
-
 def test_repeated_resolution_is_fresh_and_observed_mapping_is_isolated() -> None:
     provider_response = _provider_response()
-    resolver, client, calls = _resolver(
+    resolver, calls = _resolver(
         lambda _: httpx.Response(200, json=provider_response)
     )
     try:
@@ -424,7 +413,7 @@ def test_repeated_resolution_is_fresh_and_observed_mapping_is_isolated() -> None
         first["mechanics_payload"]["identity"]["name"] = "client mutation"
         second = resolver.resolve(_resource_ref())
     finally:
-        client.close()
+        resolver.close()
 
     assert second is not None
     assert second["mechanics_payload"]["identity"]["name"] == "Ironhide Brute"

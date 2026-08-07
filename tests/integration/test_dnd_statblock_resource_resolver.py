@@ -136,6 +136,50 @@ class _ProviderServer:
         self.thread.join(timeout=5)
 
 
+class _ProxyServer:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, str]] = []
+        owner = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                owner.calls.append(
+                    {
+                        "method": self.command,
+                        "path": self.path,
+                        "authorization": self.headers.get(STATBLOCKS_AUTH_HEADER, ""),
+                    }
+                )
+                body = b"hostile proxy secret sentinel"
+                self.send_response(502)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, _format: str, *_args: object) -> None:
+                return
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(
+            target=self.server.serve_forever,
+            name="statblock-proxy-loopback",
+            daemon=True,
+        )
+
+    @property
+    def base_url(self) -> str:
+        return f"http://127.0.0.1:{self.server.server_port}"
+
+    def __enter__(self) -> _ProxyServer:
+        self.thread.start()
+        return self
+
+    def __exit__(self, _exc_type: object, _exc: object, _traceback: object) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=5)
+
+
 def _app(repository: _Repository, resolver: DndStatblockResourceResolver):
     return create_threat_mechanics_app(
         graph_repository=cast(Any, repository),
@@ -188,6 +232,38 @@ def test_exact_provider_response_hydrates_through_pr20_loopback() -> None:
             "authorization": PROVIDER_KEY,
         }
     ]
+
+
+def test_public_resolver_bypasses_ambient_proxy_and_reaches_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = _Repository(_stored_revision())
+    with _ProviderServer(FIXTURE.read_bytes()) as provider, _ProxyServer() as proxy:
+        for variable in (
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+        ):
+            monkeypatch.setenv(variable, proxy.base_url)
+        monkeypatch.setenv("NO_PROXY", "")
+        monkeypatch.setenv("no_proxy", "")
+
+        resolver = _resolver(provider)
+        try:
+            with TestClient(_app(repository, resolver)) as client:
+                response = _post(client)
+        finally:
+            resolver.close()
+
+    assert response.status_code == 200
+    assert canonical_sha256(response.json()["mechanics_payload"]) == EXPECTED_DIGEST
+    assert repository.get_revision_calls == [(WORLD_ID, REVISION_ID)]
+    assert repository.get_head_calls == 0
+    assert len(provider.calls) == 1
+    assert proxy.calls == []
 
 
 def test_repeated_exact_posts_are_isolated_and_uncached() -> None:

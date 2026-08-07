@@ -304,7 +304,6 @@ class DndStatblockResourceResolver:
         self,
         *,
         config: DndStatblockResourceResolverConfig | None = None,
-        http_transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._config = (
             config
@@ -312,7 +311,6 @@ class DndStatblockResourceResolver:
             else load_dnd_statblock_resource_resolver_config()
         )
         self._client = httpx.Client(
-            transport=http_transport,
             timeout=self._config.timeout_seconds,
             follow_redirects=False,
             trust_env=False,
@@ -386,6 +384,23 @@ class DndStatblockResourceResolver:
         if failure is not None:
             raise failure from None
         return result
+
+
+def _resolver_for_test(
+    *,
+    config: DndStatblockResourceResolverConfig,
+    transport: httpx.MockTransport,
+) -> DndStatblockResourceResolver:
+    """Build a resolver with a MockTransport for focused unit tests only."""
+    resolver = object.__new__(DndStatblockResourceResolver)
+    resolver._config = config
+    resolver._client = httpx.Client(
+        transport=transport,
+        timeout=config.timeout_seconds,
+        follow_redirects=False,
+        trust_env=False,
+    )
+    return resolver
 
 
 __all__ = [
