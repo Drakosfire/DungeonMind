@@ -1,6 +1,7 @@
 # ADR-0005 — Executable D&D profile boundary and Threat semantics
 
-**Status:** Accepted (PR B.2c)
+**Status:** Accepted (PR B.2c); partially reopened by ADR-0013 for persistent
+Threat kind + hostility-independent mechanics under new immutable revisions.
 **Date:** 2026-08-01
 **Deciders:** B.2c implementing agent, per operator dispatch
 **Supersedes:** none

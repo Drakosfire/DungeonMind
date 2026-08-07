@@ -49,6 +49,17 @@ from .vocabulary import (
     DndVocabularyRef,
     qualified_term_namespace,
 )
+from .world_object_mechanics import (
+    STATBLOCK_MECHANICS_ATTACHMENT_SCHEMA,
+    WORLD_OBJECT_MECHANICS_BINDING_SCHEMA,
+    WORLD_OBJECT_MECHANICS_ELIGIBLE_KINDS,
+    WORLD_OBJECT_MECHANICS_HYDRATION_SCHEMA,
+    DndStatblockMechanicsAttachment,
+    DndWorldObjectMechanicsBinding,
+    DndWorldObjectMechanicsHydration,
+    derive_world_object_mechanics_binding_id,
+    enumerate_statblock_mechanics_attachments,
+)
 
 __all__ = [
     "FORBIDDEN_THREAT_KIND",
@@ -58,12 +69,16 @@ __all__ = [
     "RELATIONSHIP_CANDIDATE_SCHEMA",
     "REQUIRED_THREAT_PREDICATE",
     "SEMANTIC_VOCABULARY_SCHEMA",
+    "STATBLOCK_MECHANICS_ATTACHMENT_SCHEMA",
     "THREAT_CANDIDATE_PACKET_SCHEMA",
     "THREAT_CONTRIBUTION_PLAN_SCHEMA",
     "THREAT_MECHANICS_BINDING_SCHEMA",
     "THREAT_MECHANICS_HYDRATION_REQUEST_SCHEMA",
     "THREAT_MECHANICS_HYDRATION_SCHEMA",
     "VOCABULARY_REF_SCHEMA",
+    "WORLD_OBJECT_MECHANICS_BINDING_SCHEMA",
+    "WORLD_OBJECT_MECHANICS_ELIGIBLE_KINDS",
+    "WORLD_OBJECT_MECHANICS_HYDRATION_SCHEMA",
     "DndCandidateContractModel",
     "DndCandidateEndpointRef",
     "DndCandidateResolution",
@@ -80,6 +95,7 @@ __all__ = [
     "DndRelationshipPlan",
     "DndRelationshipPlanState",
     "DndSemanticVocabulary",
+    "DndStatblockMechanicsAttachment",
     "DndThreatCandidatePacket",
     "DndThreatContributionPlan",
     "DndThreatMechanicsBinding",
@@ -89,5 +105,9 @@ __all__ = [
     "DndVocabularyObjectKind",
     "DndVocabularyPredicate",
     "DndVocabularyRef",
+    "DndWorldObjectMechanicsBinding",
+    "DndWorldObjectMechanicsHydration",
+    "derive_world_object_mechanics_binding_id",
+    "enumerate_statblock_mechanics_attachments",
     "qualified_term_namespace",
 ]

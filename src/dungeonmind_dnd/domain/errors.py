@@ -63,3 +63,17 @@ class DndThreatMechanicsHydrationError(DndError):
 
     def __init__(self, *, details: dict[str, Any] | None = None) -> None:
         super().__init__(self.public_message, details=details)
+
+
+class DndWorldObjectMechanicsHydrationError(DndError):
+    """Sanitized failure at the world-object mechanics boundary.
+
+    Hostility-independent exact attachment failures use a fixed public
+    message and a closed ``reason`` vocabulary.
+    """
+
+    code = "dnd_world_object_mechanics_hydration_error"
+    public_message = "D&D world-object mechanics hydration failed."
+
+    def __init__(self, *, details: dict[str, Any] | None = None) -> None:
+        super().__init__(self.public_message, details=details)

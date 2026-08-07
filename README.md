@@ -77,8 +77,11 @@ GM `confirm_commit` authority plus a content-bound receipt, persisted as one
 superseded candidate, one active reviewed successor, and one finalized review
 record. The graph head and identity-decision ledger remain unchanged. The
 profile package remains repository-blind — no persistence, graph writes, LLM
-calls, fuzzy matching, or mechanics/statblock modeling — and Threat exists
-only as the contextual `dnd5e:threatens` relationship, never as an object kind.
+calls, or fuzzy matching. Historical Threat *candidates* still treat Threat
+as contextual `dnd5e:threatens` (ADR-0005 / `threat-v1`). ADR-0013 adds
+immutable `dnd5e-profile-v3` + `world-object-v1` so cutover work can represent
+persistent Threat/NPC/PlayerCharacter kinds and bind exact mechanics without
+hostility, while B.3a Threat mechanics remain readable for historical pins.
 
 ## Status
 

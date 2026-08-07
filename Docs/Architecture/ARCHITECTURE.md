@@ -359,8 +359,14 @@ Rules that bind this layer:
   production only. A graph may contain profile-qualified terms not produced
   by this candidate package, and candidate validation never makes a fact
   canonical.
-- **Threat is a relationship.** `dnd5e:threatens` is contextual; no
-  `dnd5e:threat` object kind exists and the candidate contract rejects one.
+- **Threat candidates treat Threat as a relationship.** Under the historical
+  `threat-v1` candidate path, `dnd5e:threatens` is contextual and the
+  candidate contract rejects `dnd5e:threat` as a kind (ADR-0005).
+- **Cutover world-object kinds (ADR-0013).** New work pins
+  `dnd5e-profile-v3` + `world-object-v1`, which admit peer kinds
+  `dnd5e:threat`, `dnd5e:npc`, and `dnd5e:player_character` alongside
+  `dnd5e:creature`. Contextual `dnd5e:threatens` remains independent from
+  Threat identity and from mechanics eligibility.
 - **Candidate identity is temporary.** Candidates carry packet-local IDs, a
   closed evidence ledger, and no stable IDs, merge outcomes, confidence,
   property bags, or write-path fields. Existing graph objects are
