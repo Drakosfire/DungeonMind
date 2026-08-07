@@ -94,9 +94,26 @@ Closed specialization `DndStatblockMechanicsAttachment` pairs one exact
 world-object mechanics binding with:
 
 ```text
+attachment_id          # content-addressed from binding_id + role + phase_key + variant_label
+binding
 role ∈ {primary, alternate, phase, encounter_variant, template}
 phase_key required iff role == phase
+variant_label optional qualifier (Buddy-compatible)
 ```
+
+The generic binding remains role-free and may be shared by multiple
+specializations of the same exact resource. Distinct
+`(role, phase_key, variant_label)` tuples produce distinct
+`attachment_id` values; enumeration uniqueness rejects identical
+specializations, not shared generic `binding_id` values.
+
+`DndStatblockMechanicsAttachment` additionally requires
+`binding.resource_ref` to match the exact PR #21 DungeonMind statblock
+identity (`dungeonmind.statblocks` /
+`dungeonmind.dungeonbuddy-statblocks.1.0.0` / `sb_*` / `rev_*`), using the
+shared `is_exact_dungeonmind_statblock_resource_ref` predicate. A valid
+generic D&D mechanics resource cannot masquerade as a statblock
+attachment.
 
 Statblock role vocabulary stays off the generic external-resource binding.
 
@@ -132,18 +149,19 @@ The later conformance bridge must map losslessly, without silent renames:
 | NPC world identity | `obj:*` with `kind=dnd5e:npc` |
 | PC world identity | `obj:*` with `kind=dnd5e:player_character` |
 | exact graph revision | `rev:*` + `graph_payload_sha256` |
-| `uses_statblock` + `ThreatStatblockBindingV1` | world-object mechanics binding + statblock attachment role/phase |
+| `uses_statblock` + `ThreatStatblockBindingV1` | world-object mechanics binding + statblock attachment (`attachment_id`, role, phase_key, variant_label) |
 | exact resource id/revision/digest | `DndMechanicsResourceRef` |
 | contextual hostility edges (if any) | optional `dnd5e:threatens` — **never** derived from `uses_statblock` |
 
 ### 8. Cardinality / roles / selection (freeze Q8)
 
 A world object may have zero, one, or many exact mechanics attachments.
-Enumeration is deterministic (stable sort by binding_id, then role, then
-phase_key). There is never implicit `first()` / `latest()` / list-order
-preference. Selecting which attachment activates a capability (e.g. Combat /
-CombatantSeed) is an explicit later domain/capability consumer decision —
-not the binding layer.
+Enumeration is deterministic (stable sort by attachment_id, then
+binding_id, then role, then phase_key / variant_label). There is never
+implicit `first()` / `latest()` / list-order preference. Selecting which
+attachment activates a capability (e.g. Combat / CombatantSeed) is an
+explicit later domain/capability consumer decision — not the binding
+layer.
 
 ### 9. `dnd5e:creature` disposition (freeze Q9)
 
@@ -151,6 +169,13 @@ not the binding layer.
 stronger persistent product identity. Threat / NPC / PlayerCharacter are
 peers, not subtypes. Predicate catalogs expand domains explicitly. No kernel
 or profile subtype interpreter.
+
+**Mechanics eligibility under v3:** `DndWorldObjectMechanicsBinding` admits
+only `dnd5e:threat` and `dnd5e:npc`. A v3 `dnd5e:creature` is intentionally
+**non-mechanics-bearing** for this revision. It does **not** fall through to
+historical B.3a (`DndThreatMechanicsBinding`), which remains hard-pinned to
+`dnd5e-profile-v2` + `threat-v1`. Creature mechanics under v3 are a named
+later semantic slice if product pressure requires them.
 
 ## What remains true from ADR-0005
 

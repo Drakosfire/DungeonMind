@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,7 +17,7 @@ from dungeonmind.application.semantic_profiles import descriptor_sha256
 from dungeonmind.contracts.graph import StoredGraphRevision, WorldGraphRevision
 from dungeonmind.contracts.projection import Admissibility
 from dungeonmind.contracts.semantic_profile import SemanticProfileDescriptor
-from dungeonmind.domain.canonical import canonical_sha256, sha256_text
+from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.revision_ids import compute_revision_id
 from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
 from dungeonmind_dnd.application.threat_candidates import load_builtin_threat_vocabulary
@@ -35,13 +36,18 @@ from dungeonmind_dnd.application.world_object_vocabulary import (
     vocabulary_sha256,
 )
 from dungeonmind_dnd.contracts.mechanics_resources import (
+    STATBLOCKS_MEDIA_TYPE,
+    STATBLOCKS_PROVIDER_ID,
+    STATBLOCKS_RESOURCE_SCHEMA,
     DndMechanicsResourceEnvelope,
     DndMechanicsResourceRef,
     DndThreatMechanicsBinding,
+    is_exact_dungeonmind_statblock_resource_ref,
 )
 from dungeonmind_dnd.contracts.world_object_mechanics import (
     DndStatblockMechanicsAttachment,
     DndWorldObjectMechanicsBinding,
+    derive_statblock_mechanics_attachment_id,
     derive_world_object_mechanics_binding_id,
     enumerate_statblock_mechanics_attachments,
 )
@@ -64,6 +70,7 @@ MATERIALIZED_GRAPH = (
     / "contribution_reviews/tripod-null-calf-materialized-world-graph-v3.json"
 )
 
+# Canonical-model digests (descriptor / vocabulary catalog hashing).
 V1_DIGEST = "582851c0fc41897fff5a57a4fd6dd7fb7078b865315a30bc21552c82e7596967"
 V2_DIGEST = "57de5bc922503571d781f0de00d0a26b7aabcb3c363518e269f6c7a52a6c0086"
 V3_DIGEST = "2199e8fb96e917c22718e6aec59cbbf55a37ee81575e1bcf16ce13fae0393496"
@@ -73,6 +80,18 @@ THREAT_VOCAB_DIGEST = (
 WORLD_OBJECT_VOCAB_DIGEST = (
     "7cc3b285611ed13eb01e0cdc8a963cfa0bea3130abe0ce816204ab67186cb880"
 )
+
+# Raw checked-in file bytes (sha256 of on-disk package-data artifacts).
+# Published semantic artifacts are immutable; these pins enforce that rule.
+V1_RAW_SHA256 = "3ad9e1b5b0affac9d87265dbff691199ed5bc011dc52069321370ee25954d45e"
+V2_RAW_SHA256 = "5949137131a08822d310fccb4b4d51e022a39c787235bd63abef57e349d73407"
+THREAT_VOCAB_RAW_SHA256 = (
+    "04f6da54b7c17689da23ae185458cc09a333fa11d660a3d09bfc9b63d37f6e13"
+)
+
+
+def _raw_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _evidence(evidence_ref_id: str) -> dict[str, Any]:
@@ -175,6 +194,7 @@ def _reader() -> UnionGraphV3SnapshotReader:
 
 
 def _resource_for(resource_id: str, payload: dict[str, Any]) -> DndMechanicsResourceEnvelope:
+    """Generic D&D mechanics fixture resource (not an exact PR #21 statblock)."""
     digest = canonical_sha256(payload)
     ref = DndMechanicsResourceRef(
         ruleset_id="dnd5e",
@@ -188,6 +208,50 @@ def _resource_for(resource_id: str, payload: dict[str, Any]) -> DndMechanicsReso
     return DndMechanicsResourceEnvelope(
         resource_ref=ref,
         mechanics_payload=payload,
+    )
+
+
+def _exact_statblock_resource_for(
+    resource_id: str,
+    revision_id: str,
+    payload: dict[str, Any],
+) -> DndMechanicsResourceEnvelope:
+    """Exact PR #21 DungeonMind statblock resource identity."""
+    digest = canonical_sha256(payload)
+    ref = DndMechanicsResourceRef(
+        ruleset_id="dnd5e",
+        provider_id=STATBLOCKS_PROVIDER_ID,
+        resource_id=resource_id,
+        resource_revision=revision_id,
+        resource_schema=STATBLOCKS_RESOURCE_SCHEMA,
+        media_type=STATBLOCKS_MEDIA_TYPE,
+        payload_sha256=digest,
+    )
+    assert is_exact_dungeonmind_statblock_resource_ref(ref)
+    return DndMechanicsResourceEnvelope(
+        resource_ref=ref,
+        mechanics_payload=payload,
+    )
+
+
+def _attachment(
+    binding: DndWorldObjectMechanicsBinding,
+    *,
+    role: str,
+    phase_key: str | None = None,
+    variant_label: str | None = None,
+) -> DndStatblockMechanicsAttachment:
+    return DndStatblockMechanicsAttachment(
+        attachment_id=derive_statblock_mechanics_attachment_id(
+            binding_id=binding.binding_id,
+            role=role,
+            phase_key=phase_key,
+            variant_label=variant_label,
+        ),
+        binding=binding,
+        role=role,  # type: ignore[arg-type]
+        phase_key=phase_key,
+        variant_label=variant_label,
     )
 
 
@@ -310,15 +374,15 @@ def _fixture_f_graph() -> dict[str, Any]:
 
 
 def test_published_profile_and_threat_vocabulary_bytes_unchanged() -> None:
+    assert _raw_sha256(V1_PATH) == V1_RAW_SHA256
+    assert _raw_sha256(V2_PATH) == V2_RAW_SHA256
+    assert _raw_sha256(THREAT_VOCAB_PATH) == THREAT_VOCAB_RAW_SHA256
     assert descriptor_sha256(
         SemanticProfileDescriptor.model_validate_json(V1_PATH.read_text())
     ) == V1_DIGEST
     assert descriptor_sha256(
         SemanticProfileDescriptor.model_validate_json(V2_PATH.read_text())
     ) == V2_DIGEST
-    assert sha256_text(THREAT_VOCAB_PATH.read_text(encoding="utf-8")) == sha256_text(
-        THREAT_VOCAB_PATH.read_text(encoding="utf-8")
-    )
     catalog = load_builtin_threat_vocabulary()
     assert vocabulary_sha256(catalog) == THREAT_VOCAB_DIGEST
     assert json.loads(BINDING_FIXTURE.read_text())["binding_id"] == (
@@ -428,10 +492,14 @@ def test_fixture_d_npc_that_threatens_remains_npc() -> None:
 
 def test_fixture_e_multiple_statblock_attachments_no_first_winner() -> None:
     stored = _stored_revision(_fixture_e_graph())
-    primary = _resource_for("statblock:threat-a-primary", {"name": "Primary", "hp": 40})
-    phase = _resource_for("statblock:threat-a-phase", {"name": "Phase", "hp": 80})
-    alternate = _resource_for(
-        "statblock:threat-a-alternate", {"name": "Alternate", "hp": 30}
+    primary = _exact_statblock_resource_for(
+        "sb_threata01", "rev_primary01", {"name": "Primary", "hp": 40}
+    )
+    phase = _exact_statblock_resource_for(
+        "sb_threata02", "rev_phase0001", {"name": "Phase", "hp": 80}
+    )
+    alternate = _exact_statblock_resource_for(
+        "sb_threata03", "rev_alternate1", {"name": "Alternate", "hp": 30}
     )
     bindings = []
     for envelope in (alternate, phase, primary):
@@ -444,25 +512,116 @@ def test_fixture_e_multiple_statblock_attachments_no_first_winner() -> None:
             )
         )
     attachments = [
-        DndStatblockMechanicsAttachment(binding=bindings[0], role="alternate"),
-        DndStatblockMechanicsAttachment(
-            binding=bindings[1], role="phase", phase_key="enraged"
-        ),
-        DndStatblockMechanicsAttachment(binding=bindings[2], role="primary"),
+        _attachment(bindings[0], role="alternate"),
+        _attachment(bindings[1], role="phase", phase_key="enraged"),
+        _attachment(bindings[2], role="primary"),
     ]
     enumerated = enumerate_statblock_mechanics_attachments(attachments)
     assert len(enumerated) == 3
     assert {item.role for item in enumerated} == {"primary", "phase", "alternate"}
     assert [item.role for item in enumerated] != ["primary"]  # not first-winner collapse
-    # Deterministic order by binding_id then role then phase_key.
     assert enumerated == sorted(
         attachments,
         key=lambda item: (
+            item.attachment_id,
             item.binding.binding_id,
             item.role,
             item.phase_key or "",
+            item.variant_label or "",
         ),
     )
+
+
+def test_same_resource_primary_and_alternate_attachments() -> None:
+    stored = _stored_revision(_fixture_e_graph())
+    envelope = _exact_statblock_resource_for(
+        "sb_shared0001", "rev_shared0001", {"name": "Shared", "hp": 50}
+    )
+    binding = derive_world_object_mechanics_binding(
+        "obj:threat-a",
+        envelope.resource_ref,
+        graph_revision=stored,
+        graph_reader=_reader(),
+    )
+    primary = _attachment(binding, role="primary")
+    alternate = _attachment(binding, role="alternate")
+    assert primary.binding.binding_id == alternate.binding.binding_id
+    assert primary.attachment_id != alternate.attachment_id
+    enumerated = enumerate_statblock_mechanics_attachments([alternate, primary])
+    assert {item.role for item in enumerated} == {"primary", "alternate"}
+
+
+def test_same_resource_two_phase_keys() -> None:
+    stored = _stored_revision(_fixture_e_graph())
+    envelope = _exact_statblock_resource_for(
+        "sb_phaseboss1", "rev_phaseboss1", {"name": "Boss", "hp": 200}
+    )
+    binding = derive_world_object_mechanics_binding(
+        "obj:threat-a",
+        envelope.resource_ref,
+        graph_revision=stored,
+        graph_reader=_reader(),
+    )
+    bloodied = _attachment(binding, role="phase", phase_key="bloodied")
+    enraged = _attachment(binding, role="phase", phase_key="enraged")
+    assert bloodied.binding.binding_id == enraged.binding.binding_id
+    assert bloodied.attachment_id != enraged.attachment_id
+    enumerated = enumerate_statblock_mechanics_attachments([enraged, bloodied])
+    assert {item.phase_key for item in enumerated} == {"bloodied", "enraged"}
+
+
+def test_variant_label_round_trip_and_identity() -> None:
+    stored = _stored_revision(_fixture_e_graph())
+    envelope = _exact_statblock_resource_for(
+        "sb_variant001", "rev_variant001", {"name": "Variant", "hp": 33}
+    )
+    binding = derive_world_object_mechanics_binding(
+        "obj:threat-a",
+        envelope.resource_ref,
+        graph_revision=stored,
+        graph_reader=_reader(),
+    )
+    labeled = _attachment(
+        binding, role="encounter_variant", variant_label="night-raid"
+    )
+    dumped = labeled.model_dump(mode="json")
+    restored = DndStatblockMechanicsAttachment.model_validate(dumped)
+    assert restored.variant_label == "night-raid"
+    assert restored.attachment_id == labeled.attachment_id
+    unlabeled = _attachment(binding, role="encounter_variant")
+    assert unlabeled.attachment_id != labeled.attachment_id
+
+
+def test_duplicate_statblock_specialization_rejected() -> None:
+    stored = _stored_revision(_fixture_e_graph())
+    envelope = _exact_statblock_resource_for(
+        "sb_dup000001", "rev_dup000001", {"name": "Dup", "hp": 10}
+    )
+    binding = derive_world_object_mechanics_binding(
+        "obj:threat-a",
+        envelope.resource_ref,
+        graph_revision=stored,
+        graph_reader=_reader(),
+    )
+    first = _attachment(binding, role="primary")
+    duplicate = _attachment(binding, role="primary")
+    assert first.attachment_id == duplicate.attachment_id
+    with pytest.raises(ValueError, match="attachment_id"):
+        enumerate_statblock_mechanics_attachments([first, duplicate])
+
+
+def test_generic_dnd_resource_cannot_masquerade_as_statblock_attachment() -> None:
+    stored = _stored_revision(_fixture_a_graph())
+    envelope = _resource_for("statblock:generic-ok", {"name": "Generic", "ac": 11})
+    assert not is_exact_dungeonmind_statblock_resource_ref(envelope.resource_ref)
+    binding = derive_world_object_mechanics_binding(
+        "obj:threat-a",
+        envelope.resource_ref,
+        graph_revision=stored,
+        graph_reader=_reader(),
+    )
+    with pytest.raises(ValidationError, match="exact DungeonMind"):
+        _attachment(binding, role="primary")
 
 
 def test_fixture_f_player_character_identity_without_invented_mechanics() -> None:
@@ -483,8 +642,12 @@ def test_fixture_f_player_character_identity_without_invented_mechanics() -> Non
     assert exc.value.details["reason"] == "object_kind_not_eligible"
 
 
-def test_creature_is_not_eligible_for_world_object_mechanics() -> None:
-    """Peer kinds: legacy creature remains on B.3a path, not the new binding."""
+def test_creature_is_intentionally_non_mechanics_bearing_under_v3() -> None:
+    """v3 dnd5e:creature is a peer kind but not eligible for world-object mechanics.
+
+    Historical B.3a remains hard-pinned to dnd5e-profile-v2 + threat-v1 and
+    does not handle v3 creatures. Creature mechanics under v3 are deferred.
+    """
     ev = [_evidence("ev:creature"), _evidence("ev:loc")]
     nodes = [
         _node("obj:loc", "dnd5e:location", label="Yard", evidence_ref_id="ev:loc"),

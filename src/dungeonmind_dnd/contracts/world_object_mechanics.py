@@ -19,6 +19,7 @@ from dungeonmind.domain.canonical import canonical_sha256
 from .mechanics_resources import (
     DndMechanicsResourceRef,
     _validate_opaque_token,
+    is_exact_dungeonmind_statblock_resource_ref,
 )
 from .vocabulary import DndVocabularyRef
 
@@ -37,6 +38,7 @@ StatblockMechanicsRole = Literal[
 
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 _BINDING_ID = re.compile(r"^mechbind:[0-9a-f]{32}$")
+_ATTACHMENT_ID = re.compile(r"^mechattach:[0-9a-f]{32}$")
 _REVISION_ID = re.compile(r"^rev:[0-9a-f]{32}$")
 _OBJECT_ID = re.compile(r"^obj:[A-Za-z0-9._:-]+$")
 
@@ -92,6 +94,39 @@ def derive_world_object_mechanics_binding_id(
         resource_ref=resource_ref,
     )
     return f"mechbind:{canonical_sha256(material)[:32]}"
+
+
+def _statblock_attachment_id_material(
+    *,
+    binding_id: str,
+    role: str,
+    phase_key: str | None,
+    variant_label: str | None,
+) -> dict[str, Any]:
+    return {
+        "schema": STATBLOCK_MECHANICS_ATTACHMENT_SCHEMA,
+        "binding_id": binding_id,
+        "role": role,
+        "phase_key": phase_key,
+        "variant_label": variant_label,
+    }
+
+
+def derive_statblock_mechanics_attachment_id(
+    *,
+    binding_id: str,
+    role: str,
+    phase_key: str | None,
+    variant_label: str | None,
+) -> str:
+    """Derive the content-addressed specialization ID (role/phase/variant)."""
+    material = _statblock_attachment_id_material(
+        binding_id=binding_id,
+        role=role,
+        phase_key=phase_key,
+        variant_label=variant_label,
+    )
+    return f"mechattach:{canonical_sha256(material)[:32]}"
 
 
 class DndWorldObjectMechanicsBinding(DungeonMindModel):
@@ -209,16 +244,50 @@ class DndWorldObjectMechanicsHydration(DungeonMindModel):
 
 
 class DndStatblockMechanicsAttachment(DungeonMindModel):
-    """Statblock specialization of one exact world-object mechanics binding."""
+    """Statblock specialization of one exact world-object mechanics binding.
+
+    The generic binding remains role-free. Role / phase / variant qualifiers
+    live here and participate in the content-addressed ``attachment_id`` so
+    the same exact resource can legitimately specialize more than once.
+    """
 
     model_config = ConfigDict(hide_input_in_errors=True)
 
     schema_version: Literal["dmdnd_statblock_mechanics_attachment_v1"] = (
         STATBLOCK_MECHANICS_ATTACHMENT_SCHEMA
     )
+    attachment_id: str
     binding: DndWorldObjectMechanicsBinding
     role: StatblockMechanicsRole
     phase_key: str | None = None
+    variant_label: str | None = None
+
+    @field_validator("attachment_id")
+    @classmethod
+    def _validate_attachment_id(cls, value: str) -> str:
+        if not _ATTACHMENT_ID.fullmatch(value):
+            raise ValueError("attachment_id must be mechattach:<32 lowercase hex>")
+        return value
+
+    @field_validator("variant_label")
+    @classmethod
+    def _validate_variant_label(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not value.strip() or value != value.strip():
+            raise ValueError(
+                "variant_label must be a non-blank token without surrounding whitespace"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _requires_exact_statblock_resource(self) -> Self:
+        if not is_exact_dungeonmind_statblock_resource_ref(self.binding.resource_ref):
+            raise ValueError(
+                "binding.resource_ref must be an exact DungeonMind "
+                "statblock-v1 resource"
+            )
+        return self
 
     @model_validator(mode="after")
     def _phase_key_rules(self) -> Self:
@@ -232,27 +301,43 @@ class DndStatblockMechanicsAttachment(DungeonMindModel):
             raise ValueError("phase_key is only allowed when role is phase")
         return self
 
+    @model_validator(mode="after")
+    def _attachment_id_matches_material(self) -> Self:
+        expected = derive_statblock_mechanics_attachment_id(
+            binding_id=self.binding.binding_id,
+            role=self.role,
+            phase_key=self.phase_key,
+            variant_label=self.variant_label,
+        )
+        if self.attachment_id != expected:
+            raise ValueError("attachment_id must match derived content address")
+        return self
+
 
 def enumerate_statblock_mechanics_attachments(
     attachments: list[DndStatblockMechanicsAttachment],
 ) -> list[DndStatblockMechanicsAttachment]:
     """Return a deterministic enumeration of every attachment (no first-winner).
 
-    Ordering is stable by binding_id, then role, then phase_key (empty last).
-    Callers that need a single Combat activation must choose explicitly later;
-    this helper never selects.
+    Ordering is stable by attachment_id, then binding_id, then role, then
+    phase_key / variant_label (empty last). Callers that need a single Combat
+    activation must choose explicitly later; this helper never selects.
     """
     if not attachments:
         return []
-    binding_ids = [item.binding.binding_id for item in attachments]
-    if len(binding_ids) != len(set(binding_ids)):
-        raise ValueError("attachments must not share binding_id values")
+    attachment_ids = [item.attachment_id for item in attachments]
+    if len(attachment_ids) != len(set(attachment_ids)):
+        raise ValueError("attachments must not share attachment_id values")
 
-    def _sort_key(item: DndStatblockMechanicsAttachment) -> tuple[str, str, str]:
+    def _sort_key(
+        item: DndStatblockMechanicsAttachment,
+    ) -> tuple[str, str, str, str, str]:
         return (
+            item.attachment_id,
             item.binding.binding_id,
             item.role,
             item.phase_key or "",
+            item.variant_label or "",
         )
 
     return sorted(attachments, key=_sort_key)

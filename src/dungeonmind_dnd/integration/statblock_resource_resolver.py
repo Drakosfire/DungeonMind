@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, NoReturn
@@ -21,15 +20,18 @@ from urllib.parse import urlparse
 
 import httpx
 
-from ..contracts.mechanics_resources import DndMechanicsResourceRef
+from ..contracts.mechanics_resources import (
+    STATBLOCKS_MEDIA_TYPE,
+    STATBLOCKS_PROVIDER_ID,
+    STATBLOCKS_RESOURCE_SCHEMA,
+    DndMechanicsResourceRef,
+    is_exact_dungeonmind_statblock_resource_ref,
+)
 
 STATBLOCKS_BASE_URL_ENV = "DUNGEONMIND_STATBLOCKS_BASE_URL"
 STATBLOCKS_INTERNAL_API_KEY_ENV = "DUNGEONMIND_STATBLOCKS_INTERNAL_API_KEY"
 STATBLOCKS_TIMEOUT_SECONDS_ENV = "DUNGEONMIND_STATBLOCKS_TIMEOUT_SECONDS"
 
-STATBLOCKS_PROVIDER_ID = "dungeonmind.statblocks"
-STATBLOCKS_RESOURCE_SCHEMA = "dungeonmind.dungeonbuddy-statblocks.1.0.0"
-STATBLOCKS_MEDIA_TYPE = "application/json"
 STATBLOCKS_ROUTE_PREFIX = "/api/internal/dungeonbuddy/v1/statblocks"
 STATBLOCKS_AUTH_HEADER = "X-DungeonBuddy-Internal-Key"
 STATBLOCKS_DEFAULT_TIMEOUT_SECONDS = 90.0
@@ -37,8 +39,6 @@ STATBLOCKS_MAX_TIMEOUT_SECONDS = 120.0
 STATBLOCKS_MAX_RESPONSE_BODY_BYTES = 1_048_576
 
 _SUPPORTED_SCHEMES = frozenset({"http", "https"})
-_STATBLOCK_ID = re.compile(r"^sb_[a-z0-9]+$")
-_REVISION_ID = re.compile(r"^rev_[a-z0-9]+$")
 
 ResolverFailureCategory = Literal[
     "resolver_misconfigured",
@@ -210,17 +210,7 @@ def load_dnd_statblock_resource_resolver_config(
 
 
 def _supports_exact_ref(resource_ref: DndMechanicsResourceRef) -> bool:
-    try:
-        return (
-            resource_ref.ruleset_id == "dnd5e"
-            and resource_ref.provider_id == STATBLOCKS_PROVIDER_ID
-            and resource_ref.resource_schema == STATBLOCKS_RESOURCE_SCHEMA
-            and resource_ref.media_type == STATBLOCKS_MEDIA_TYPE
-            and bool(_STATBLOCK_ID.fullmatch(resource_ref.resource_id))
-            and bool(_REVISION_ID.fullmatch(resource_ref.resource_revision))
-        )
-    except Exception:
-        return False
+    return is_exact_dungeonmind_statblock_resource_ref(resource_ref)
 
 
 def _resource_path(resource_ref: DndMechanicsResourceRef) -> str:

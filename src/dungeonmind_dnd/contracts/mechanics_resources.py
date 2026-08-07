@@ -25,6 +25,12 @@ MECHANICS_RESOURCE_ENVELOPE_SCHEMA = "dmdnd_mechanics_resource_envelope_v1"
 THREAT_MECHANICS_BINDING_SCHEMA = "dmdnd_threat_mechanics_binding_v1"
 THREAT_MECHANICS_HYDRATION_SCHEMA = "dmdnd_threat_mechanics_hydration_v1"
 
+# Exact DungeonMind statblock-v1 resource identity (PR #21). Shared by the
+# provider resolver and DndStatblockMechanicsAttachment so the shapes cannot drift.
+STATBLOCKS_PROVIDER_ID = "dungeonmind.statblocks"
+STATBLOCKS_RESOURCE_SCHEMA = "dungeonmind.dungeonbuddy-statblocks.1.0.0"
+STATBLOCKS_MEDIA_TYPE = "application/json"
+
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 _BINDING_ID = re.compile(r"^mechbind:[0-9a-f]{32}$")
 _REVISION_ID = re.compile(r"^rev:[0-9a-f]{32}$")
@@ -32,6 +38,8 @@ _OBJECT_ID = re.compile(r"^obj:[A-Za-z0-9._:-]+$")
 _RELATIONSHIP_ID = re.compile(r"^rel:[A-Za-z0-9._:-]+$")
 _OPAQUE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 _LOWER_IDENTITY_TOKEN = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+_STATBLOCK_RESOURCE_ID = re.compile(r"^sb_[a-z0-9]+$")
+_STATBLOCK_REVISION_ID = re.compile(r"^rev_[a-z0-9]+$")
 
 
 def _validate_opaque_token(value: str, *, field_name: str) -> str:
@@ -118,6 +126,27 @@ class DndMechanicsResourceRef(DungeonMindModel):
         if not _SHA256_HEX.fullmatch(value):
             raise ValueError("payload_sha256 must be exactly 64 lowercase hex characters")
         return value
+
+
+def is_exact_dungeonmind_statblock_resource_ref(
+    resource_ref: DndMechanicsResourceRef,
+) -> bool:
+    """Return True iff ``resource_ref`` matches the PR #21 exact statblock identity.
+
+    Shared by the provider resolver and ``DndStatblockMechanicsAttachment`` so
+    specialization and resolution cannot drift on provider/schema/id grammar.
+    """
+    try:
+        return (
+            resource_ref.ruleset_id == "dnd5e"
+            and resource_ref.provider_id == STATBLOCKS_PROVIDER_ID
+            and resource_ref.resource_schema == STATBLOCKS_RESOURCE_SCHEMA
+            and resource_ref.media_type == STATBLOCKS_MEDIA_TYPE
+            and bool(_STATBLOCK_RESOURCE_ID.fullmatch(resource_ref.resource_id))
+            and bool(_STATBLOCK_REVISION_ID.fullmatch(resource_ref.resource_revision))
+        )
+    except Exception:
+        return False
 
 
 def _binding_id_material(
@@ -334,6 +363,9 @@ class DndThreatMechanicsHydration(DungeonMindModel):
 __all__ = [
     "MECHANICS_RESOURCE_ENVELOPE_SCHEMA",
     "MECHANICS_RESOURCE_REF_SCHEMA",
+    "STATBLOCKS_MEDIA_TYPE",
+    "STATBLOCKS_PROVIDER_ID",
+    "STATBLOCKS_RESOURCE_SCHEMA",
     "THREAT_MECHANICS_BINDING_SCHEMA",
     "THREAT_MECHANICS_HYDRATION_SCHEMA",
     "DndMechanicsResourceEnvelope",
@@ -341,4 +373,5 @@ __all__ = [
     "DndMechanicsResourceResolver",
     "DndThreatMechanicsBinding",
     "DndThreatMechanicsHydration",
+    "is_exact_dungeonmind_statblock_resource_ref",
 ]

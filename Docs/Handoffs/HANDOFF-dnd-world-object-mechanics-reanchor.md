@@ -362,12 +362,12 @@ Play surface-shell work that is purely visual/routing may proceed independently 
 | 1 | Peer kinds under `world-object-v1`: `dnd5e:threat`, `dnd5e:npc`, `dnd5e:player_character` (+ retained peers) |
 | 2 | `dnd5e:threatens` remains contextual; expanded domains; never defines Threat identity or mechanics eligibility |
 | 3 | `DndWorldObjectMechanicsBinding` (`dmdnd_world_object_mechanics_binding_v1`) retains full exactness; **vocabulary pin on generic binding (Decision A)**; no `threat_relationship_ids` |
-| 4 | `DndStatblockMechanicsAttachment` + roles `primary/alternate/phase/encounter_variant/template` |
+| 4 | `DndStatblockMechanicsAttachment` with content-addressed `attachment_id` from `binding_id+role+phase_key+variant_label`; requires exact PR #21 statblock resource via shared predicate |
 | 5 | PC kind valid; not eligible for world-object mechanics binding; no CharacterRevision invented |
 | 6 | Superseded for new work: v2+threat-v1 as *historical*; new pins `dnd5e-profile-v3` + `world-object-v1` (old bytes unchanged) |
-| 7 | Bridge must map Threat/NPC/PC → kinds; `uses_statblock` → mechanics attachment+roles; never → `threatens` |
-| 8 | Zero/one/many; enumerate by binding_id/role/phase_key; CombatantSeed selection = later consumer |
-| 9 | `dnd5e:creature` remains peer kind (Option A); no subtype interpreter |
+| 7 | Bridge must map Threat/NPC/PC → kinds; `uses_statblock` → mechanics binding + attachment (`attachment_id`/role/phase/variant); never → `threatens` |
+| 8 | Zero/one/many; same resource may specialize many times; enumerate by `attachment_id`; CombatantSeed selection = later consumer |
+| 9 | `dnd5e:creature` remains peer kind (Option A); intentionally non-mechanics-bearing under v3 (does not fall through to B.3a) |
 
 ### Exact semantic artifacts
 
@@ -386,11 +386,13 @@ Play surface-shell work that is purely visual/routing may proceed independently 
 - Binding ID material: schema + world_id + graph_revision_id + graph_payload_sha256 + semantic_profile + world_object_vocabulary + object_id + object_kind + visibility + resource_ref
 - Hydration: `hydrate_world_object_mechanics` (transport-neutral; no new HTTP route)
 - Statblock specialization schema: `dmdnd_statblock_mechanics_attachment_v1`
-- Enumeration: `enumerate_statblock_mechanics_attachments` (no first-winner)
+- Attachment ID material: `binding_id` + `role` + `phase_key` + `variant_label`
+- Statblock resource gate: shared `is_exact_dungeonmind_statblock_resource_ref` (PR #21 identity)
+- Enumeration: `enumerate_statblock_mechanics_attachments` (no first-winner; uniqueness on `attachment_id`)
 
 ### Compatibility evidence
 
-- Old profile/vocab raw bytes unchanged (sha256 of v1/v2/threat-v1 files identical to pre-change)
+- Old profile/vocab raw bytes pinned (`V1_RAW_SHA256` / `V2_RAW_SHA256` / `THREAT_VOCAB_RAW_SHA256`)
 - B.3a golden binding fixture still validates and hydrates
 - Import boundaries extended only for `world_object_mechanics` under existing mechanics allowlist
 
@@ -403,9 +405,16 @@ Play surface-shell work that is purely visual/routing may proceed independently 
 | C Threat + threatens + zero mechanics | PASS (axes independent) |
 | D NPC + threatens remains NPC | PASS |
 | E multiple attachments no first-winner | PASS |
+| Same resource as primary + alternate | PASS (distinct `attachment_id`) |
+| Same resource as two phase keys | PASS |
+| `variant_label` round-trip / identity | PASS |
+| Duplicate specialization rejected | PASS |
+| Generic D&D resource ≠ statblock attachment | PASS |
 | F PlayerCharacter identity, no invented mechanics | PASS (`object_kind_not_eligible`) |
 | G historical B.3a | PASS |
+| v3 creature intentionally non-mechanics-bearing | PASS |
 | Adversarial forged binding / digest mismatch | PASS |
+| Published raw bytes pinned | PASS |
 
 ### Named successor
 
