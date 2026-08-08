@@ -317,10 +317,13 @@ Published graph schemas are exact and versioned. Readers dispatch by
   world-universal, blank fails), `visibility`, `epistemic_kind`
   (`EpistemicKindV2`, a versioned superset vocabulary — `fact` is not
   `asserted`, `source_derived_candidate` is not `inferred`), `canon_state`,
-  `evidence_ref_ids`, `session_refs`, and an explicit `temporal_scope`
+  `evidence_ref_ids` (nonempty on the metadata contract), `session_refs`, and an
+  explicit `temporal_scope`
   (`unknown | world_timeless | fictional_time_ref`, where `unknown` is not
-  `world_timeless` and the ref is an opaque pointer into the fictional-time
-  contracts). Session references are never fictional time and nothing derives
+  `world_timeless` and the ref is an exact
+  `dm_fictional_time_anchor_ref_v1` naming `bundle_id` + `campaign_id` +
+  `anchor_id` inside the fictional-time claim-bundle authority). Session
+  references are never fictional time and nothing derives
   one from the other. Property `property_term` values are qualified terms
   admitted by the pinned profile; property values must be JSON-compatible;
   repeated `property_term`s have no implicit first/latest winner. The payload

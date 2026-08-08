@@ -26,6 +26,11 @@ Three deliberate separations are encoded here:
 ``None`` means world-universal, and a blank string fails closed. It scopes
 *knowledge*, never identity — an object's ``object_id`` never changes because
 an assertion about it is campaign-scoped.
+
+When ``temporal_scope.kind`` is ``fictional_time_ref``, the target is an exact
+:class:`~dungeonmind.contracts.fictional_time.FictionalTimeAnchorRefV1` into the
+existing fictional-time authority (``bundle_id`` + ``campaign_id`` +
+``anchor_id``). Opaque strings are not accepted.
 """
 
 from __future__ import annotations
@@ -33,9 +38,10 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Literal, Self
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 
 from .base import DungeonMindModel
+from .fictional_time import FictionalTimeAnchorRefV1
 from .vocabulary import CanonState, Visibility
 
 TEMPORAL_SCOPE_REF_SCHEMA = "dm_temporal_scope_ref_v1"
@@ -49,7 +55,7 @@ class TemporalScopeKind(StrEnum):
     UNKNOWN = "unknown"
     # Holds independent of fictional time; distinct from UNKNOWN.
     WORLD_TIMELESS = "world_timeless"
-    # Anchored to an opaque fictional-time reference resolved elsewhere.
+    # Anchored to an exact FictionalTimeAnchor inside a named claim bundle.
     FICTIONAL_TIME_REF = "fictional_time_ref"
 
 
@@ -83,16 +89,17 @@ def _reject_blank_or_duplicate(values: list[str], label: str) -> None:
 
 
 class TemporalScopeRefV1(DungeonMindModel):
-    """Opaque temporal anchoring for one assertion.
+    """Explicit temporal knowledge state for one assertion.
 
-    ``fictional_time_ref`` is an opaque string reference into the fictional-time
-    contracts; this model carries no chronology logic and never competes with
-    ``dm_fictional_time_claim_bundle_v1`` ordering.
+    ``fictional_time_ref`` is an exact typed pointer into
+    ``dm_fictional_time_claim_bundle_v1`` (one anchor inside one bundle). This
+    model carries no chronology logic and never competes with fictional-time
+    query evaluation.
     """
 
     schema_version: Literal["dm_temporal_scope_ref_v1"] = TEMPORAL_SCOPE_REF_SCHEMA
     kind: TemporalScopeKind
-    fictional_time_ref: str | None = None
+    fictional_time_ref: FictionalTimeAnchorRefV1 | None = None
 
     @model_validator(mode="after")
     def _ref_required_iff_fictional_time(self) -> Self:
@@ -101,7 +108,6 @@ class TemporalScopeRefV1(DungeonMindModel):
                 raise ValueError(
                     "temporal_scope kind 'fictional_time_ref' requires fictional_time_ref"
                 )
-            _reject_blank(self.fictional_time_ref, "fictional_time_ref")
         elif self.fictional_time_ref is not None:
             raise ValueError(
                 f"temporal_scope kind {self.kind.value!r} must not carry "
@@ -117,6 +123,10 @@ class KnowledgeAssertionMetadataV1(DungeonMindModel):
     There are no defaults for visibility, epistemic kind, or canon state:
     omitted audience or standing fails closed rather than silently becoming
     the most permissive value.
+
+    ``evidence_ref_ids`` must be non-empty at the contract boundary. Graph
+    readers retain a separate check that each listed id resolves inside the
+    payload evidence ledger.
     """
 
     schema_version: Literal["dm_knowledge_assertion_metadata_v1"] = (
@@ -128,7 +138,7 @@ class KnowledgeAssertionMetadataV1(DungeonMindModel):
     visibility: Visibility
     epistemic_kind: EpistemicKindV2
     canon_state: CanonState
-    evidence_ref_ids: list[str]
+    evidence_ref_ids: list[str] = Field(min_length=1)
     # Real-world sessions this assertion surfaced in. Never fictional time.
     session_refs: list[str]
     temporal_scope: TemporalScopeRefV1
@@ -140,4 +150,15 @@ class KnowledgeAssertionMetadataV1(DungeonMindModel):
             _reject_blank(self.campaign_scope, "campaign_scope")
         _reject_blank_or_duplicate(self.evidence_ref_ids, "evidence_ref_id")
         _reject_blank_or_duplicate(self.session_refs, "session_ref")
+        if (
+            self.temporal_scope.kind is TemporalScopeKind.FICTIONAL_TIME_REF
+            and self.temporal_scope.fictional_time_ref is not None
+            and self.campaign_scope is not None
+            and self.campaign_scope
+            != self.temporal_scope.fictional_time_ref.campaign_id
+        ):
+            raise ValueError(
+                "campaign_scope must be null (world-universal) or equal "
+                "fictional_time_ref.campaign_id"
+            )
         return self

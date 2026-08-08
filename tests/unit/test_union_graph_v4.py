@@ -37,6 +37,7 @@ from dungeonmind.contracts.evidence import (
     SourceRevision,
     SourceStatus,
 )
+from dungeonmind.contracts.fictional_time import FictionalTimeAnchorRefV1
 from dungeonmind.contracts.knowledge_assertion import (
     EpistemicKindV2,
     KnowledgeAssertionMetadataV1,
@@ -71,6 +72,23 @@ GM_ALIAS_EVIDENCE_GATED = "The Hollow Pen"
 GM_ALIAS_SCOPE_GATED = "Pen of the Low Ward"
 PLAYER_ALIAS = "Quill the Scribe"
 HIDDEN_OBJECT_ALIAS = "Quiet One"
+
+FT_BUNDLE_ID = "ftbundle:assertion-scoped-v4"
+FT_ANCHOR_ID = "ftanchor:first-light"
+
+
+def _ftime_anchor_ref(
+    *,
+    bundle_id: str = FT_BUNDLE_ID,
+    campaign_id: str = CAMPAIGN_ID,
+    anchor_id: str = FT_ANCHOR_ID,
+) -> dict[str, Any]:
+    return {
+        "schema_version": "dm_fictional_time_anchor_ref_v1",
+        "bundle_id": bundle_id,
+        "campaign_id": campaign_id,
+        "anchor_id": anchor_id,
+    }
 
 
 def _descriptor() -> SemanticProfileDescriptor:
@@ -263,7 +281,7 @@ def _v4_payload() -> dict[str, Any]:
                     "asrt:rel-quill-ward",
                     temporal={
                         "kind": "fictional_time_ref",
-                        "fictional_time_ref": "ftime:anchor-first-light",
+                        "fictional_time_ref": _ftime_anchor_ref(),
                     },
                 ),
             },
@@ -572,15 +590,57 @@ def test_versioned_epistemic_vocabulary_does_not_collapse_into_history() -> None
     [
         pytest.param({"kind": "fictional_time_ref"}, id="ref_kind_without_ref"),
         pytest.param(
-            {"kind": "fictional_time_ref", "fictional_time_ref": "  "},
-            id="ref_kind_blank_ref",
+            {
+                "kind": "fictional_time_ref",
+                "fictional_time_ref": {
+                    "bundle_id": "  ",
+                    "campaign_id": CAMPAIGN_ID,
+                    "anchor_id": FT_ANCHOR_ID,
+                },
+            },
+            id="ref_kind_blank_bundle",
         ),
         pytest.param(
-            {"kind": "unknown", "fictional_time_ref": "ftime:anchor"},
+            {
+                "kind": "fictional_time_ref",
+                "fictional_time_ref": {
+                    "bundle_id": FT_BUNDLE_ID,
+                    "campaign_id": "  ",
+                    "anchor_id": FT_ANCHOR_ID,
+                },
+            },
+            id="ref_kind_blank_campaign",
+        ),
+        pytest.param(
+            {
+                "kind": "fictional_time_ref",
+                "fictional_time_ref": {
+                    "bundle_id": FT_BUNDLE_ID,
+                    "campaign_id": CAMPAIGN_ID,
+                    "anchor_id": "  ",
+                },
+            },
+            id="ref_kind_blank_anchor",
+        ),
+        pytest.param(
+            {
+                "kind": "fictional_time_ref",
+                "fictional_time_ref": "ftime:anchor-first-light",
+            },
+            id="ref_kind_opaque_string_rejected",
+        ),
+        pytest.param(
+            {
+                "kind": "unknown",
+                "fictional_time_ref": _ftime_anchor_ref(),
+            },
             id="unknown_with_ref",
         ),
         pytest.param(
-            {"kind": "world_timeless", "fictional_time_ref": "ftime:anchor"},
+            {
+                "kind": "world_timeless",
+                "fictional_time_ref": _ftime_anchor_ref(),
+            },
             id="timeless_with_ref",
         ),
         pytest.param({"kind": "someday"}, id="unknown_kind"),
@@ -590,6 +650,16 @@ def test_versioned_epistemic_vocabulary_does_not_collapse_into_history() -> None
 def test_v4_temporal_scope_fails_closed(temporal: dict[str, Any]) -> None:
     payload = _v4_payload()
     _existence_metadata(payload)["temporal_scope"] = temporal
+    with pytest.raises(PersistenceIntegrityError):
+        _parse(payload)
+
+
+def test_v4_fictional_time_ref_rejects_cross_campaign_scope() -> None:
+    payload = _v4_payload()
+    _existence_metadata(payload)["temporal_scope"] = {
+        "kind": "fictional_time_ref",
+        "fictional_time_ref": _ftime_anchor_ref(campaign_id=OTHER_CAMPAIGN_ID),
+    }
     with pytest.raises(PersistenceIntegrityError):
         _parse(payload)
 
@@ -614,12 +684,16 @@ def test_v4_session_refs_never_derive_temporal_scope() -> None:
     assert quill.temporal_scope.fictional_time_ref is None
 
 
-def test_v4_fictional_time_ref_is_an_opaque_string() -> None:
+def test_v4_fictional_time_ref_is_typed_anchor_pointer() -> None:
     edge = _parse().relationships["rel:quill-in-ward"]
     assert edge.assertion_metadata is not None
     temporal = edge.assertion_metadata.temporal_scope
     assert temporal.kind is TemporalScopeKind.FICTIONAL_TIME_REF
-    assert temporal.fictional_time_ref == "ftime:anchor-first-light"
+    assert temporal.fictional_time_ref is not None
+    assert temporal.fictional_time_ref.bundle_id == FT_BUNDLE_ID
+    assert temporal.fictional_time_ref.campaign_id == CAMPAIGN_ID
+    assert temporal.fictional_time_ref.anchor_id == FT_ANCHOR_ID
+    assert isinstance(temporal.fictional_time_ref, FictionalTimeAnchorRefV1)
 
 
 # --------------------------------------------------------------------------
@@ -1092,17 +1166,44 @@ def test_v1_v2_views_keep_null_v4_fields_and_stable_dumps() -> None:
 def test_temporal_scope_contract_rules() -> None:
     unknown = TemporalScopeRefV1(kind=TemporalScopeKind.UNKNOWN)
     assert unknown.fictional_time_ref is None
+    anchor_ref = FictionalTimeAnchorRefV1(
+        bundle_id=FT_BUNDLE_ID,
+        campaign_id=CAMPAIGN_ID,
+        anchor_id=FT_ANCHOR_ID,
+    )
     anchored = TemporalScopeRefV1(
         kind=TemporalScopeKind.FICTIONAL_TIME_REF,
-        fictional_time_ref="ftime:anchor",
+        fictional_time_ref=anchor_ref,
     )
-    assert anchored.fictional_time_ref == "ftime:anchor"
+    assert anchored.fictional_time_ref == anchor_ref
     with pytest.raises(ValueError, match="requires fictional_time_ref"):
         TemporalScopeRefV1(kind=TemporalScopeKind.FICTIONAL_TIME_REF)
     with pytest.raises(ValueError, match="must not carry fictional_time_ref"):
         TemporalScopeRefV1(
             kind=TemporalScopeKind.WORLD_TIMELESS,
-            fictional_time_ref="ftime:anchor",
+            fictional_time_ref=anchor_ref,
+        )
+    with pytest.raises(ValidationError):
+        TemporalScopeRefV1.model_validate(
+            {
+                "kind": "fictional_time_ref",
+                "fictional_time_ref": "ftime:anchor",
+            }
+        )
+
+
+def test_knowledge_assertion_metadata_requires_nonempty_evidence() -> None:
+    """Empty evidence is invalid on the contract itself, not only in the reader."""
+    with pytest.raises(ValidationError):
+        KnowledgeAssertionMetadataV1(
+            assertion_id="asrt:x",
+            campaign_scope=None,
+            visibility=Visibility.PLAYER,
+            epistemic_kind=EpistemicKindV2.FACT,
+            canon_state=CanonState.PROVISIONAL,
+            evidence_ref_ids=[],
+            session_refs=[],
+            temporal_scope=TemporalScopeRefV1(kind=TemporalScopeKind.UNKNOWN),
         )
 
 
@@ -1136,3 +1237,49 @@ def test_knowledge_assertion_metadata_requires_every_field() -> None:
         incomplete = {key: value for key, value in base.items() if key != required}
         with pytest.raises(ValidationError):
             KnowledgeAssertionMetadataV1.model_validate(incomplete)
+
+    world_universal_with_campaign_anchor = KnowledgeAssertionMetadataV1(
+        assertion_id="asrt:world-anchored",
+        campaign_scope=None,
+        visibility=Visibility.GM,
+        epistemic_kind=EpistemicKindV2.ASSERTED,
+        canon_state=CanonState.CANONICAL,
+        evidence_ref_ids=["ev:x"],
+        session_refs=[],
+        temporal_scope=TemporalScopeRefV1(
+            kind=TemporalScopeKind.FICTIONAL_TIME_REF,
+            fictional_time_ref=FictionalTimeAnchorRefV1(
+                bundle_id=FT_BUNDLE_ID,
+                campaign_id=CAMPAIGN_ID,
+                anchor_id=FT_ANCHOR_ID,
+            ),
+        ),
+    )
+    assert world_universal_with_campaign_anchor.campaign_scope is None
+    assert (
+        world_universal_with_campaign_anchor.temporal_scope.fictional_time_ref
+        is not None
+    )
+    assert (
+        world_universal_with_campaign_anchor.temporal_scope.fictional_time_ref.campaign_id
+        == CAMPAIGN_ID
+    )
+
+    with pytest.raises(ValidationError, match=r"fictional_time_ref\.campaign_id"):
+        KnowledgeAssertionMetadataV1(
+            assertion_id="asrt:mismatched",
+            campaign_scope=CAMPAIGN_ID,
+            visibility=Visibility.GM,
+            epistemic_kind=EpistemicKindV2.ASSERTED,
+            canon_state=CanonState.CANONICAL,
+            evidence_ref_ids=["ev:x"],
+            session_refs=[],
+            temporal_scope=TemporalScopeRefV1(
+                kind=TemporalScopeKind.FICTIONAL_TIME_REF,
+                fictional_time_ref=FictionalTimeAnchorRefV1(
+                    bundle_id=FT_BUNDLE_ID,
+                    campaign_id=OTHER_CAMPAIGN_ID,
+                    anchor_id=FT_ANCHOR_ID,
+                ),
+            ),
+        )

@@ -53,10 +53,12 @@ from .evidence import (
     SourceStatus,
 )
 from .fictional_time import (
+    FICTIONAL_TIME_ANCHOR_REF_SCHEMA,
     FICTIONAL_TIME_CLAIM_BUNDLE_SCHEMA,
     FICTIONAL_TIME_QUERY_RESULT_SCHEMA,
     FICTIONAL_TIME_QUERY_SCHEMA,
     FictionalTimeAnchor,
+    FictionalTimeAnchorRefV1,
     FictionalTimeAuthorityMode,
     FictionalTimeBoundaryPosition,
     FictionalTimeClaimBundle,
@@ -167,6 +169,7 @@ __all__ = [
     "CONTRIBUTION_REVIEW_SUBMISSION_SCHEMA",
     "EMBEDDING_RUN_SCHEMA",
     "EVIDENCE_REF_SCHEMA",
+    "FICTIONAL_TIME_ANCHOR_REF_SCHEMA",
     "FICTIONAL_TIME_CLAIM_BUNDLE_SCHEMA",
     "FICTIONAL_TIME_QUERY_RESULT_SCHEMA",
     "FICTIONAL_TIME_QUERY_SCHEMA",
@@ -220,6 +223,7 @@ __all__ = [
     "EvidenceRef",
     "EvidenceRole",
     "FictionalTimeAnchor",
+    "FictionalTimeAnchorRefV1",
     "FictionalTimeAuthorityMode",
     "FictionalTimeBoundaryPosition",
     "FictionalTimeClaimBundle",

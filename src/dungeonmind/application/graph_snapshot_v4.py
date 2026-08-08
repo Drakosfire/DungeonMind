@@ -207,10 +207,13 @@ def _claim_assertion(
     claimed: set[str],
     kind: str,
 ) -> KnowledgeAssertionMetadataV1:
-    """Enforce graph-global ``assertion_id`` uniqueness and evidence presence.
+    """Enforce graph-global ``assertion_id`` uniqueness.
 
     Uniqueness spans every assertion family (existence, alias, summary,
     property, relationship) so an id identifies exactly one durable claim.
+    Nonempty ``evidence_ref_ids`` is enforced by
+    :class:`KnowledgeAssertionMetadataV1` itself; resolvability of those ids
+    against the payload ledger is checked separately during parse.
     """
     if metadata.assertion_id in claimed:
         raise PersistenceIntegrityError(
@@ -218,12 +221,6 @@ def _claim_assertion(
             details={"assertion_id": metadata.assertion_id, "assertion_kind": kind},
         )
     claimed.add(metadata.assertion_id)
-    if not metadata.evidence_ref_ids:
-        raise PersistenceIntegrityError(
-            f"{kind} assertion {metadata.assertion_id!r} requires at least one "
-            "evidence_ref_id",
-            details={"assertion_id": metadata.assertion_id, "assertion_kind": kind},
-        )
     return metadata
 
 

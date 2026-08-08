@@ -1,16 +1,22 @@
 # HANDOFF — Assertion-scoped World Graph v4 (handback)
 
 **Created:** 2026-08-07  
-**Status:** COMPLETE — implementation handback  
+**Status:** COMPLETE — implementation handback (Cycle 1 REQUEST CHANGES addressed)  
 **Repository:** `Drakosfire/DungeonMind`  
 **Flow:** WORLD / KERNEL  
 **Branch:** `world/assertion-scoped-graph-v4`  
-**Head SHA:** `b603de0056554d9c2d627caf7e8a2e40df40326e`  
 **Base SHA:** `8095321ed011b8a38640615a90cbc9efaf385e8c` (DungeonMind `main` / merge of #23)  
 **PR:** [#24](https://github.com/Drakosfire/DungeonMind/pull/24)  
-**Head SHA:** `b603de0056554d9c2d627caf7e8a2e40df40326e` (+ docs handback commit on branch)
+**Reviewed head (Cycle 1):** `0be1cfe07f48d406a5e5aea9399692802af19df7`
 
-**Review accounting:** `review cycles: 0`
+**Review accounting:** `review cycles: 1` (Cycle 1: REQUEST CHANGES — 1 P1 + 1 P2; fixes in this update)
+
+### Cycle 1 corrections
+
+| Finding | Fix |
+|---------|-----|
+| **P1** Opaque `fictional_time_ref: str` parallel to FT authority | Replaced with `FictionalTimeAnchorRefV1` (`dm_fictional_time_anchor_ref_v1`: `bundle_id` + `campaign_id` + `anchor_id`) in `contracts/fictional_time.py`. Opaque strings fail closed. Campaign compatibility: `campaign_scope` null or equals `ref.campaign_id`. No FT query logic added. |
+| **P2** Empty `evidence_ref_ids` contract-valid but reader-invalid | `KnowledgeAssertionMetadataV1.evidence_ref_ids` now `Field(min_length=1)`; direct contract test without reader. Reader keeps resolvability checks. |
 
 ---
 
@@ -31,8 +37,9 @@
 |--------|----------------|
 | `TemporalScopeKind` | `unknown` / `world_timeless` / `fictional_time_ref` |
 | `TemporalScopeRefV1` | `dm_temporal_scope_ref_v1` |
+| `FictionalTimeAnchorRefV1` | `dm_fictional_time_anchor_ref_v1` — exact `bundle_id` + `campaign_id` + `anchor_id` into FT claim-bundle authority |
 | `EpistemicKindV2` | asserted/inferred/speculative/**fact**/**source_derived_candidate** (no remapping) |
-| `KnowledgeAssertionMetadataV1` | `dm_knowledge_assertion_metadata_v1` |
+| `KnowledgeAssertionMetadataV1` | `dm_knowledge_assertion_metadata_v1` (`evidence_ref_ids` nonempty at contract) |
 | `GRAPH_SCHEMA_V4` | `dm_union_graph_v4` |
 | `UnionGraphV4SnapshotReader` | exact schema dispatch |
 | `UnionGraphV4Payload` (+ object/alias/summary/property/relationship records) | strict payload models |
@@ -119,8 +126,10 @@ Evidence: unit suites `test_union_graph_v4`, `test_semantic_profile_graph`, `tes
 ```text
 session_refs are not fictional time
 temporal unknown is not timeless
-no fictional-time derivation was added
-fictional_time_ref is opaque (references existing fictional-time contracts; no competing chronology)
+no fictional-time derivation or query logic was added
+fictional_time_ref is FictionalTimeAnchorRefV1 (bundle_id + campaign_id + anchor_id)
+opaque ftime strings are rejected
+campaign_scope must be null or equal fictional_time_ref.campaign_id
 ```
 
 ---
@@ -207,14 +216,15 @@ canon_state is recorded on v4 assertions but not yet used as a read filter (ADR-
 
 | Path | Change |
 |------|--------|
-| `src/dungeonmind/contracts/knowledge_assertion.py` | CREATE |
+| `src/dungeonmind/contracts/fictional_time.py` | ADD `FictionalTimeAnchorRefV1` |
+| `src/dungeonmind/contracts/knowledge_assertion.py` | CREATE (+ Cycle 1: typed FT ref + nonempty evidence) |
 | `src/dungeonmind/application/graph_snapshot_v4.py` | CREATE |
 | `src/dungeonmind/application/graph_snapshot.py` | V4 dispatch + view extensions |
 | `src/dungeonmind/application/graph_scope.py` | assertion-grain admission |
 | `src/dungeonmind/contracts/__init__.py` | exports |
-| `Docs/Decisions/ADR-0014-assertion-scoped-world-graph-v4.md` | CREATE |
+| `Docs/Decisions/ADR-0014-assertion-scoped-world-graph-v4.md` | CREATE (+ Cycle 1 amendments) |
 | `Docs/Architecture/ARCHITECTURE.md` | schema-status note |
-| `tests/unit/test_union_graph_v4.py` | CREATE |
+| `tests/unit/test_union_graph_v4.py` | CREATE (+ Cycle 1 contract tests) |
 | `tests/integration/test_postgres_graph_v4.py` | CREATE |
 | `tests/fixtures/semantic_profiles/test-kernel-v1.json` | CREATE |
 

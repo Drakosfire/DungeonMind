@@ -51,7 +51,12 @@ def _meta(assertion_id: str, *, campaign_scope: str | None = CAMPAIGN_ID) -> dic
         "temporal_scope": {
             "schema_version": "dm_temporal_scope_ref_v1",
             "kind": "fictional_time_ref",
-            "fictional_time_ref": "ftime:anchor-roundtrip",
+            "fictional_time_ref": {
+                "schema_version": "dm_fictional_time_anchor_ref_v1",
+                "bundle_id": "ftbundle:roundtrip",
+                "campaign_id": CAMPAIGN_ID,
+                "anchor_id": "ftanchor:roundtrip",
+            },
         },
     }
 
@@ -164,7 +169,12 @@ def test_v4_payload_survives_publish_and_read_unchanged(pg) -> None:
     }
     edge = snapshot.relationships["rel:quill-in-ward"]
     assert edge.assertion_metadata is not None
+    assert edge.assertion_metadata.temporal_scope.fictional_time_ref is not None
     assert (
-        edge.assertion_metadata.temporal_scope.fictional_time_ref
-        == "ftime:anchor-roundtrip"
+        edge.assertion_metadata.temporal_scope.fictional_time_ref.bundle_id
+        == "ftbundle:roundtrip"
+    )
+    assert (
+        edge.assertion_metadata.temporal_scope.fictional_time_ref.anchor_id
+        == "ftanchor:roundtrip"
     )

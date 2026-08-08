@@ -84,10 +84,19 @@ game-system profile package; scope filtering fails closed.
    `TemporalScopeKind` is `unknown | world_timeless | fictional_time_ref`.
    `unknown` ("we have not established when this holds") is a different claim
    from `world_timeless` ("this holds independent of fictional time") and the two
-   are never coerced into each other. `fictional_time_ref` requires an opaque
-   `fictional_time_ref` string and the other two kinds forbid one. The kernel
-   stores the reference and adds no competing chronology logic beside
-   `contracts/fictional_time.py`.
+   are never coerced into each other. `fictional_time_ref` requires an exact
+   typed `FictionalTimeAnchorRefV1` (`dm_fictional_time_anchor_ref_v1`) naming
+   `bundle_id` + `campaign_id` + `anchor_id` inside the existing
+   `dm_fictional_time_claim_bundle_v1` authority; the other two kinds forbid a
+   ref. Opaque strings are rejected. The target is always an **anchor**, never a
+   claim, state, or bundle identity hidden in free text. An assertion's
+   `campaign_scope` must be `null` (world-universal knowledge temporally anchored
+   in a campaign-owned FT bundle) or equal `fictional_time_ref.campaign_id`;
+   cross-campaign temporal pointers fail closed at the metadata contract.
+   Later resolution (not this schema) must verify the named bundle's
+   world/schema/revision/digest pin and that `anchor_id` exists in that bundle.
+   The kernel stores the typed reference and adds no competing chronology or
+   query logic beside `contracts/fictional_time.py`.
 8. **Session references are not fictional time.** `session_refs` records the
    real-world sessions an assertion surfaced in. There is no code path from
    `session_refs` to `temporal_scope`, in either direction, and none may be added
@@ -118,8 +127,11 @@ game-system profile package; scope filtering fails closed.
     so a v1–v3 payload can never be silently read as v4 (and vice versa), and
     unknown top-level keys are rejected. Evidence records keep the v1–v3
     `dm_evidence_ref_v1` shape under the existing `evidence_refs` key. Every
-    assertion requires at least one resolvable `evidence_ref_id` (matching v2's
-    per-assertion evidence requirement). Relationship endpoints are named
+    assertion requires at least one `evidence_ref_id` **on the shared metadata
+    contract itself** (`Field(min_length=1)` / nonempty validation on
+    `KnowledgeAssertionMetadataV1`); the graph reader additionally requires each
+    listed id to resolve inside the payload evidence ledger. Relationship
+    endpoints are named
     `source_object_id` / `target_object_id` in the payload and map onto the
     existing `subject_object_id` / `object_object_id` view fields, so traversal,
     one-hop expansion, and scope code are shared rather than forked.
@@ -146,9 +158,10 @@ game-system profile package; scope filtering fails closed.
 
 ## Consequences
 
-- New contracts: `dm_temporal_scope_ref_v1` and
+- New contracts: `dm_temporal_scope_ref_v1`,
+  `dm_fictional_time_anchor_ref_v1`, and
   `dm_knowledge_assertion_metadata_v1`, exported from `dungeonmind.contracts`
-  alongside `TemporalScopeKind` and `EpistemicKindV2`.
+  alongside `TemporalScopeKind`, `FictionalTimeAnchorRefV1`, and `EpistemicKindV2`.
 - New application module `application/graph_snapshot_v4.py` holding the v4
   payload records and reader; `graph_snapshot.py` gains `GRAPH_SCHEMA_V4`, the
   additive excluded view fields, and dispatch. The v4 reader is imported inside
@@ -174,6 +187,7 @@ game-system profile package; scope filtering fails closed.
 | Extend the historical `EpistemicKind` enum in place | Reject | Silently changes the meaning of stored v1–v3 records |
 | Map `fact` → `asserted`, `source_derived_candidate` → `inferred` | Reject | Manufactures equivalences no producer asked for |
 | Treat `unknown` temporal scope as `world_timeless` | Reject | Conflates "not established" with "timeless" |
+| Opaque string `fictional_time_ref` | Reject | Ambiguous among anchor/claim/state/bundle; bypasses the accepted FT identity model |
 | Derive `temporal_scope` from `session_refs` | Reject | Real-world session order is not fictional chronology |
 | First-wins / latest-wins for a repeated `property_term` | Reject | Kernel would silently resolve a disagreement it cannot adjudicate |
 | Let `campaign_scope` participate in object identity | Reject | Forks one thing into per-campaign objects |
