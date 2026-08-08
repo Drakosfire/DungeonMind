@@ -6,6 +6,8 @@
 **Flow:** DND / SEMANTIC PROFILE
 **Branch:** `dnd/eldyrwild-world-object-v2`
 **Base SHA:** `6918c7c6fbabc10849b29b831eea235e13bab74c` (DungeonMind `main`, merge of #25)
+**Head SHA:** `b13b74204181f8a71c452388c29b3692982321a9`
+**PR:** [#26](https://github.com/Drakosfire/DungeonMind/pull/26)
 **Approved #25 head:** `9c229f8c4024d6e327b91f49152770a6a3a9e194` (ancestor of base)
 
 **Review accounting:** `review cycles: 0`
