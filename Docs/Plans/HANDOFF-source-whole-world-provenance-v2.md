@@ -8,7 +8,8 @@
 **Base SHA:** `3842f147c15c589dff76d29dc2ad398e6d92b4d5` (DungeonMind `main`, merge of #24)  
 **PR:** [#25](https://github.com/Drakosfire/DungeonMind/pull/25)  
 **Approved #24 head:** `e563aafd346c2a510f8890965e53fe016cd3407f` (ancestor of base)  
-**Reviewed head (Cycle 2):** `9136d9305bf40c1d6f9a568c0c91dae2d65cb93b`
+**Reviewed head (Cycle 2):** 
+**Fix head (Cycle 2 corrections):** `9136d9305bf40c1d6f9a568c0c91dae2d65cb93b`
 
 **Review accounting:** `review cycles: 2` — Cycle 1 REQUEST CHANGES (3 P1 + 1 P2); Cycle 2 REQUEST CHANGES (1 P1 historical schema docstring)
 
