@@ -22,9 +22,11 @@ _PROFILE_RESOURCE_DIR = "profiles"
 _PROFILE_V3_RESOURCE = "dnd5e-v3.json"
 _VOCABULARY_RESOURCE_DIR = "vocabularies"
 _WORLD_OBJECT_VOCABULARY_RESOURCE = "world-object-v1.json"
+_WORLD_OBJECT_V2_VOCABULARY_RESOURCE = "world-object-v2.json"
 
 WORLD_OBJECT_VOCABULARY_ID = "dungeonmind.dnd5e.world_object"
 WORLD_OBJECT_VOCABULARY_REVISION = "world-object-v1"
+WORLD_OBJECT_V2_VOCABULARY_REVISION = "world-object-v2"
 
 
 def _validation_messages(exc: ValidationError) -> list[str]:
@@ -115,36 +117,69 @@ def _verify_vocabulary_against_descriptor(
             )
 
 
-def load_builtin_world_object_vocabulary() -> DndSemanticVocabulary:
+def _load_world_object_vocabulary(
+    *,
+    resource_name: str,
+    expected_revision: str,
+    description: str,
+) -> DndSemanticVocabulary:
     descriptor = load_builtin_v3_descriptor()
     data = _load_json_resource(
         _VOCABULARY_RESOURCE_DIR,
-        _WORLD_OBJECT_VOCABULARY_RESOURCE,
-        description="bundled world-object vocabulary catalog",
+        resource_name,
+        description=description,
     )
     try:
         catalog = DndSemanticVocabulary.model_validate(data)
     except ValidationError as exc:
         messages = _validation_messages(exc)
         raise DndVocabularyIntegrityError(
-            "bundled world-object vocabulary catalog failed validation: "
-            + "; ".join(messages),
+            f"{description} failed validation: " + "; ".join(messages),
             details={"reason": "ValidationError", "messages": messages},
         ) from None
     _verify_vocabulary_against_descriptor(catalog, descriptor)
     if (
         catalog.vocabulary_id != WORLD_OBJECT_VOCABULARY_ID
-        or catalog.vocabulary_revision != WORLD_OBJECT_VOCABULARY_REVISION
+        or catalog.vocabulary_revision != expected_revision
     ):
         raise DndVocabularyIntegrityError(
-            "bundled world-object vocabulary identity mismatch",
+            f"{description} identity mismatch",
             details={"reason": "vocabulary_identity_mismatch"},
         )
     return catalog
 
 
+def load_builtin_world_object_vocabulary() -> DndSemanticVocabulary:
+    """Historical world-object-v1 catalog. Callers must not assume latest."""
+    return _load_world_object_vocabulary(
+        resource_name=_WORLD_OBJECT_VOCABULARY_RESOURCE,
+        expected_revision=WORLD_OBJECT_VOCABULARY_REVISION,
+        description="bundled world-object vocabulary catalog",
+    )
+
+
+def load_builtin_world_object_v2_vocabulary() -> DndSemanticVocabulary:
+    """Immutable world-object-v2 catalog. Explicit pin only — never 'latest'."""
+    return _load_world_object_vocabulary(
+        resource_name=_WORLD_OBJECT_V2_VOCABULARY_RESOURCE,
+        expected_revision=WORLD_OBJECT_V2_VOCABULARY_REVISION,
+        description="bundled world-object-v2 vocabulary catalog",
+    )
+
+
 def builtin_world_object_vocabulary_ref() -> DndVocabularyRef:
+    """Historical world-object-v1 pin. Unchanged by the v2 publication."""
     catalog = load_builtin_world_object_vocabulary()
+    return DndVocabularyRef(
+        vocabulary_id=catalog.vocabulary_id,
+        vocabulary_revision=catalog.vocabulary_revision,
+        catalog_sha256=vocabulary_sha256(catalog),
+    )
+
+
+def builtin_world_object_v2_vocabulary_ref() -> DndVocabularyRef:
+    """Exact world-object-v2 pin. Callers must request this revision explicitly."""
+    catalog = load_builtin_world_object_v2_vocabulary()
     return DndVocabularyRef(
         vocabulary_id=catalog.vocabulary_id,
         vocabulary_revision=catalog.vocabulary_revision,

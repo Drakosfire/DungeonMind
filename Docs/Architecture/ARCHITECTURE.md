@@ -401,11 +401,17 @@ Rules that bind this layer:
 - **Threat candidates treat Threat as a relationship.** Under the historical
   `threat-v1` candidate path, `dnd5e:threatens` is contextual and the
   candidate contract rejects `dnd5e:threat` as a kind (ADR-0005).
-- **Cutover world-object kinds (ADR-0013).** New work pins
-  `dnd5e-profile-v3` + `world-object-v1`, which admit peer kinds
-  `dnd5e:threat`, `dnd5e:npc`, and `dnd5e:player_character` alongside
-  `dnd5e:creature`. Contextual `dnd5e:threatens` remains independent from
-  Threat identity and from mechanics eligibility.
+- **Cutover world-object kinds (ADR-0013 / ADR-0016).** New work that needs
+  Threat/NPC/PC kinds pins `dnd5e-profile-v3` + `world-object-v1`. The additive
+  `world-object-v2` catalog (same profile pin) retains every v1 kind and
+  predicate exactly and publishes five peer kinds — `dnd5e:item`,
+  `dnd5e:mystery`, `dnd5e:group`, `dnd5e:party`, `dnd5e:event` — so the real
+  Eldyrwild `WORLD_OBJECT_KIND` inventory is structurally representable.
+  Contextual `dnd5e:threatens` remains independent from Threat identity and
+  from mechanics eligibility. Mechanics bindings stay pinned to
+  `world-object-v1`; callers must request `world-object-v2` explicitly (no
+  silent "latest"). Relationship and property vocabularies remain separate
+  successors.
 - **Candidate identity is temporary.** Candidates carry packet-local IDs, a
   closed evidence ledger, and no stable IDs, merge outcomes, confidence,
   property bags, or write-path fields. Existing graph objects are
