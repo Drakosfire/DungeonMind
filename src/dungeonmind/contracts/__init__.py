@@ -88,6 +88,14 @@ from .identity import (
     IdentityOutcome,
 )
 from .ids import new_id
+from .knowledge_assertion import (
+    KNOWLEDGE_ASSERTION_METADATA_SCHEMA,
+    TEMPORAL_SCOPE_REF_SCHEMA,
+    EpistemicKindV2,
+    KnowledgeAssertionMetadataV1,
+    TemporalScopeKind,
+    TemporalScopeRefV1,
+)
 from .mind_turn import (
     MIND_TURN_SCHEMA,
     CallerScope,
@@ -170,6 +178,7 @@ __all__ = [
     "GRAPH_HEAD_SCHEMA",
     "GRAPH_REVISION_SCHEMA",
     "IDENTITY_DECISION_SCHEMA",
+    "KNOWLEDGE_ASSERTION_METADATA_SCHEMA",
     "MIND_TURN_SCHEMA",
     "PROJECTION_REQUEST_SCHEMA",
     "PROJECTION_SNAPSHOT_SCHEMA",
@@ -177,6 +186,7 @@ __all__ = [
     "SEMANTIC_DOCUMENT_SCHEMA",
     "SOURCE_ARTIFACT_SCHEMA",
     "SOURCE_REVISION_SCHEMA",
+    "TEMPORAL_SCOPE_REF_SCHEMA",
     "AcceptanceState",
     "Admissibility",
     "CallerScope",
@@ -206,6 +216,7 @@ __all__ = [
     "EmbeddingRun",
     "EmbeddingRunStatus",
     "EpistemicKind",
+    "EpistemicKindV2",
     "EvidenceRef",
     "EvidenceRole",
     "FictionalTimeAnchor",
@@ -232,6 +243,7 @@ __all__ = [
     "IdentityDecisionRecord",
     "IdentityDecisionStatus",
     "IdentityOutcome",
+    "KnowledgeAssertionMetadataV1",
     "MindTurnRequest",
     "MindTurnResponse",
     "OperationOutcome",
@@ -256,6 +268,8 @@ __all__ = [
     "StoredGraphRevision",
     "SuggestedAction",
     "SurfaceContext",
+    "TemporalScopeKind",
+    "TemporalScopeRefV1",
     "ToolCapabilityRule",
     "Visibility",
     "WorldGraphHead",

@@ -1,0 +1,6 @@
+{
+  "schema_version": "dm_semantic_profile_v1",
+  "profile_id": "test.kernel",
+  "profile_revision": "kernel-profile-v1",
+  "term_namespaces": ["test"]
+}
