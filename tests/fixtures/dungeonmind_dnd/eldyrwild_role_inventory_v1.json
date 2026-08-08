@@ -1,0 +1,134 @@
+{
+  "external_resource_role_count": 2,
+  "node_role_count": 438,
+  "object_kind_counts": [
+    {
+      "count": 4,
+      "object_kind": "creature"
+    },
+    {
+      "count": 2,
+      "object_kind": "encounter"
+    },
+    {
+      "count": 2,
+      "object_kind": "event"
+    },
+    {
+      "count": 2,
+      "object_kind": "external_resource"
+    },
+    {
+      "count": 13,
+      "object_kind": "faction"
+    },
+    {
+      "count": 29,
+      "object_kind": "group"
+    },
+    {
+      "count": 125,
+      "object_kind": "item"
+    },
+    {
+      "count": 103,
+      "object_kind": "location"
+    },
+    {
+      "count": 93,
+      "object_kind": "mystery"
+    },
+    {
+      "count": 45,
+      "object_kind": "npc"
+    },
+    {
+      "count": 11,
+      "object_kind": "party"
+    },
+    {
+      "count": 6,
+      "object_kind": "pc"
+    },
+    {
+      "count": 3,
+      "object_kind": "threat"
+    }
+  ],
+  "role_value_counts": [
+    {
+      "count": 125,
+      "value": "item"
+    },
+    {
+      "count": 101,
+      "value": "location"
+    },
+    {
+      "count": 93,
+      "value": "mystery"
+    },
+    {
+      "count": 45,
+      "value": "npc"
+    },
+    {
+      "count": 29,
+      "value": "group"
+    },
+    {
+      "count": 13,
+      "value": "faction"
+    },
+    {
+      "count": 10,
+      "value": "party"
+    },
+    {
+      "count": 6,
+      "value": "creature"
+    },
+    {
+      "count": 6,
+      "value": "player-character"
+    },
+    {
+      "count": 3,
+      "value": "encounter"
+    },
+    {
+      "count": 2,
+      "value": "statblock"
+    },
+    {
+      "count": 1,
+      "value": "adventuring-party"
+    },
+    {
+      "count": 1,
+      "value": "city"
+    },
+    {
+      "count": 1,
+      "value": "encounter-threat"
+    },
+    {
+      "count": 1,
+      "value": "town"
+    },
+    {
+      "count": 1,
+      "value": "travel"
+    }
+  ],
+  "schema": "dmdnd_eldyrwild_role_inventory_fixture_v1",
+  "source": {
+    "buddy_head": "0894a08e0dffd45afa36aac17c936fc05edabc7f",
+    "buddy_pr": 523,
+    "dungeonmind_dependency_ref": "da7c32576c319d1030410eabe5c589ef7e990a9f",
+    "graph_payload_sha256": "346c1fbfb3cbbf6d0e5ded1453fdd7760264a5106022e398d6074679799ab0fa",
+    "revision_id": "rev:3413bf6f5044cf2680233f5e37c90dcf",
+    "world_id": "eldyrwild"
+  },
+  "world_object_role_count": 436
+}
