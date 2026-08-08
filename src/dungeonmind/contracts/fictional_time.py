@@ -12,6 +12,7 @@ from .base import DungeonMindModel
 from .evidence import EvidenceRef
 
 FICTIONAL_TIME_CLAIM_BUNDLE_SCHEMA = "dm_fictional_time_claim_bundle_v1"
+FICTIONAL_TIME_ANCHOR_REF_SCHEMA = "dm_fictional_time_anchor_ref_v1"
 FICTIONAL_TIME_QUERY_SCHEMA = "dm_fictional_time_query_v1"
 FICTIONAL_TIME_QUERY_RESULT_SCHEMA = "dm_fictional_time_query_result_v1"
 
@@ -71,6 +72,39 @@ class FictionalTimeAnchor(DungeonMindModel):
         _reject_blank(self.anchor_id, "anchor_id")
         _reject_blank(self.label, "label")
         _uniq_nonempty(self.related_object_ids, "related_object_id")
+        return self
+
+
+class FictionalTimeAnchorRefV1(DungeonMindModel):
+    """Exact typed pointer to one :class:`FictionalTimeAnchor` in one bundle.
+
+    This is the durable target when a graph assertion's temporal knowledge state
+    is ``fictional_time_ref``. It names an anchor inside a
+    :class:`FictionalTimeClaimBundle` — never a claim, state, bundle, or
+    free-form string. It does **not** evaluate fictional-time queries; later
+    resolution must verify that the named bundle's ``world_id`` /
+    ``campaign_id`` / ``graph_schema`` / ``graph_revision_id`` /
+    ``graph_payload_sha256`` pin matches the graph revision under inspection and
+    that ``anchor_id`` exists in that bundle's ``anchors``.
+
+    ``campaign_id`` is stored on the ref so resolution can check the named
+    bundle's campaign pin without loading the bundle first. Graph assertions
+    that carry this ref must themselves be campaign-scoped to the same
+    ``campaign_id``; FT v1 has no world-universal chronology authority.
+    """
+
+    schema_version: Literal["dm_fictional_time_anchor_ref_v1"] = (
+        FICTIONAL_TIME_ANCHOR_REF_SCHEMA
+    )
+    bundle_id: str
+    campaign_id: str
+    anchor_id: str
+
+    @model_validator(mode="after")
+    def _validate_anchor_ref(self) -> Self:
+        _reject_blank(self.bundle_id, "bundle_id")
+        _reject_blank(self.campaign_id, "campaign_id")
+        _reject_blank(self.anchor_id, "anchor_id")
         return self
 
 

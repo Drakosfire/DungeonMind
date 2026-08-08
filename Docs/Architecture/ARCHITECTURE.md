@@ -309,11 +309,39 @@ Published graph schemas are exact and versioned. Readers dispatch by
   and tampered descriptors fail closed as persistence-integrity errors.
   Terms are opaque — the kernel admits or rejects and never interprets.
   Scoped projection follows v2 field admission exactly.
+- **`dm_union_graph_v4`** — v3 profile pinning plus one required
+  `dm_knowledge_assertion_metadata_v1` record on every independently durable
+  assertion: object existence, each alias, the summary, each property, and each
+  relationship (ADR-0014). Metadata carries `assertion_id` (globally unique
+  across all five families), `campaign_scope` (required-but-nullable; `None` is
+  world-universal, blank fails), `visibility`, `epistemic_kind`
+  (`EpistemicKindV2`, a versioned superset vocabulary — `fact` is not
+  `asserted`, `source_derived_candidate` is not `inferred`), `canon_state`,
+  `evidence_ref_ids` (nonempty on the metadata contract), `session_refs`, and an
+  explicit `temporal_scope`
+  (`unknown | world_timeless | fictional_time_ref`, where `unknown` is not
+  `world_timeless` and the ref is an exact
+  `dm_fictional_time_anchor_ref_v1` naming `bundle_id` + `campaign_id` +
+  `anchor_id` inside the fictional-time claim-bundle authority; a
+  `fictional_time_ref` additionally requires non-null `campaign_scope` equal to
+  that ref's `campaign_id`). Session
+  references are never fictional time and nothing derives
+  one from the other. Property `property_term` values are qualified terms
+  admitted by the pinned profile; property values must be JSON-compatible;
+  repeated `property_term`s have no implicit first/latest winner. The payload
+  root uses `objects` (not `nodes`) and rejects unknown keys, so v1–v3 payloads
+  can never half-parse as v4. Scoped reads gate each assertion on its own
+  campaign and visibility — silently, never leaking identifiers — and only then
+  run the unchanged evidence-provenance chain.
 
-Scope is derived from admitted evidence provenance. Assertions carry no direct
-visibility, campaign, confidence, or authority fields. There is no public
-generic assertion / world-object contract in this slice; schema-local records
-live with the graph reader. Additive semantic projection
+For v1–v3, scope is derived from admitted evidence provenance alone: assertions
+carry no direct visibility, campaign, confidence, or authority fields, and that
+stays true for those stored revisions forever. V4 is where campaign scope,
+audience, epistemic standing, canon standing, session references, and temporal
+knowledge state attach to the assertion itself. There is still no public generic
+assertion / world-object contract; schema-local records live with the graph
+reader and the shared metadata contract carries no object semantics. Additive
+semantic projection
 `entity_field_provenance` exposes only admitted alias/summary mappings;
 `entity_brief` remains surface-compatible with admitted field values.
 

@@ -12,6 +12,15 @@ GM-backed aliases, summaries, or other descriptive fields.
 summary independently from their own evidence. Omitted fields never enter
 indexes, context, projections, or public diagnostics.
 
+``dm_union_graph_v4`` moves the grain again: every assertion (object existence,
+alias, summary, property, relationship) carries its own campaign scope and
+visibility alongside its evidence, and each is admitted independently. A hidden
+existence assertion removes the object and everything hanging off it; a hidden
+alias/summary/property leaves the object standing without that field; a hidden
+relationship is not traversable. Campaign filtering never leaks another
+campaign's assertions, and hidden assertions are excluded silently (no
+identifiers in public diagnostics).
+
 Admissibility filtering is separated from provenance diagnostics:
 out-of-scope artifacts are excluded silently; detailed rejection identities are
 emitted only for artifacts already proven visible to the caller. Missing
@@ -32,12 +41,15 @@ from ..contracts.evidence import (
     SourceDomain,
     SourceStatus,
 )
+from ..contracts.knowledge_assertion import KnowledgeAssertionMetadataV1
 from ..contracts.projection import Admissibility
 from ..contracts.vocabulary import Visibility
 from .graph_snapshot import (
     GRAPH_SCHEMA_V2,
     GRAPH_SCHEMA_V3,
+    GRAPH_SCHEMA_V4,
     AdmittedAliasAssertion,
+    AdmittedPropertyAssertion,
     AdmittedSummaryAssertion,
     GraphEvidenceRecord,
     GraphObjectView,
@@ -508,6 +520,191 @@ def _project_v2_objects(
     return objects, object_exclusions, assertion_exclusions, omitted_alias_index
 
 
+def assertion_metadata_in_scope(
+    metadata: KnowledgeAssertionMetadataV1 | None,
+    *,
+    campaign_id: str | None,
+    admissibility: Admissibility,
+) -> bool:
+    """Whether one v4 assertion's own scope admits it for this read.
+
+    Two independent gates, both fail-closed:
+
+    * **Campaign.** ``campaign_scope is None`` is world-universal knowledge and
+      always passes. Otherwise it must equal the caller's ``campaign_id``; a
+      world-scoped read (``campaign_id is None``) never sees campaign-scoped
+      assertions, and no read ever sees another campaign's assertions.
+    * **Visibility.** A player-admissible read requires
+      ``Visibility.PLAYER``; GM reads see both.
+
+    ``None`` metadata means the assertion predates v4 (v1-v3 views), where
+    scope lives on the evidence chain alone — those reads are unaffected.
+    """
+    if metadata is None:
+        return True
+    if metadata.campaign_scope is not None and metadata.campaign_scope != campaign_id:
+        return False
+    return not (
+        admissibility is Admissibility.PLAYER
+        and metadata.visibility is not Visibility.PLAYER
+    )
+
+
+def _admit_v4_assertion(
+    metadata: KnowledgeAssertionMetadataV1,
+    *,
+    snapshot: ParsedGraphSnapshot,
+    sources: SourceRepository,
+    world_id: str,
+    campaign_id: str | None,
+    admissibility: Admissibility,
+) -> tuple[bool, ObjectScopeExclusion]:
+    """Assertion-scope gate first, then the existing evidence provenance chain.
+
+    Assertion-scope failures are silent (``out_of_scope``) so campaign and
+    audience filtering never emit identifiers a caller is not entitled to.
+    """
+    if not assertion_metadata_in_scope(
+        metadata, campaign_id=campaign_id, admissibility=admissibility
+    ):
+        return False, ObjectScopeExclusion(out_of_scope=True)
+    if not metadata.evidence_ref_ids:
+        return False, ObjectScopeExclusion(scope_unknown=True)
+    return _classify_evidence_ids(
+        metadata.evidence_ref_ids,
+        snapshot=snapshot,
+        sources=sources,
+        world_id=world_id,
+        campaign_id=campaign_id,
+        admissibility=admissibility,
+    )
+
+
+def _project_v4_objects(
+    snapshot: ParsedGraphSnapshot,
+    *,
+    sources: SourceRepository,
+    world_id: str,
+    campaign_id: str | None,
+    admissibility: Admissibility,
+) -> tuple[
+    dict[str, GraphObjectView],
+    dict[str, ObjectScopeExclusion],
+    dict[str, ObjectScopeExclusion],
+    dict[str, list[str]],
+]:
+    """Independent admission of every ``dm_union_graph_v4`` assertion."""
+    object_exclusions: dict[str, ObjectScopeExclusion] = {}
+    assertion_exclusions: dict[str, ObjectScopeExclusion] = {}
+    omitted_alias_index: dict[str, list[str]] = {}
+    objects: dict[str, GraphObjectView] = {}
+
+    for object_id, obj in snapshot.objects.items():
+        existence = obj.existence_assertion_metadata
+        if existence is None:
+            # A v4 snapshot without an existence assertion cannot be scoped.
+            object_exclusions[object_id] = ObjectScopeExclusion(scope_unknown=True)
+            continue
+        existence_ok, existence_exclusion = _admit_v4_assertion(
+            existence,
+            snapshot=snapshot,
+            sources=sources,
+            world_id=world_id,
+            campaign_id=campaign_id,
+            admissibility=admissibility,
+        )
+        if not existence_ok:
+            object_exclusions[object_id] = existence_exclusion
+            continue
+
+        admitted_aliases: list[AdmittedAliasAssertion] = []
+        omitted_alias_values: list[str] = []
+        for alias in obj.admitted_alias_assertions:
+            assert alias.assertion_metadata is not None
+            alias_ok, alias_exclusion = _admit_v4_assertion(
+                alias.assertion_metadata,
+                snapshot=snapshot,
+                sources=sources,
+                world_id=world_id,
+                campaign_id=campaign_id,
+                admissibility=admissibility,
+            )
+            if alias_ok:
+                admitted_aliases.append(alias)
+                continue
+            omitted_alias_values.append(alias.alias)
+            assertion_exclusions[alias.assertion_id] = alias_exclusion
+
+        admitted_summary: AdmittedSummaryAssertion | None = None
+        if obj.admitted_summary_assertion is not None:
+            summary = obj.admitted_summary_assertion
+            assert summary.assertion_metadata is not None
+            summary_ok, summary_exclusion = _admit_v4_assertion(
+                summary.assertion_metadata,
+                snapshot=snapshot,
+                sources=sources,
+                world_id=world_id,
+                campaign_id=campaign_id,
+                admissibility=admissibility,
+            )
+            if summary_ok:
+                admitted_summary = summary
+            else:
+                assertion_exclusions[summary.assertion_id] = summary_exclusion
+
+        admitted_properties: list[AdmittedPropertyAssertion] = []
+        for prop in obj.admitted_property_assertions:
+            assert prop.assertion_metadata is not None
+            property_ok, property_exclusion = _admit_v4_assertion(
+                prop.assertion_metadata,
+                snapshot=snapshot,
+                sources=sources,
+                world_id=world_id,
+                campaign_id=campaign_id,
+                admissibility=admissibility,
+            )
+            if property_ok:
+                admitted_properties.append(prop)
+            else:
+                assertion_exclusions[prop.assertion_id] = property_exclusion
+
+        # Another assertion may still admit the same alias text; only record a
+        # value as omitted when nothing admitted recovers it.
+        admitted_alias_values = {_norm_alias(item.alias) for item in admitted_aliases}
+        for value in omitted_alias_values:
+            key = _norm_alias(value)
+            if not key or key in admitted_alias_values:
+                continue
+            owners = omitted_alias_index.setdefault(key, [])
+            if object_id not in owners:
+                owners.append(object_id)
+
+        retained_evidence = list(existence.evidence_ref_ids)
+        for alias in admitted_aliases:
+            retained_evidence.extend(alias.evidence_ref_ids)
+        if admitted_summary is not None:
+            retained_evidence.extend(admitted_summary.evidence_ref_ids)
+        for prop in admitted_properties:
+            retained_evidence.extend(prop.evidence_ref_ids)
+
+        objects[object_id] = GraphObjectView(
+            object_id=obj.object_id,
+            kind=obj.kind,
+            label=obj.label,
+            aliases=list(dict.fromkeys(item.alias for item in admitted_aliases)),
+            evidence_ref_ids=list(dict.fromkeys(retained_evidence)),
+            summary=admitted_summary.summary if admitted_summary is not None else None,
+            object_field_schema="v4",
+            core_evidence_ref_ids=list(existence.evidence_ref_ids),
+            admitted_alias_assertions=admitted_aliases,
+            admitted_summary_assertion=admitted_summary,
+            existence_assertion_metadata=existence,
+            admitted_property_assertions=admitted_properties,
+        )
+
+    return objects, object_exclusions, assertion_exclusions, omitted_alias_index
+
+
 def project_scoped_snapshot(
     snapshot: ParsedGraphSnapshot,
     *,
@@ -520,6 +717,8 @@ def project_scoped_snapshot(
 
     V1 keeps the B.1a coarse-object policy. V2/V3 retain the object shell when
     core evidence is admitted, then filter each alias and summary independently.
+    V4 filters every assertion by its own campaign scope and visibility before
+    the same evidence-provenance checks.
 
     Graph-global exclusions are retained per object/relationship/assertion for
     callers that need targeted diagnostics. They must not be copied wholesale
@@ -527,7 +726,20 @@ def project_scoped_snapshot(
     """
     assertion_exclusions: dict[str, ObjectScopeExclusion] = {}
     omitted_alias_index: dict[str, list[str]] = {}
-    if snapshot.graph_schema in (GRAPH_SCHEMA_V2, GRAPH_SCHEMA_V3):
+    if snapshot.graph_schema == GRAPH_SCHEMA_V4:
+        (
+            objects,
+            object_exclusions,
+            assertion_exclusions,
+            omitted_alias_index,
+        ) = _project_v4_objects(
+            snapshot,
+            sources=sources,
+            world_id=world_id,
+            campaign_id=campaign_id,
+            admissibility=admissibility,
+        )
+    elif snapshot.graph_schema in (GRAPH_SCHEMA_V2, GRAPH_SCHEMA_V3):
         (
             objects,
             object_exclusions,
@@ -553,6 +765,15 @@ def project_scoped_snapshot(
     relationships: dict[str, GraphRelationshipView] = {}
     for rel_id, rel in snapshot.relationships.items():
         if rel.subject_object_id not in objects or rel.object_object_id not in objects:
+            relationship_exclusions[rel_id] = ObjectScopeExclusion(out_of_scope=True)
+            continue
+        # V4 only: the relationship's own campaign/visibility scope. ``None``
+        # metadata (v1-v3) leaves this a no-op.
+        if not assertion_metadata_in_scope(
+            rel.assertion_metadata,
+            campaign_id=campaign_id,
+            admissibility=admissibility,
+        ):
             relationship_exclusions[rel_id] = ObjectScopeExclusion(out_of_scope=True)
             continue
         all_valid, exclusion = _classify_evidence_ids(

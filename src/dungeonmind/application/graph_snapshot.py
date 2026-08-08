@@ -1,9 +1,12 @@
 """Transport-neutral readers for pinned union-graph JSON snapshots.
 
 Supports ``dm_union_graph_v1`` (coarse object fields), ``dm_union_graph_v2``
-(assertion-scoped aliases and summary), and ``dm_union_graph_v3`` (v2 node
-shape plus a pinned ``SemanticProfileRef`` with namespace-admitted terms).
-Malformed stored state fails closed via ``PersistenceIntegrityError``.
+(assertion-scoped aliases and summary), ``dm_union_graph_v3`` (v2 node shape
+plus a pinned ``SemanticProfileRef`` with namespace-admitted terms), and
+``dm_union_graph_v4`` (v3 profile pinning plus shared
+``KnowledgeAssertionMetadataV1`` on every durable assertion — see
+``graph_snapshot_v4``). Malformed stored state fails closed via
+``PersistenceIntegrityError``.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from pydantic import Field, ValidationError, model_validator
 from ..contracts.base import DungeonMindModel
 from ..contracts.evidence import EVIDENCE_REF_SCHEMA, EvidenceRole, SourceDomain
 from ..contracts.identity import IdentityOutcome
+from ..contracts.knowledge_assertion import KnowledgeAssertionMetadataV1
 from ..contracts.retrieval import ResolvedReferent
 from ..contracts.semantic_profile import (
     SemanticProfileDescriptor,
@@ -32,6 +36,7 @@ from .semantic_profiles import (
 GRAPH_SCHEMA_V1 = "dm_union_graph_v1"
 GRAPH_SCHEMA_V2 = "dm_union_graph_v2"
 GRAPH_SCHEMA_V3 = "dm_union_graph_v3"
+GRAPH_SCHEMA_V4 = "dm_union_graph_v4"
 SUPPORTED_GRAPH_SCHEMA = GRAPH_SCHEMA_V1  # v1 constant retained for callers
 
 
@@ -145,11 +150,18 @@ class GraphEvidenceRecord(DungeonMindModel):
 
 
 class AdmittedAliasAssertion(DungeonMindModel):
-    """Internal admitted alias assertion (excluded from public dumps)."""
+    """Internal admitted alias assertion (excluded from public dumps).
+
+    ``assertion_metadata`` is populated only for ``dm_union_graph_v4``; v1-v3
+    admitted assertions leave it ``None`` so their dumps stay byte-identical.
+    """
 
     assertion_id: str
     alias: str
     evidence_ref_ids: list[str] = Field(default_factory=list)
+    assertion_metadata: KnowledgeAssertionMetadataV1 | None = Field(
+        default=None, exclude=True
+    )
 
 
 class AdmittedSummaryAssertion(DungeonMindModel):
@@ -158,6 +170,25 @@ class AdmittedSummaryAssertion(DungeonMindModel):
     assertion_id: str
     summary: str
     evidence_ref_ids: list[str] = Field(default_factory=list)
+    assertion_metadata: KnowledgeAssertionMetadataV1 | None = Field(
+        default=None, exclude=True
+    )
+
+
+class AdmittedPropertyAssertion(DungeonMindModel):
+    """Internal admitted v4 property assertion (excluded from public dumps).
+
+    Multiple assertions may share a ``property_term``; there is no implicit
+    first/latest winner and the reader never collapses them.
+    """
+
+    assertion_id: str
+    property_term: str
+    value: Any
+    evidence_ref_ids: list[str] = Field(default_factory=list)
+    assertion_metadata: KnowledgeAssertionMetadataV1 | None = Field(
+        default=None, exclude=True
+    )
 
 
 class GraphObjectView(DungeonMindModel):
@@ -168,13 +199,20 @@ class GraphObjectView(DungeonMindModel):
     evidence_ref_ids: list[str] = Field(default_factory=list)
     summary: str | None = None
     # Internal / excluded: never appear in model_dump used for agent context.
-    object_field_schema: Literal["v1", "v2"] = Field(default="v1", exclude=True)
+    object_field_schema: Literal["v1", "v2", "v4"] = Field(default="v1", exclude=True)
     core_evidence_ref_ids: list[str] = Field(default_factory=list, exclude=True)
     admitted_alias_assertions: list[AdmittedAliasAssertion] = Field(
         default_factory=list, exclude=True
     )
     admitted_summary_assertion: AdmittedSummaryAssertion | None = Field(
         default=None, exclude=True
+    )
+    # V4 only: the object's existence assertion plus its property assertions.
+    existence_assertion_metadata: KnowledgeAssertionMetadataV1 | None = Field(
+        default=None, exclude=True
+    )
+    admitted_property_assertions: list[AdmittedPropertyAssertion] = Field(
+        default_factory=list, exclude=True
     )
 
 
@@ -184,6 +222,10 @@ class GraphRelationshipView(DungeonMindModel):
     predicate: str
     object_object_id: str
     evidence_ref_ids: list[str] = Field(default_factory=list)
+    # V4 only: the relationship's own assertion metadata.
+    assertion_metadata: KnowledgeAssertionMetadataV1 | None = Field(
+        default=None, exclude=True
+    )
 
 
 @dataclass(frozen=True)
@@ -831,10 +873,15 @@ class VersionedUnionGraphSnapshotReader:
         registry = profile_registry if profile_registry is not None else (
             _EmptySemanticProfileRegistry()
         )
+        # Imported here (not at module scope) because the v4 reader depends on
+        # the record/view types defined above.
+        from .graph_snapshot_v4 import UnionGraphV4SnapshotReader
+
         self._profile_registry = registry
         self._v1 = UnionGraphV1SnapshotReader()
         self._v2 = UnionGraphV2SnapshotReader()
         self._v3 = UnionGraphV3SnapshotReader(registry)
+        self._v4 = UnionGraphV4SnapshotReader(registry)
 
     def parse(
         self,
@@ -852,6 +899,10 @@ class VersionedUnionGraphSnapshotReader:
             )
         if graph_schema == GRAPH_SCHEMA_V3:
             return self._v3.parse(
+                graph_schema=graph_schema, graph_payload=graph_payload
+            )
+        if graph_schema == GRAPH_SCHEMA_V4:
+            return self._v4.parse(
                 graph_schema=graph_schema, graph_payload=graph_payload
             )
         raise PersistenceIntegrityError(
