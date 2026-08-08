@@ -6,7 +6,7 @@
 **Flow:** SOURCE / WORLD / KERNEL  
 **Branch:** `source/whole-world-provenance-v2`  
 **Base SHA:** `3842f147c15c589dff76d29dc2ad398e6d92b4d5` (DungeonMind `main`, merge of #24)  
-**Head SHA:** *(update after Cycle 1 commit)*  
+**Head SHA:** `cc75342a3a6983306c61e567104fcc7b793c1901`  
 **PR:** [#25](https://github.com/Drakosfire/DungeonMind/pull/25)  
 **Approved #24 head:** `e563aafd346c2a510f8890965e53fe016cd3407f` (ancestor of base)
 
