@@ -1,16 +1,16 @@
 # HANDOFF — Whole-world source provenance v2 (handback)
 
 **Created:** 2026-08-07  
-**Status:** COMPLETE — implementation handback (Cycle 1 corrections applied)  
+**Status:** COMPLETE — implementation handback (Cycle 2 corrections applied)  
 **Repository:** `Drakosfire/DungeonMind`  
 **Flow:** SOURCE / WORLD / KERNEL  
 **Branch:** `source/whole-world-provenance-v2`  
 **Base SHA:** `3842f147c15c589dff76d29dc2ad398e6d92b4d5` (DungeonMind `main`, merge of #24)  
-**Head SHA:** `cc75342a3a6983306c61e567104fcc7b793c1901`  
 **PR:** [#25](https://github.com/Drakosfire/DungeonMind/pull/25)  
-**Approved #24 head:** `e563aafd346c2a510f8890965e53fe016cd3407f` (ancestor of base)
+**Approved #24 head:** `e563aafd346c2a510f8890965e53fe016cd3407f` (ancestor of base)  
+**Reviewed head (Cycle 2):** `9136d9305bf40c1d6f9a568c0c91dae2d65cb93b`
 
-**Review accounting:** `review cycles: 1` — Cycle 1 REQUEST CHANGES (3 P1 + 1 P2)
+**Review accounting:** `review cycles: 2` — Cycle 1 REQUEST CHANGES (3 P1 + 1 P2); Cycle 2 REQUEST CHANGES (1 P1 historical schema docstring)
 
 ---
 
@@ -25,7 +25,13 @@ Reviewed head: `4a78c3eac7b33d33c8dab3f1233388c1f74113c1`
 | P1 | `SourceArtifactV2.created_at=None` rejected by Postgres | Migration `0005` nullable `created_at`; substrate `ensure_world` timestamp separated from producer timestamp |
 | P2 | `GraphEvidenceRecordV2` defaults ≠ `EvidenceRefV2` requiredness | `GraphEvidenceRecordV2 = EvidenceRefV2`; field-omission matrix fails closed |
 
----
+## §0b Cycle 2 corrections
+
+Reviewed head: `9136d9305bf40c1d6f9a568c0c91dae2d65cb93b`
+
+| Severity | Finding | Fix |
+|----------|---------|-----|
+| P1 | v1 `EvidenceRef` / `SourceArtifact` class docstring edits changed `model_json_schema()` and broke the D&D threat schema digest pin | Restored exact historical class docstrings; added direct v1 JSON-Schema digest locks (`test_historical_evidence_schema_locks.py`). Did **not** refresh the D&D digest. |
 
 ## §1 New public contracts
 

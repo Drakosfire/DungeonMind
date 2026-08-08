@@ -126,7 +126,7 @@ def _validate_json_value(value: Any, *, path: str) -> None:
 
 
 class EvidenceRef(DungeonMindModel):
-    """A durable pointer from graph knowledge to its evidentiary basis (v1)."""
+    """A durable pointer from graph knowledge to its evidentiary basis."""
 
     schema_version: Literal["dm_evidence_ref_v1"] = EVIDENCE_REF_SCHEMA
     evidence_ref_id: str
@@ -142,7 +142,7 @@ class EvidenceRef(DungeonMindModel):
 
 
 class SourceArtifact(DungeonMindModel):
-    """A registered source of evidentiary authority (v1).
+    """A registered source of evidentiary authority (e.g. one recap document).
 
     Identity fields are immutable after create. Body hashes belong on
     ``SourceRevision``. ``current_revision_id`` may be advanced by a typed
