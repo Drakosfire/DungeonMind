@@ -45,6 +45,7 @@ packages = ["src/dungeonmind", "src/dungeonmind_dnd"]
 "src/dungeonmind_dnd/vocabularies/threat-v1.json" = "dungeonmind_dnd/vocabularies/threat-v1.json"
 "src/dungeonmind_dnd/vocabularies/world-object-v1.json" = "dungeonmind_dnd/vocabularies/world-object-v1.json"
 "src/dungeonmind_dnd/vocabularies/world-object-v2.json" = "dungeonmind_dnd/vocabularies/world-object-v2.json"
+"src/dungeonmind_dnd/vocabularies/world-object-v3.json" = "dungeonmind_dnd/vocabularies/world-object-v3.json"
 
 [tool.ruff]
 target-version = "py311"
