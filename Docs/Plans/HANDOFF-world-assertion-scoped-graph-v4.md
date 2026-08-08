@@ -7,7 +7,8 @@
 **Branch:** `world/assertion-scoped-graph-v4`  
 **Base SHA:** `8095321ed011b8a38640615a90cbc9efaf385e8c` (DungeonMind `main` / merge of #23)  
 **PR:** [#24](https://github.com/Drakosfire/DungeonMind/pull/24)  
-**Reviewed head (Cycle 1):** `0be1cfe07f48d406a5e5aea9399692802af19df7`
+**Reviewed head (Cycle 1):** `0be1cfe07f48d406a5e5aea9399692802af19df7`  
+**Fix head (Cycle 1 corrections):** `fc0339b094359d81b34951ab13e913c1aa6057ea`
 
 **Review accounting:** `review cycles: 1` (Cycle 1: REQUEST CHANGES — 1 P1 + 1 P2; fixes in this update)
 
