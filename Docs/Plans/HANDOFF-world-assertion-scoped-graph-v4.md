@@ -7,7 +7,8 @@
 **Branch:** `world/assertion-scoped-graph-v4`  
 **Head SHA:** `b603de0056554d9c2d627caf7e8a2e40df40326e`  
 **Base SHA:** `8095321ed011b8a38640615a90cbc9efaf385e8c` (DungeonMind `main` / merge of #23)  
-**PR:** (opened after push)
+**PR:** [#24](https://github.com/Drakosfire/DungeonMind/pull/24)  
+**Head SHA:** `b603de0056554d9c2d627caf7e8a2e40df40326e` (+ docs handback commit on branch)
 
 **Review accounting:** `review cycles: 0`
 
