@@ -7,6 +7,7 @@ world-object-v3 is additive: same twelve kinds, expanded governed predicates.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from dungeonmind.application.semantic_profiles import descriptor_sha256
@@ -259,8 +260,32 @@ EXPECTED_RESIDUAL_BY_PREDICATE = {
     "routes_to": 1,
     "same_as": 5,
     "serves": 3,
+    "threatens": 1,
     "travels_to": 2,
     "within": 2,
+}
+
+# Edge IDs whose durable identity/qualifier contradicts the forward predicate
+# direction. Endpoint admission alone would green-light these; the test-only
+# future-adapter proof must leave them unresolved without inventing a reverse.
+SEMANTIC_ADJUDICATION_EXCEPTION_EDGE_IDS = frozenset(
+    {
+        # Predicate says Lysandra threatens cultists; qualifier says the reverse.
+        "edge:npc_lysandra:threatens:node:cultists_of_longmont:is-threatened-by-cultists",
+    }
+)
+
+# Passive/reverse qualifier cues audited against representative edge IDs.
+_REVERSE_QUALIFIER_PATTERNS_BY_PREDICATE: dict[str, tuple[str, ...]] = {
+    "threatens": (r"is-threatened-by", r"threatened-by"),
+    "attacks": (r"is-attacked-by", r"attacked-by"),
+    "owns": (r"is-owned-by", r"owned-by"),
+    "contains": (r"is-contained-(?:in|by)", r"contained-(?:in|by)"),
+    "leads": (r"is-led-by", r"led-by"),
+    "commands": (r"is-commanded-by", r"commanded-by"),
+    "serves": (r"is-served-by", r"served-by"),
+    "parent_of": (r"is-child-of", r"child-of"),
+    "causes": (r"is-caused-by", r"caused-by"),
 }
 
 
@@ -325,6 +350,27 @@ def _endpoint_admitted(
     src = BUDDY_TO_DM[target_buddy_kind if reverse else source_buddy_kind]
     tgt = BUDDY_TO_DM[source_buddy_kind if reverse else target_buddy_kind]
     return src in subjects and tgt in objects
+
+
+def _edge_ids_for_pair(pair: dict[str, object]) -> list[str]:
+    raw = pair.get("representative_edge_ids", [])
+    assert isinstance(raw, list)
+    return [str(edge_id) for edge_id in raw]
+
+
+def _semantic_exception_count(pair: dict[str, object]) -> int:
+    """Count known direction-contradiction exceptions among representative IDs."""
+    return sum(
+        1
+        for edge_id in _edge_ids_for_pair(pair)
+        if edge_id in SEMANTIC_ADJUDICATION_EXCEPTION_EDGE_IDS
+    )
+
+
+def _qualifier_contradicts_predicate(buddy_predicate: str, edge_id: str) -> bool:
+    patterns = _REVERSE_QUALIFIER_PATTERNS_BY_PREDICATE.get(buddy_predicate, ())
+    lowered = edge_id.casefold()
+    return any(re.search(pattern, lowered) is not None for pattern in patterns)
 
 
 def test_historical_profile_and_vocab_digests_unchanged() -> None:
@@ -667,7 +713,13 @@ def test_eldyrwild_relationship_inventory_fixture_integrity() -> None:
     assert uses["count"] == 2
 
 
-def test_eldyrwild_v3_relationship_coverage_288_of_346() -> None:
+def test_eldyrwild_v3_relationship_coverage_287_of_346() -> None:
+    """Safe future-adapter evidence: endpoint fit AND no direction contradiction.
+
+    This is not merely an endpoint-shape capacity metric. Representative edge IDs
+    whose qualifiers reverse the predicate meaning are left unresolved even when
+    world-object-v3 would admit the endpoint pair.
+    """
     inventory = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
     residual_by: dict[str, int] = {}
     admitted = 0
@@ -691,17 +743,63 @@ def test_eldyrwild_v3_relationship_coverage_288_of_346() -> None:
             elif kind == "mapped_reverse":
                 assert term is not None
                 ok = _endpoint_admitted(term, src, tgt, reverse=True)
-            if ok:
+
+            exception_count = _semantic_exception_count(pair)
+            assert exception_count <= count
+            if ok and exception_count:
+                # Endpoint-admissible but semantically unsafe without explicit reverse.
+                admitted += count - exception_count
+                residual_by[buddy_predicate] = (
+                    residual_by.get(buddy_predicate, 0) + exception_count
+                )
+            elif ok:
                 admitted += count
             else:
                 residual_by[buddy_predicate] = residual_by.get(buddy_predicate, 0) + count
 
     assert mechanics == 2
-    assert admitted == 288
+    assert admitted == 287
     assert residual_by == EXPECTED_RESIDUAL_BY_PREDICATE
-    assert sum(residual_by.values()) == 58
+    assert sum(residual_by.values()) == 59
     assert admitted + sum(residual_by.values()) == 346
     assert mechanics + admitted + sum(residual_by.values()) == 348
+
+
+def test_lysandra_threatens_edge_is_semantic_adjudication_exception() -> None:
+    inventory = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
+    threatens = next(
+        row for row in inventory["predicates"] if row["buddy_predicate"] == "threatens"
+    )
+    lysandra = (
+        "edge:npc_lysandra:threatens:node:cultists_of_longmont:is-threatened-by-cultists"
+    )
+    assert lysandra in SEMANTIC_ADJUDICATION_EXCEPTION_EDGE_IDS
+    npc_faction = next(
+        pair
+        for pair in threatens["endpoint_pairs"]
+        if pair["source_buddy_kind"] == "npc" and pair["target_buddy_kind"] == "faction"
+    )
+    assert npc_faction["count"] == 1
+    assert lysandra in npc_faction["representative_edge_ids"]
+    # Endpoint shape would admit npc→faction on dnd5e:threatens.
+    assert _endpoint_admitted("dnd5e:threatens", "npc", "faction")
+    # Qualifier contradicts forward direction — must remain unresolved.
+    assert _qualifier_contradicts_predicate("threatens", lysandra)
+
+
+def test_representative_ids_have_no_untracked_direction_contradictions() -> None:
+    """Re-audit representative IDs: every reverse-qualifier hit is an exception."""
+    inventory = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
+    untracked: list[str] = []
+    for row in inventory["predicates"]:
+        buddy_predicate = row["buddy_predicate"]
+        for pair in row["endpoint_pairs"]:
+            for edge_id in _edge_ids_for_pair(pair):
+                if not _qualifier_contradicts_predicate(buddy_predicate, edge_id):
+                    continue
+                if edge_id not in SEMANTIC_ADJUDICATION_EXCEPTION_EDGE_IDS:
+                    untracked.append(edge_id)
+    assert untracked == []
 
 
 def test_no_string_prefix_fallback_in_mapping_table() -> None:
