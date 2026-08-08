@@ -11,16 +11,20 @@ from dungeonmind.application.graph_scope import (
     EvidenceScopeVerdict,
     ProvenanceRejection,
     project_scoped_snapshot,
+    public_coverage_gaps_for_exclusion,
     resolve_evidence_provenance,
 )
 from dungeonmind.application.graph_snapshot import (
     GRAPH_SCHEMA_V2,
+    GraphEvidenceRecord,
     GraphEvidenceRecordV2,
     GraphObjectView,
     ParsedGraphSnapshot,
 )
 from dungeonmind.contracts.evidence import (
     EvidenceRefV2,
+    EvidenceRole,
+    SourceArtifact,
     SourceArtifactV2,
     SourceAuthority,
     SourceDomain,
@@ -50,6 +54,8 @@ def _artifact_v2(
     authority: SourceAuthority | None = None,
     review_state: SourceReviewState | None = SourceReviewState.CANONICAL,
     lineage: dict | None = None,
+    created_at: datetime | None = FIXED_NOW,
+    updated_at: datetime | None = FIXED_NOW,
 ) -> SourceArtifactV2:
     return SourceArtifactV2(
         source_artifact_id=source_artifact_id,
@@ -71,8 +77,8 @@ def _artifact_v2(
         ),
         lineage={"import_batch": "batch-7"} if lineage is None else lineage,
         status=SourceStatus.ACTIVE,
-        created_at=FIXED_NOW,
-        updated_at=FIXED_NOW,
+        created_at=created_at,
+        updated_at=updated_at,
     )
 
 
@@ -81,7 +87,7 @@ def _evidence_record(
     evidence_ref_id: str = "ev:v2",
     source_artifact_id: str = "src:v2-notes",
     source_domain_key: str = "buddy.session_recap",
-    source_domain: str | None = "session_recap",
+    source_domain: SourceDomain | None = SourceDomain.SESSION_RECAP,
 ) -> GraphEvidenceRecordV2:
     return GraphEvidenceRecordV2(
         evidence_ref_id=evidence_ref_id,
@@ -89,14 +95,39 @@ def _evidence_record(
         source_revision_id="srcrev:v2-notes-v1",
         source_domain_key=source_domain_key,
         source_domain=source_domain,
-        evidence_role="support",
+        evidence_role=EvidenceRole.SUPPORT,
         can_open_source=True,
         can_highlight_span=False,
         session_id="ses:0011",
+        source_span_ref_id=None,
+        locator=None,
+        uri=None,
+        source_locator=None,
+        line_ref=None,
     )
 
 
-def _snapshot_with_evidence(record: GraphEvidenceRecordV2) -> ParsedGraphSnapshot:
+def _v1_evidence_record(
+    *,
+    evidence_ref_id: str = "ev:v1",
+    source_artifact_id: str = "src:v1-hidden",
+) -> GraphEvidenceRecord:
+    return GraphEvidenceRecord(
+        evidence_ref_id=evidence_ref_id,
+        source_artifact_id=source_artifact_id,
+        source_revision_id="srcrev:v1-hidden-v1",
+        source_domain="worldbuilding",
+        evidence_role="support",
+        can_open_source=True,
+        can_highlight_span=False,
+        locator=None,
+        uri=None,
+    )
+
+
+def _snapshot_with_evidence(
+    record: GraphEvidenceRecord | GraphEvidenceRecordV2,
+) -> ParsedGraphSnapshot:
     return ParsedGraphSnapshot(
         world_id=WORLD_ID,
         graph_schema=GRAPH_SCHEMA_V2,
@@ -197,6 +228,148 @@ def test_visibility_null_with_source_visibility_state_not_admitted() -> None:
         admissibility=Admissibility.GM,
     )
     assert "obj:gate" not in scoped.snapshot.objects
+
+
+def test_v1_evidence_hidden_v2_artifact_is_silent() -> None:
+    """Visible v1 evidence → hidden v2 artifact must not leak schema mismatch."""
+    hidden = _artifact_v2(
+        source_artifact_id="src:v2-hidden",
+        visibility=Visibility.GM,
+        source_domain_key="buddy.worldbuilding",
+        source_domain=SourceDomain.WORLDBUILDING,
+        campaign_id=CAMPAIGN_ID,
+        session_id=None,
+    )
+    sources = InMemorySourceRepository()
+    sources.put_artifact(hidden)
+    sources.put_revision(
+        SourceRevision(
+            source_revision_id="srcrev:v1-hidden-v1",
+            source_artifact_id=hidden.source_artifact_id,
+            content_sha256="cc" * 32,
+            body_storage="external",
+            locator="fixture://hidden",
+            created_at=FIXED_NOW,
+        )
+    )
+    record = _v1_evidence_record(source_artifact_id=hidden.source_artifact_id)
+    snapshot = _snapshot_with_evidence(record)
+    resolved = resolve_evidence_provenance(
+        record.evidence_ref_id,
+        snapshot=snapshot,
+        sources=sources,
+        world_id=WORLD_ID,
+        campaign_id=CAMPAIGN_ID,
+        admissibility=Admissibility.PLAYER,
+    )
+    assert resolved is None
+    scoped = project_scoped_snapshot(
+        snapshot,
+        sources=sources,
+        world_id=WORLD_ID,
+        campaign_id=CAMPAIGN_ID,
+        admissibility=Admissibility.PLAYER,
+    )
+    assert "obj:gate" not in scoped.snapshot.objects
+    exclusion = scoped.object_exclusions["obj:gate"]
+    gap_codes, missing = public_coverage_gaps_for_exclusion(exclusion)
+    assert gap_codes == []
+    assert missing == []
+    assert "evidence_source_schema_mismatch" not in str(exclusion)
+
+
+def test_v2_evidence_hidden_v1_artifact_is_silent() -> None:
+    """Visible v2 evidence → hidden v1 artifact must not leak schema mismatch."""
+    hidden = SourceArtifact(
+        source_artifact_id="src:v1-hidden",
+        source_domain=SourceDomain.WORLDBUILDING,
+        world_id=WORLD_ID,
+        campaign_id=CAMPAIGN_ID,
+        visibility=Visibility.GM,
+        status=SourceStatus.ACTIVE,
+        created_at=FIXED_NOW,
+    )
+    sources = InMemorySourceRepository()
+    sources.put_artifact(hidden)
+    sources.put_revision(
+        SourceRevision(
+            source_revision_id="srcrev:v2-notes-v1",
+            source_artifact_id=hidden.source_artifact_id,
+            content_sha256="dd" * 32,
+            body_storage="external",
+            locator="fixture://v1-hidden",
+            created_at=FIXED_NOW,
+        )
+    )
+    record = _evidence_record(
+        source_artifact_id=hidden.source_artifact_id,
+        source_domain_key="buddy.worldbuilding",
+        source_domain=SourceDomain.WORLDBUILDING,
+    )
+    snapshot = _snapshot_with_evidence(record)
+    resolved = resolve_evidence_provenance(
+        record.evidence_ref_id,
+        snapshot=snapshot,
+        sources=sources,
+        world_id=WORLD_ID,
+        campaign_id=CAMPAIGN_ID,
+        admissibility=Admissibility.PLAYER,
+    )
+    assert resolved is None
+    scoped = project_scoped_snapshot(
+        snapshot,
+        sources=sources,
+        world_id=WORLD_ID,
+        campaign_id=CAMPAIGN_ID,
+        admissibility=Admissibility.PLAYER,
+    )
+    assert "obj:gate" not in scoped.snapshot.objects
+    exclusion = scoped.object_exclusions["obj:gate"]
+    gap_codes, missing = public_coverage_gaps_for_exclusion(exclusion)
+    assert gap_codes == []
+    assert missing == []
+    assert "evidence_source_schema_mismatch" not in str(exclusion)
+
+
+def test_visible_cross_schema_mismatch_is_detailed() -> None:
+    """Once an artifact is proven visible, schema mismatch may be detailed."""
+    visible_v1 = SourceArtifact(
+        source_artifact_id="src:v1-visible",
+        source_domain=SourceDomain.WORLDBUILDING,
+        world_id=WORLD_ID,
+        campaign_id=CAMPAIGN_ID,
+        visibility=Visibility.PLAYER,
+        status=SourceStatus.ACTIVE,
+        created_at=FIXED_NOW,
+    )
+    sources = InMemorySourceRepository()
+    sources.put_artifact(visible_v1)
+    record = _evidence_record(
+        source_artifact_id=visible_v1.source_artifact_id,
+        source_domain_key="buddy.worldbuilding",
+        source_domain=SourceDomain.WORLDBUILDING,
+    )
+    snapshot = _snapshot_with_evidence(record)
+    resolved = resolve_evidence_provenance(
+        record.evidence_ref_id,
+        snapshot=snapshot,
+        sources=sources,
+        world_id=WORLD_ID,
+        campaign_id=CAMPAIGN_ID,
+        admissibility=Admissibility.PLAYER,
+    )
+    assert isinstance(resolved, ProvenanceRejection)
+    assert resolved.gap_code == "evidence_source_schema_mismatch"
+
+
+def test_memory_roundtrip_null_timestamps() -> None:
+    artifact = _artifact_v2(created_at=None, updated_at=None)
+    sources = InMemorySourceRepository()
+    assert sources.put_artifact(artifact) == artifact
+    got = sources.get_artifact(artifact.source_artifact_id)
+    assert got is not None
+    assert got.created_at is None
+    assert got.updated_at is None
 
 
 def test_review_state_canonical_with_authority_null_valid() -> None:

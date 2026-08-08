@@ -69,6 +69,17 @@ def test_source_artifact_v2_nullable_axes_roundtrip(pg) -> None:
 
 
 @pytest.mark.integration
+def test_source_artifact_v2_null_timestamps_roundtrip(pg) -> None:
+    artifact = _artifact_v2()
+    artifact = artifact.model_copy(update={"created_at": None, "updated_at": None})
+    assert pg.sources.put_artifact(artifact) == artifact
+    got = pg.sources.get_artifact("src:pg-v2")
+    assert got is not None
+    assert got.created_at is None
+    assert got.updated_at is None
+
+
+@pytest.mark.integration
 def test_source_artifact_v2_idempotency_conflict(pg) -> None:
     artifact = _artifact_v2()
     pg.sources.put_artifact(artifact)

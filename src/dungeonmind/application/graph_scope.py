@@ -33,6 +33,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Literal
 
 from ..contracts.evidence import (
     EvidenceRef,
@@ -245,6 +246,33 @@ def source_artifact_in_scope(
     return True
 
 
+def _establish_artifact_scope(
+    artifact: SourceArtifactRecord,
+    *,
+    world_id: str,
+    campaign_id: str | None,
+    admissibility: Admissibility,
+) -> EvidenceScopeVerdict | Literal[True] | None:
+    """Establish world/campaign/visibility before provenance diagnostics.
+
+    Returns:
+      * ``True`` when the artifact is in scope for this read;
+      * ``None`` when the artifact is out of visibility/campaign/world scope
+        (silent filter);
+      * ``EvidenceScopeVerdict.SCOPE_UNKNOWN`` when v2 ``visibility is None``.
+    """
+    if isinstance(artifact, SourceArtifactV2) and artifact.visibility is None:
+        return EvidenceScopeVerdict.SCOPE_UNKNOWN
+    if not source_artifact_in_scope(
+        artifact,
+        world_id=world_id,
+        campaign_id=campaign_id,
+        admissibility=admissibility,
+    ):
+        return None
+    return True
+
+
 def _resolve_v1_evidence_provenance(
     record: GraphEvidenceRecord,
     *,
@@ -264,19 +292,22 @@ def _resolve_v1_evidence_provenance(
     if artifact is None:
         return EvidenceScopeVerdict.SCOPE_UNKNOWN
 
+    # Scope before schema-mismatch diagnostics — detailed rejection codes are
+    # only safe after the artifact is proven visible for this read.
+    scoped = _establish_artifact_scope(
+        artifact,
+        world_id=world_id,
+        campaign_id=campaign_id,
+        admissibility=admissibility,
+    )
+    if scoped is not True:
+        return scoped
+
     if isinstance(artifact, SourceArtifactV2):
         return ProvenanceRejection(
             "evidence_source_schema_mismatch",
             evidence_ref_id,
         )
-
-    if not source_artifact_in_scope(
-        artifact,
-        world_id=world_id,
-        campaign_id=campaign_id,
-        admissibility=admissibility,
-    ):
-        return None
 
     if artifact.status is not SourceStatus.ACTIVE:
         return ProvenanceRejection(
@@ -325,34 +356,26 @@ def _resolve_v2_evidence_provenance(
     campaign_id: str | None,
     admissibility: Admissibility,
 ) -> ValidatedProvenance | ProvenanceRejection | EvidenceScopeVerdict | None:
-    try:
-        source_domain = (
-            SourceDomain(record.source_domain) if record.source_domain is not None else None
-        )
-        evidence_role = EvidenceRole(record.evidence_role)
-    except ValueError:
-        return EvidenceScopeVerdict.SCOPE_UNKNOWN
-
     artifact = sources.get_artifact(record.source_artifact_id)
     if artifact is None:
         return EvidenceScopeVerdict.SCOPE_UNKNOWN
+
+    # Scope before schema-mismatch diagnostics — detailed rejection codes are
+    # only safe after the artifact is proven visible for this read.
+    scoped = _establish_artifact_scope(
+        artifact,
+        world_id=world_id,
+        campaign_id=campaign_id,
+        admissibility=admissibility,
+    )
+    if scoped is not True:
+        return scoped
 
     if not isinstance(artifact, SourceArtifactV2):
         return ProvenanceRejection(
             "evidence_source_schema_mismatch",
             evidence_ref_id,
         )
-
-    if artifact.visibility is None:
-        return EvidenceScopeVerdict.SCOPE_UNKNOWN
-
-    if not source_artifact_in_scope(
-        artifact,
-        world_id=world_id,
-        campaign_id=campaign_id,
-        admissibility=admissibility,
-    ):
-        return None
 
     if artifact.status is not SourceStatus.ACTIVE:
         return ProvenanceRejection(
@@ -361,7 +384,7 @@ def _resolve_v2_evidence_provenance(
         )
     if (
         artifact.source_domain_key != record.source_domain_key
-        or artifact.source_domain != source_domain
+        or artifact.source_domain != record.source_domain
     ):
         return ProvenanceRejection("evidence_source_domain_mismatch", evidence_ref_id)
 
@@ -380,22 +403,7 @@ def _resolve_v2_evidence_provenance(
 
     return ValidatedProvenance(
         record=record,
-        evidence=EvidenceRefV2(
-            evidence_ref_id=record.evidence_ref_id,
-            source_artifact_id=record.source_artifact_id,
-            source_revision_id=record.source_revision_id,
-            source_domain_key=record.source_domain_key,
-            source_domain=source_domain,
-            evidence_role=evidence_role,
-            can_open_source=record.can_open_source,
-            can_highlight_span=record.can_highlight_span,
-            session_id=record.session_id,
-            source_span_ref_id=record.source_span_ref_id,
-            locator=record.locator,
-            uri=record.uri,
-            source_locator=record.source_locator,
-            line_ref=record.line_ref,
-        ),
+        evidence=record.model_copy(deep=True),
         artifact=artifact,
     )
 

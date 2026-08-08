@@ -42,6 +42,7 @@ from .graph_snapshot import (
     AdmittedAliasAssertion,
     AdmittedPropertyAssertion,
     AdmittedSummaryAssertion,
+    GraphEvidenceLedgerRecord,
     GraphEvidenceRecord,
     GraphObjectView,
     GraphRelationshipView,
@@ -187,8 +188,8 @@ class UnionGraphV4Payload(DungeonMindModel):
 
 def _index_evidence(
     rows: list[GraphEvidenceRecord],
-) -> dict[str, GraphEvidenceRecord]:
-    evidence: dict[str, GraphEvidenceRecord] = {}
+) -> dict[str, GraphEvidenceLedgerRecord]:
+    evidence: dict[str, GraphEvidenceLedgerRecord] = {}
     for row in rows:
         prior = evidence.get(row.evidence_ref_id)
         if prior is not None and prior.model_dump() != row.model_dump():

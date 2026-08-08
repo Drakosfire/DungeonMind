@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from psycopg import sql
@@ -754,26 +755,30 @@ class PostgresSourceRepository:
             visibility = (
                 artifact.visibility.value if artifact.visibility is not None else None
             )
-            # Column ``created_at`` is NOT NULL. Do not manufacture it from
-            # ``updated_at`` — unknown creation time cannot be persisted here.
-            if artifact.created_at is None:
-                raise PersistenceIntegrityError(
-                    f"source artifact {artifact.source_artifact_id!r} requires "
-                    "created_at for PostgreSQL persistence"
-                )
+            # Producer timestamps may be unknown. Persist NULL — never invent.
             created_at = artifact.created_at
+            # World/campaign registry rows still require a substrate timestamp.
+            # This is relational ensure metadata only; it is not written into
+            # the artifact payload or the source_artifacts.created_at column
+            # when the producer value is unknown.
+            substrate_created_at = (
+                artifact.created_at
+                or artifact.updated_at
+                or datetime.now(UTC)
+            )
         else:
             source_domain = artifact.source_domain.value
             visibility = artifact.visibility.value
             created_at = artifact.created_at
+            substrate_created_at = artifact.created_at
         with self._database.transaction() as conn:
-            ensure_world(conn, artifact.world_id, created_at=created_at)
+            ensure_world(conn, artifact.world_id, created_at=substrate_created_at)
             if artifact.campaign_id is not None:
                 ensure_campaign(
                     conn,
                     artifact.world_id,
                     artifact.campaign_id,
-                    created_at=created_at,
+                    created_at=substrate_created_at,
                 )
             conn.execute(
                 sql.SQL(

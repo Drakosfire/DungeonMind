@@ -68,15 +68,27 @@ rows whose `source_domain` overloads producer and kernel semantics.
 13. **One `SourceRepository` reconstructs by `schema_version`.** No parallel
     `SourceRepositoryV2` port. Idempotency conflict on same id + different
     fingerprint is unchanged.
-14. **PostgreSQL stores full payload in jsonb; migration 0004 only drops NOT
-    NULL on `source_domain` and `visibility`.** Column values on put reflect
-    the model (`None` when unknown). v1 rows are not rewritten.
-15. **Evidence schema pairing is strict.** v4 rejects v2 evidence; v5 rejects
-    v1 evidence. v2 evidence resolving against a v1 artifact (or the reverse)
-    is a provenance mismatch.
+14. **PostgreSQL stores full payload in jsonb.** Migration `0004` drops NOT NULL
+    on `source_domain` and `visibility`. Migration `0005` drops NOT NULL on
+    `source_artifacts.created_at` so unknown producer creation time round-trips
+    as NULL. World/campaign `ensure_*` substrate timestamps are chosen
+    separately and never written into the artifact payload. v1 rows are not
+    rewritten.
+15. **Evidence schema pairing is strict, after scope.** v4 rejects v2 evidence;
+    v5 rejects v1 evidence. Mixed evidence↔artifact schema mismatch is a
+    detailed provenance rejection **only after** world/campaign/visibility
+    scope is established. Hidden or visibility-unknown artifacts remain silent
+    (`None` / `SCOPE_UNKNOWN`) — they must not leak
+    `evidence_source_schema_mismatch` or identifiers into public coverage.
 16. **No Buddy or game-system imports enter the kernel.** Public graph dumps
     exclude v2-only provenance fields (`workspace_document_ref`, `review_state`,
     `lineage`, `source_span_ref_id`, etc.).
+17. **`dm_union_graph_v5` ledger rows are `EvidenceRefV2`.** There is no
+    schema-local record with invented defaults for omitted required keys.
+18. **`mind_turn_v1` fails closed on graph v5.** Kernel readers may parse and
+    project v5, but Mind Turn does not coerce `EvidenceRefV2` into
+    `EvidenceRef` or invent a generic `source_domain` for `None`. A later
+    versioned Mind Turn response contract is required for v5 product reads.
 
 ## Consequences
 

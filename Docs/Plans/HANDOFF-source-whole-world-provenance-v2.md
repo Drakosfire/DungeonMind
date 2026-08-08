@@ -1,16 +1,29 @@
 # HANDOFF — Whole-world source provenance v2 (handback)
 
 **Created:** 2026-08-07  
-**Status:** COMPLETE — implementation handback  
+**Status:** COMPLETE — implementation handback (Cycle 1 corrections applied)  
 **Repository:** `Drakosfire/DungeonMind`  
 **Flow:** SOURCE / WORLD / KERNEL  
 **Branch:** `source/whole-world-provenance-v2`  
 **Base SHA:** `3842f147c15c589dff76d29dc2ad398e6d92b4d5` (DungeonMind `main`, merge of #24)  
-**Head SHA:** `afcb9cab28ad28cb3ec74b7703e563882f4015cd`  
+**Head SHA:** *(update after Cycle 1 commit)*  
 **PR:** [#25](https://github.com/Drakosfire/DungeonMind/pull/25)  
 **Approved #24 head:** `e563aafd346c2a510f8890965e53fe016cd3407f` (ancestor of base)
 
-**Review accounting:** `review cycles: 0`
+**Review accounting:** `review cycles: 1` — Cycle 1 REQUEST CHANGES (3 P1 + 1 P2)
+
+---
+
+## §0 Cycle 1 corrections
+
+Reviewed head: `4a78c3eac7b33d33c8dab3f1233388c1f74113c1`
+
+| Severity | Finding | Fix |
+|----------|---------|-----|
+| P1 | Mixed evidence/artifact schema mismatch before scope → public diagnostic leak | Scope (world/campaign/visibility / `SCOPE_UNKNOWN`) first; schema mismatch only after visible |
+| P1 | Mind Turn reachable for v5 but `mind_turn_v1` cannot represent v2 evidence | Fail closed on `dm_union_graph_v5` in Mind Turn; no v2→v1 coercion |
+| P1 | `SourceArtifactV2.created_at=None` rejected by Postgres | Migration `0005` nullable `created_at`; substrate `ensure_world` timestamp separated from producer timestamp |
+| P2 | `GraphEvidenceRecordV2` defaults ≠ `EvidenceRefV2` requiredness | `GraphEvidenceRecordV2 = EvidenceRefV2`; field-omission matrix fails closed |
 
 ---
 
@@ -26,7 +39,7 @@
 | `SourceArtifactRecord` | `SourceArtifact \| SourceArtifactV2` |
 | `EvidenceRefRecord` | `EvidenceRef \| EvidenceRefV2` |
 | `GRAPH_SCHEMA_V5` | `dm_union_graph_v5` |
-| `GraphEvidenceRecordV2` | v5 graph ledger row |
+| `GraphEvidenceRecordV2` | alias of `EvidenceRefV2` (v5 ledger row) |
 | `UnionGraphV5SnapshotReader` | exact v5 dispatch |
 
 Historical: `EvidenceRef` / `SourceArtifact` / `SourceRevision` / graph v1–v4 unchanged.
@@ -65,14 +78,14 @@ v4 rejects v2 evidence; v5 rejects v1 evidence.
 
 ## §4 Repository proof
 
-- Memory: `InMemorySourceRepository` put/get v1|v2 by `schema_version`; idempotency conflict unchanged.
-- PostgreSQL: migration `0004_source_artifact_v2_nullable` drops NOT NULL on `source_domain` + `visibility` only; payload jsonb preserves full v2 contract. `created_at` required for PG put (column NOT NULL; not manufactured from `updated_at`).
+- Memory: `InMemorySourceRepository` put/get v1|v2 by `schema_version`; idempotency conflict unchanged; `created_at=None` / `updated_at=None` round-trip.
+- PostgreSQL: migration `0004` drops NOT NULL on `source_domain` + `visibility`; migration `0005` drops NOT NULL on `created_at`. Unknown producer timestamps persist as NULL. World/campaign `ensure_*` uses a separate substrate timestamp and does not invent artifact `created_at`.
 
 ---
 
 ## §5 V5 proof
 
-`dm_union_graph_v5` = v4 assertion-scoped objects/relationships + `dm_evidence_ref_v2` ledger. Scoped admission reuses v4 assertion grain. Public object/relationship dumps unchanged.
+`dm_union_graph_v5` = v4 assertion-scoped objects/relationships + `dm_evidence_ref_v2` ledger (`EvidenceRefV2` requiredness). Scoped admission reuses v4 assertion grain. Public object/relationship dumps unchanged. Mind Turn fails closed on v5 until a later wire contract.
 
 ---
 
@@ -105,7 +118,7 @@ WHOLE_GRAPH_ADOPTION_NOT_READY
 CUTOVER_NOT_READY
 ```
 
-Still red: D&D whole-world vocabulary, Buddy→DM construction adapter, contribution genesis policy, existing-world adoption seam, Eldyrwild PG adoption, product authority, dark cutover.
+Still red: D&D whole-world vocabulary, Buddy→DM construction adapter, contribution genesis policy, existing-world adoption seam, Eldyrwild PG adoption, product authority, dark cutover. Mind Turn product reads of v5 await a versioned response/evidence contract.
 
 ---
 
@@ -121,6 +134,7 @@ No contribution history was adopted.
 No existing-world adoption seam was added.
 DungeonMind is not yet whole-world product authority.
 CUTOVER_NOT_READY remains correct.
+mind_turn_v1 does not represent EvidenceRefV2.
 ```
 
 ---
@@ -135,8 +149,8 @@ DND: publish whole-world vocabulary v2 for Eldyrwild adoption
 
 ## §10 Verification (executed)
 
-Unit (focused): green — source/evidence v2, graph v5, graph v4 lock, scope provenance, contract validators, fictional-time, import boundaries.
+Unit (focused): green — source/evidence v2 (incl. scope-first adversarial), graph v5 field-omission matrix, Mind Turn v5 reject, null timestamp memory parity.
 
-Integration: green — `test_postgres_source_v2`, `test_postgres_graph_v5`, `test_postgres_graph_v4`, `test_postgres_records`, `test_migrations` (head pin updated to 0004).
+Integration: green — `test_postgres_source_v2` (incl. null timestamps), `test_postgres_graph_v5`, `test_migrations` (head pin `0005_source_created_at_null`).
 
 Ruff / pyright: green on touched modules.

@@ -225,3 +225,51 @@ def test_v5_assertion_grain_admits_object_independently() -> None:
     assert obj.label == "Quill"
     assert obj.aliases == []
     assert obj.summary == "a public archivist"
+
+
+@pytest.mark.parametrize(
+    "omitted_key",
+    [
+        "source_revision_id",
+        "source_domain",
+        "evidence_role",
+        "can_open_source",
+        "can_highlight_span",
+        "session_id",
+        "source_span_ref_id",
+        "locator",
+        "uri",
+        "source_locator",
+        "line_ref",
+        "source_domain_key",
+        "source_artifact_id",
+        "evidence_ref_id",
+    ],
+)
+def test_v5_evidence_row_rejects_omitted_required_v2_keys(omitted_key: str) -> None:
+    """Every required EvidenceRefV2 serialized key omitted from v5 fails closed."""
+    row = _evidence_v2_row()
+    del row[omitted_key]
+    payload = copy.deepcopy(_v5_payload())
+    payload["evidence_refs"] = [row]
+    with pytest.raises(PersistenceIntegrityError):
+        UnionGraphV5SnapshotReader(_registry()).parse(
+            graph_schema=GRAPH_SCHEMA_V5,
+            graph_payload=payload,
+        )
+
+
+def test_v5_minimal_three_field_evidence_row_rejected() -> None:
+    payload = copy.deepcopy(_v5_payload())
+    payload["evidence_refs"] = [
+        {
+            "evidence_ref_id": "ev:x",
+            "source_artifact_id": "src:x",
+            "source_domain_key": "producer:x",
+        }
+    ]
+    with pytest.raises(PersistenceIntegrityError):
+        UnionGraphV5SnapshotReader(_registry()).parse(
+            graph_schema=GRAPH_SCHEMA_V5,
+            graph_payload=payload,
+        )
