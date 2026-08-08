@@ -21,7 +21,7 @@ from ...contracts.contribution_review import (
     ContributionReviewRecord,
     ContributionReviewState,
 )
-from ...contracts.evidence import SourceArtifact, SourceRevision
+from ...contracts.evidence import SourceArtifactRecord, SourceRevision
 from ...contracts.graph import (
     PublishRevisionCommand,
     StoredGraphRevision,
@@ -868,11 +868,11 @@ class InMemoryIdentityDecisionRepository:
 
 class InMemorySourceRepository:
     def __init__(self) -> None:
-        self._artifacts: dict[str, SourceArtifact] = {}
+        self._artifacts: dict[str, SourceArtifactRecord] = {}
         self._revisions: dict[str, SourceRevision] = {}
         self._lock = threading.Lock()
 
-    def put_artifact(self, artifact: SourceArtifact) -> SourceArtifact:
+    def put_artifact(self, artifact: SourceArtifactRecord) -> SourceArtifactRecord:
         with self._lock:
             existing = self._artifacts.get(artifact.source_artifact_id)
             if existing is not None:
@@ -885,7 +885,7 @@ class InMemorySourceRepository:
             self._artifacts[artifact.source_artifact_id] = _copy(artifact)
             return _copy(artifact)
 
-    def get_artifact(self, source_artifact_id: str) -> SourceArtifact | None:
+    def get_artifact(self, source_artifact_id: str) -> SourceArtifactRecord | None:
         item = self._artifacts.get(source_artifact_id)
         return _copy(item) if item is not None else None
 

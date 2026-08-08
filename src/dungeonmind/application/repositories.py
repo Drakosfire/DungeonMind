@@ -18,7 +18,7 @@ from ..contracts.contribution import ContributionStatus, GraphContribution
 from ..contracts.contribution_review import (
     ContributionReviewState,
 )
-from ..contracts.evidence import SourceArtifact, SourceRevision
+from ..contracts.evidence import SourceArtifactRecord, SourceRevision
 from ..contracts.graph import (
     PublishRevisionCommand,
     StoredGraphRevision,
@@ -161,9 +161,9 @@ class IdentityDecisionRepository(Protocol):
 class SourceRepository(Protocol):
     """Source identity store. Bodies may live elsewhere; identity never does."""
 
-    def put_artifact(self, artifact: SourceArtifact) -> SourceArtifact: ...
+    def put_artifact(self, artifact: SourceArtifactRecord) -> SourceArtifactRecord: ...
 
-    def get_artifact(self, source_artifact_id: str) -> SourceArtifact | None: ...
+    def get_artifact(self, source_artifact_id: str) -> SourceArtifactRecord | None: ...
 
     def put_revision(self, revision: SourceRevision) -> SourceRevision: ...
 

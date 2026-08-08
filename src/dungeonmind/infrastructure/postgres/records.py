@@ -12,7 +12,14 @@ from ...contracts.contribution_review import (
     ContributionReviewRecord,
     ContributionReviewState,
 )
-from ...contracts.evidence import SourceArtifact, SourceRevision
+from ...contracts.evidence import (
+    SOURCE_ARTIFACT_SCHEMA,
+    SOURCE_ARTIFACT_V2_SCHEMA,
+    SourceArtifact,
+    SourceArtifactRecord,
+    SourceArtifactV2,
+    SourceRevision,
+)
 from ...contracts.identity import IdentityDecisionRecord
 from ...contracts.retrieval import GraphRetrievalSession
 from ...domain.errors import (
@@ -112,7 +119,19 @@ def _return_identity(row: dict[str, Any]) -> IdentityDecisionRecord:
     ).model_copy(deep=True)
 
 
-def _return_artifact(row: dict[str, Any]) -> SourceArtifact:
+def _return_artifact(row: dict[str, Any]) -> SourceArtifactRecord:
+    schema_version = row["schema_version"]
+    if schema_version == SOURCE_ARTIFACT_V2_SCHEMA:
+        return reconstruct(
+            SourceArtifactV2,
+            dict(row["payload"]),
+            expected_fingerprint=row["record_fingerprint"],
+            identity=_source_artifact_identity(row),
+        ).model_copy(deep=True)
+    if schema_version != SOURCE_ARTIFACT_SCHEMA:
+        raise PersistenceIntegrityError(
+            f"unsupported source artifact schema {schema_version!r}"
+        )
     return reconstruct(
         SourceArtifact,
         dict(row["payload"]),
@@ -726,16 +745,35 @@ class PostgresSourceRepository:
     def __init__(self, database: PostgresDatabase) -> None:
         self._database = database
 
-    def put_artifact(self, artifact: SourceArtifact) -> SourceArtifact:
+    def put_artifact(self, artifact: SourceArtifactRecord) -> SourceArtifactRecord:
         fingerprint = model_fingerprint(artifact)
+        if isinstance(artifact, SourceArtifactV2):
+            source_domain = (
+                artifact.source_domain.value if artifact.source_domain is not None else None
+            )
+            visibility = (
+                artifact.visibility.value if artifact.visibility is not None else None
+            )
+            # Column ``created_at`` is NOT NULL. Do not manufacture it from
+            # ``updated_at`` — unknown creation time cannot be persisted here.
+            if artifact.created_at is None:
+                raise PersistenceIntegrityError(
+                    f"source artifact {artifact.source_artifact_id!r} requires "
+                    "created_at for PostgreSQL persistence"
+                )
+            created_at = artifact.created_at
+        else:
+            source_domain = artifact.source_domain.value
+            visibility = artifact.visibility.value
+            created_at = artifact.created_at
         with self._database.transaction() as conn:
-            ensure_world(conn, artifact.world_id, created_at=artifact.created_at)
+            ensure_world(conn, artifact.world_id, created_at=created_at)
             if artifact.campaign_id is not None:
                 ensure_campaign(
                     conn,
                     artifact.world_id,
                     artifact.campaign_id,
-                    created_at=artifact.created_at,
+                    created_at=created_at,
                 )
             conn.execute(
                 sql.SQL(
@@ -762,11 +800,11 @@ class PostgresSourceRepository:
                     artifact.world_id,
                     artifact.campaign_id,
                     artifact.session_id,
-                    artifact.source_domain.value,
+                    source_domain,
                     artifact.status.value,
-                    artifact.visibility.value,
+                    visibility,
                     artifact.current_revision_id,
-                    artifact.created_at,
+                    created_at,
                     artifact.schema_version,
                     fingerprint,
                     jsonb(dump_payload(artifact)),
@@ -794,7 +832,7 @@ class PostgresSourceRepository:
                 )
             return _return_artifact(row)
 
-    def get_artifact(self, source_artifact_id: str) -> SourceArtifact | None:
+    def get_artifact(self, source_artifact_id: str) -> SourceArtifactRecord | None:
         with self._database.transaction() as conn:
             row = conn.execute(
                 sql.SQL(

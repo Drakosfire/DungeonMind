@@ -36,8 +36,10 @@ from enum import StrEnum
 
 from ..contracts.evidence import (
     EvidenceRef,
+    EvidenceRefV2,
     EvidenceRole,
-    SourceArtifact,
+    SourceArtifactRecord,
+    SourceArtifactV2,
     SourceDomain,
     SourceStatus,
 )
@@ -48,10 +50,12 @@ from .graph_snapshot import (
     GRAPH_SCHEMA_V2,
     GRAPH_SCHEMA_V3,
     GRAPH_SCHEMA_V4,
+    GRAPH_SCHEMA_V5,
     AdmittedAliasAssertion,
     AdmittedPropertyAssertion,
     AdmittedSummaryAssertion,
     GraphEvidenceRecord,
+    GraphEvidenceRecordV2,
     GraphObjectView,
     GraphRelationshipView,
     ParsedGraphSnapshot,
@@ -92,9 +96,9 @@ class ProvenanceRejection:
 class ValidatedProvenance:
     """Fully validated evidence chain admitted for a scoped read."""
 
-    record: GraphEvidenceRecord
-    evidence: EvidenceRef
-    artifact: SourceArtifact
+    record: GraphEvidenceRecord | GraphEvidenceRecordV2
+    evidence: EvidenceRef | EvidenceRefV2
+    artifact: SourceArtifactRecord
 
 
 @dataclass(frozen=True)
@@ -201,7 +205,7 @@ def filter_candidate_object_ids(
 
 
 def source_artifact_in_scope(
-    artifact: SourceArtifact,
+    artifact: SourceArtifactRecord,
     *,
     world_id: str,
     campaign_id: str | None,
@@ -213,12 +217,23 @@ def source_artifact_in_scope(
     is a provenance concern handled after scope is established — inspecting
     status before visibility would leak hidden source identities into public
     coverage diagnostics.
+
+    ``source_visibility_state`` on v2 artifacts is producer classification
+    only and never grants access. v2 artifacts with ``visibility is None``
+    return ``False`` here; :func:`resolve_evidence_provenance` maps that case to
+    ``EvidenceScopeVerdict.SCOPE_UNKNOWN``.
     """
     if artifact.world_id != world_id:
         return False
+    if isinstance(artifact, SourceArtifactV2):
+        if artifact.visibility is None:
+            return False
+        visibility = artifact.visibility
+    else:
+        visibility = artifact.visibility
     if (
         admissibility is Admissibility.PLAYER
-        and artifact.visibility is not Visibility.PLAYER
+        and visibility is not Visibility.PLAYER
     ):
         return False
     if campaign_id is None:
@@ -230,45 +245,31 @@ def source_artifact_in_scope(
     return True
 
 
-def resolve_evidence_provenance(
-    evidence_ref_id: str,
+def _resolve_v1_evidence_provenance(
+    record: GraphEvidenceRecord,
     *,
-    snapshot: ParsedGraphSnapshot,
+    evidence_ref_id: str,
     sources: SourceRepository,
     world_id: str,
     campaign_id: str | None,
     admissibility: Admissibility,
 ) -> ValidatedProvenance | ProvenanceRejection | EvidenceScopeVerdict | None:
-    """Validate the complete evidence → artifact → revision provenance chain.
-
-    Returns:
-      * ``ValidatedProvenance`` when the chain is fully admitted for this read;
-      * ``ProvenanceRejection`` when the artifact is in scope but the chain is
-        broken (detailed gap — safe for authorized callers);
-      * ``None`` when the artifact exists but is out of visibility/campaign/world
-        scope (silent filter — no lifecycle/domain inspection for diagnostics);
-      * ``EvidenceScopeVerdict.SCOPE_UNKNOWN`` when scope cannot be established
-        (missing artifact/record) — never expose those identifiers publicly.
-    """
-    record = snapshot.evidence.get(evidence_ref_id)
-    if record is None:
-        # Cannot establish artifact visibility without a stored evidence row.
-        return EvidenceScopeVerdict.SCOPE_UNKNOWN
-
     try:
         source_domain = SourceDomain(record.source_domain)
         evidence_role = EvidenceRole(record.evidence_role)
     except ValueError:
-        # Contract enums failed on a graph row; treat as integrity without IDs
-        # until the owning object is targeted (public code is generic).
         return EvidenceScopeVerdict.SCOPE_UNKNOWN
 
     artifact = sources.get_artifact(record.source_artifact_id)
     if artifact is None:
-        # Missing artifact: visibility unknown — silent exclusion, no ID leak.
         return EvidenceScopeVerdict.SCOPE_UNKNOWN
 
-    # Admissibility / campaign / world FIRST — before lifecycle or domain.
+    if isinstance(artifact, SourceArtifactV2):
+        return ProvenanceRejection(
+            "evidence_source_schema_mismatch",
+            evidence_ref_id,
+        )
+
     if not source_artifact_in_scope(
         artifact,
         world_id=world_id,
@@ -277,7 +278,6 @@ def resolve_evidence_provenance(
     ):
         return None
 
-    # Artifact is proven visible — detailed provenance diagnostics are allowed.
     if artifact.status is not SourceStatus.ACTIVE:
         return ProvenanceRejection(
             "evidence_source_inactive",
@@ -313,6 +313,133 @@ def resolve_evidence_provenance(
             uri=record.uri,
         ),
         artifact=artifact,
+    )
+
+
+def _resolve_v2_evidence_provenance(
+    record: GraphEvidenceRecordV2,
+    *,
+    evidence_ref_id: str,
+    sources: SourceRepository,
+    world_id: str,
+    campaign_id: str | None,
+    admissibility: Admissibility,
+) -> ValidatedProvenance | ProvenanceRejection | EvidenceScopeVerdict | None:
+    try:
+        source_domain = (
+            SourceDomain(record.source_domain) if record.source_domain is not None else None
+        )
+        evidence_role = EvidenceRole(record.evidence_role)
+    except ValueError:
+        return EvidenceScopeVerdict.SCOPE_UNKNOWN
+
+    artifact = sources.get_artifact(record.source_artifact_id)
+    if artifact is None:
+        return EvidenceScopeVerdict.SCOPE_UNKNOWN
+
+    if not isinstance(artifact, SourceArtifactV2):
+        return ProvenanceRejection(
+            "evidence_source_schema_mismatch",
+            evidence_ref_id,
+        )
+
+    if artifact.visibility is None:
+        return EvidenceScopeVerdict.SCOPE_UNKNOWN
+
+    if not source_artifact_in_scope(
+        artifact,
+        world_id=world_id,
+        campaign_id=campaign_id,
+        admissibility=admissibility,
+    ):
+        return None
+
+    if artifact.status is not SourceStatus.ACTIVE:
+        return ProvenanceRejection(
+            "evidence_source_inactive",
+            record.source_artifact_id,
+        )
+    if (
+        artifact.source_domain_key != record.source_domain_key
+        or artifact.source_domain != source_domain
+    ):
+        return ProvenanceRejection("evidence_source_domain_mismatch", evidence_ref_id)
+
+    if record.source_revision_id:
+        revision = sources.get_revision(record.source_revision_id)
+        if revision is None:
+            return ProvenanceRejection(
+                "evidence_source_revision_missing",
+                record.source_revision_id,
+            )
+        if revision.source_artifact_id != record.source_artifact_id:
+            return ProvenanceRejection(
+                "evidence_source_revision_artifact_mismatch",
+                record.source_revision_id,
+            )
+
+    return ValidatedProvenance(
+        record=record,
+        evidence=EvidenceRefV2(
+            evidence_ref_id=record.evidence_ref_id,
+            source_artifact_id=record.source_artifact_id,
+            source_revision_id=record.source_revision_id,
+            source_domain_key=record.source_domain_key,
+            source_domain=source_domain,
+            evidence_role=evidence_role,
+            can_open_source=record.can_open_source,
+            can_highlight_span=record.can_highlight_span,
+            session_id=record.session_id,
+            source_span_ref_id=record.source_span_ref_id,
+            locator=record.locator,
+            uri=record.uri,
+            source_locator=record.source_locator,
+            line_ref=record.line_ref,
+        ),
+        artifact=artifact,
+    )
+
+
+def resolve_evidence_provenance(
+    evidence_ref_id: str,
+    *,
+    snapshot: ParsedGraphSnapshot,
+    sources: SourceRepository,
+    world_id: str,
+    campaign_id: str | None,
+    admissibility: Admissibility,
+) -> ValidatedProvenance | ProvenanceRejection | EvidenceScopeVerdict | None:
+    """Validate the complete evidence → artifact → revision provenance chain.
+
+    Returns:
+      * ``ValidatedProvenance`` when the chain is fully admitted for this read;
+      * ``ProvenanceRejection`` when the artifact is in scope but the chain is
+        broken (detailed gap — safe for authorized callers);
+      * ``None`` when the artifact exists but is out of visibility/campaign/world
+        scope (silent filter — no lifecycle/domain inspection for diagnostics);
+      * ``EvidenceScopeVerdict.SCOPE_UNKNOWN`` when scope cannot be established
+        (missing artifact/record) — never expose those identifiers publicly.
+    """
+    record = snapshot.evidence.get(evidence_ref_id)
+    if record is None:
+        return EvidenceScopeVerdict.SCOPE_UNKNOWN
+
+    if isinstance(record, GraphEvidenceRecordV2):
+        return _resolve_v2_evidence_provenance(
+            record,
+            evidence_ref_id=evidence_ref_id,
+            sources=sources,
+            world_id=world_id,
+            campaign_id=campaign_id,
+            admissibility=admissibility,
+        )
+    return _resolve_v1_evidence_provenance(
+        record,
+        evidence_ref_id=evidence_ref_id,
+        sources=sources,
+        world_id=world_id,
+        campaign_id=campaign_id,
+        admissibility=admissibility,
     )
 
 
@@ -726,7 +853,7 @@ def project_scoped_snapshot(
     """
     assertion_exclusions: dict[str, ObjectScopeExclusion] = {}
     omitted_alias_index: dict[str, list[str]] = {}
-    if snapshot.graph_schema == GRAPH_SCHEMA_V4:
+    if snapshot.graph_schema in (GRAPH_SCHEMA_V4, GRAPH_SCHEMA_V5):
         (
             objects,
             object_exclusions,

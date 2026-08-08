@@ -18,7 +18,12 @@ from typing import Any, Literal, Protocol, Self
 from pydantic import Field, ValidationError, model_validator
 
 from ..contracts.base import DungeonMindModel
-from ..contracts.evidence import EVIDENCE_REF_SCHEMA, EvidenceRole, SourceDomain
+from ..contracts.evidence import (
+    EVIDENCE_REF_SCHEMA,
+    EVIDENCE_REF_V2_SCHEMA,
+    EvidenceRole,
+    SourceDomain,
+)
 from ..contracts.identity import IdentityOutcome
 from ..contracts.knowledge_assertion import KnowledgeAssertionMetadataV1
 from ..contracts.retrieval import ResolvedReferent
@@ -37,6 +42,7 @@ GRAPH_SCHEMA_V1 = "dm_union_graph_v1"
 GRAPH_SCHEMA_V2 = "dm_union_graph_v2"
 GRAPH_SCHEMA_V3 = "dm_union_graph_v3"
 GRAPH_SCHEMA_V4 = "dm_union_graph_v4"
+GRAPH_SCHEMA_V5 = "dm_union_graph_v5"
 SUPPORTED_GRAPH_SCHEMA = GRAPH_SCHEMA_V1  # v1 constant retained for callers
 
 
@@ -149,6 +155,68 @@ class GraphEvidenceRecord(DungeonMindModel):
         return self
 
 
+class GraphEvidenceRecordV2(DungeonMindModel):
+    """Graph-ledger row for ``dm_evidence_ref_v2`` (v5 graphs only)."""
+
+    schema_version: str = EVIDENCE_REF_V2_SCHEMA
+    evidence_ref_id: str
+    source_artifact_id: str
+    source_revision_id: str | None = None
+    source_domain_key: str
+    source_domain: str | None = None
+    evidence_role: str = "support"
+    can_open_source: bool = True
+    can_highlight_span: bool = False
+    session_id: str | None = None
+    source_span_ref_id: str | None = None
+    locator: str | None = None
+    uri: str | None = None
+    source_locator: str | None = None
+    line_ref: str | None = None
+
+    @model_validator(mode="after")
+    def _approved_contract_values(self) -> Self:
+        if self.schema_version != EVIDENCE_REF_V2_SCHEMA:
+            raise ValueError(
+                f"unsupported evidence schema_version {self.schema_version!r}; "
+                f"expected {EVIDENCE_REF_V2_SCHEMA!r}"
+            )
+        if not self.evidence_ref_id.strip():
+            raise ValueError("evidence_ref_id must be a non-blank string")
+        if not self.source_artifact_id.strip():
+            raise ValueError("source_artifact_id must be a non-blank string")
+        if not self.source_domain_key.strip():
+            raise ValueError("source_domain_key must be a non-blank string")
+        for label, value in (
+            ("source_revision_id", self.source_revision_id),
+            ("session_id", self.session_id),
+            ("source_span_ref_id", self.source_span_ref_id),
+            ("locator", self.locator),
+            ("uri", self.uri),
+            ("source_locator", self.source_locator),
+            ("line_ref", self.line_ref),
+        ):
+            if value is not None and not value.strip():
+                raise ValueError(f"{label} must be a non-blank string")
+        if self.source_domain is not None:
+            try:
+                SourceDomain(self.source_domain)
+            except ValueError as exc:
+                raise ValueError(
+                    "evidence_ref must use approved source_domain values"
+                ) from exc
+        try:
+            EvidenceRole(self.evidence_role)
+        except ValueError as exc:
+            raise ValueError(
+                "evidence_ref must use approved evidence_role values"
+            ) from exc
+        return self
+
+
+GraphEvidenceLedgerRecord = GraphEvidenceRecord | GraphEvidenceRecordV2
+
+
 class AdmittedAliasAssertion(DungeonMindModel):
     """Internal admitted alias assertion (excluded from public dumps).
 
@@ -234,7 +302,7 @@ class ParsedGraphSnapshot:
     graph_schema: str
     objects: dict[str, GraphObjectView]
     relationships: dict[str, GraphRelationshipView]
-    evidence: dict[str, GraphEvidenceRecord]
+    evidence: dict[str, GraphEvidenceLedgerRecord]
     label_index: dict[str, list[str]] = field(default_factory=dict)
     alias_index: dict[str, list[str]] = field(default_factory=dict)
     semantic_profile_ref: SemanticProfileRef | None = None
@@ -876,12 +944,14 @@ class VersionedUnionGraphSnapshotReader:
         # Imported here (not at module scope) because the v4 reader depends on
         # the record/view types defined above.
         from .graph_snapshot_v4 import UnionGraphV4SnapshotReader
+        from .graph_snapshot_v5 import UnionGraphV5SnapshotReader
 
         self._profile_registry = registry
         self._v1 = UnionGraphV1SnapshotReader()
         self._v2 = UnionGraphV2SnapshotReader()
         self._v3 = UnionGraphV3SnapshotReader(registry)
         self._v4 = UnionGraphV4SnapshotReader(registry)
+        self._v5 = UnionGraphV5SnapshotReader(registry)
 
     def parse(
         self,
@@ -903,6 +973,10 @@ class VersionedUnionGraphSnapshotReader:
             )
         if graph_schema == GRAPH_SCHEMA_V4:
             return self._v4.parse(
+                graph_schema=graph_schema, graph_payload=graph_payload
+            )
+        if graph_schema == GRAPH_SCHEMA_V5:
+            return self._v5.parse(
                 graph_schema=graph_schema, graph_payload=graph_payload
             )
         raise PersistenceIntegrityError(
