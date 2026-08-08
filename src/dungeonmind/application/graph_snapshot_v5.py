@@ -1,49 +1,27 @@
-"""Reader for ``dm_union_graph_v4`` — the assertion-scoped World Graph.
+"""Reader for ``dm_union_graph_v5`` — v4 assertion grain with v2 evidence ledger.
 
-V4 keeps v3's pinned ``SemanticProfileRef`` and adds one
-``KnowledgeAssertionMetadataV1`` record to every independently durable
-assertion: object existence, each alias, the summary, each property, and each
-relationship. Nothing about an assertion is positional — campaign scope,
-audience visibility, epistemic standing, canon standing, evidence, session
-references, and explicit temporal state are all carried on the assertion
-itself, so :mod:`dungeonmind.application.graph_scope` can admit or omit each
-one independently.
-
-Deliberate non-decisions encoded here:
-
-* Multiple property assertions may share a ``property_term``. The reader keeps
-  every one of them in payload order; there is no implicit first-wins or
-  latest-wins collapse, and the kernel does not resolve the disagreement.
-* Multiple alias assertions may carry the same alias text (for example a
-  GM-visible and a player-visible assertion of the same name). They stay
-  distinct assertions; only the projected alias list is de-duplicated.
-* ``session_refs`` never influences ``temporal_scope``. There is no code path
-  from one to the other.
-
-V1-v3 payload bytes and readers are untouched: v4 is a new schema with its own
-top-level shape (``objects`` rather than ``nodes``) and its own strict payload
-model, so a v1-v3 payload cannot be read as v4 and vice versa.
+V5 reuses v4 object/relationship/assertion record classes unchanged. The only
+ledger difference is that ``evidence_refs`` must be ``dm_evidence_ref_v2`` rows;
+v1 evidence in a v5 payload fails closed, and v4 continues to reject v2 evidence.
 """
 
 from __future__ import annotations
 
-import math
 from typing import Any, Self
 
 from pydantic import Field, ValidationError, model_validator
 
 from ..contracts.base import DungeonMindModel
-from ..contracts.knowledge_assertion import KnowledgeAssertionMetadataV1
 from ..contracts.retrieval import ResolvedReferent
 from ..contracts.semantic_profile import SemanticProfileRef
 from ..domain.errors import PersistenceIntegrityError
 from .graph_snapshot import (
-    GRAPH_SCHEMA_V4,
+    GRAPH_SCHEMA_V5,
     AdmittedAliasAssertion,
     AdmittedPropertyAssertion,
     AdmittedSummaryAssertion,
     GraphEvidenceLedgerRecord,
-    GraphEvidenceRecord,
+    GraphEvidenceRecordV2,
     GraphObjectView,
     GraphRelationshipView,
     ParsedGraphSnapshot,
@@ -52,6 +30,13 @@ from .graph_snapshot import (
     list_relationships_from_snapshot,
     resolve_mentions_from_snapshot,
 )
+from .graph_snapshot_v4 import (
+    GraphObjectV4Record,
+    GraphRelationshipV4Record,
+    _claim_assertion,
+    _reject_blank,
+    _retained_evidence,
+)
 from .semantic_profiles import (
     SemanticProfileRegistry,
     resolve_and_verify_profile,
@@ -59,126 +44,14 @@ from .semantic_profiles import (
 )
 
 
-def _reject_blank(value: str, label: str) -> None:
-    if not value or not value.strip():
-        raise ValueError(f"{label} must be a non-blank string")
-
-
-def _validate_json_value(value: Any, *, path: str) -> None:
-    """Reject anything a canonical JSON payload cannot round-trip.
-
-    Allowed: ``str``, ``int``, ``float`` (finite), ``bool``, ``None``, and
-    lists/dicts (string keys) recursively composed of those.
-    """
-    if value is None or isinstance(value, bool | int | str):
-        return
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            raise ValueError(f"{path} must be a finite JSON number")
-        return
-    if isinstance(value, list):
-        for index, item in enumerate(value):
-            _validate_json_value(item, path=f"{path}[{index}]")
-        return
-    if isinstance(value, dict):
-        for key, item in value.items():
-            if not isinstance(key, str):
-                raise ValueError(f"{path} object keys must be strings")
-            _validate_json_value(item, path=f"{path}.{key}")
-        return
-    raise ValueError(
-        f"{path} must be a JSON-compatible value "
-        f"(got {type(value).__name__})"
-    )
-
-
-class AliasAssertionV4Record(DungeonMindModel):
-    """One alias assertion in a ``dm_union_graph_v4`` payload."""
-
-    value: str
-    assertion_metadata: KnowledgeAssertionMetadataV1
-
-    @model_validator(mode="after")
-    def _validate_alias(self) -> Self:
-        _reject_blank(self.value, "alias value")
-        return self
-
-
-class SummaryAssertionV4Record(DungeonMindModel):
-    """The single summary assertion an object may carry."""
-
-    value: str
-    assertion_metadata: KnowledgeAssertionMetadataV1
-
-    @model_validator(mode="after")
-    def _validate_summary(self) -> Self:
-        _reject_blank(self.value, "summary value")
-        return self
-
-
-class PropertyAssertionV4Record(DungeonMindModel):
-    """One property assertion. ``value`` must be JSON-compatible."""
-
-    property_term: str
-    value: Any
-    assertion_metadata: KnowledgeAssertionMetadataV1
-
-    @model_validator(mode="after")
-    def _validate_property(self) -> Self:
-        _reject_blank(self.property_term, "property_term")
-        _validate_json_value(self.value, path="property value")
-        return self
-
-
-class GraphObjectV4Record(DungeonMindModel):
-    """A v4 object: an existence assertion plus its field assertions."""
-
-    object_id: str
-    kind: str
-    label: str
-    assertion_metadata: KnowledgeAssertionMetadataV1
-    aliases: list[AliasAssertionV4Record] = Field(default_factory=list)
-    summary: SummaryAssertionV4Record | None = None
-    properties: list[PropertyAssertionV4Record] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def _validate_object(self) -> Self:
-        _reject_blank(self.object_id, "object_id")
-        _reject_blank(self.kind, "kind")
-        _reject_blank(self.label, "label")
-        return self
-
-
-class GraphRelationshipV4Record(DungeonMindModel):
-    """A v4 relationship — one assertion, endpoints named source/target."""
-
-    relationship_id: str
-    source_object_id: str
-    target_object_id: str
-    predicate: str
-    assertion_metadata: KnowledgeAssertionMetadataV1
-
-    @model_validator(mode="after")
-    def _validate_relationship(self) -> Self:
-        _reject_blank(self.relationship_id, "relationship_id")
-        _reject_blank(self.source_object_id, "source_object_id")
-        _reject_blank(self.target_object_id, "target_object_id")
-        _reject_blank(self.predicate, "predicate")
-        return self
-
-
-class UnionGraphV4Payload(DungeonMindModel):
-    """Strict top-level ``dm_union_graph_v4`` payload shape.
-
-    ``extra="forbid"`` (inherited) means a v1-v3 payload — which carries
-    ``nodes`` — can never be silently read as v4.
-    """
+class UnionGraphV5Payload(DungeonMindModel):
+    """Strict top-level ``dm_union_graph_v5`` payload shape."""
 
     world_id: str
     semantic_profile: SemanticProfileRef
     objects: list[GraphObjectV4Record] = Field(default_factory=list)
     relationships: list[GraphRelationshipV4Record] = Field(default_factory=list)
-    evidence_refs: list[GraphEvidenceRecord] = Field(default_factory=list)
+    evidence_refs: list[GraphEvidenceRecordV2] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_payload(self) -> Self:
@@ -186,8 +59,8 @@ class UnionGraphV4Payload(DungeonMindModel):
         return self
 
 
-def _index_evidence(
-    rows: list[GraphEvidenceRecord],
+def _index_evidence_v2(
+    rows: list[GraphEvidenceRecordV2],
 ) -> dict[str, GraphEvidenceLedgerRecord]:
     evidence: dict[str, GraphEvidenceLedgerRecord] = {}
     for row in rows:
@@ -202,31 +75,8 @@ def _index_evidence(
     return evidence
 
 
-def _claim_assertion(
-    metadata: KnowledgeAssertionMetadataV1,
-    *,
-    claimed: set[str],
-    kind: str,
-) -> KnowledgeAssertionMetadataV1:
-    """Enforce graph-global ``assertion_id`` uniqueness.
-
-    Uniqueness spans every assertion family (existence, alias, summary,
-    property, relationship) so an id identifies exactly one durable claim.
-    Nonempty ``evidence_ref_ids`` is enforced by
-    :class:`KnowledgeAssertionMetadataV1` itself; resolvability of those ids
-    against the payload ledger is checked separately during parse.
-    """
-    if metadata.assertion_id in claimed:
-        raise PersistenceIntegrityError(
-            f"duplicate assertion_id {metadata.assertion_id!r}",
-            details={"assertion_id": metadata.assertion_id, "assertion_kind": kind},
-        )
-    claimed.add(metadata.assertion_id)
-    return metadata
-
-
-class UnionGraphV4SnapshotReader:
-    """Concrete reader for ``dm_union_graph_v4`` only."""
+class UnionGraphV5SnapshotReader:
+    """Concrete reader for ``dm_union_graph_v5`` only."""
 
     def __init__(self, profile_registry: SemanticProfileRegistry) -> None:
         self._profile_registry = profile_registry
@@ -237,10 +87,10 @@ class UnionGraphV4SnapshotReader:
         graph_schema: str,
         graph_payload: dict[str, Any],
     ) -> ParsedGraphSnapshot:
-        if graph_schema != GRAPH_SCHEMA_V4:
+        if graph_schema != GRAPH_SCHEMA_V5:
             raise PersistenceIntegrityError(
                 f"unsupported graph schema {graph_schema!r}; "
-                f"expected {GRAPH_SCHEMA_V4!r}",
+                f"expected {GRAPH_SCHEMA_V5!r}",
                 details={"graph_schema": graph_schema},
             )
         if not isinstance(graph_payload, dict):
@@ -250,14 +100,14 @@ class UnionGraphV4SnapshotReader:
             )
         if "semantic_profile" not in graph_payload:
             raise PersistenceIntegrityError(
-                "dm_union_graph_v4 requires semantic_profile",
+                "dm_union_graph_v5 requires semantic_profile",
                 details={"graph_schema": graph_schema},
             )
         try:
-            payload = UnionGraphV4Payload.model_validate(graph_payload)
+            payload = UnionGraphV5Payload.model_validate(graph_payload)
         except (ValidationError, TypeError, ValueError) as exc:
             raise PersistenceIntegrityError(
-                "malformed dm_union_graph_v4 object, relationship, assertion, "
+                "malformed dm_union_graph_v5 object, relationship, assertion, "
                 "or evidence record",
                 details={"error": str(exc)},
             ) from exc
@@ -265,7 +115,7 @@ class UnionGraphV4SnapshotReader:
         descriptor = resolve_and_verify_profile(
             payload.semantic_profile, self._profile_registry
         )
-        evidence = _index_evidence(payload.evidence_refs)
+        evidence = _index_evidence_v2(payload.evidence_refs)
         claimed_assertion_ids: set[str] = set()
 
         objects: dict[str, GraphObjectView] = {}
@@ -436,20 +286,3 @@ class UnionGraphV4SnapshotReader:
             selected_object_ids=selected_object_ids,
             candidate_object_ids=candidate_object_ids,
         )
-
-
-def _retained_evidence(
-    existence: KnowledgeAssertionMetadataV1,
-    alias_views: list[AdmittedAliasAssertion],
-    summary_view: AdmittedSummaryAssertion | None,
-    property_views: list[AdmittedPropertyAssertion],
-) -> list[str]:
-    """Evidence ids reachable from the object's currently admitted assertions."""
-    retained = list(existence.evidence_ref_ids)
-    for alias_view in alias_views:
-        retained.extend(alias_view.evidence_ref_ids)
-    if summary_view is not None:
-        retained.extend(summary_view.evidence_ref_ids)
-    for property_view in property_views:
-        retained.extend(property_view.evidence_ref_ids)
-    return list(dict.fromkeys(retained))

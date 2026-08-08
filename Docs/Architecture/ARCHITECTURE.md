@@ -334,6 +334,17 @@ Published graph schemas are exact and versioned. Readers dispatch by
   campaign and visibility — silently, never leaking identifiers — and only then
   run the unchanged evidence-provenance chain.
 
+- **`dm_source_artifact_v2` / `dm_evidence_ref_v2`** — lossless whole-world
+  source provenance (ADR-0015). v2 separates opaque producer classification
+  (`source_domain_key`) from optional generic `source_domain`, document review
+  standing from evidentiary authority, and producer visibility classification
+  from DungeonMind access policy (`visibility`). Unknown axes are
+  required-but-nullable; `visibility is None` fails closed at provenance
+  resolution. Historical v1 contracts and `SourceRevision` are unchanged.
+- **`dm_union_graph_v5`** — v4 assertion-scoped object/relationship shape with
+  a v2-only evidence ledger. v4 continues to reject v2 evidence; v5 rejects v1
+  evidence. Scoped admission follows the v4 assertion grain.
+
 For v1–v3, scope is derived from admitted evidence provenance alone: assertions
 carry no direct visibility, campaign, confidence, or authority fields, and that
 stays true for those stored revisions forever. V4 is where campaign scope,

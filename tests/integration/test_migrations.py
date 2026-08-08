@@ -68,7 +68,7 @@ def test_vector_extension_and_schema_tables(db) -> None:
             "SELECT version_num FROM dungeonmind.alembic_version"
         ).fetchone()
         assert version is not None
-        assert version["version_num"] == "0003_finalized_review_pubs"
+        assert version["version_num"] == "0005_source_created_at_null"
 
         constraints = conn.execute(
             """
@@ -136,7 +136,7 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
             version = conn.execute(
                 "SELECT version_num FROM dungeonmind.alembic_version"
             ).fetchone()
-            assert version["version_num"] == "0003_finalized_review_pubs"
+            assert version["version_num"] == "0005_source_created_at_null"
             tables = conn.execute(
                 """
                 SELECT COUNT(*) AS n

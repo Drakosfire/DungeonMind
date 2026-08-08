@@ -54,6 +54,8 @@ from .graph_scope import (
     resolve_evidence_provenance,
 )
 from .graph_snapshot import (
+    GRAPH_SCHEMA_V5,
+    GraphEvidenceRecord,
     GraphObjectView,
     GraphRelationshipView,
     GraphSnapshotReader,
@@ -213,6 +215,7 @@ class MindTurnService:
 
         now = self._clock.now()
         revision_id, head_revision_id, stored = self._resolve_revision(request)
+        self._reject_unsupported_mind_turn_graph(stored.revision.graph_schema)
         snapshot = ProjectionSnapshot(
             world_id=request.world_id,
             campaign_id=request.campaign_id,
@@ -671,6 +674,7 @@ class MindTurnService:
                 f"revision {session.snapshot.revision_id!r} not found for world "
                 f"{request.world_id!r} during session recovery"
             )
+        self._reject_unsupported_mind_turn_graph(stored.revision.graph_schema)
         parsed = self._graph_reader.parse(
             graph_schema=stored.revision.graph_schema,
             graph_payload=stored.graph_payload,
@@ -804,6 +808,25 @@ class MindTurnService:
             )
         return revision_id, head_revision_id, stored
 
+    @staticmethod
+    def _reject_unsupported_mind_turn_graph(graph_schema: str) -> None:
+        """Fail closed: mind_turn_v1 cannot represent v2 evidence (graph v5).
+
+        Kernel readers may parse/project ``dm_union_graph_v5``, but the immutable
+        Mind Turn wire contract still carries ``list[EvidenceRef]`` and required
+        ``SourceAnchor.source_domain: str``. Do not coerce ``EvidenceRefV2`` or
+        invent a generic domain for ``source_domain=None``.
+        """
+        if graph_schema == GRAPH_SCHEMA_V5:
+            raise ScopeResolutionError(
+                f"mind_turn_v1 cannot represent graph schema {GRAPH_SCHEMA_V5!r}; "
+                "v2 evidence requires a later versioned Mind Turn response contract",
+                details={
+                    "reason": "unsupported_graph_schema_for_mind_turn_v1",
+                    "graph_schema": graph_schema,
+                },
+            )
+
     def _admit_evidence(
         self,
         *,
@@ -844,6 +867,24 @@ class MindTurnService:
                 coverage.missing.append(resolved.missing_id)
                 return
             assert isinstance(resolved, ValidatedProvenance)
+            # mind_turn_v1 evidence ledger is EvidenceRef only — never coerce v2.
+            if not isinstance(resolved.evidence, EvidenceRef):
+                raise ScopeResolutionError(
+                    "mind_turn_v1 cannot represent dm_evidence_ref_v2; "
+                    "v2 evidence requires a later versioned Mind Turn response",
+                    details={
+                        "reason": "unsupported_evidence_schema_for_mind_turn_v1",
+                        "evidence_ref_id": evidence_ref_id,
+                    },
+                )
+            if not isinstance(resolved.record, GraphEvidenceRecord):
+                raise ScopeResolutionError(
+                    "mind_turn_v1 cannot represent dm_evidence_ref_v2 ledger rows",
+                    details={
+                        "reason": "unsupported_evidence_schema_for_mind_turn_v1",
+                        "evidence_ref_id": evidence_ref_id,
+                    },
+                )
             record = resolved.record
             if evidence_ref_id not in seen_evidence:
                 seen_evidence.add(evidence_ref_id)

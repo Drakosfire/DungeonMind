@@ -150,6 +150,16 @@ def test_unknown_revision_raises() -> None:
         )
 
 
+def test_mind_turn_v1_rejects_union_graph_v5() -> None:
+    from dungeonmind.application.graph_snapshot import GRAPH_SCHEMA_V5
+    from dungeonmind.domain.errors import ScopeResolutionError
+
+    with pytest.raises(ScopeResolutionError) as exc:
+        MindTurnService._reject_unsupported_mind_turn_graph(GRAPH_SCHEMA_V5)
+    assert exc.value.details["reason"] == "unsupported_graph_schema_for_mind_turn_v1"
+    assert exc.value.details["graph_schema"] == GRAPH_SCHEMA_V5
+
+
 def test_curated_who_safeguards_sun_ledger() -> None:
     service, _threads, binding, _revision_id = _build_service()
     response = service.execute(
