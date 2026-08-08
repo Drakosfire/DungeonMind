@@ -1,15 +1,15 @@
 # HANDOFF — Whole-world source provenance v2 (handback)
 
-**Created:** 2026-08-07  
-**Status:** COMPLETE — implementation handback (Cycle 2 corrections applied)  
-**Repository:** `Drakosfire/DungeonMind`  
-**Flow:** SOURCE / WORLD / KERNEL  
-**Branch:** `source/whole-world-provenance-v2`  
-**Base SHA:** `3842f147c15c589dff76d29dc2ad398e6d92b4d5` (DungeonMind `main`, merge of #24)  
-**PR:** [#25](https://github.com/Drakosfire/DungeonMind/pull/25)  
-**Approved #24 head:** `e563aafd346c2a510f8890965e53fe016cd3407f` (ancestor of base)  
-**Reviewed head (Cycle 2):** 
-**Fix head (Cycle 2 corrections):** `9136d9305bf40c1d6f9a568c0c91dae2d65cb93b`
+**Created:** 2026-08-07
+**Status:** COMPLETE — implementation handback (Cycle 2 corrections applied)
+**Repository:** `Drakosfire/DungeonMind`
+**Flow:** SOURCE / WORLD / KERNEL
+**Branch:** `source/whole-world-provenance-v2`
+**Base SHA:** `3842f147c15c589dff76d29dc2ad398e6d92b4d5` (DungeonMind `main`, merge of #24)
+**PR:** [#25](https://github.com/Drakosfire/DungeonMind/pull/25)
+**Approved #24 head:** `e563aafd346c2a510f8890965e53fe016cd3407f` (ancestor of base)
+**Reviewed head (Cycle 2):** `9136d9305bf40c1d6f9a568c0c91dae2d65cb93b`
+**Fix head (Cycle 2 corrections):** `a2fbf117852c36b9171da29688db90a63527543e`
 
 **Review accounting:** `review cycles: 2` — Cycle 1 REQUEST CHANGES (3 P1 + 1 P2); Cycle 2 REQUEST CHANGES (1 P1 historical schema docstring)
 
