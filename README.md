@@ -82,6 +82,9 @@ as contextual `dnd5e:threatens` (ADR-0005 / `threat-v1`). ADR-0013 adds
 immutable `dnd5e-profile-v3` + `world-object-v1` so cutover work can represent
 persistent Threat/NPC/PlayerCharacter kinds and bind exact mechanics without
 hostility, while B.3a Threat mechanics remain readable for historical pins.
+ADR-0016 publishes additive `world-object-v2` (same profile pin) with peer
+kinds `item` / `mystery` / `group` / `party` / `event`; historical loaders and
+mechanics stay on v1 unless a caller pins v2 explicitly.
 
 ## Status
 

@@ -1,0 +1,23 @@
+{
+  "schema": "dmdnd_eldyrwild_kind_inventory_fixture_v1",
+  "source": {
+    "world_id": "eldyrwild",
+    "revision_id": "rev:3413bf6f5044cf2680233f5e37c90dcf",
+    "graph_payload_sha256": "346c1fbfb3cbbf6d0e5ded1453fdd7760264a5106022e398d6074679799ab0fa"
+  },
+  "kind_counts": {
+    "item": 125,
+    "location": 103,
+    "mystery": 93,
+    "npc": 45,
+    "group": 29,
+    "faction": 13,
+    "party": 11,
+    "pc": 6,
+    "creature": 4,
+    "threat": 3,
+    "encounter": 2,
+    "event": 2,
+    "external_resource": 2
+  }
+}

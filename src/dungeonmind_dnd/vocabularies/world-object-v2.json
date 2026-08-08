@@ -1,0 +1,134 @@
+{
+  "schema_version": "dmdnd_semantic_vocabulary_v1",
+  "vocabulary_id": "dungeonmind.dnd5e.world_object",
+  "vocabulary_revision": "world-object-v2",
+  "semantic_profile": {
+    "schema_version": "dm_semantic_profile_ref_v1",
+    "profile_id": "dungeonmind.dnd5e",
+    "profile_revision": "dnd5e-profile-v3",
+    "descriptor_sha256": "2199e8fb96e917c22718e6aec59cbbf55a37ee81575e1bcf16ce13fae0393496"
+  },
+  "object_kinds": [
+    {
+      "term": "dnd5e:creature",
+      "label": "Creature",
+      "description": "A persistent creature identity without a stronger product-specific world-object kind. Peer to Threat, NPC, and PlayerCharacter; not a superclass."
+    },
+    {
+      "term": "dnd5e:threat",
+      "label": "Threat",
+      "description": "A persistent Threat world-object identity. Independent from any contextual dnd5e:threatens relationship and from mechanics attachment."
+    },
+    {
+      "term": "dnd5e:npc",
+      "label": "NPC",
+      "description": "A persistent non-player character world-object identity. May carry mechanics without becoming a Threat."
+    },
+    {
+      "term": "dnd5e:player_character",
+      "label": "Player Character",
+      "description": "A persistent player-character world-object identity. Mechanics authority is a later plug-in; this kind does not imply a StatblockRevision."
+    },
+    {
+      "term": "dnd5e:location",
+      "label": "Location",
+      "description": "A campaign place that can be referenced by identity."
+    },
+    {
+      "term": "dnd5e:faction",
+      "label": "Faction",
+      "description": "A persistent organized group or affiliation."
+    },
+    {
+      "term": "dnd5e:encounter",
+      "label": "Encounter",
+      "description": "A bounded prepared, potential, historical, or active play situation. It is not synonymous with combat."
+    },
+    {
+      "term": "dnd5e:item",
+      "label": "Item",
+      "description": "A persistent in-world item or object identity. It may represent equipment, an artifact, device, consumable, possession, mundane object, or another object tracked by durable identity. The kind alone does not imply magical status, ownership, mechanics, inventory state, or an external mechanics resource."
+    },
+    {
+      "term": "dnd5e:mystery",
+      "label": "Mystery",
+      "description": "A persistent unresolved mystery, investigative question, secret, unexplained phenomenon, or narrative uncertainty tracked by identity. Mystery identity is independent from epistemic standing: a mystery object may be canonical knowledge while candidate explanations remain speculative."
+    },
+    {
+      "term": "dnd5e:group",
+      "label": "Group",
+      "description": "A persistent collection of people, creatures, objects, or other participants treated as a coherent group, without asserting the stronger semantics of a Faction or Party. Peer to Faction and Party; not a superclass or subclass of either."
+    },
+    {
+      "term": "dnd5e:party",
+      "label": "Party",
+      "description": "A persistent adventuring party, expedition party, or comparable party-level identity whose membership is tracked separately from the identities of its individual participants. Does not imply Faction membership, Group identity, or automatic membership of player characters."
+    },
+    {
+      "term": "dnd5e:event",
+      "label": "Event",
+      "description": "A persistent fictional occurrence or occurrence-shaped world identity. Whether it occurred, is occurring, is proposed, is provisional, or is retracted is governed by assertion metadata and temporal knowledge — not by the object kind itself. Distinct from Encounter, Session, and fictional-time anchors."
+    }
+  ],
+  "predicates": [
+    {
+      "term": "dnd5e:located_at",
+      "label": "Located at",
+      "description": "Subject is situated at the location for the asserted context.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:encounter"
+      ],
+      "object_kinds": ["dnd5e:location"]
+    },
+    {
+      "term": "dnd5e:member_of",
+      "label": "Member of",
+      "description": "Subject is affiliated with the faction.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character"
+      ],
+      "object_kinds": ["dnd5e:faction"]
+    },
+    {
+      "term": "dnd5e:participates_in",
+      "label": "Participates in",
+      "description": "Subject participates in the encounter.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction"
+      ],
+      "object_kinds": ["dnd5e:encounter"]
+    },
+    {
+      "term": "dnd5e:threatens",
+      "label": "Threatens",
+      "description": "Subject poses a contextual threat to the object. Does not define Threat identity or mechanics eligibility.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:encounter"
+      ],
+      "object_kinds": [
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character"
+      ]
+    }
+  ]
+}

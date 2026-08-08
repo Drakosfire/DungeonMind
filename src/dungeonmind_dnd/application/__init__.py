@@ -27,14 +27,17 @@ from .world_object_mechanics import (
     hydrate_world_object_mechanics,
 )
 from .world_object_vocabulary import (
+    builtin_world_object_v2_vocabulary_ref,
     builtin_world_object_vocabulary_ref,
     load_builtin_v3_descriptor,
+    load_builtin_world_object_v2_vocabulary,
     load_builtin_world_object_vocabulary,
 )
 
 __all__ = [
     "build_threat_contribution_review_intent",
     "builtin_threat_vocabulary_ref",
+    "builtin_world_object_v2_vocabulary_ref",
     "builtin_world_object_vocabulary_ref",
     "derive_threat_mechanics_binding",
     "derive_threat_mechanics_binding_id",
@@ -45,6 +48,7 @@ __all__ = [
     "hydrate_world_object_mechanics",
     "load_builtin_threat_vocabulary",
     "load_builtin_v3_descriptor",
+    "load_builtin_world_object_v2_vocabulary",
     "load_builtin_world_object_vocabulary",
     "parse_threat_candidate_packet",
     "plan_threat_candidate_contribution",
