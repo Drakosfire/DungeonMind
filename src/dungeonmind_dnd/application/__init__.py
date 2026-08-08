@@ -35,6 +35,12 @@ from .world_object_vocabulary import (
     load_builtin_world_object_v3_vocabulary,
     load_builtin_world_object_vocabulary,
 )
+from .world_property_vocabulary import (
+    builtin_world_property_vocabulary_ref,
+    load_builtin_world_property_vocabulary,
+    validate_world_property_assignment,
+    world_property_vocabulary_sha256,
+)
 
 __all__ = [
     "build_threat_contribution_review_intent",
@@ -42,6 +48,7 @@ __all__ = [
     "builtin_world_object_v2_vocabulary_ref",
     "builtin_world_object_v3_vocabulary_ref",
     "builtin_world_object_vocabulary_ref",
+    "builtin_world_property_vocabulary_ref",
     "derive_threat_mechanics_binding",
     "derive_threat_mechanics_binding_id",
     "derive_world_object_mechanics_binding",
@@ -54,10 +61,13 @@ __all__ = [
     "load_builtin_world_object_v2_vocabulary",
     "load_builtin_world_object_v3_vocabulary",
     "load_builtin_world_object_vocabulary",
+    "load_builtin_world_property_vocabulary",
     "parse_threat_candidate_packet",
     "plan_threat_candidate_contribution",
     "render_threat_vocabulary_prompt",
     "threat_candidate_json_schema",
     "validate_threat_candidate_packet",
+    "validate_world_property_assignment",
     "vocabulary_sha256",
+    "world_property_vocabulary_sha256",
 ]

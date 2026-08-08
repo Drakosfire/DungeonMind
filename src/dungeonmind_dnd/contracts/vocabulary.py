@@ -19,6 +19,7 @@ from dungeonmind.contracts.base import DungeonMindModel
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 
 SEMANTIC_VOCABULARY_SCHEMA = "dmdnd_semantic_vocabulary_v1"
+PROPERTY_VOCABULARY_SCHEMA = "dmdnd_property_vocabulary_v1"
 VOCABULARY_REF_SCHEMA = "dmdnd_vocabulary_ref_v1"
 
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
@@ -203,3 +204,76 @@ class DndVocabularyRef(DungeonMindModel):
         if not _SHA256_HEX.fullmatch(value):
             raise ValueError("catalog_sha256 must be exactly 64 lowercase hex characters")
         return value
+
+
+class DndVocabularyProperty(DungeonMindModel):
+    """One property term plus closed subject-kind admission and value contract."""
+
+    term: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    subject_kinds: list[str] = Field(min_length=1)
+    value_contract: Literal["non_empty_string"]
+
+    @field_validator("term")
+    @classmethod
+    def _validate_term_shape(cls, value: str) -> str:
+        return _validate_term(value, field_name="property term")
+
+    @field_validator("label", "description")
+    @classmethod
+    def _validate_text(cls, value: str) -> str:
+        return _validate_non_empty_text(value, field_name="property metadata")
+
+    @field_validator("subject_kinds")
+    @classmethod
+    def _validate_kind_terms(cls, value: list[str]) -> list[str]:
+        for term in value:
+            _validate_term(term, field_name="property subject kind reference")
+        return value
+
+
+class DndPropertyVocabulary(DungeonMindModel):
+    """Immutable profile-owned property catalog pinned to one world-object vocab."""
+
+    schema_version: Literal["dmdnd_property_vocabulary_v1"] = PROPERTY_VOCABULARY_SCHEMA
+    vocabulary_id: str = Field(min_length=1)
+    vocabulary_revision: str = Field(min_length=1)
+    semantic_profile: SemanticProfileRef
+    world_object_vocabulary: DndVocabularyRef
+    properties: list[DndVocabularyProperty] = Field(min_length=1)
+
+    @field_validator("vocabulary_id")
+    @classmethod
+    def _validate_vocabulary_id(cls, value: str) -> str:
+        _reject_locator_like(value, field_name="vocabulary_id")
+        if not _VOCABULARY_ID.fullmatch(value):
+            raise ValueError(
+                "vocabulary_id must be lowercase dotted "
+                "(letters, digits, '.', '_', '-' only)"
+            )
+        return value
+
+    @field_validator("vocabulary_revision")
+    @classmethod
+    def _validate_vocabulary_revision(cls, value: str) -> str:
+        _reject_locator_like(value, field_name="vocabulary_revision")
+        if not _VOCABULARY_REVISION.fullmatch(value):
+            raise ValueError(
+                "vocabulary_revision must be a non-empty immutable token "
+                "(lowercase letters, digits, '.', '_', '-' only)"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _property_terms_unique(self) -> Self:
+        terms = [prop.term for prop in self.properties]
+        seen: set[str] = set()
+        duplicates: set[str] = set()
+        for term in terms:
+            if term in seen:
+                duplicates.add(term)
+            seen.add(term)
+        if duplicates:
+            raise ValueError(f"duplicate property terms: {sorted(duplicates)}")
+        return self

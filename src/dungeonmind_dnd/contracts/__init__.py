@@ -45,11 +45,14 @@ from .mechanics_transport import (
     DndThreatMechanicsHydrationRequest,
 )
 from .vocabulary import (
+    PROPERTY_VOCABULARY_SCHEMA,
     SEMANTIC_VOCABULARY_SCHEMA,
     VOCABULARY_REF_SCHEMA,
+    DndPropertyVocabulary,
     DndSemanticVocabulary,
     DndVocabularyObjectKind,
     DndVocabularyPredicate,
+    DndVocabularyProperty,
     DndVocabularyRef,
     qualified_term_namespace,
 )
@@ -71,6 +74,7 @@ __all__ = [
     "MECHANICS_RESOURCE_ENVELOPE_SCHEMA",
     "MECHANICS_RESOURCE_REF_SCHEMA",
     "NODE_CANDIDATE_SCHEMA",
+    "PROPERTY_VOCABULARY_SCHEMA",
     "RELATIONSHIP_CANDIDATE_SCHEMA",
     "REQUIRED_THREAT_PREDICATE",
     "SEMANTIC_VOCABULARY_SCHEMA",
@@ -99,6 +103,7 @@ __all__ = [
     "DndNodeCandidate",
     "DndPlanBlocker",
     "DndPlanBlockerCode",
+    "DndPropertyVocabulary",
     "DndRelationshipCandidate",
     "DndRelationshipPlan",
     "DndRelationshipPlanState",
@@ -112,6 +117,7 @@ __all__ = [
     "DndThreatPlanStatus",
     "DndVocabularyObjectKind",
     "DndVocabularyPredicate",
+    "DndVocabularyProperty",
     "DndVocabularyRef",
     "DndWorldObjectMechanicsBinding",
     "DndWorldObjectMechanicsHydration",
