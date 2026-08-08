@@ -1238,9 +1238,12 @@ def test_knowledge_assertion_metadata_requires_every_field() -> None:
         with pytest.raises(ValidationError):
             KnowledgeAssertionMetadataV1.model_validate(incomplete)
 
-    world_universal_with_campaign_anchor = KnowledgeAssertionMetadataV1(
-        assertion_id="asrt:world-anchored",
-        campaign_scope=None,
+
+def test_fictional_time_ref_requires_matching_nonnull_campaign_scope() -> None:
+    """FT anchors are campaign-owned; world-universal + fictional_time_ref fails."""
+    matching = KnowledgeAssertionMetadataV1(
+        assertion_id="asrt:matched",
+        campaign_scope=CAMPAIGN_ID,
         visibility=Visibility.GM,
         epistemic_kind=EpistemicKindV2.ASSERTED,
         canon_state=CanonState.CANONICAL,
@@ -1255,15 +1258,9 @@ def test_knowledge_assertion_metadata_requires_every_field() -> None:
             ),
         ),
     )
-    assert world_universal_with_campaign_anchor.campaign_scope is None
-    assert (
-        world_universal_with_campaign_anchor.temporal_scope.fictional_time_ref
-        is not None
-    )
-    assert (
-        world_universal_with_campaign_anchor.temporal_scope.fictional_time_ref.campaign_id
-        == CAMPAIGN_ID
-    )
+    assert matching.campaign_scope == CAMPAIGN_ID
+    assert matching.temporal_scope.fictional_time_ref is not None
+    assert matching.temporal_scope.fictional_time_ref.campaign_id == CAMPAIGN_ID
 
     with pytest.raises(ValidationError, match=r"fictional_time_ref\.campaign_id"):
         KnowledgeAssertionMetadataV1(
@@ -1279,6 +1276,25 @@ def test_knowledge_assertion_metadata_requires_every_field() -> None:
                 fictional_time_ref=FictionalTimeAnchorRefV1(
                     bundle_id=FT_BUNDLE_ID,
                     campaign_id=OTHER_CAMPAIGN_ID,
+                    anchor_id=FT_ANCHOR_ID,
+                ),
+            ),
+        )
+
+    with pytest.raises(ValidationError, match="non-null campaign_scope"):
+        KnowledgeAssertionMetadataV1(
+            assertion_id="asrt:world-anchored",
+            campaign_scope=None,
+            visibility=Visibility.GM,
+            epistemic_kind=EpistemicKindV2.ASSERTED,
+            canon_state=CanonState.CANONICAL,
+            evidence_ref_ids=["ev:x"],
+            session_refs=[],
+            temporal_scope=TemporalScopeRefV1(
+                kind=TemporalScopeKind.FICTIONAL_TIME_REF,
+                fictional_time_ref=FictionalTimeAnchorRefV1(
+                    bundle_id=FT_BUNDLE_ID,
+                    campaign_id=CAMPAIGN_ID,
                     anchor_id=FT_ANCHOR_ID,
                 ),
             ),

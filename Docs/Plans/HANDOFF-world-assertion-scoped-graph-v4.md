@@ -1,24 +1,30 @@
 # HANDOFF — Assertion-scoped World Graph v4 (handback)
 
 **Created:** 2026-08-07  
-**Status:** COMPLETE — implementation handback (Cycle 1 REQUEST CHANGES addressed)  
+**Status:** COMPLETE — implementation handback (Cycle 2 REQUEST CHANGES addressed)  
 **Repository:** `Drakosfire/DungeonMind`  
 **Flow:** WORLD / KERNEL  
 **Branch:** `world/assertion-scoped-graph-v4`  
 **Base SHA:** `8095321ed011b8a38640615a90cbc9efaf385e8c` (DungeonMind `main` / merge of #23)  
 **PR:** [#24](https://github.com/Drakosfire/DungeonMind/pull/24)  
 **Reviewed head (Cycle 1):** `0be1cfe07f48d406a5e5aea9399692802af19df7`  
-**Fix head (Cycle 1 corrections):** `fc0339b094359d81b34951ab13e913c1aa6057ea`
+**Fix head (Cycle 1 corrections):** `fc0339b094359d81b34951ab13e913c1aa6057ea`  
+**Reviewed head (Cycle 2):** `56d05fe94e573a3ca6f8c72549bd48bcaa943f54`
 
-**Review accounting:** `review cycles: 1` (Cycle 1: REQUEST CHANGES — 1 P1 + 1 P2; fixes in this update)
+**Review accounting:** `review cycles: 2` (Cycle 1: REQUEST CHANGES — 1 P1 + 1 P2; Cycle 2: REQUEST CHANGES — 1 P1 scope compatibility)
 
 ### Cycle 1 corrections
 
 | Finding | Fix |
 |---------|-----|
-| **P1** Opaque `fictional_time_ref: str` parallel to FT authority | Replaced with `FictionalTimeAnchorRefV1` (`dm_fictional_time_anchor_ref_v1`: `bundle_id` + `campaign_id` + `anchor_id`) in `contracts/fictional_time.py`. Opaque strings fail closed. Campaign compatibility: `campaign_scope` null or equals `ref.campaign_id`. No FT query logic added. |
+| **P1** Opaque `fictional_time_ref: str` parallel to FT authority | Replaced with `FictionalTimeAnchorRefV1` (`dm_fictional_time_anchor_ref_v1`: `bundle_id` + `campaign_id` + `anchor_id`) in `contracts/fictional_time.py`. Opaque strings fail closed. No FT query logic added. |
 | **P2** Empty `evidence_ref_ids` contract-valid but reader-invalid | `KnowledgeAssertionMetadataV1.evidence_ref_ids` now `Field(min_length=1)`; direct contract test without reader. Reader keeps resolvability checks. |
 
+### Cycle 2 corrections
+
+| Finding | Fix |
+|---------|-----|
+| **P1** World-universal + campaign-owned FT anchor permitted | `fictional_time_ref` now requires non-null `campaign_scope` equal to `fictional_time_ref.campaign_id`. World-universal may use `unknown` / `world_timeless` only. ADR language permitting null+campaign ref removed. |
 ---
 
 ## §1 Dispatch gate (satisfied)
@@ -130,7 +136,8 @@ temporal unknown is not timeless
 no fictional-time derivation or query logic was added
 fictional_time_ref is FictionalTimeAnchorRefV1 (bundle_id + campaign_id + anchor_id)
 opaque ftime strings are rejected
-campaign_scope must be null or equal fictional_time_ref.campaign_id
+fictional_time_ref requires non-null campaign_scope equal to fictional_time_ref.campaign_id
+world-universal assertions may use unknown or world_timeless only
 ```
 
 ---

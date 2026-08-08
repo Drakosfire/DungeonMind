@@ -87,9 +87,10 @@ class FictionalTimeAnchorRefV1(DungeonMindModel):
     ``graph_payload_sha256`` pin matches the graph revision under inspection and
     that ``anchor_id`` exists in that bundle's ``anchors``.
 
-    ``campaign_id`` is stored on the ref so a world-universal assertion can still
-    name which campaign-owned fictional-time authority owns the anchor without
-    inventing a second identity lane.
+    ``campaign_id`` is stored on the ref so resolution can check the named
+    bundle's campaign pin without loading the bundle first. Graph assertions
+    that carry this ref must themselves be campaign-scoped to the same
+    ``campaign_id``; FT v1 has no world-universal chronology authority.
     """
 
     schema_version: Literal["dm_fictional_time_anchor_ref_v1"] = (

@@ -89,14 +89,18 @@ game-system profile package; scope filtering fails closed.
    `bundle_id` + `campaign_id` + `anchor_id` inside the existing
    `dm_fictional_time_claim_bundle_v1` authority; the other two kinds forbid a
    ref. Opaque strings are rejected. The target is always an **anchor**, never a
-   claim, state, or bundle identity hidden in free text. An assertion's
-   `campaign_scope` must be `null` (world-universal knowledge temporally anchored
-   in a campaign-owned FT bundle) or equal `fictional_time_ref.campaign_id`;
-   cross-campaign temporal pointers fail closed at the metadata contract.
-   Later resolution (not this schema) must verify the named bundle's
-   world/schema/revision/digest pin and that `anchor_id` exists in that bundle.
-   The kernel stores the typed reference and adds no competing chronology or
-   query logic beside `contracts/fictional_time.py`.
+   claim, state, or bundle identity hidden in free text. Because FT bundles are
+   campaign-owned and every read operates against one explicit campaign scope,
+   `fictional_time_ref` additionally requires a **non-null** assertion
+   `campaign_scope` that **equals** `fictional_time_ref.campaign_id`. World-
+   universal assertions (`campaign_scope is null`) may use `unknown` or
+   `world_timeless` only; they must not point into a campaign-owned chronology.
+   A future world-universal fictional-time contract can lift that restriction
+   deliberately; FT v1 does not pre-authorize it. Later resolution (not this
+   schema) must verify the named bundle's world/schema/revision/digest pin and
+   that `anchor_id` exists in that bundle. The kernel stores the typed
+   reference and adds no competing chronology or query logic beside
+   `contracts/fictional_time.py`.
 8. **Session references are not fictional time.** `session_refs` records the
    real-world sessions an assertion surfaced in. There is no code path from
    `session_refs` to `temporal_scope`, in either direction, and none may be added
@@ -188,6 +192,7 @@ game-system profile package; scope filtering fails closed.
 | Map `fact` → `asserted`, `source_derived_candidate` → `inferred` | Reject | Manufactures equivalences no producer asked for |
 | Treat `unknown` temporal scope as `world_timeless` | Reject | Conflates "not established" with "timeless" |
 | Opaque string `fictional_time_ref` | Reject | Ambiguous among anchor/claim/state/bundle; bypasses the accepted FT identity model |
+| World-universal assertion + campaign-owned FT anchor | Reject | Campaign B would admit knowledge whose meaning points into Campaign A's chronology |
 | Derive `temporal_scope` from `session_refs` | Reject | Real-world session order is not fictional chronology |
 | First-wins / latest-wins for a repeated `property_term` | Reject | Kernel would silently resolve a disagreement it cannot adjudicate |
 | Let `campaign_scope` participate in object identity | Reject | Forks one thing into per-campaign objects |

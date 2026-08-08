@@ -322,7 +322,9 @@ Published graph schemas are exact and versioned. Readers dispatch by
   (`unknown | world_timeless | fictional_time_ref`, where `unknown` is not
   `world_timeless` and the ref is an exact
   `dm_fictional_time_anchor_ref_v1` naming `bundle_id` + `campaign_id` +
-  `anchor_id` inside the fictional-time claim-bundle authority). Session
+  `anchor_id` inside the fictional-time claim-bundle authority; a
+  `fictional_time_ref` additionally requires non-null `campaign_scope` equal to
+  that ref's `campaign_id`). Session
   references are never fictional time and nothing derives
   one from the other. Property `property_term` values are qualified terms
   admitted by the pinned profile; property values must be JSON-compatible;

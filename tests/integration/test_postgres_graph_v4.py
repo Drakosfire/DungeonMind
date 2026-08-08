@@ -39,6 +39,22 @@ def _descriptor() -> SemanticProfileDescriptor:
 
 
 def _meta(assertion_id: str, *, campaign_scope: str | None = CAMPAIGN_ID) -> dict[str, Any]:
+    if campaign_scope is None:
+        temporal_scope: dict[str, Any] = {
+            "schema_version": "dm_temporal_scope_ref_v1",
+            "kind": "world_timeless",
+        }
+    else:
+        temporal_scope = {
+            "schema_version": "dm_temporal_scope_ref_v1",
+            "kind": "fictional_time_ref",
+            "fictional_time_ref": {
+                "schema_version": "dm_fictional_time_anchor_ref_v1",
+                "bundle_id": "ftbundle:roundtrip",
+                "campaign_id": campaign_scope,
+                "anchor_id": "ftanchor:roundtrip",
+            },
+        }
     return {
         "schema_version": "dm_knowledge_assertion_metadata_v1",
         "assertion_id": assertion_id,
@@ -48,16 +64,7 @@ def _meta(assertion_id: str, *, campaign_scope: str | None = CAMPAIGN_ID) -> dic
         "canon_state": "provisional",
         "evidence_ref_ids": ["ev:roundtrip"],
         "session_refs": ["ses:0011"],
-        "temporal_scope": {
-            "schema_version": "dm_temporal_scope_ref_v1",
-            "kind": "fictional_time_ref",
-            "fictional_time_ref": {
-                "schema_version": "dm_fictional_time_anchor_ref_v1",
-                "bundle_id": "ftbundle:roundtrip",
-                "campaign_id": CAMPAIGN_ID,
-                "anchor_id": "ftanchor:roundtrip",
-            },
-        },
+        "temporal_scope": temporal_scope,
     }
 
 

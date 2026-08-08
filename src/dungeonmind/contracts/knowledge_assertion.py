@@ -30,7 +30,10 @@ an assertion about it is campaign-scoped.
 When ``temporal_scope.kind`` is ``fictional_time_ref``, the target is an exact
 :class:`~dungeonmind.contracts.fictional_time.FictionalTimeAnchorRefV1` into the
 existing fictional-time authority (``bundle_id`` + ``campaign_id`` +
-``anchor_id``). Opaque strings are not accepted.
+``anchor_id``). Opaque strings are not accepted. Because FT bundles are
+campaign-owned, ``campaign_scope`` must be non-null and equal
+``fictional_time_ref.campaign_id``; world-universal assertions may use
+``unknown`` or ``world_timeless`` only.
 """
 
 from __future__ import annotations
@@ -127,6 +130,11 @@ class KnowledgeAssertionMetadataV1(DungeonMindModel):
     ``evidence_ref_ids`` must be non-empty at the contract boundary. Graph
     readers retain a separate check that each listed id resolves inside the
     payload evidence ledger.
+
+    A ``fictional_time_ref`` temporal scope requires a non-null
+    ``campaign_scope`` equal to ``fictional_time_ref.campaign_id``. World-
+    universal assertions (``campaign_scope is None``) may use ``unknown`` or
+    ``world_timeless`` only — FT v1 has no world-universal chronology bundle.
     """
 
     schema_version: Literal["dm_knowledge_assertion_metadata_v1"] = (
@@ -150,15 +158,15 @@ class KnowledgeAssertionMetadataV1(DungeonMindModel):
             _reject_blank(self.campaign_scope, "campaign_scope")
         _reject_blank_or_duplicate(self.evidence_ref_ids, "evidence_ref_id")
         _reject_blank_or_duplicate(self.session_refs, "session_ref")
-        if (
-            self.temporal_scope.kind is TemporalScopeKind.FICTIONAL_TIME_REF
-            and self.temporal_scope.fictional_time_ref is not None
-            and self.campaign_scope is not None
-            and self.campaign_scope
-            != self.temporal_scope.fictional_time_ref.campaign_id
-        ):
-            raise ValueError(
-                "campaign_scope must be null (world-universal) or equal "
-                "fictional_time_ref.campaign_id"
-            )
+        if self.temporal_scope.kind is TemporalScopeKind.FICTIONAL_TIME_REF:
+            if self.campaign_scope is None:
+                raise ValueError(
+                    "fictional_time_ref requires non-null campaign_scope equal "
+                    "to fictional_time_ref.campaign_id"
+                )
+            ref = self.temporal_scope.fictional_time_ref
+            if ref is not None and self.campaign_scope != ref.campaign_id:
+                raise ValueError(
+                    "campaign_scope must equal fictional_time_ref.campaign_id"
+                )
         return self
