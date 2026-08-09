@@ -1,0 +1,68 @@
+{
+  "schema_version": "eldyrwild_relationship_v4_acceptance_v1",
+  "authority": {
+    "buddy_merge": "67025dee9cc06d8bd3b566581bb4ef26baaabd70",
+    "world_id": "eldyrwild",
+    "campaign_id": "longmont-c2",
+    "revision_id": "rev:3413bf6f5044cf2680233f5e37c90dcf",
+    "graph_payload_sha256": "346c1fbfb3cbbf6d0e5ded1453fdd7760264a5106022e398d6074679799ab0fa"
+  },
+  "residual_summary": {
+    "total_residual_count": 59,
+    "dungeonmind_owned_count": 4,
+    "buddy_owned_count": 55,
+    "by_disposition": {
+      "SOURCE_CORRECTION_REQUIRED": 35,
+      "COMPOUND_ASSERTION_NOT_SINGLE_RELATIONSHIP": 10,
+      "IDENTITY_NOT_RELATIONSHIP": 6,
+      "EXPLICIT_ADAPTER_CANDIDATE": 3,
+      "NEW_PREDICATE_CANDIDATE": 3,
+      "EXISTING_TERM_ENDPOINT_EXTENSION_CANDIDATE": 1,
+      "INSUFFICIENT_EVIDENCE": 1
+    }
+  },
+  "dungeonmind_owned_rows": [
+    {
+      "edge_id": "edge:node:fey_entity:present_at:pc:ephanna:appears-to-ephanna-in-prison",
+      "disposition": "NEW_PREDICATE_CANDIDATE",
+      "candidate_term": "dnd5e:appears_to",
+      "source_dm_kind": "dnd5e:faction",
+      "target_dm_kind": "dnd5e:player_character",
+      "source_excerpt_sha256": "d2da32ea1c75fc5b2a8d85b9472cbe72855772b516bc02c6ef9c385a95f777cf"
+    },
+    {
+      "edge_id": "edge:pc:bonogo:defends_weakened_location:node:prisoners_session9:protects",
+      "disposition": "NEW_PREDICATE_CANDIDATE",
+      "candidate_term": "dnd5e:protects",
+      "source_dm_kind": "dnd5e:player_character",
+      "target_dm_kind": "dnd5e:group",
+      "source_excerpt_sha256": "e320ed1be5b62ee199d9d8d1ad66632213bdf9786763a301fc957919ca355db7"
+    },
+    {
+      "edge_id": "edge:pc:caelynn:controls_comms_with:npc_grobnok",
+      "disposition": "NEW_PREDICATE_CANDIDATE",
+      "candidate_term": "dnd5e:communicates_with",
+      "source_dm_kind": "dnd5e:player_character",
+      "target_dm_kind": "dnd5e:npc",
+      "source_excerpt_sha256": "5a7209ffce4a6baabe8253a44b5a3008310cf0afbc531d38367bf95122e69b2d"
+    },
+    {
+      "edge_id": "edge:node:wolf:part_of:item:session17:centipede_meat_creature",
+      "disposition": "EXISTING_TERM_ENDPOINT_EXTENSION_CANDIDATE",
+      "candidate_term": "dnd5e:part_of",
+      "source_dm_kind": "dnd5e:npc",
+      "target_dm_kind": "dnd5e:item",
+      "source_excerpt_sha256": "8c9014fafc086bdf9c03b521052c4ee1704ad140201cd2bdc07947aadd2d2976"
+    }
+  ],
+  "not_claimed_by_this_publication": {
+    "note": "Buddy-owned residuals remain out of scope for world-object-v4. This publication admits only the four DungeonMind-owned rows above.",
+    "buddy_owned_count": 55,
+    "expected_post_buddy_repin_relationship_ledger": {
+      "semantic_relationships": 346,
+      "represented": 291,
+      "residual": 55,
+      "mechanics": 2
+    }
+  }
+}

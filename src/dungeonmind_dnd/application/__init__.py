@@ -29,16 +29,21 @@ from .world_object_mechanics import (
 from .world_object_vocabulary import (
     builtin_world_object_v2_vocabulary_ref,
     builtin_world_object_v3_vocabulary_ref,
+    builtin_world_object_v4_vocabulary_ref,
     builtin_world_object_vocabulary_ref,
     load_builtin_v3_descriptor,
     load_builtin_world_object_v2_vocabulary,
     load_builtin_world_object_v3_vocabulary,
+    load_builtin_world_object_v4_vocabulary,
     load_builtin_world_object_vocabulary,
 )
 from .world_property_vocabulary import (
+    builtin_world_property_v2_vocabulary_ref,
     builtin_world_property_vocabulary_ref,
+    load_builtin_world_property_v2_vocabulary,
     load_builtin_world_property_vocabulary,
     validate_world_property_assignment,
+    validate_world_property_assignment_v2,
     world_property_vocabulary_sha256,
 )
 
@@ -47,7 +52,9 @@ __all__ = [
     "builtin_threat_vocabulary_ref",
     "builtin_world_object_v2_vocabulary_ref",
     "builtin_world_object_v3_vocabulary_ref",
+    "builtin_world_object_v4_vocabulary_ref",
     "builtin_world_object_vocabulary_ref",
+    "builtin_world_property_v2_vocabulary_ref",
     "builtin_world_property_vocabulary_ref",
     "derive_threat_mechanics_binding",
     "derive_threat_mechanics_binding_id",
@@ -60,7 +67,9 @@ __all__ = [
     "load_builtin_v3_descriptor",
     "load_builtin_world_object_v2_vocabulary",
     "load_builtin_world_object_v3_vocabulary",
+    "load_builtin_world_object_v4_vocabulary",
     "load_builtin_world_object_vocabulary",
+    "load_builtin_world_property_v2_vocabulary",
     "load_builtin_world_property_vocabulary",
     "parse_threat_candidate_packet",
     "plan_threat_candidate_contribution",
@@ -68,6 +77,7 @@ __all__ = [
     "threat_candidate_json_schema",
     "validate_threat_candidate_packet",
     "validate_world_property_assignment",
+    "validate_world_property_assignment_v2",
     "vocabulary_sha256",
     "world_property_vocabulary_sha256",
 ]

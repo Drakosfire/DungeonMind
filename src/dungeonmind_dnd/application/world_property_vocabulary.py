@@ -8,6 +8,7 @@ never ``latest`` / ``current``.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from importlib import resources
 from typing import Any
 
@@ -17,14 +18,17 @@ from dungeonmind.domain.canonical import canonical_sha256
 
 from ..contracts.vocabulary import (
     DndPropertyVocabulary,
+    DndSemanticVocabulary,
     DndVocabularyProperty,
     DndVocabularyRef,
 )
 from ..domain.errors import DndCandidateValidationError, DndVocabularyIntegrityError
 from .world_object_vocabulary import (
     builtin_world_object_v3_vocabulary_ref,
+    builtin_world_object_v4_vocabulary_ref,
     load_builtin_v3_descriptor,
     load_builtin_world_object_v3_vocabulary,
+    load_builtin_world_object_v4_vocabulary,
 )
 from .world_object_vocabulary import (
     vocabulary_sha256 as world_object_vocabulary_sha256,
@@ -32,9 +36,11 @@ from .world_object_vocabulary import (
 
 _VOCABULARY_RESOURCE_DIR = "vocabularies"
 _WORLD_PROPERTY_V1_RESOURCE = "world-property-v1.json"
+_WORLD_PROPERTY_V2_RESOURCE = "world-property-v2.json"
 
 WORLD_PROPERTY_VOCABULARY_ID = "dungeonmind.dnd5e.world_property"
 WORLD_PROPERTY_VOCABULARY_REVISION = "world-property-v1"
+WORLD_PROPERTY_V2_VOCABULARY_REVISION = "world-property-v2"
 
 
 def _validation_messages(exc: ValidationError) -> list[str]:
@@ -72,7 +78,13 @@ def world_property_vocabulary_sha256(vocabulary: DndPropertyVocabulary) -> str:
     return canonical_sha256(vocabulary.model_dump(mode="json"))
 
 
-def _verify_property_catalog_dependencies(catalog: DndPropertyVocabulary) -> None:
+def _verify_property_catalog_dependencies(
+    catalog: DndPropertyVocabulary,
+    *,
+    load_world_object: Callable[[], DndSemanticVocabulary],
+    expected_world_object_ref: DndVocabularyRef,
+    expected_world_object_revision: str,
+) -> None:
     descriptor = load_builtin_v3_descriptor()
     pinned = catalog.semantic_profile
     if (
@@ -90,8 +102,8 @@ def _verify_property_catalog_dependencies(catalog: DndPropertyVocabulary) -> Non
             details={"reason": "profile_digest_mismatch"},
         )
 
-    world_object = load_builtin_world_object_v3_vocabulary()
-    expected_ref = builtin_world_object_v3_vocabulary_ref()
+    world_object = load_world_object()
+    expected_ref = expected_world_object_ref
     actual_ref = catalog.world_object_vocabulary
     if (
         actual_ref.vocabulary_id != expected_ref.vocabulary_id
@@ -102,10 +114,15 @@ def _verify_property_catalog_dependencies(catalog: DndPropertyVocabulary) -> Non
             "world-property vocabulary world-object dependency mismatch",
             details={"reason": "world_object_dependency_mismatch"},
         )
+    if world_object.vocabulary_revision != expected_world_object_revision:
+        raise DndVocabularyIntegrityError(
+            "bundled world-object revision drift",
+            details={"reason": "world_object_revision_drift"},
+        )
     # Refuse silent widening: dependency digest must match the exact builtin.
     if world_object_vocabulary_sha256(world_object) != expected_ref.catalog_sha256:
         raise DndVocabularyIntegrityError(
-            "bundled world-object-v3 digest drift",
+            f"bundled {expected_world_object_revision} digest drift",
             details={"reason": "world_object_digest_drift"},
         )
 
@@ -138,37 +155,82 @@ def _verify_property_catalog_dependencies(catalog: DndPropertyVocabulary) -> Non
                 )
 
 
-def load_builtin_world_property_vocabulary() -> DndPropertyVocabulary:
-    """Immutable world-property-v1 catalog. Explicit pin only — never 'latest'."""
+def _load_world_property_vocabulary(
+    *,
+    resource_name: str,
+    expected_revision: str,
+    description: str,
+    load_world_object: Callable[[], DndSemanticVocabulary],
+    expected_world_object_ref: Callable[[], DndVocabularyRef],
+    expected_world_object_revision: str,
+) -> DndPropertyVocabulary:
     data = _load_json_resource(
         _VOCABULARY_RESOURCE_DIR,
-        _WORLD_PROPERTY_V1_RESOURCE,
-        description="bundled world-property-v1 vocabulary catalog",
+        resource_name,
+        description=description,
     )
     try:
         catalog = DndPropertyVocabulary.model_validate(data)
     except ValidationError as exc:
         messages = _validation_messages(exc)
         raise DndVocabularyIntegrityError(
-            "bundled world-property-v1 vocabulary catalog failed validation: "
-            + "; ".join(messages),
+            f"{description} failed validation: " + "; ".join(messages),
             details={"reason": "ValidationError", "messages": messages},
         ) from None
     if (
         catalog.vocabulary_id != WORLD_PROPERTY_VOCABULARY_ID
-        or catalog.vocabulary_revision != WORLD_PROPERTY_VOCABULARY_REVISION
+        or catalog.vocabulary_revision != expected_revision
     ):
         raise DndVocabularyIntegrityError(
-            "bundled world-property-v1 vocabulary identity mismatch",
+            f"{description} identity mismatch",
             details={"reason": "vocabulary_identity_mismatch"},
         )
-    _verify_property_catalog_dependencies(catalog)
+    _verify_property_catalog_dependencies(
+        catalog,
+        load_world_object=load_world_object,
+        expected_world_object_ref=expected_world_object_ref(),
+        expected_world_object_revision=expected_world_object_revision,
+    )
     return catalog
+
+
+def load_builtin_world_property_vocabulary() -> DndPropertyVocabulary:
+    """Immutable world-property-v1 catalog. Explicit pin only — never 'latest'."""
+    return _load_world_property_vocabulary(
+        resource_name=_WORLD_PROPERTY_V1_RESOURCE,
+        expected_revision=WORLD_PROPERTY_VOCABULARY_REVISION,
+        description="bundled world-property-v1 vocabulary catalog",
+        load_world_object=load_builtin_world_object_v3_vocabulary,
+        expected_world_object_ref=builtin_world_object_v3_vocabulary_ref,
+        expected_world_object_revision="world-object-v3",
+    )
+
+
+def load_builtin_world_property_v2_vocabulary() -> DndPropertyVocabulary:
+    """Immutable world-property-v2 catalog. Explicit pin only — never 'latest'."""
+    return _load_world_property_vocabulary(
+        resource_name=_WORLD_PROPERTY_V2_RESOURCE,
+        expected_revision=WORLD_PROPERTY_V2_VOCABULARY_REVISION,
+        description="bundled world-property-v2 vocabulary catalog",
+        load_world_object=load_builtin_world_object_v4_vocabulary,
+        expected_world_object_ref=builtin_world_object_v4_vocabulary_ref,
+        expected_world_object_revision="world-object-v4",
+    )
 
 
 def builtin_world_property_vocabulary_ref() -> DndVocabularyRef:
     """Exact world-property-v1 pin. Callers must request this revision explicitly."""
     catalog = load_builtin_world_property_vocabulary()
+    return DndVocabularyRef(
+        vocabulary_id=catalog.vocabulary_id,
+        vocabulary_revision=catalog.vocabulary_revision,
+        catalog_sha256=world_property_vocabulary_sha256(catalog),
+    )
+
+
+def builtin_world_property_v2_vocabulary_ref() -> DndVocabularyRef:
+    """Exact world-property-v2 pin. Callers must request this revision explicitly."""
+    catalog = load_builtin_world_property_v2_vocabulary()
     return DndVocabularyRef(
         vocabulary_id=catalog.vocabulary_id,
         vocabulary_revision=catalog.vocabulary_revision,
@@ -199,15 +261,14 @@ def _validate_non_empty_string(value: object) -> None:
         )
 
 
-def validate_world_property_assignment(
+def _validate_world_property_assignment(
     *,
     property_term: str,
     subject_kind: str,
     value: object,
+    catalog: DndPropertyVocabulary,
+    world_object: DndSemanticVocabulary,
 ) -> None:
-    """Fail closed unless term, subject kind, and value satisfy the exact catalog."""
-    catalog = load_builtin_world_property_vocabulary()
-    world_object = load_builtin_world_object_v3_vocabulary()
     kind_terms = {kind.term for kind in world_object.object_kinds}
     if subject_kind not in kind_terms:
         raise DndCandidateValidationError(
@@ -230,4 +291,40 @@ def validate_world_property_assignment(
     raise DndCandidateValidationError(
         "unsupported property value contract",
         details={"reason": "unsupported_value_contract", "value_contract": prop.value_contract},
+    )
+
+
+def validate_world_property_assignment(
+    *,
+    property_term: str,
+    subject_kind: str,
+    value: object,
+) -> None:
+    """Fail closed unless term, subject kind, and value satisfy world-property-v1."""
+    catalog = load_builtin_world_property_vocabulary()
+    world_object = load_builtin_world_object_v3_vocabulary()
+    _validate_world_property_assignment(
+        property_term=property_term,
+        subject_kind=subject_kind,
+        value=value,
+        catalog=catalog,
+        world_object=world_object,
+    )
+
+
+def validate_world_property_assignment_v2(
+    *,
+    property_term: str,
+    subject_kind: str,
+    value: object,
+) -> None:
+    """Fail closed unless term, subject kind, and value satisfy world-property-v2."""
+    catalog = load_builtin_world_property_v2_vocabulary()
+    world_object = load_builtin_world_object_v4_vocabulary()
+    _validate_world_property_assignment(
+        property_term=property_term,
+        subject_kind=subject_kind,
+        value=value,
+        catalog=catalog,
+        world_object=world_object,
     )
