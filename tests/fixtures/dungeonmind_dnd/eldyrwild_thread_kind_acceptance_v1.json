@@ -1,0 +1,45 @@
+{
+  "schema": "dmdnd_eldyrwild_thread_kind_acceptance_v1",
+  "cutover_source": {
+    "repository": "Drakosfire/DungeonMindBuddy",
+    "pr": 568,
+    "merge_commit": "e5aaaf1d3d1e1e9f8c07a62383770dfd8326f259",
+    "world_id": "eldyrwild",
+    "canonical_revision_id": "rev:5a7c13ae45c49a65b402920499be72ed",
+    "canonical_graph_payload_sha256": "2632870ef70638969503de788cfdec97acd490875deff3e2630ac91dc96fe974",
+    "node_kind_repair_manifest_sha256": "96cc26fc6e99448e8fba5cd6982070c1e29bb058f2b1e8a4ac291f8a0a083247",
+    "cutover_reanchor_fixture_sha256": "6c978f89527ccd82e9bad32eac70a5386a5d714e80f7e426f574d7dbc0e43cbf"
+  },
+  "blocker": {
+    "blocker_class": "WORLD_OBJECT_KIND",
+    "count": 1,
+    "blocking_stage": "adoption_package_construction",
+    "responsible_repo": "DungeonMind",
+    "durable_field_path": "node:mystery:session25:light-and-sound-as-search-tools-during-night-response:field:kind",
+    "buddy_kind": "thread",
+    "target_term": "dnd5e:thread"
+  },
+  "published_catalogs": {
+    "world_object_v5": {
+      "vocabulary_id": "dungeonmind.dnd5e.world_object",
+      "vocabulary_revision": "world-object-v5",
+      "catalog_sha256": "f9fd5420e0ab3849224e0d58cf83dd432ca2e5da22ce661b25654406ec9c60d8"
+    },
+    "world_property_v3": {
+      "vocabulary_id": "dungeonmind.dnd5e.world_property",
+      "vocabulary_revision": "world-property-v3",
+      "catalog_sha256": "aa94df78c10a913e7ca6774198f080131f8f447c90cc917b9b840ed88bd856e4",
+      "world_object_pin": "world-object-v5"
+    },
+    "dnd5e_profile_v3_descriptor_sha256": "2199e8fb96e917c22718e6aec59cbbf55a37ee81575e1bcf16ce13fae0393496"
+  },
+  "cutover_nonclaim": {
+    "cutover_ready": false,
+    "world_object_kind_can_clear_after_buddy_repin": true,
+    "dual_sense_stops_remain": true,
+    "attribute_assertion_package_blockers_remain": true,
+    "evidence_provenance_package_blockers_remain": true,
+    "durable_adoption_boundary_missing": true,
+    "note": "Publishing dnd5e:thread makes the #568 WORLD_OBJECT_KIND gap expressible. Buddy must still repin and re-run CUTOVER. Dual-sense STOPs, attribute/evidence package blockers, and the durable adoption boundary remain unresolved."
+  }
+}
