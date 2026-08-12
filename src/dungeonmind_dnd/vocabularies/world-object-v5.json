@@ -1,0 +1,873 @@
+{
+  "schema_version": "dmdnd_semantic_vocabulary_v1",
+  "vocabulary_id": "dungeonmind.dnd5e.world_object",
+  "vocabulary_revision": "world-object-v5",
+  "semantic_profile": {
+    "schema_version": "dm_semantic_profile_ref_v1",
+    "profile_id": "dungeonmind.dnd5e",
+    "profile_revision": "dnd5e-profile-v3",
+    "descriptor_sha256": "2199e8fb96e917c22718e6aec59cbbf55a37ee81575e1bcf16ce13fae0393496"
+  },
+  "object_kinds": [
+    {
+      "term": "dnd5e:creature",
+      "label": "Creature",
+      "description": "A persistent creature identity without a stronger product-specific world-object kind. Peer to Threat, NPC, and PlayerCharacter; not a superclass."
+    },
+    {
+      "term": "dnd5e:threat",
+      "label": "Threat",
+      "description": "A persistent Threat world-object identity. Independent from any contextual dnd5e:threatens relationship and from mechanics attachment."
+    },
+    {
+      "term": "dnd5e:npc",
+      "label": "NPC",
+      "description": "A persistent non-player character world-object identity. May carry mechanics without becoming a Threat."
+    },
+    {
+      "term": "dnd5e:player_character",
+      "label": "Player Character",
+      "description": "A persistent player-character world-object identity. Mechanics authority is a later plug-in; this kind does not imply a StatblockRevision."
+    },
+    {
+      "term": "dnd5e:location",
+      "label": "Location",
+      "description": "A campaign place that can be referenced by identity."
+    },
+    {
+      "term": "dnd5e:faction",
+      "label": "Faction",
+      "description": "A persistent organized group or affiliation."
+    },
+    {
+      "term": "dnd5e:encounter",
+      "label": "Encounter",
+      "description": "A bounded prepared, potential, historical, or active play situation. It is not synonymous with combat."
+    },
+    {
+      "term": "dnd5e:item",
+      "label": "Item",
+      "description": "A persistent in-world item or object identity. It may represent equipment, an artifact, device, consumable, possession, mundane object, or another object tracked by durable identity. The kind alone does not imply magical status, ownership, mechanics, inventory state, or an external mechanics resource."
+    },
+    {
+      "term": "dnd5e:mystery",
+      "label": "Mystery",
+      "description": "A persistent unresolved mystery, investigative question, secret, unexplained phenomenon, or narrative uncertainty tracked by identity. Mystery identity is independent from epistemic standing: a mystery object may be canonical knowledge while candidate explanations remain speculative."
+    },
+    {
+      "term": "dnd5e:group",
+      "label": "Group",
+      "description": "A persistent collection of people, creatures, objects, or other participants treated as a coherent group, without asserting the stronger semantics of a Faction or Party. Peer to Faction and Party; not a superclass or subclass of either."
+    },
+    {
+      "term": "dnd5e:party",
+      "label": "Party",
+      "description": "A persistent adventuring party, expedition party, or comparable party-level identity whose membership is tracked separately from the identities of its individual participants. Does not imply Faction membership, Group identity, or automatic membership of player characters."
+    },
+    {
+      "term": "dnd5e:event",
+      "label": "Event",
+      "description": "A persistent fictional occurrence or occurrence-shaped world identity. Whether it occurred, is occurring, is proposed, is provisional, or is retracted is governed by assertion metadata and temporal knowledge — not by the object kind itself. Distinct from Encounter, Session, and fictional-time anchors."
+    },
+    {
+      "term": "dnd5e:thread",
+      "label": "Thread",
+      "description": "A persistent campaign or narrative thread tracked by identity across sources or sessions. It may represent an ongoing line of concern, pursuit, consequence, unresolved development, or connective storyline. Thread identity does not imply mystery or secrecy, event occurrence, quest or objective state, epistemic standing, fictional-time standing, completion state, or mechanics."
+    }
+  ],
+  "predicates": [
+    {
+      "term": "dnd5e:located_at",
+      "label": "Located at",
+      "description": "Subject is situated at the location for the asserted context.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:encounter"
+      ],
+      "object_kinds": [
+        "dnd5e:location"
+      ]
+    },
+    {
+      "term": "dnd5e:member_of",
+      "label": "Member of",
+      "description": "Subject is an asserted member of a faction, group, or party. Membership does not establish identity hierarchy or imply reciprocal membership assertions.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:group"
+      ],
+      "object_kinds": [
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:participates_in",
+      "label": "Participates in",
+      "description": "Subject participates in an Encounter or Event. Participation does not imply membership, presence at every location associated with that event, or fictional-time derivation from session references.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:encounter",
+        "dnd5e:event"
+      ]
+    },
+    {
+      "term": "dnd5e:threatens",
+      "label": "Threatens",
+      "description": "Subject poses a contextual threat to object. This does not define dnd5e:threat, mechanics eligibility, hostility permanence, or an attack assertion.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:encounter"
+      ],
+      "object_kinds": [
+        "dnd5e:location",
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:located_in",
+      "label": "Located in",
+      "description": "Subject is spatially or contextually inside a Location. This is intentionally distinct from located_at; no automatic rename or inference exists between them.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:encounter",
+        "dnd5e:item",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:mystery",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:location"
+      ]
+    },
+    {
+      "term": "dnd5e:contains",
+      "label": "Contains",
+      "description": "Subject spatially or structurally contains object for the asserted context. It does not imply membership, ownership, or an automatically synthesized inverse part_of/located_in assertion.",
+      "subject_kinds": [
+        "dnd5e:item",
+        "dnd5e:location"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:item",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:part_of",
+      "label": "Part of",
+      "description": "Subject is a structural constituent or sub-location of object. This is not membership and does not synthesize an inverse contains assertion.",
+      "subject_kinds": [
+        "dnd5e:item",
+        "dnd5e:location",
+        "dnd5e:npc"
+      ],
+      "object_kinds": [
+        "dnd5e:item",
+        "dnd5e:location"
+      ]
+    },
+    {
+      "term": "dnd5e:leads_to",
+      "label": "Leads to",
+      "description": "A Location provides a directional route, passage, or topological connection to another Location. This is not causal causes/results_in.",
+      "subject_kinds": [
+        "dnd5e:location"
+      ],
+      "object_kinds": [
+        "dnd5e:location"
+      ]
+    },
+    {
+      "term": "dnd5e:near",
+      "label": "Near",
+      "description": "Subject is asserted to be spatially near object. No reciprocal edge is automatically synthesized.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:item",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:item",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:south_of",
+      "label": "South of",
+      "description": "Subject Location is spatially south of object Location.",
+      "subject_kinds": [
+        "dnd5e:location"
+      ],
+      "object_kinds": [
+        "dnd5e:location"
+      ]
+    },
+    {
+      "term": "dnd5e:travels_to",
+      "label": "Travels to",
+      "description": "Subject moves, or is moved, toward/to a Location in the asserted context. This does not imply that the subject currently remains there.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:item"
+      ],
+      "object_kinds": [
+        "dnd5e:location"
+      ]
+    },
+    {
+      "term": "dnd5e:displaced_from",
+      "label": "Displaced from",
+      "description": "Subject has been displaced from a Location. The predicate carries the displacement relation but does not invent an exact fictional-time anchor.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:location"
+      ]
+    },
+    {
+      "term": "dnd5e:occurs_at",
+      "label": "Occurs at",
+      "description": "An Event or Encounter is spatially associated with a Location. Whether the occurrence is canonical, provisional, proposed, played, retracted, or temporally anchored remains assertion metadata / fictional-time authority.",
+      "subject_kinds": [
+        "dnd5e:encounter",
+        "dnd5e:event"
+      ],
+      "object_kinds": [
+        "dnd5e:location"
+      ]
+    },
+    {
+      "term": "dnd5e:present_at",
+      "label": "Present at",
+      "description": "Subject is present at a Location, Encounter, or Event for the asserted context. Presence does not imply participation.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:item"
+      ],
+      "object_kinds": [
+        "dnd5e:location",
+        "dnd5e:encounter",
+        "dnd5e:event"
+      ]
+    },
+    {
+      "term": "dnd5e:attacks",
+      "label": "Attacks",
+      "description": "Subject attacks object in the asserted context. An attack does not imply persistent Threat identity, a threatens assertion, or mechanics attachment.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:item"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:item"
+      ]
+    },
+    {
+      "term": "dnd5e:causes",
+      "label": "Causes",
+      "description": "Subject is asserted to causally produce or contribute to object/result. No transitive closure or automatic causal chain derivation.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:encounter",
+        "dnd5e:item",
+        "dnd5e:mystery",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:event"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:encounter",
+        "dnd5e:item",
+        "dnd5e:mystery",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:event"
+      ]
+    },
+    {
+      "term": "dnd5e:pursues",
+      "label": "Pursues",
+      "description": "Subject actively pursues, investigates, seeks, or attempts to obtain/resolve object as asserted by the source relation. This does not imply travel, attack, ownership, or successful resolution.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:encounter",
+        "dnd5e:item",
+        "dnd5e:mystery",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:event"
+      ]
+    },
+    {
+      "term": "dnd5e:aware_of",
+      "label": "Aware of",
+      "description": "Subject has awareness of object. Awareness is weaker than a claim of substantive knowledge.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:encounter",
+        "dnd5e:item",
+        "dnd5e:mystery",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:event"
+      ]
+    },
+    {
+      "term": "dnd5e:knows_about",
+      "label": "Knows about",
+      "description": "Subject has asserted knowledge concerning object. Epistemic/canon standing of the graph assertion remains assertion metadata.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:encounter",
+        "dnd5e:item",
+        "dnd5e:mystery",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:event"
+      ]
+    },
+    {
+      "term": "dnd5e:suspects",
+      "label": "Suspects",
+      "description": "Subject suspects something concerning object. This does not make the target object itself speculative or non-canonical.",
+      "subject_kinds": [
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:encounter",
+        "dnd5e:item",
+        "dnd5e:mystery",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:event"
+      ]
+    },
+    {
+      "term": "dnd5e:carries",
+      "label": "Carries",
+      "description": "Subject physically carries or transports an Item in the asserted context.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:item"
+      ]
+    },
+    {
+      "term": "dnd5e:holds",
+      "label": "Holds",
+      "description": "Subject holds an Item in the asserted context. This is not equivalent to durable ownership.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:item"
+      ]
+    },
+    {
+      "term": "dnd5e:possesses",
+      "label": "Possesses",
+      "description": "Subject possesses or has custody/control of an Item. Possession does not imply ownership.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:item"
+      ]
+    },
+    {
+      "term": "dnd5e:owns",
+      "label": "Owns",
+      "description": "Subject has an asserted ownership relation to object.",
+      "subject_kinds": [
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:item",
+        "dnd5e:location"
+      ]
+    },
+    {
+      "term": "dnd5e:commands",
+      "label": "Commands",
+      "description": "Subject has asserted command authority over object.",
+      "subject_kinds": [
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:leads",
+      "label": "Leads",
+      "description": "Subject leads an organized Faction, Group, or Party.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character"
+      ],
+      "object_kinds": [
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:recruits_for",
+      "label": "Recruits for",
+      "description": "Subject recruits on behalf of an organized Faction, Group, or Party.",
+      "subject_kinds": [
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:serves",
+      "label": "Serves",
+      "description": "Subject serves a person or organized collective.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:allied_with",
+      "label": "Allied with",
+      "description": "Subject has an explicitly asserted alliance with object. No automatic reciprocal edge.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:cooperates_with",
+      "label": "Cooperates with",
+      "description": "Subject explicitly cooperates with object in the asserted context. No automatic reciprocal edge.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:works_with",
+      "label": "Works with",
+      "description": "Subject works/collaborates with object in the asserted context. No automatic reciprocal edge.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:rivals",
+      "label": "Rivals",
+      "description": "Subject has an asserted rivalry with object. No automatic reciprocal edge.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:trusts",
+      "label": "Trusts",
+      "description": "Subject trusts object in the asserted context. No reciprocity.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:parent_of",
+      "label": "Parent of",
+      "description": "Subject has an asserted parent relationship to object. No automatic child_of inverse.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character"
+      ]
+    },
+    {
+      "term": "dnd5e:associated_with",
+      "label": "Associated with",
+      "description": "Source explicitly asserts a weak association between subject and object without claiming identity, membership, location, causation, ownership, or another stronger relation. Not a fallback for unknown predicates.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:encounter",
+        "dnd5e:item",
+        "dnd5e:mystery",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:event"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:encounter",
+        "dnd5e:item",
+        "dnd5e:mystery",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:event"
+      ]
+    },
+    {
+      "term": "dnd5e:appears_to",
+      "label": "Appears to",
+      "description": "Subject directly appears, manifests, or presents itself/themselves to object in the asserted context. This does not mean: \"appears to be\" / epistemic uncertainty; identity; presence at a place; participation in an event; automatic co-location; or automatic reciprocal perception.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:communicates_with",
+      "label": "Communicates with",
+      "description": "Subject directly communicates with object in the asserted context. The assertion records communication, not ownership or control of the medium, permanent contactability, shared knowledge, command authority, or collaboration. No reciprocal assertion is synthesized.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    },
+    {
+      "term": "dnd5e:protects",
+      "label": "Protects",
+      "description": "Subject actively protects or defends object in the asserted context. Protection does not imply ownership, command, membership, alliance, permanent hostility toward an attacker, or permanent responsibility.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:faction",
+        "dnd5e:group",
+        "dnd5e:party"
+      ],
+      "object_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:item",
+        "dnd5e:group",
+        "dnd5e:party"
+      ]
+    }
+  ]
+}

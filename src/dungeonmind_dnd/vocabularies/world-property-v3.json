@@ -1,0 +1,40 @@
+{
+  "schema_version": "dmdnd_property_vocabulary_v1",
+  "vocabulary_id": "dungeonmind.dnd5e.world_property",
+  "vocabulary_revision": "world-property-v3",
+  "semantic_profile": {
+    "schema_version": "dm_semantic_profile_ref_v1",
+    "profile_id": "dungeonmind.dnd5e",
+    "profile_revision": "dnd5e-profile-v3",
+    "descriptor_sha256": "2199e8fb96e917c22718e6aec59cbbf55a37ee81575e1bcf16ce13fae0393496"
+  },
+  "world_object_vocabulary": {
+    "schema_version": "dmdnd_vocabulary_ref_v1",
+    "vocabulary_id": "dungeonmind.dnd5e.world_object",
+    "vocabulary_revision": "world-object-v5",
+    "catalog_sha256": "f9fd5420e0ab3849224e0d58cf83dd432ca2e5da22ce661b25654406ec9c60d8"
+  },
+  "properties": [
+    {
+      "term": "dnd5e:role",
+      "label": "Role",
+      "description": "A producer-authored descriptive role or classification label attached to a persistent world object. Role is independent from object kind, identity, taxonomy hierarchy, mechanics eligibility, ownership, canon standing, epistemic standing, temporal standing, access policy, and surface behavior. Consumers may display the value but must not derive stronger semantics from it.",
+      "subject_kinds": [
+        "dnd5e:creature",
+        "dnd5e:threat",
+        "dnd5e:npc",
+        "dnd5e:player_character",
+        "dnd5e:location",
+        "dnd5e:faction",
+        "dnd5e:encounter",
+        "dnd5e:item",
+        "dnd5e:mystery",
+        "dnd5e:group",
+        "dnd5e:party",
+        "dnd5e:event",
+        "dnd5e:thread"
+      ],
+      "value_contract": "non_empty_string"
+    }
+  ]
+}
