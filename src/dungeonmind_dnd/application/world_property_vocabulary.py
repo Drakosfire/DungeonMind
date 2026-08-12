@@ -26,9 +26,11 @@ from ..domain.errors import DndCandidateValidationError, DndVocabularyIntegrityE
 from .world_object_vocabulary import (
     builtin_world_object_v3_vocabulary_ref,
     builtin_world_object_v4_vocabulary_ref,
+    builtin_world_object_v5_vocabulary_ref,
     load_builtin_v3_descriptor,
     load_builtin_world_object_v3_vocabulary,
     load_builtin_world_object_v4_vocabulary,
+    load_builtin_world_object_v5_vocabulary,
 )
 from .world_object_vocabulary import (
     vocabulary_sha256 as world_object_vocabulary_sha256,
@@ -37,10 +39,12 @@ from .world_object_vocabulary import (
 _VOCABULARY_RESOURCE_DIR = "vocabularies"
 _WORLD_PROPERTY_V1_RESOURCE = "world-property-v1.json"
 _WORLD_PROPERTY_V2_RESOURCE = "world-property-v2.json"
+_WORLD_PROPERTY_V3_RESOURCE = "world-property-v3.json"
 
 WORLD_PROPERTY_VOCABULARY_ID = "dungeonmind.dnd5e.world_property"
 WORLD_PROPERTY_VOCABULARY_REVISION = "world-property-v1"
 WORLD_PROPERTY_V2_VOCABULARY_REVISION = "world-property-v2"
+WORLD_PROPERTY_V3_VOCABULARY_REVISION = "world-property-v3"
 
 
 def _validation_messages(exc: ValidationError) -> list[str]:
@@ -218,6 +222,18 @@ def load_builtin_world_property_v2_vocabulary() -> DndPropertyVocabulary:
     )
 
 
+def load_builtin_world_property_v3_vocabulary() -> DndPropertyVocabulary:
+    """Immutable world-property-v3 catalog. Explicit pin only — never 'latest'."""
+    return _load_world_property_vocabulary(
+        resource_name=_WORLD_PROPERTY_V3_RESOURCE,
+        expected_revision=WORLD_PROPERTY_V3_VOCABULARY_REVISION,
+        description="bundled world-property-v3 vocabulary catalog",
+        load_world_object=load_builtin_world_object_v5_vocabulary,
+        expected_world_object_ref=builtin_world_object_v5_vocabulary_ref,
+        expected_world_object_revision="world-object-v5",
+    )
+
+
 def builtin_world_property_vocabulary_ref() -> DndVocabularyRef:
     """Exact world-property-v1 pin. Callers must request this revision explicitly."""
     catalog = load_builtin_world_property_vocabulary()
@@ -231,6 +247,16 @@ def builtin_world_property_vocabulary_ref() -> DndVocabularyRef:
 def builtin_world_property_v2_vocabulary_ref() -> DndVocabularyRef:
     """Exact world-property-v2 pin. Callers must request this revision explicitly."""
     catalog = load_builtin_world_property_v2_vocabulary()
+    return DndVocabularyRef(
+        vocabulary_id=catalog.vocabulary_id,
+        vocabulary_revision=catalog.vocabulary_revision,
+        catalog_sha256=world_property_vocabulary_sha256(catalog),
+    )
+
+
+def builtin_world_property_v3_vocabulary_ref() -> DndVocabularyRef:
+    """Exact world-property-v3 pin. Callers must request this revision explicitly."""
+    catalog = load_builtin_world_property_v3_vocabulary()
     return DndVocabularyRef(
         vocabulary_id=catalog.vocabulary_id,
         vocabulary_revision=catalog.vocabulary_revision,
@@ -321,6 +347,24 @@ def validate_world_property_assignment_v2(
     """Fail closed unless term, subject kind, and value satisfy world-property-v2."""
     catalog = load_builtin_world_property_v2_vocabulary()
     world_object = load_builtin_world_object_v4_vocabulary()
+    _validate_world_property_assignment(
+        property_term=property_term,
+        subject_kind=subject_kind,
+        value=value,
+        catalog=catalog,
+        world_object=world_object,
+    )
+
+
+def validate_world_property_assignment_v3(
+    *,
+    property_term: str,
+    subject_kind: str,
+    value: object,
+) -> None:
+    """Fail closed unless term, subject kind, and value satisfy world-property-v3."""
+    catalog = load_builtin_world_property_v3_vocabulary()
+    world_object = load_builtin_world_object_v5_vocabulary()
     _validate_world_property_assignment(
         property_term=property_term,
         subject_kind=subject_kind,
