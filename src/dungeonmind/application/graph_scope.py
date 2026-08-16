@@ -52,7 +52,9 @@ from .graph_snapshot import (
     GRAPH_SCHEMA_V3,
     GRAPH_SCHEMA_V4,
     GRAPH_SCHEMA_V5,
+    GRAPH_SCHEMA_V6,
     AdmittedAliasAssertion,
+    AdmittedAspectAssertion,
     AdmittedPropertyAssertion,
     AdmittedSummaryAssertion,
     GraphEvidenceRecord,
@@ -655,6 +657,30 @@ def _project_v2_objects(
     return objects, object_exclusions, assertion_exclusions, omitted_alias_index
 
 
+def _referenced_aspects_admitted(
+    relationship: GraphRelationshipView,
+    objects: dict[str, GraphObjectView],
+) -> bool:
+    """Whether every named endpoint aspect is admitted on its endpoint object.
+
+    A hidden or omitted aspect hides the dependent relationship without
+    exposing the aspect assertion identity.
+    """
+    checks = (
+        (relationship.source_aspect_assertion_id, relationship.subject_object_id),
+        (relationship.target_aspect_assertion_id, relationship.object_object_id),
+    )
+    for aspect_id, object_id in checks:
+        if not aspect_id:
+            continue
+        obj = objects.get(object_id)
+        if obj is None:
+            return False
+        if not any(item.assertion_id == aspect_id for item in obj.admitted_aspect_assertions):
+            return False
+    return True
+
+
 def assertion_metadata_in_scope(
     metadata: KnowledgeAssertionMetadataV1 | None,
     *,
@@ -822,6 +848,25 @@ def _project_v4_objects(
         for prop in admitted_properties:
             retained_evidence.extend(prop.evidence_ref_ids)
 
+        admitted_aspects: list[AdmittedAspectAssertion] = []
+        for aspect in obj.admitted_aspect_assertions:
+            assert aspect.assertion_metadata is not None
+            aspect_ok, aspect_exclusion = _admit_v4_assertion(
+                aspect.assertion_metadata,
+                snapshot=snapshot,
+                sources=sources,
+                world_id=world_id,
+                campaign_id=campaign_id,
+                admissibility=admissibility,
+            )
+            if aspect_ok:
+                admitted_aspects.append(aspect)
+                retained_evidence.extend(aspect.evidence_ref_ids)
+            else:
+                # Silent: hidden aspect identities must not leak in public
+                # diagnostics. Keep assertion_exclusions internal-only.
+                assertion_exclusions[aspect.assertion_id] = aspect_exclusion
+
         objects[object_id] = GraphObjectView(
             object_id=obj.object_id,
             kind=obj.kind,
@@ -829,12 +874,13 @@ def _project_v4_objects(
             aliases=list(dict.fromkeys(item.alias for item in admitted_aliases)),
             evidence_ref_ids=list(dict.fromkeys(retained_evidence)),
             summary=admitted_summary.summary if admitted_summary is not None else None,
-            object_field_schema="v4",
+            object_field_schema=obj.object_field_schema,
             core_evidence_ref_ids=list(existence.evidence_ref_ids),
             admitted_alias_assertions=admitted_aliases,
             admitted_summary_assertion=admitted_summary,
             existence_assertion_metadata=existence,
             admitted_property_assertions=admitted_properties,
+            admitted_aspect_assertions=admitted_aspects,
         )
 
     return objects, object_exclusions, assertion_exclusions, omitted_alias_index
@@ -861,7 +907,7 @@ def project_scoped_snapshot(
     """
     assertion_exclusions: dict[str, ObjectScopeExclusion] = {}
     omitted_alias_index: dict[str, list[str]] = {}
-    if snapshot.graph_schema in (GRAPH_SCHEMA_V4, GRAPH_SCHEMA_V5):
+    if snapshot.graph_schema in (GRAPH_SCHEMA_V4, GRAPH_SCHEMA_V5, GRAPH_SCHEMA_V6):
         (
             objects,
             object_exclusions,
@@ -926,6 +972,9 @@ def project_scoped_snapshot(
                 )
             else:
                 relationship_exclusions[rel_id] = exclusion
+            continue
+        if not _referenced_aspects_admitted(rel, objects):
+            relationship_exclusions[rel_id] = ObjectScopeExclusion(out_of_scope=True)
             continue
         relationships[rel_id] = rel
 

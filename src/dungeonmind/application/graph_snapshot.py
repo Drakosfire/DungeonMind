@@ -1,12 +1,10 @@
 """Transport-neutral readers for pinned union-graph JSON snapshots.
 
-Supports ``dm_union_graph_v1`` (coarse object fields), ``dm_union_graph_v2``
-(assertion-scoped aliases and summary), ``dm_union_graph_v3`` (v2 node shape
-plus a pinned ``SemanticProfileRef`` with namespace-admitted terms), and
-``dm_union_graph_v4`` (v3 profile pinning plus shared
-``KnowledgeAssertionMetadataV1`` on every durable assertion — see
-``graph_snapshot_v4``). Malformed stored state fails closed via
-``PersistenceIntegrityError``.
+Supports ``dm_union_graph_v1`` through ``dm_union_graph_v6``. V6 is additive:
+one object identity may carry assertion-scoped secondary kind aspects, and a
+relationship may name one exact admitted aspect assertion per endpoint. V1-v5
+payloads and readers remain historical contracts. Malformed stored state fails
+closed via ``PersistenceIntegrityError``.
 """
 
 from __future__ import annotations
@@ -43,6 +41,8 @@ GRAPH_SCHEMA_V2 = "dm_union_graph_v2"
 GRAPH_SCHEMA_V3 = "dm_union_graph_v3"
 GRAPH_SCHEMA_V4 = "dm_union_graph_v4"
 GRAPH_SCHEMA_V5 = "dm_union_graph_v5"
+GRAPH_SCHEMA_V6 = "dm_union_graph_v6"
+RELATIONSHIP_ENDPOINT_ASPECT_SCHEMA = "dm_relationship_endpoint_aspect_v1"
 SUPPORTED_GRAPH_SCHEMA = GRAPH_SCHEMA_V1  # v1 constant retained for callers
 
 
@@ -204,6 +204,18 @@ class AdmittedPropertyAssertion(DungeonMindModel):
     )
 
 
+class AdmittedAspectAssertion(DungeonMindModel):
+    """Internal admitted v6 object-kind aspect (excluded from public dumps)."""
+
+    assertion_id: str
+    aspect_key: str
+    kind: str
+    evidence_ref_ids: list[str] = Field(default_factory=list)
+    assertion_metadata: KnowledgeAssertionMetadataV1 | None = Field(
+        default=None, exclude=True
+    )
+
+
 class GraphObjectView(DungeonMindModel):
     object_id: str
     kind: str
@@ -212,7 +224,9 @@ class GraphObjectView(DungeonMindModel):
     evidence_ref_ids: list[str] = Field(default_factory=list)
     summary: str | None = None
     # Internal / excluded: never appear in model_dump used for agent context.
-    object_field_schema: Literal["v1", "v2", "v4"] = Field(default="v1", exclude=True)
+    object_field_schema: Literal["v1", "v2", "v4", "v6"] = Field(
+        default="v1", exclude=True
+    )
     core_evidence_ref_ids: list[str] = Field(default_factory=list, exclude=True)
     admitted_alias_assertions: list[AdmittedAliasAssertion] = Field(
         default_factory=list, exclude=True
@@ -227,6 +241,9 @@ class GraphObjectView(DungeonMindModel):
     admitted_property_assertions: list[AdmittedPropertyAssertion] = Field(
         default_factory=list, exclude=True
     )
+    admitted_aspect_assertions: list[AdmittedAspectAssertion] = Field(
+        default_factory=list, exclude=True
+    )
 
 
 class GraphRelationshipView(DungeonMindModel):
@@ -239,6 +256,8 @@ class GraphRelationshipView(DungeonMindModel):
     assertion_metadata: KnowledgeAssertionMetadataV1 | None = Field(
         default=None, exclude=True
     )
+    source_aspect_assertion_id: str | None = Field(default=None, exclude=True)
+    target_aspect_assertion_id: str | None = Field(default=None, exclude=True)
 
 
 @dataclass(frozen=True)
@@ -890,6 +909,7 @@ class VersionedUnionGraphSnapshotReader:
         # the record/view types defined above.
         from .graph_snapshot_v4 import UnionGraphV4SnapshotReader
         from .graph_snapshot_v5 import UnionGraphV5SnapshotReader
+        from .graph_snapshot_v6 import UnionGraphV6SnapshotReader
 
         self._profile_registry = registry
         self._v1 = UnionGraphV1SnapshotReader()
@@ -897,6 +917,7 @@ class VersionedUnionGraphSnapshotReader:
         self._v3 = UnionGraphV3SnapshotReader(registry)
         self._v4 = UnionGraphV4SnapshotReader(registry)
         self._v5 = UnionGraphV5SnapshotReader(registry)
+        self._v6 = UnionGraphV6SnapshotReader(registry)
 
     def parse(
         self,
@@ -922,6 +943,10 @@ class VersionedUnionGraphSnapshotReader:
             )
         if graph_schema == GRAPH_SCHEMA_V5:
             return self._v5.parse(
+                graph_schema=graph_schema, graph_payload=graph_payload
+            )
+        if graph_schema == GRAPH_SCHEMA_V6:
+            return self._v6.parse(
                 graph_schema=graph_schema, graph_payload=graph_payload
             )
         raise PersistenceIntegrityError(
@@ -957,6 +982,45 @@ class VersionedUnionGraphSnapshotReader:
             selected_object_ids=selected_object_ids,
             candidate_object_ids=candidate_object_ids,
         )
+
+
+def effective_endpoint_kind(
+    relationship: GraphRelationshipView,
+    *,
+    endpoint: Literal["source", "target"],
+    snapshot: ParsedGraphSnapshot,
+) -> str:
+    """Return the primary object kind or the exact referenced admitted aspect kind.
+
+    This helper does not decide D&D domain/range semantics. A missing object or
+    an aspect reference that is not admitted on that object is malformed.
+    """
+    if endpoint == "source":
+        object_id = relationship.subject_object_id
+        aspect_id = relationship.source_aspect_assertion_id
+    elif endpoint == "target":
+        object_id = relationship.object_object_id
+        aspect_id = relationship.target_aspect_assertion_id
+    else:
+        raise PersistenceIntegrityError(
+            f"unknown relationship endpoint {endpoint!r}",
+            details={"endpoint": endpoint},
+        )
+    obj = snapshot.objects.get(object_id)
+    if obj is None:
+        raise PersistenceIntegrityError(
+            f"endpoint object {object_id!r} is not in the snapshot",
+            details={"object_id": object_id, "relationship_id": relationship.relationship_id},
+        )
+    if not aspect_id:
+        return obj.kind
+    for aspect in obj.admitted_aspect_assertions:
+        if aspect.assertion_id == aspect_id:
+            return aspect.kind
+    raise PersistenceIntegrityError(
+        "relationship endpoint aspect is not an admitted assertion on the endpoint object",
+        details={"relationship_id": relationship.relationship_id, "endpoint": endpoint},
+    )
 
 
 def collect_one_hop_object_ids(

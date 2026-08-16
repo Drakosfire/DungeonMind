@@ -44,6 +44,13 @@ from .mechanics_transport import (
     THREAT_MECHANICS_HYDRATION_REQUEST_SCHEMA,
     DndThreatMechanicsHydrationRequest,
 )
+from .relationship_aspect_materialization import (
+    PLAN_SCHEMA,
+    SOURCE_PACKAGE_SCHEMA,
+    DndRelationshipAspectDirectiveV1,
+    DndRelationshipAspectEndpointDirectiveV1,
+    DndRelationshipAspectMaterializationPlanV1,
+)
 from .vocabulary import (
     PROPERTY_VOCABULARY_SCHEMA,
     SEMANTIC_VOCABULARY_SCHEMA,
@@ -74,10 +81,12 @@ __all__ = [
     "MECHANICS_RESOURCE_ENVELOPE_SCHEMA",
     "MECHANICS_RESOURCE_REF_SCHEMA",
     "NODE_CANDIDATE_SCHEMA",
+    "PLAN_SCHEMA",
     "PROPERTY_VOCABULARY_SCHEMA",
     "RELATIONSHIP_CANDIDATE_SCHEMA",
     "REQUIRED_THREAT_PREDICATE",
     "SEMANTIC_VOCABULARY_SCHEMA",
+    "SOURCE_PACKAGE_SCHEMA",
     "STATBLOCKS_MEDIA_TYPE",
     "STATBLOCKS_PROVIDER_ID",
     "STATBLOCKS_RESOURCE_SCHEMA",
@@ -104,6 +113,9 @@ __all__ = [
     "DndPlanBlocker",
     "DndPlanBlockerCode",
     "DndPropertyVocabulary",
+    "DndRelationshipAspectDirectiveV1",
+    "DndRelationshipAspectEndpointDirectiveV1",
+    "DndRelationshipAspectMaterializationPlanV1",
     "DndRelationshipCandidate",
     "DndRelationshipPlan",
     "DndRelationshipPlanState",
