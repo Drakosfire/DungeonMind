@@ -6,7 +6,9 @@ from collections.abc import Callable
 from typing import Any
 
 from psycopg import Connection, sql
+from psycopg.errors import UniqueViolation
 
+from ...application.existing_world_adoption import bind_existing_world_adoption_command
 from ...contracts.existing_world_adoption import (
     ExistingWorldAdoptionCommandV1,
     ExistingWorldAdoptionReceiptV1,
@@ -91,6 +93,19 @@ def _adoption_row(
     ).fetchone()
 
 
+def _adoption_row_for_id(conn: Connection[Any], adoption_id: str) -> dict[str, Any] | None:
+    return conn.execute(
+        sql.SQL(
+            f"""
+            SELECT {_ADOPTION_SELECT}
+            FROM {{}}.existing_world_adoptions
+            WHERE adoption_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (adoption_id,),
+    ).fetchone()
+
+
 def _exists(conn: Connection[Any], query: str, params: tuple[Any, ...]) -> bool:
     row = conn.execute(
         sql.SQL(query).format(sql.Identifier(SCHEMA)),
@@ -111,17 +126,6 @@ class PostgresExistingWorldAdoptionRepository:
         self._database = database
         self._graph = PostgresWorldGraphRepository(database)
         self._failure_hook = failure_hook
-
-    @staticmethod
-    def _reload_command(
-        command: ExistingWorldAdoptionCommandV1,
-    ) -> ExistingWorldAdoptionCommandV1:
-        try:
-            return ExistingWorldAdoptionCommandV1.model_validate(command.model_dump(mode="json"))
-        except Exception:
-            raise PersistenceIntegrityError(
-                "existing-world adoption command failed validation"
-            ) from None
 
     def _return_receipt(self, row: dict[str, Any]) -> ExistingWorldAdoptionReceiptV1:
         identity = _adoption_identity(row)
@@ -261,7 +265,7 @@ class PostgresExistingWorldAdoptionRepository:
             return None if row is None else self._load_verified(conn, row)
 
     def adopt(self, command: ExistingWorldAdoptionCommandV1) -> ExistingWorldAdoptionReceiptV1:
-        validated = self._reload_command(command)
+        validated = bind_existing_world_adoption_command(command)
         bundle = validated.bundle
         world_id = bundle.world_id
         with self._database.transaction() as conn:
@@ -273,6 +277,11 @@ class PostgresExistingWorldAdoptionRepository:
                     return existing
                 raise IdempotencyConflictError(
                     "existing-world adoption identity conflicts with the requested bundle"
+                )
+            other_row = _adoption_row_for_id(conn, bundle.adoption_id)
+            if other_row is not None:
+                raise IdempotencyConflictError(
+                    f"adoption {bundle.adoption_id!r} already exists for another world"
                 )
             self._assert_pristine(conn, world_id)
             for artifact in bundle.source_artifacts:
@@ -323,7 +332,12 @@ class PostgresExistingWorldAdoptionRepository:
                 contribution_count=len(bundle.contributions),
                 identity_decision_count=len(bundle.identity_decisions),
             )
-            row = self._insert_receipt(conn, receipt)
+            try:
+                row = self._insert_receipt(conn, receipt)
+            except UniqueViolation:
+                raise IdempotencyConflictError(
+                    f"adoption {bundle.adoption_id!r} already exists for another world"
+                ) from None
             if self._failure_hook is not None:
                 self._failure_hook("receipt")
             return self._load_verified(conn, row)

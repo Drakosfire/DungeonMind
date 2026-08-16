@@ -155,9 +155,11 @@ class FinalizedReviewPublicationRepository(Protocol):
 class ExistingWorldAdoptionRepository(Protocol):
     """Atomic existing-world adoption unit of work.
 
-    The adapter owns pristine-target verification, imported source/history
+    The adapter binds command hashes to the command bundle before any replay,
+    pristine-target, or mutation branch. It then owns imported source/history
     persistence, first-revision/head publication, and the terminal receipt in
-    one store transaction or one shared in-memory lock.
+    one store transaction or one shared in-memory lock. A globally unique
+    ``adoption_id`` already claimed by another world is an identity conflict.
     """
 
     def adopt(self, command: ExistingWorldAdoptionCommandV1) -> ExistingWorldAdoptionReceiptV1: ...

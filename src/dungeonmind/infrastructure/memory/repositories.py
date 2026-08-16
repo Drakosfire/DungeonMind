@@ -15,6 +15,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any, TypeVar
 
+from ...application.existing_world_adoption import bind_existing_world_adoption_command
 from ...application.repositories import normalize_semantic_document_batch
 from ...contracts.contribution import ContributionStatus, GraphContribution
 from ...contracts.contribution_review import (
@@ -1544,17 +1545,6 @@ class InMemoryExistingWorldAdoptionRepository:
         self._failure_hook = failure_hook
 
     @staticmethod
-    def _reload_command(
-        command: ExistingWorldAdoptionCommandV1,
-    ) -> ExistingWorldAdoptionCommandV1:
-        try:
-            return ExistingWorldAdoptionCommandV1.model_validate(command.model_dump(mode="json"))
-        except Exception:
-            raise PersistenceIntegrityError(
-                "existing-world adoption command failed validation"
-            ) from None
-
-    @staticmethod
     def _validate_record(
         receipt: ExistingWorldAdoptionReceiptV1,
     ) -> ExistingWorldAdoptionReceiptV1:
@@ -1744,7 +1734,7 @@ class InMemoryExistingWorldAdoptionRepository:
             return self._reconstruct_unlocked(receipt)
 
     def adopt(self, command: ExistingWorldAdoptionCommandV1) -> ExistingWorldAdoptionReceiptV1:
-        validated = self._reload_command(command)
+        validated = bind_existing_world_adoption_command(command)
         bundle = validated.bundle
         world_id = bundle.world_id
         with self._graph._lock_for(world_id):

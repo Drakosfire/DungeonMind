@@ -40,6 +40,7 @@ from dungeonmind.contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_BUNDLE_SCHEMA,
     ExistingWorldAdoptionAuthorityRefV1,
     ExistingWorldAdoptionBundleV1,
+    ExistingWorldAdoptionCommandV1,
     ExistingWorldAdoptionSourceProvenanceV1,
     existing_world_adoption_bundle_canonical_bytes,
     sha256_bytes,
@@ -202,12 +203,14 @@ def v6_graph_payload(*, world_id: str = WORLD_ID) -> dict[str, Any]:
     }
 
 
-def _artifact(source_artifact_id: str, revision_id: str) -> SourceArtifactV2:
+def _artifact(
+    source_artifact_id: str, revision_id: str, *, world_id: str = WORLD_ID
+) -> SourceArtifactV2:
     return SourceArtifactV2(
         source_artifact_id=source_artifact_id,
         source_domain_key="producer.worldbuilding",
         source_domain=SourceDomain.WORLDBUILDING,
-        world_id=WORLD_ID,
+        world_id=world_id,
         campaign_id=None,
         session_id=None,
         uri=None,
@@ -237,10 +240,16 @@ def _revision(source_revision_id: str, source_artifact_id: str, digest: str) -> 
     )
 
 
-def _contribution(contribution_id: str, artifact_id: str, revision_id: str) -> GraphContribution:
+def _contribution(
+    contribution_id: str,
+    artifact_id: str,
+    revision_id: str,
+    *,
+    world_id: str = WORLD_ID,
+) -> GraphContribution:
     return GraphContribution(
         contribution_id=contribution_id,
-        world_id=WORLD_ID,
+        world_id=world_id,
         source_kind=ContributionSourceKind.MANUAL_IMPORT,
         source_artifact_id=artifact_id,
         source_revision_id=revision_id,
@@ -262,11 +271,15 @@ def _contribution(contribution_id: str, artifact_id: str, revision_id: str) -> G
 
 
 def _alias_decision(
-    decision_id: str, *, kind: IdentityDecisionKind, alias: str
+    decision_id: str,
+    *,
+    kind: IdentityDecisionKind,
+    alias: str,
+    world_id: str = WORLD_ID,
 ) -> IdentityDecisionRecord:
     return IdentityDecisionRecord(
         decision_id=decision_id,
-        world_id=WORLD_ID,
+        world_id=world_id,
         decision_kind=kind,
         subject_object_ids=["obj:college"],
         alias=alias,
@@ -339,6 +352,87 @@ def make_bundle(
 
 def bundle_bytes(bundle: ExistingWorldAdoptionBundleV1 | None = None) -> bytes:
     return existing_world_adoption_bundle_canonical_bytes(bundle or make_bundle())
+
+
+def make_isolated_bundle(
+    *,
+    world_id: str,
+    adoption_id: str,
+    token: str,
+) -> ExistingWorldAdoptionBundleV1:
+    art_a = f"{ART_A}:{token}"
+    art_b = f"{ART_B}:{token}"
+    rev_a = f"{REV_A}:{token}"
+    rev_b = f"{REV_B}:{token}"
+    payload = v6_graph_payload(world_id=world_id)
+    payload["evidence_refs"][0]["source_artifact_id"] = art_a
+    payload["evidence_refs"][0]["source_revision_id"] = rev_a
+    payload["evidence_refs"][1]["source_artifact_id"] = art_b
+    payload["evidence_refs"][1]["source_revision_id"] = rev_b
+    return make_bundle(
+        adoption_id=adoption_id,
+        world_id=world_id,
+        graph_payload=payload,
+        source_artifacts=[
+            _artifact(art_a, rev_a, world_id=world_id),
+            _artifact(art_b, rev_b, world_id=world_id),
+        ],
+        source_revisions=[
+            _revision(rev_a, art_a, BODY_A),
+            _revision(rev_b, art_b, BODY_B),
+        ],
+        contributions=[
+            _contribution(f"contrib:import-1:{token}", art_a, rev_a, world_id=world_id),
+            _contribution(f"contrib:import-2:{token}", art_b, rev_b, world_id=world_id),
+        ],
+        identity_decisions=[
+            _alias_decision(
+                f"iddec:alias-add:{token}",
+                kind=IdentityDecisionKind.ALIAS_ADD,
+                alias="College",
+                world_id=world_id,
+            ),
+            _alias_decision(
+                f"iddec:alias-remove:{token}",
+                kind=IdentityDecisionKind.ALIAS_REMOVE,
+                alias="Old College",
+                world_id=world_id,
+            ),
+        ],
+    )
+
+
+def make_command(
+    bundle: ExistingWorldAdoptionBundleV1 | None = None,
+    *,
+    bundle_sha256: str | None = None,
+    graph_payload_sha256: str | None = None,
+    expected_published_revision_id: str | None = None,
+    requested_adopted_at: datetime = NOW,
+) -> ExistingWorldAdoptionCommandV1:
+    resolved = bundle or make_bundle()
+    raw = existing_world_adoption_bundle_canonical_bytes(resolved)
+    graph_sha = canonical_sha256(resolved.graph_payload)
+    revision_id = compute_revision_id(
+        world_id=resolved.world_id,
+        parent_revision_id=None,
+        operation_ids=[resolved.adoption_id],
+        graph_schema=resolved.graph_schema,
+        graph_payload_sha256=graph_sha,
+    )
+    return ExistingWorldAdoptionCommandV1(
+        bundle=resolved,
+        bundle_sha256=bundle_sha256 if bundle_sha256 is not None else sha256_bytes(raw),
+        graph_payload_sha256=(
+            graph_payload_sha256 if graph_payload_sha256 is not None else graph_sha
+        ),
+        expected_published_revision_id=(
+            expected_published_revision_id
+            if expected_published_revision_id is not None
+            else revision_id
+        ),
+        requested_adopted_at=requested_adopted_at,
+    )
 
 
 def make_stores(
@@ -840,6 +934,53 @@ def test_in_memory_rollback_after_source_history() -> None:
     assert adoptions.get_for_world(WORLD_ID) is None
 
 
+def test_direct_port_refuses_unbound_command_on_fresh_adopt() -> None:
+    cases = (
+        (make_command(bundle_sha256="ab" * 32), "unbound_bundle_sha256"),
+        (make_command(graph_payload_sha256="cd" * 32), "unbound_graph_payload_sha256"),
+        (
+            make_command(expected_published_revision_id="rev:" + ("0" * 32)),
+            "unbound_expected_published_revision_id",
+        ),
+    )
+    for command, reason in cases:
+        _, _, _, _, adoptions = make_stores()
+        with pytest.raises(PersistenceIntegrityError) as exc:
+            adoptions.adopt(command)
+        assert exc.value.details["reason"] == reason
+        assert adoptions.get_for_world(WORLD_ID) is None
+        assert adoptions.get(WORLD_ID, ADOPTION_ID) is None
+
+
+def test_direct_port_refuses_spoofed_bundle_sha_on_replay() -> None:
+    _, _, _, _, adoptions = make_stores()
+    first = adoptions.adopt(make_command())
+    other = make_isolated_bundle(
+        world_id=WORLD_ID,
+        adoption_id="adopt:spoofed-bundle",
+        token="spoof",
+    )
+    spoofed = make_command(other, bundle_sha256=first.bundle_sha256)
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        adoptions.adopt(spoofed)
+    assert exc.value.details["reason"] == "unbound_bundle_sha256"
+    assert adoptions.get_for_world(WORLD_ID) == first
+
+
+def test_direct_port_cross_world_adoption_id_conflicts() -> None:
+    _, _, _, _, adoptions = make_stores()
+    first = adoptions.adopt(make_command())
+    other = make_isolated_bundle(
+        world_id="world:existing-adoption-other",
+        adoption_id=ADOPTION_ID,
+        token="other",
+    )
+    with pytest.raises(IdempotencyConflictError, match="already exists for another world"):
+        adoptions.adopt(make_command(other))
+    assert adoptions.get_for_world(WORLD_ID) == first
+    assert adoptions.get_for_world(other.world_id) is None
+
+
 def test_t34_production_files_have_no_buddy_runtime() -> None:
     forbidden = ("DungeonMindBuddy", "graph_memory", "apps.", "/DungeonMindBuddy/")
     leased = [
@@ -871,8 +1012,11 @@ def test_t35_no_finalized_review_fabrication() -> None:
     postgres = (SRC / "infrastructure" / "postgres" / "existing_world_adoption.py").read_text(
         encoding="utf-8"
     )
+    memory = (SRC / "infrastructure" / "memory" / "repositories.py").read_text(encoding="utf-8")
     assert "ContributionReviewState" not in postgres
     assert "compute_revision_id" not in postgres
+    assert "bind_existing_world_adoption_command" in postgres
+    assert "bind_existing_world_adoption_command" in memory
     assert "_append_contribution_in_transaction" in postgres
     assert "PostgresSourceRepository" not in postgres
     assert "PostgresContributionRepository" not in postgres

@@ -230,6 +230,37 @@ def _validate_graph(
         )
 
 
+def bind_existing_world_adoption_command(
+    command: ExistingWorldAdoptionCommandV1,
+) -> ExistingWorldAdoptionCommandV1:
+    """Reload one command and bind its caller-supplied hashes to the bundle.
+
+    Repository adapters must invoke this before any replay, pristine-target,
+    or mutation branch. Caller-minted digests cannot manufacture a receipt.
+    """
+    try:
+        validated = ExistingWorldAdoptionCommandV1.model_validate(command.model_dump(mode="json"))
+    except (AttributeError, TypeError, ValidationError, ValueError):
+        _integrity("adoption_command_validation")
+    bundle = validated.bundle
+    expected_bundle_sha256 = sha256_bytes(existing_world_adoption_bundle_canonical_bytes(bundle))
+    expected_graph_payload_sha256 = canonical_sha256(bundle.graph_payload)
+    expected_published_revision_id = compute_revision_id(
+        world_id=bundle.world_id,
+        parent_revision_id=None,
+        operation_ids=[bundle.adoption_id],
+        graph_schema=bundle.graph_schema,
+        graph_payload_sha256=expected_graph_payload_sha256,
+    )
+    if validated.bundle_sha256 != expected_bundle_sha256:
+        _integrity("unbound_bundle_sha256")
+    if validated.graph_payload_sha256 != expected_graph_payload_sha256:
+        _integrity("unbound_graph_payload_sha256")
+    if validated.expected_published_revision_id != expected_published_revision_id:
+        _integrity("unbound_expected_published_revision_id")
+    return validated
+
+
 def parse_existing_world_adoption_bundle(
     raw_bundle: bytes,
     *,

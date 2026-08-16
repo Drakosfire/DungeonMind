@@ -49,7 +49,11 @@ boundary can consume.
    tight separators, `ensure_ascii=False`, one trailing newline. Durable lists
    are sorted by id (authority refs by `(schema, identifier, sha256)`). Raw
    input must equal canonical reserialization or the seam refuses before
-   mutation. The application hashes the consumed raw bytes itself.
+   mutation. The application hashes the consumed raw bytes itself. Both
+   repository adapters independently recompute `bundle_sha256`,
+   `graph_payload_sha256`, and `expected_published_revision_id` from the
+   command bundle and refuse unbound commands before replay or mutation.
+   Caller-supplied hashes cannot manufacture a completed receipt.
 3. **One terminal receipt per world.** `dm_existing_world_adoption_receipt_v1`
    is historical correspondence between bundle bytes, imported durable
    source/history rows, and the published first revision. It is not
@@ -75,7 +79,10 @@ boundary can consume.
    known non-availability `DungeonMindError` with no receipt is re-raised;
    availability/unexpected failure with no usable recovery is
    `existing_world_adoption_outcome_unknown` with `retry_safe=true`. Success
-   is never inferred from `get_head` or revision scans.
+   is never inferred from `get_head` or revision scans. A globally unique
+   `adoption_id` already claimed by another world is
+   `IdempotencyConflictError`, including the unique-constraint loser of a
+   cross-world race. That is not an unknown outcome.
 7. **Validation is persistence integrity, not Eldyrwild conformance.** Unique
    durable ids, world binding, source/revision/contribution/evidence closure,
    and v6 parse all refuse before mutation. This boundary does not replay
@@ -93,6 +100,9 @@ call public source/contribution/identity/graph repositories in sequence
 
 self-asserted bundle_sha256 on the bundle
   rejected: caller cannot supply the digest that attests the bytes
+
+trust caller-supplied command hashes at the repository port
+  rejected: a direct adopt() caller could replay bundle B under sha(A)
 
 generic Buddy-history replay engine
   rejected: conversion proof belongs to the successor producer

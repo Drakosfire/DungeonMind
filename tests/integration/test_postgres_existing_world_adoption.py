@@ -29,6 +29,8 @@ from tests.unit.test_existing_world_adoption import (
     bundle_bytes,
     graph_reader,
     make_bundle,
+    make_command,
+    make_isolated_bundle,
 )
 
 pytestmark = pytest.mark.integration
@@ -357,3 +359,118 @@ def test_t33_receipt_survives_descendant_or_rollback(pg, later_state: str) -> No
     assert replayed.adopted_at == NOW
     assert _counts(pg)["receipts"] == 1
     assert _counts(pg)["revisions"] == 2
+
+
+@pytest.mark.integration
+def test_direct_port_refuses_spoofed_bundle_sha_on_replay(pg) -> None:
+    first = pg.existing_world_adoptions.adopt(make_command())
+    other = make_isolated_bundle(
+        world_id=WORLD_ID,
+        adoption_id="adopt:spoofed-bundle",
+        token="spoof",
+    )
+    spoofed = make_command(other, bundle_sha256=first.bundle_sha256)
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        pg.existing_world_adoptions.adopt(spoofed)
+    assert exc.value.details["reason"] == "unbound_bundle_sha256"
+    assert pg.existing_world_adoptions.get_for_world(WORLD_ID) == first
+    counts = _counts(pg)
+    assert counts["receipts"] == 1
+    assert counts["revisions"] == 1
+
+
+@pytest.mark.integration
+def test_direct_port_refuses_unbound_bundle_sha_on_fresh_adopt(pg) -> None:
+    command = make_command(bundle_sha256="ab" * 32)
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        pg.existing_world_adoptions.adopt(command)
+    assert exc.value.details["reason"] == "unbound_bundle_sha256"
+    assert pg.existing_world_adoptions.get_for_world(WORLD_ID) is None
+    assert _counts(pg)["receipts"] == 0
+    assert _counts(pg)["revisions"] == 0
+
+
+@pytest.mark.integration
+def test_cross_world_adoption_id_is_idempotency_conflict(pg) -> None:
+    first = _adopt(pg)
+    other = make_isolated_bundle(
+        world_id="world:existing-adoption-other",
+        adoption_id=ADOPTION_ID,
+        token="other",
+    )
+    with pytest.raises(IdempotencyConflictError):
+        adopt_existing_world(
+            bundle_bytes(other),
+            adopted_at=NOW,
+            adoption_repository=pg.existing_world_adoptions,
+            graph_reader=graph_reader(),
+        )
+    with pytest.raises(IdempotencyConflictError):
+        adopt_existing_world(
+            bundle_bytes(other),
+            adopted_at=NOW,
+            adoption_repository=pg.existing_world_adoptions,
+            graph_reader=graph_reader(),
+        )
+    assert pg.existing_world_adoptions.get_for_world(WORLD_ID) == first
+    assert pg.existing_world_adoptions.get_for_world(other.world_id) is None
+    assert _counts(pg)["receipts"] == 1
+    assert _counts(pg, other.world_id)["receipts"] == 0
+
+
+@pytest.mark.integration
+def test_cross_world_adoption_id_race_one_winner(migrated_database: str, pg) -> None:
+    from dungeonmind.infrastructure.postgres import (
+        PostgresDatabase,
+        PostgresRepositoryBundle,
+    )
+
+    shared_adoption_id = "adopt:shared-cross-world"
+    first_bundle = make_isolated_bundle(
+        world_id="world:adopt-race-a",
+        adoption_id=shared_adoption_id,
+        token="race-a",
+    )
+    second_bundle = make_isolated_bundle(
+        world_id="world:adopt-race-b",
+        adoption_id=shared_adoption_id,
+        token="race-b",
+    )
+    bundle_a = PostgresRepositoryBundle(PostgresDatabase(migrated_database))
+    bundle_b = PostgresRepositoryBundle(PostgresDatabase(migrated_database))
+    barrier = threading.Barrier(2)
+    outcomes: list[str] = []
+    errors: list[BaseException] = []
+
+    def call(store: Any, raw: bytes) -> None:
+        barrier.wait(timeout=5)
+        try:
+            adopt_existing_world(
+                raw,
+                adopted_at=NOW,
+                adoption_repository=store.existing_world_adoptions,
+                graph_reader=graph_reader(),
+            )
+            outcomes.append("won")
+        except IdempotencyConflictError:
+            outcomes.append("refused")
+        except BaseException as exc:
+            errors.append(exc)
+
+    first = threading.Thread(target=call, args=(bundle_a, bundle_bytes(first_bundle)))
+    second = threading.Thread(target=call, args=(bundle_b, bundle_bytes(second_bundle)))
+    first.start()
+    second.start()
+    first.join(timeout=30)
+    second.join(timeout=30)
+    assert not first.is_alive() and not second.is_alive()
+    assert errors == []
+    assert sorted(outcomes) == ["refused", "won"]
+    winner_a = pg.existing_world_adoptions.get_for_world(first_bundle.world_id)
+    winner_b = pg.existing_world_adoptions.get_for_world(second_bundle.world_id)
+    assert (winner_a is None) != (winner_b is None)
+    assert (
+        _counts(pg, first_bundle.world_id)["receipts"]
+        + _counts(pg, second_bundle.world_id)["receipts"]
+        == 1
+    )
