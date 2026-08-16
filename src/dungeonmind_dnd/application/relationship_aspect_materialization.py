@@ -1,8 +1,13 @@
 """Pure adapter: Buddy dual-sense package → D&D v6 materialization plan.
 
 The adapter independently recomputes predicate domain/range admission against
-an explicit ``world-object-v5`` catalog. It does not import Buddy, call Git,
-mint durable aspect assertion IDs, or treat parse success as attestation.
+the bundled immutable ``world-object-v5`` catalog. A caller-supplied catalog is
+only an explicit pin request: it must match
+``builtin_world_object_v5_vocabulary_ref()`` on vocabulary id, revision, and
+catalog digest, and admission always uses the loader result. Callers cannot
+make a counterfeit catalog trusted by labeling it ``world-object-v5``. The
+adapter does not import Buddy, call Git, mint durable aspect assertion IDs, or
+treat parse success as attestation.
 """
 
 from __future__ import annotations
@@ -25,7 +30,11 @@ from ..contracts.vocabulary import (
     DndVocabularyRef,
 )
 from ..domain.errors import DndError
-from .world_object_vocabulary import vocabulary_sha256
+from .world_object_vocabulary import (
+    builtin_world_object_v5_vocabulary_ref,
+    load_builtin_world_object_v5_vocabulary,
+    vocabulary_sha256,
+)
 
 
 class DndRelationshipAspectMaterializationError(DndError):
@@ -97,6 +106,30 @@ def _vocabulary_ref(vocabulary: DndSemanticVocabulary) -> DndVocabularyRef:
     )
 
 
+def _bind_bundled_world_object_v5(
+    offered: DndSemanticVocabulary,
+) -> DndSemanticVocabulary:
+    """Return the bundled v5 catalog after proving ``offered`` is that pin.
+
+    Admission never uses the caller object. The caller must still present the
+    exact bundled identity so a counterfeit catalog labeled world-object-v5
+    cannot widen predicates under a stolen revision token.
+    """
+    pinned = load_builtin_world_object_v5_vocabulary()
+    pinned_ref = builtin_world_object_v5_vocabulary_ref()
+    if _vocabulary_ref(offered) != pinned_ref:
+        raise _fail(
+            "caller vocabulary is not the immutable bundled world-object-v5 catalog",
+            reason="vocabulary_pin_mismatch",
+        )
+    if _vocabulary_ref(pinned) != pinned_ref:
+        raise _fail(
+            "bundled world-object-v5 loader/ref disagree",
+            reason="vocabulary_pin_mismatch",
+        )
+    return pinned
+
+
 def _kind_in_vocabulary(vocabulary: DndSemanticVocabulary, kind: str) -> bool:
     return any(item.term == kind for item in vocabulary.object_kinds)
 
@@ -165,7 +198,8 @@ def materialize_relationship_aspect_plan_v1(
     """Map strict package bytes into a deterministic v6 materialization plan.
 
     The adapter hashes ``raw_package`` itself. Callers cannot supply the digest
-    that would make the bytes trusted.
+    that would make the bytes trusted. Local admission uses the bundled
+    world-object-v5 loader, not the caller-supplied catalog object.
     """
     if not isinstance(raw_package, (bytes, bytearray)):
         raise _fail("package input must be raw bytes", reason="package_unattested")
@@ -198,14 +232,10 @@ def materialize_relationship_aspect_plan_v1(
         raise _fail("package uncovered residuals are nonempty", reason="package_projection_failed")
     if projection.extra_package_edge_assignments:
         raise _fail("package extra assignments are nonempty", reason="package_projection_failed")
-    if world_object_vocabulary.vocabulary_revision != package.world_object_revision_label:
+    pinned_vocabulary = _bind_bundled_world_object_v5(world_object_vocabulary)
+    if package.world_object_revision_label != pinned_vocabulary.vocabulary_revision:
         raise _fail(
-            "explicit vocabulary revision does not match package pin",
-            reason="vocabulary_revision_mismatch",
-        )
-    if world_object_vocabulary.vocabulary_revision != "world-object-v5":
-        raise _fail(
-            "adapter requires explicit world-object-v5",
+            "package vocabulary revision does not match bundled world-object-v5",
             reason="vocabulary_revision_mismatch",
         )
 
@@ -255,13 +285,13 @@ def materialize_relationship_aspect_plan_v1(
     aspect_directives: list[DndRelationshipAspectDirectiveV1] = []
     for row in package.decomposition_rows:
         projected = row.projected_dm_kind
-        if not _kind_in_vocabulary(world_object_vocabulary, projected):
+        if not _kind_in_vocabulary(pinned_vocabulary, projected):
             raise _fail(
                 f"projected kind {projected!r} is absent from world-object-v5",
                 reason="projected_kind_absent",
             )
         primary = _map_buddy_kind(row.stored_buddy_kind)
-        if not _kind_in_vocabulary(world_object_vocabulary, primary):
+        if not _kind_in_vocabulary(pinned_vocabulary, primary):
             raise _fail(
                 f"primary kind {primary!r} is absent from world-object-v5",
                 reason="primary_kind_absent",
@@ -317,7 +347,7 @@ def materialize_relationship_aspect_plan_v1(
                 reason="endpoint_kind_missing",
             )
         local_ok = _locally_admitted(
-            world_object_vocabulary,
+            pinned_vocabulary,
             dm_predicate=dm_predicate,
             source_dm_kind=source_kind,
             target_dm_kind=target_kind,
@@ -361,18 +391,18 @@ def materialize_relationship_aspect_plan_v1(
                 f"retained admission {edge_id} missing predicate or kinds",
                 reason="retained_admission_incomplete",
             )
-        if not _kind_in_vocabulary(world_object_vocabulary, source_kind):
+        if not _kind_in_vocabulary(pinned_vocabulary, source_kind):
             raise _fail(
                 f"retained kind {source_kind!r} is absent from world-object-v5",
                 reason="retained_kind_absent",
             )
-        if not _kind_in_vocabulary(world_object_vocabulary, target_kind):
+        if not _kind_in_vocabulary(pinned_vocabulary, target_kind):
             raise _fail(
                 f"retained kind {target_kind!r} is absent from world-object-v5",
                 reason="retained_kind_absent",
             )
         if not _locally_admitted(
-            world_object_vocabulary,
+            pinned_vocabulary,
             dm_predicate=dm_predicate,
             source_dm_kind=source_kind,
             target_dm_kind=target_kind,
@@ -395,7 +425,7 @@ def materialize_relationship_aspect_plan_v1(
         source_revision_id=package.canonical_revision_id,
         source_graph_payload_sha256=package.canonical_graph_payload_sha256,
         source_dungeonmind_dependency_ref=package.dungeonmind_dependency_ref,
-        world_object_vocabulary=_vocabulary_ref(world_object_vocabulary),
+        world_object_vocabulary=_vocabulary_ref(pinned_vocabulary),
         aspect_directives=sorted(
             aspect_directives,
             key=lambda item: (item.source_object_id, item.aspect_key, item.projected_kind),

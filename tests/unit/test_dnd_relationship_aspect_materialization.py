@@ -18,12 +18,15 @@ from dungeonmind_dnd.application.relationship_aspect_materialization import (
     sha256_bytes,
 )
 from dungeonmind_dnd.application.world_object_vocabulary import (
+    builtin_world_object_v5_vocabulary_ref,
     load_builtin_world_object_v4_vocabulary,
     load_builtin_world_object_v5_vocabulary,
+    vocabulary_sha256,
 )
 from dungeonmind_dnd.contracts.relationship_aspect_materialization import (
     BuddyDualSenseDecompositionPackageV1,
 )
+from dungeonmind_dnd.contracts.vocabulary import DndSemanticVocabulary
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_PATH = (
@@ -38,6 +41,9 @@ CANONICAL_PAYLOAD_SHA256 = (
     "d71453926b0475ca686b9c94452688d5a6b285afab304c35d48035c252240207"
 )
 DISPATCH_BASE = "be76acc997c5fbcb8ceaa090969ec051afa6051d"
+WORLD_OBJECT_V5_DIGEST = (
+    "f9fd5420e0ab3849224e0d58cf83dd432ca2e5da22ce661b25654406ec9c60d8"
+)
 ADAPTER_PATH = (
     REPO_ROOT
     / "src"
@@ -242,7 +248,15 @@ def test_plan_does_not_mint_durable_aspect_assertion_ids() -> None:
         assert not hasattr(row, "aspect_assertion_id")
 
 
-def test_permuting_source_arrays_yields_identical_plan() -> None:
+def test_reordered_equivalent_rows_keep_directives_and_change_source_byte_hashes() -> None:
+    """T28, resolved for provenance.
+
+    Reordering equivalent package rows must not change the sorted aspect and
+    endpoint directives. ``source_package_sha256`` is exact raw-byte
+    provenance, so those bytes, the package canonical payload digest, the
+    sealed plan bytes, and ``plan_sha256`` must change. This is not identical
+    plan-byte identity.
+    """
     payload = _payload()
     payload["decomposition_rows"] = list(reversed(payload["decomposition_rows"]))
     payload["endpoint_assignments"] = list(reversed(payload["endpoint_assignments"]))
@@ -256,16 +270,17 @@ def test_permuting_source_arrays_yields_identical_plan() -> None:
     permuted = _plan(_resealed_bytes(payload))
     assert original.aspect_directives == permuted.aspect_directives
     assert original.endpoint_directives == permuted.endpoint_directives
-    original_payload = json.loads(plan_canonical_bytes(original))
-    permuted_payload = json.loads(plan_canonical_bytes(permuted))
-    for key in (
-        "source_package_sha256",
-        "source_package_canonical_payload_sha256",
-        "plan_sha256",
-    ):
-        original_payload.pop(key)
-        permuted_payload.pop(key)
-    assert original_payload == permuted_payload
+    assert original.source_world_id == permuted.source_world_id
+    assert original.source_revision_id == permuted.source_revision_id
+    assert original.source_dungeonmind_dependency_ref == permuted.source_dungeonmind_dependency_ref
+    assert original.world_object_vocabulary == permuted.world_object_vocabulary
+    assert original.source_package_sha256 != permuted.source_package_sha256
+    assert (
+        original.source_package_canonical_payload_sha256
+        != permuted.source_package_canonical_payload_sha256
+    )
+    assert original.plan_sha256 != permuted.plan_sha256
+    assert plan_canonical_bytes(original) != plan_canonical_bytes(permuted)
 
 
 @pytest.mark.parametrize(
@@ -435,7 +450,33 @@ def test_explicit_v5_vocabulary_required() -> None:
             _raw(),
             world_object_vocabulary=load_builtin_world_object_v4_vocabulary(),
         )
-    assert exc.value.details["reason"] == "vocabulary_revision_mismatch"
+    assert exc.value.details["reason"] == "vocabulary_pin_mismatch"
+
+
+def test_counterfeit_world_object_v5_catalog_refuses() -> None:
+    pinned = builtin_world_object_v5_vocabulary_ref()
+    assert pinned.catalog_sha256 == WORLD_OBJECT_V5_DIGEST
+    payload = load_builtin_world_object_v5_vocabulary().model_dump(mode="json")
+    assert payload["vocabulary_revision"] == "world-object-v5"
+    leads = next(item for item in payload["predicates"] if item["term"] == "dnd5e:leads")
+    leads["object_kinds"] = [*leads["object_kinds"], "dnd5e:location"]
+    counterfeit = DndSemanticVocabulary.model_validate(payload)
+    assert counterfeit.vocabulary_id == pinned.vocabulary_id
+    assert counterfeit.vocabulary_revision == pinned.vocabulary_revision
+    assert vocabulary_sha256(counterfeit) != WORLD_OBJECT_V5_DIGEST
+    with pytest.raises(DndRelationshipAspectMaterializationError) as exc:
+        materialize_relationship_aspect_plan_v1(
+            _raw(),
+            world_object_vocabulary=counterfeit,
+        )
+    assert exc.value.details["reason"] == "vocabulary_pin_mismatch"
+
+
+def test_successful_plan_records_bundled_v5_digest() -> None:
+    plan = _plan()
+    assert plan.world_object_vocabulary.vocabulary_revision == "world-object-v5"
+    assert plan.world_object_vocabulary.catalog_sha256 == WORLD_OBJECT_V5_DIGEST
+    assert plan.world_object_vocabulary == builtin_world_object_v5_vocabulary_ref()
 
 
 def test_adapter_hashes_raw_bytes_itself() -> None:
