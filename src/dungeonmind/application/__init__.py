@@ -7,6 +7,7 @@ following the statblocks_v1 discipline in DungeonMindServer.
 """
 
 from .contribution_review import finalize_contribution_review, load_contribution_review
+from .existing_world_adoption import adopt_existing_world
 from .fictional_time import evaluate_fictional_time_query
 from .fictional_time_query_service import query_fictional_time_shadow_at_revision
 from .graph_snapshot import (
@@ -22,6 +23,7 @@ from .repositories import (
     ContributionRepository,
     ContributionReviewRepository,
     EmbeddingRunRepository,
+    ExistingWorldAdoptionRepository,
     FinalizedReviewPublicationRepository,
     IdentityDecisionRepository,
     MindThreadRepository,
@@ -44,6 +46,7 @@ __all__ = [
     "ContributionRepository",
     "ContributionReviewRepository",
     "EmbeddingRunRepository",
+    "ExistingWorldAdoptionRepository",
     "FinalizedReviewGraphMaterialization",
     "FinalizedReviewPublication",
     "FinalizedReviewPublicationRepository",
@@ -62,6 +65,7 @@ __all__ = [
     "SourceRepository",
     "UnionGraphV1SnapshotReader",
     "WorldGraphRepository",
+    "adopt_existing_world",
     "evaluate_fictional_time_query",
     "finalize_contribution_review",
     "load_contribution_review",

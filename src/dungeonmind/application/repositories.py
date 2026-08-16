@@ -19,6 +19,10 @@ from ..contracts.contribution_review import (
     ContributionReviewState,
 )
 from ..contracts.evidence import SourceArtifactRecord, SourceRevision
+from ..contracts.existing_world_adoption import (
+    ExistingWorldAdoptionCommandV1,
+    ExistingWorldAdoptionReceiptV1,
+)
 from ..contracts.graph import (
     PublishRevisionCommand,
     StoredGraphRevision,
@@ -146,6 +150,21 @@ class FinalizedReviewPublicationRepository(Protocol):
         world_id: str,
         review_id: str,
     ) -> FinalizedReviewPublication | None: ...
+
+
+class ExistingWorldAdoptionRepository(Protocol):
+    """Atomic existing-world adoption unit of work.
+
+    The adapter owns pristine-target verification, imported source/history
+    persistence, first-revision/head publication, and the terminal receipt in
+    one store transaction or one shared in-memory lock.
+    """
+
+    def adopt(self, command: ExistingWorldAdoptionCommandV1) -> ExistingWorldAdoptionReceiptV1: ...
+
+    def get(self, world_id: str, adoption_id: str) -> ExistingWorldAdoptionReceiptV1 | None: ...
+
+    def get_for_world(self, world_id: str) -> ExistingWorldAdoptionReceiptV1 | None: ...
 
 
 class IdentityDecisionRepository(Protocol):

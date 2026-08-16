@@ -13,7 +13,7 @@ import math
 import threading
 from collections.abc import Callable
 from datetime import datetime
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from ...application.repositories import normalize_semantic_document_batch
 from ...contracts.contribution import ContributionStatus, GraphContribution
@@ -22,6 +22,10 @@ from ...contracts.contribution_review import (
     ContributionReviewState,
 )
 from ...contracts.evidence import SourceArtifactRecord, SourceRevision
+from ...contracts.existing_world_adoption import (
+    ExistingWorldAdoptionCommandV1,
+    ExistingWorldAdoptionReceiptV1,
+)
 from ...contracts.graph import (
     PublishRevisionCommand,
     StoredGraphRevision,
@@ -279,9 +283,7 @@ class InMemoryContributionReviewRepository:
         self._lock = contributions._lock
         self._failure_hook = failure_hook
 
-    def _reconstruct_unlocked(
-        self, record: ContributionReviewRecord
-    ) -> ContributionReviewState:
+    def _reconstruct_unlocked(self, record: ContributionReviewRecord) -> ContributionReviewState:
         candidate = self._contributions._items.get(
             (record.world_id, record.stored_candidate_contribution_id)
         )
@@ -305,9 +307,7 @@ class InMemoryContributionReviewRepository:
 
     def finalize(self, state: ContributionReviewState) -> ContributionReviewState:
         try:
-            validated = ContributionReviewState.model_validate(
-                state.model_dump(mode="json")
-            )
+            validated = ContributionReviewState.model_validate(state.model_dump(mode="json"))
         except Exception:
             raise PersistenceIntegrityError(
                 "review state failed validation before persistence"
@@ -323,10 +323,7 @@ class InMemoryContributionReviewRepository:
                     f"review {record.review_id!r} replayed with different payload"
                 )
             for prior in self._records.values():
-                if (
-                    prior.world_id == record.world_id
-                    and prior.operation_id == record.operation_id
-                ):
+                if prior.world_id == record.world_id and prior.operation_id == record.operation_id:
                     raise IdempotencyConflictError(
                         f"operation {record.operation_id!r} replayed with different payload"
                     )
@@ -386,16 +383,13 @@ class InMemoryContributionReviewRepository:
             record = self._records.get((world_id, review_id))
             return None if record is None else self._reconstruct_unlocked(record)
 
-    def get_for_plan(
-        self, world_id: str, source_plan_id: str
-    ) -> ContributionReviewState | None:
+    def get_for_plan(self, world_id: str, source_plan_id: str) -> ContributionReviewState | None:
         with self._lock:
             record = next(
                 (
                     item
                     for (record_world, _), item in self._records.items()
-                    if record_world == world_id
-                    and item.plan_ref.source_plan_id == source_plan_id
+                    if record_world == world_id and item.plan_ref.source_plan_id == source_plan_id
                 ),
                 None,
             )
@@ -429,9 +423,7 @@ class InMemoryFinalizedReviewPublicationRepository:
         command: FinalizedReviewPublicationCommand,
     ) -> FinalizedReviewPublicationCommand:
         try:
-            return FinalizedReviewPublicationCommand.model_validate(
-                command.model_dump(mode="json")
-            )
+            return FinalizedReviewPublicationCommand.model_validate(command.model_dump(mode="json"))
         except Exception:
             raise PersistenceIntegrityError(
                 "finalized publication command failed validation"
@@ -527,15 +519,13 @@ class InMemoryFinalizedReviewPublicationRepository:
             publication.world_id != record.world_id
             or publication.review_id != record.review_id
             or publication.reviewed_contribution_id != record.reviewed_contribution_id
-            or publication.reviewed_contribution_sha256
-            != record.reviewed_contribution_sha256
+            or publication.reviewed_contribution_sha256 != record.reviewed_contribution_sha256
             or publication.review_intent_sha256 != record.review_intent_sha256
             or publication.confirmation_id != record.confirmation_id
             or publication.operation_id != record.operation_id
             or publication.expected_parent_revision_id
             != record.plan_ref.expected_parent_revision_id
-            or publication.parent_graph_payload_sha256
-            != record.plan_ref.base_graph_payload_sha256
+            or publication.parent_graph_payload_sha256 != record.plan_ref.base_graph_payload_sha256
             or publication.graph_schema != record.plan_ref.base_graph_schema
         ):
             raise PersistenceIntegrityError(
@@ -551,17 +541,13 @@ class InMemoryFinalizedReviewPublicationRepository:
             publication.world_id != command.world_id
             or publication.review_id != command.review_id
             or publication.reviewed_contribution_id != command.reviewed_contribution_id
-            or publication.reviewed_contribution_sha256
-            != command.reviewed_contribution_sha256
+            or publication.reviewed_contribution_sha256 != command.reviewed_contribution_sha256
             or publication.review_intent_sha256 != command.review_intent_sha256
             or publication.confirmation_id != command.confirmation_id
             or publication.operation_id != command.operation_id
-            or publication.expected_parent_revision_id
-            != command.expected_parent_revision_id
-            or publication.parent_graph_payload_sha256
-            != command.parent_graph_payload_sha256
-            or publication.published_revision_id
-            != command.expected_published_revision_id
+            or publication.expected_parent_revision_id != command.expected_parent_revision_id
+            or publication.parent_graph_payload_sha256 != command.parent_graph_payload_sha256
+            or publication.published_revision_id != command.expected_published_revision_id
             or publication.graph_schema != command.graph_schema
             or publication.graph_payload_sha256 != command.graph_payload_sha256
         ):
@@ -574,9 +560,7 @@ class InMemoryFinalizedReviewPublicationRepository:
         publication: FinalizedReviewPublication,
     ) -> FinalizedReviewPublication:
         try:
-            return FinalizedReviewPublication.model_validate(
-                publication.model_dump(mode="json")
-            )
+            return FinalizedReviewPublication.model_validate(publication.model_dump(mode="json"))
         except Exception:
             raise PersistenceIntegrityError(
                 "finalized publication record failed reconstruction"
@@ -604,9 +588,7 @@ class InMemoryFinalizedReviewPublicationRepository:
             if value is not None:
                 matches[_fingerprint(value)] = value
         if len(matches) > 1:
-            raise PersistenceIntegrityError(
-                "multiple finalized publication identities conflict"
-            )
+            raise PersistenceIntegrityError("multiple finalized publication identities conflict")
         return next(iter(matches.values()), None)
 
     def _reconstruct_unlocked(
@@ -616,17 +598,11 @@ class InMemoryFinalizedReviewPublicationRepository:
         verified = self._validate_record(publication)
         state = self._reviews.get(verified.world_id, verified.review_id)
         if state is None:
-            raise PersistenceIntegrityError(
-                "finalized publication references a missing review"
-            )
+            raise PersistenceIntegrityError("finalized publication references a missing review")
         self._validate_record_review(verified, state)
-        stored = self._graph._revisions.get(
-            (verified.world_id, verified.published_revision_id)
-        )
+        stored = self._graph._revisions.get((verified.world_id, verified.published_revision_id))
         if stored is None:
-            raise PersistenceIntegrityError(
-                "finalized publication references a missing revision"
-            )
+            raise PersistenceIntegrityError("finalized publication references a missing revision")
         parent = self._graph._revisions.get(
             (verified.world_id, verified.expected_parent_revision_id)
         )
@@ -674,11 +650,7 @@ class InMemoryFinalizedReviewPublicationRepository:
                 world_id=world_id,
                 operation_id=operation_id,
             )
-            return (
-                None
-                if publication is None
-                else self._reconstruct_unlocked(publication)
-            )
+            return None if publication is None else self._reconstruct_unlocked(publication)
 
     def get_for_review(
         self,
@@ -690,11 +662,7 @@ class InMemoryFinalizedReviewPublicationRepository:
                 world_id=world_id,
                 review_id=review_id,
             )
-            return (
-                None
-                if publication is None
-                else self._reconstruct_unlocked(publication)
-            )
+            return None if publication is None else self._reconstruct_unlocked(publication)
 
     @staticmethod
     def _record_from_revision(
@@ -993,8 +961,7 @@ class InMemoryMindThreadRepository:
                 raise DocumentNotFoundError(f"thread {request.thread_id!r} not found")
             if request.world_id != binding["world_id"]:
                 raise ThreadContextMismatchError(
-                    f"request world_id {request.world_id!r} != thread world "
-                    f"{binding['world_id']!r}"
+                    f"request world_id {request.world_id!r} != thread world {binding['world_id']!r}"
                 )
             if request.campaign_id != binding["campaign_id"]:
                 raise ThreadContextMismatchError(
@@ -1035,10 +1002,9 @@ class InMemoryMindThreadRepository:
             turns = self._turns[request.thread_id]
             for existing_req, existing_resp in turns:
                 if existing_resp.turn_id == response.turn_id:
-                    if (
-                        _fingerprint(existing_req) == _fingerprint(request)
-                        and _fingerprint(existing_resp) == _fingerprint(response)
-                    ):
+                    if _fingerprint(existing_req) == _fingerprint(request) and _fingerprint(
+                        existing_resp
+                    ) == _fingerprint(response):
                         return  # exact replay; no duplicate
                     raise IdempotencyConflictError(
                         f"turn_id {response.turn_id!r} replayed with different payload"
@@ -1194,9 +1160,10 @@ class InMemoryEmbeddingRunRepository:
                 },
             )
             self._runs[run_id] = updated
-            if existing.world_id is not None and self._active_by_world.get(
-                existing.world_id
-            ) == run_id:
+            if (
+                existing.world_id is not None
+                and self._active_by_world.get(existing.world_id) == run_id
+            ):
                 del self._active_by_world[existing.world_id]
             return _copy(updated)
 
@@ -1256,8 +1223,7 @@ class InMemorySemanticDocumentRepository:
             )
         if doc.embedding_model_revision != run.embedding_model_revision:
             raise IdempotencyConflictError(
-                f"document {doc.semantic_document_id!r} embedding_model_revision "
-                "mismatches run"
+                f"document {doc.semantic_document_id!r} embedding_model_revision mismatches run"
             )
         if doc.embedding_dimensions != run.embedding_dimensions:
             raise IdempotencyConflictError(
@@ -1352,9 +1318,7 @@ class InMemorySemanticDocumentRepository:
         with self._runs.materialization_lock:
             run = self._runs._peek(materialization_run_id)
             if run is None:
-                raise DocumentNotFoundError(
-                    f"embedding run {materialization_run_id!r} not found"
-                )
+                raise DocumentNotFoundError(f"embedding run {materialization_run_id!r} not found")
             if run.status not in (
                 EmbeddingRunStatus.FAILED,
                 EmbeddingRunStatus.SUPERSEDED,
@@ -1475,9 +1439,7 @@ class InMemorySemanticSearch:
             )
         return run_id
 
-    def _eligible_unlocked(
-        self, query: SemanticQuery, *, run_id: str
-    ) -> list[SemanticDocument]:
+    def _eligible_unlocked(self, query: SemanticQuery, *, run_id: str) -> list[SemanticDocument]:
         result: list[SemanticDocument] = []
         for doc in self._documents._snapshot_docs_unlocked():
             if doc.materialization_run_id != run_id:
@@ -1521,9 +1483,7 @@ class InMemorySemanticSearch:
                     or query.text == doc.semantic_document_id
                     or query.text == doc.graph_object_id
                 ]
-                candidates.extend(
-                    self._ranked(exact, CandidateChannel.EXACT, query.top_k)
-                )
+                candidates.extend(self._ranked(exact, CandidateChannel.EXACT, query.top_k))
 
             if query.text:
                 query_tokens = _tokenize(query.text)
@@ -1534,23 +1494,16 @@ class InMemorySemanticSearch:
                         break
                     overlap = len(query_tokens & doc_tokens)
                     if overlap:
-                        lexical.append(
-                            (doc.semantic_document_id, overlap / len(query_tokens))
-                        )
-                candidates.extend(
-                    self._ranked(lexical, CandidateChannel.LEXICAL, query.top_k)
-                )
+                        lexical.append((doc.semantic_document_id, overlap / len(query_tokens)))
+                candidates.extend(self._ranked(lexical, CandidateChannel.LEXICAL, query.top_k))
 
             if query.embedding:
                 dense = [
                     (doc.semantic_document_id, _cosine(query.embedding, doc.embedding))
                     for doc in docs
-                    if doc.embedding is not None
-                    and len(doc.embedding) == len(query.embedding)
+                    if doc.embedding is not None and len(doc.embedding) == len(query.embedding)
                 ]
-                candidates.extend(
-                    self._ranked(dense, CandidateChannel.DENSE, query.top_k)
-                )
+                candidates.extend(self._ranked(dense, CandidateChannel.DENSE, query.top_k))
 
             return candidates
 
@@ -1560,8 +1513,306 @@ class InMemorySemanticSearch:
     ) -> list[SemanticCandidate]:
         ordered = sorted(scored, key=lambda kv: (-kv[1], kv[0]))[:top_k]
         return [
-            SemanticCandidate(
-                semantic_document_id=doc_id, channel=channel, rank=rank, score=score
-            )
+            SemanticCandidate(semantic_document_id=doc_id, channel=channel, rank=rank, score=score)
             for rank, (doc_id, score) in enumerate(ordered, start=1)
         ]
+
+
+class InMemoryExistingWorldAdoptionRepository:
+    """Atomic in-memory existing-world adoption unit of work.
+
+    The graph repository owns the per-world lock. Adoption uses that same lock
+    so imported source/history rows, the first revision/head, and the terminal
+    receipt are one reversible in-memory transaction.
+    """
+
+    def __init__(
+        self,
+        world_graph_repository: InMemoryWorldGraphRepository,
+        source_repository: InMemorySourceRepository,
+        contribution_repository: InMemoryContributionRepository,
+        identity_repository: InMemoryIdentityDecisionRepository,
+        *,
+        failure_hook: Callable[[str], None] | None = None,
+    ) -> None:
+        self._graph = world_graph_repository
+        self._sources = source_repository
+        self._contributions = contribution_repository
+        self._identity = identity_repository
+        self._receipts_by_world: dict[str, ExistingWorldAdoptionReceiptV1] = {}
+        self._receipts_by_adoption: dict[str, ExistingWorldAdoptionReceiptV1] = {}
+        self._failure_hook = failure_hook
+
+    @staticmethod
+    def _reload_command(
+        command: ExistingWorldAdoptionCommandV1,
+    ) -> ExistingWorldAdoptionCommandV1:
+        try:
+            return ExistingWorldAdoptionCommandV1.model_validate(command.model_dump(mode="json"))
+        except Exception:
+            raise PersistenceIntegrityError(
+                "existing-world adoption command failed validation"
+            ) from None
+
+    @staticmethod
+    def _validate_record(
+        receipt: ExistingWorldAdoptionReceiptV1,
+    ) -> ExistingWorldAdoptionReceiptV1:
+        try:
+            return ExistingWorldAdoptionReceiptV1.model_validate(receipt.model_dump(mode="json"))
+        except Exception:
+            raise PersistenceIntegrityError(
+                "existing-world adoption receipt failed reconstruction"
+            ) from None
+
+    def _snapshot_world(self, world_id: str) -> dict[str, Any]:
+        artifact_ids = {
+            artifact_id
+            for artifact_id, artifact in self._sources._artifacts.items()
+            if artifact.world_id == world_id
+        }
+        return {
+            "artifacts": {
+                artifact_id: _copy(self._sources._artifacts[artifact_id])
+                for artifact_id in artifact_ids
+            },
+            "revisions": {
+                revision_id: _copy(revision)
+                for revision_id, revision in self._sources._revisions.items()
+                if revision.source_artifact_id in artifact_ids
+            },
+            "contributions": {
+                key: _copy(item)
+                for key, item in self._contributions._items.items()
+                if key[0] == world_id
+            },
+            "identity": {
+                key: _copy(item)
+                for key, item in self._identity._items.items()
+                if key[0] == world_id
+            },
+            "revisions_graph": {
+                key: copy.deepcopy(stored)
+                for key, stored in self._graph._revisions.items()
+                if key[0] == world_id
+            },
+            "head": copy.deepcopy(self._graph._heads.get(world_id)),
+            "receipt": (
+                _copy(self._receipts_by_world[world_id])
+                if world_id in self._receipts_by_world
+                else None
+            ),
+        }
+
+    def _restore_world(self, world_id: str, snapshot: dict[str, Any]) -> None:
+        current_artifact_ids = {
+            artifact_id
+            for artifact_id, artifact in self._sources._artifacts.items()
+            if artifact.world_id == world_id
+        }
+        owned_artifact_ids = current_artifact_ids | set(snapshot["artifacts"])
+        for artifact_id in current_artifact_ids:
+            self._sources._artifacts.pop(artifact_id, None)
+        self._sources._artifacts.update(snapshot["artifacts"])
+        for revision_id, revision in list(self._sources._revisions.items()):
+            if revision.source_artifact_id in owned_artifact_ids:
+                self._sources._revisions.pop(revision_id, None)
+        self._sources._revisions.update(snapshot["revisions"])
+        for key in [key for key in self._contributions._items if key[0] == world_id]:
+            self._contributions._items.pop(key, None)
+        self._contributions._items.update(snapshot["contributions"])
+        for key in [key for key in self._identity._items if key[0] == world_id]:
+            self._identity._items.pop(key, None)
+        self._identity._items.update(snapshot["identity"])
+        for key in [key for key in self._graph._revisions if key[0] == world_id]:
+            self._graph._revisions.pop(key, None)
+        self._graph._revisions.update(snapshot["revisions_graph"])
+        if snapshot["head"] is None:
+            self._graph._heads.pop(world_id, None)
+        else:
+            self._graph._heads[world_id] = snapshot["head"]
+        previous = self._receipts_by_world.pop(world_id, None)
+        if previous is not None:
+            self._receipts_by_adoption.pop(previous.adoption_id, None)
+        if snapshot["receipt"] is not None:
+            restored = snapshot["receipt"]
+            self._receipts_by_world[world_id] = restored
+            self._receipts_by_adoption[restored.adoption_id] = restored
+
+    def _assert_pristine(self, world_id: str) -> None:
+        if self._graph._heads.get(world_id) is not None:
+            raise PersistenceIntegrityError(
+                "existing-world adoption target is not pristine",
+                details={"reason": "non_pristine_target", "family": "graph_head"},
+            )
+        if any(key[0] == world_id for key in self._graph._revisions):
+            raise PersistenceIntegrityError(
+                "existing-world adoption target is not pristine",
+                details={"reason": "non_pristine_target", "family": "graph_revision"},
+            )
+        if any(key[0] == world_id for key in self._contributions._items):
+            raise PersistenceIntegrityError(
+                "existing-world adoption target is not pristine",
+                details={"reason": "non_pristine_target", "family": "contribution"},
+            )
+        if any(key[0] == world_id for key in self._identity._items):
+            raise PersistenceIntegrityError(
+                "existing-world adoption target is not pristine",
+                details={"reason": "non_pristine_target", "family": "identity_decision"},
+            )
+        if any(artifact.world_id == world_id for artifact in self._sources._artifacts.values()):
+            raise PersistenceIntegrityError(
+                "existing-world adoption target is not pristine",
+                details={"reason": "non_pristine_target", "family": "source_artifact"},
+            )
+
+    def _put_artifact_locked(self, artifact: SourceArtifactRecord) -> None:
+        existing = self._sources._artifacts.get(artifact.source_artifact_id)
+        if existing is not None:
+            if _fingerprint(existing) != _fingerprint(artifact):
+                raise IdempotencyConflictError(
+                    f"source artifact {artifact.source_artifact_id!r} replayed with "
+                    "different payload; mutable lifecycle needs a typed operation"
+                )
+            return
+        self._sources._artifacts[artifact.source_artifact_id] = _copy(artifact)
+
+    def _put_revision_locked(self, revision: SourceRevision) -> None:
+        existing = self._sources._revisions.get(revision.source_revision_id)
+        if existing is not None:
+            if _fingerprint(existing) != _fingerprint(revision):
+                raise IdempotencyConflictError(
+                    f"source revision {revision.source_revision_id!r} replayed with "
+                    "different payload"
+                )
+            return
+        self._sources._revisions[revision.source_revision_id] = _copy(revision)
+
+    def _append_contribution_locked(self, contribution: GraphContribution) -> None:
+        key = (contribution.world_id, contribution.contribution_id)
+        existing = self._contributions._items.get(key)
+        if existing is not None:
+            if _fingerprint(existing) != _fingerprint(contribution):
+                raise IdempotencyConflictError(
+                    f"contribution {contribution.contribution_id!r} replayed with different payload"
+                )
+            return
+        self._contributions._items[key] = _copy(contribution)
+
+    def _append_identity_locked(self, decision: IdentityDecisionRecord) -> None:
+        key = (decision.world_id, decision.decision_id)
+        existing = self._identity._items.get(key)
+        if existing is not None:
+            if _fingerprint(existing) != _fingerprint(decision):
+                raise IdempotencyConflictError(
+                    f"identity decision {decision.decision_id!r} replayed with different payload"
+                )
+            return
+        self._identity._items[key] = _copy(decision)
+
+    def _reconstruct_unlocked(
+        self, receipt: ExistingWorldAdoptionReceiptV1
+    ) -> ExistingWorldAdoptionReceiptV1:
+        verified = self._validate_record(receipt)
+        stored = self._graph._revisions.get((verified.world_id, verified.published_revision_id))
+        if stored is None:
+            raise PersistenceIntegrityError(
+                "existing-world adoption receipt references a missing revision"
+            )
+        if (
+            stored.revision.graph_payload_sha256 != verified.graph_payload_sha256
+            or stored.revision.graph_schema != verified.graph_schema
+            or stored.revision.world_id != verified.world_id
+        ):
+            raise PersistenceIntegrityError(
+                "existing-world adoption receipt disagrees with its published revision"
+            )
+        return _copy(verified)
+
+    def get(self, world_id: str, adoption_id: str) -> ExistingWorldAdoptionReceiptV1 | None:
+        with self._graph._lock_for(world_id):
+            receipt = self._receipts_by_world.get(world_id)
+            if receipt is None or receipt.adoption_id != adoption_id:
+                return None
+            return self._reconstruct_unlocked(receipt)
+
+    def get_for_world(self, world_id: str) -> ExistingWorldAdoptionReceiptV1 | None:
+        with self._graph._lock_for(world_id):
+            receipt = self._receipts_by_world.get(world_id)
+            if receipt is None:
+                return None
+            return self._reconstruct_unlocked(receipt)
+
+    def adopt(self, command: ExistingWorldAdoptionCommandV1) -> ExistingWorldAdoptionReceiptV1:
+        validated = self._reload_command(command)
+        bundle = validated.bundle
+        world_id = bundle.world_id
+        with self._graph._lock_for(world_id):
+            existing = self._receipts_by_world.get(world_id)
+            if existing is not None:
+                verified = self._reconstruct_unlocked(existing)
+                if verified.bundle_sha256 == validated.bundle_sha256:
+                    return verified
+                raise IdempotencyConflictError(
+                    "existing-world adoption identity conflicts with the requested bundle"
+                )
+            other = self._receipts_by_adoption.get(bundle.adoption_id)
+            if other is not None:
+                raise IdempotencyConflictError(
+                    f"adoption {bundle.adoption_id!r} already exists for another world"
+                )
+            self._assert_pristine(world_id)
+            snapshot = self._snapshot_world(world_id)
+            try:
+                for artifact in bundle.source_artifacts:
+                    self._put_artifact_locked(artifact)
+                for revision in bundle.source_revisions:
+                    self._put_revision_locked(revision)
+                for contribution in bundle.contributions:
+                    self._append_contribution_locked(contribution)
+                for decision in bundle.identity_decisions:
+                    self._append_identity_locked(decision)
+                if self._failure_hook is not None:
+                    self._failure_hook("source_history")
+                graph_command = PublishRevisionCommand(
+                    world_id=world_id,
+                    parent_revision_id=None,
+                    expected_parent_revision_id=None,
+                    operation_ids=[bundle.adoption_id],
+                    graph_schema=bundle.graph_schema,
+                    graph_payload=bundle.graph_payload,
+                    created_at=validated.requested_adopted_at,
+                )
+                revision = self._graph._publish_revision_locked(graph_command)
+                if revision.revision_id != validated.expected_published_revision_id:
+                    raise PersistenceIntegrityError(
+                        "published adoption revision id disagrees with the command"
+                    )
+                if revision.graph_payload_sha256 != validated.graph_payload_sha256:
+                    raise PersistenceIntegrityError(
+                        "published adoption payload digest disagrees with the command"
+                    )
+                if self._failure_hook is not None:
+                    self._failure_hook("graph")
+                receipt = ExistingWorldAdoptionReceiptV1(
+                    adoption_id=bundle.adoption_id,
+                    world_id=world_id,
+                    bundle_sha256=validated.bundle_sha256,
+                    source_provenance=bundle.source_provenance,
+                    published_revision_id=revision.revision_id,
+                    graph_schema=bundle.graph_schema,
+                    graph_payload_sha256=validated.graph_payload_sha256,
+                    adopted_at=validated.requested_adopted_at,
+                    source_artifact_count=len(bundle.source_artifacts),
+                    source_revision_count=len(bundle.source_revisions),
+                    contribution_count=len(bundle.contributions),
+                    identity_decision_count=len(bundle.identity_decisions),
+                )
+                self._receipts_by_world[world_id] = receipt
+                self._receipts_by_adoption[bundle.adoption_id] = receipt
+                if self._failure_hook is not None:
+                    self._failure_hook("receipt")
+                return self._reconstruct_unlocked(receipt)
+            except BaseException:
+                self._restore_world(world_id, snapshot)
+                raise
