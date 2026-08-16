@@ -11,6 +11,7 @@ from dungeonmind.contracts import (
     ContributionEpistemicKind,
     ContributionSourceKind,
     GraphContribution,
+    GraphContributionAssertion,
     GraphContributionAssertionCorrection,
     GraphContributionAssertionCorrectionKind,
     GraphContributionAssertionV2,
@@ -27,7 +28,7 @@ from dungeonmind.contracts import (
     SourceRevision,
     Visibility,
 )
-from dungeonmind.domain.errors import IdempotencyConflictError
+from dungeonmind.domain.errors import IdempotencyConflictError, PersistenceIntegrityError
 from tests.conftest import WORLD_ID
 
 NOW = datetime(2026, 7, 29, 12, 0, 0, tzinfo=UTC)
@@ -274,9 +275,23 @@ def test_identical_duplicate_evidence_in_contribution_ok(pg) -> None:
     assert pg.contributions.get(WORLD_ID, "contrib:ev-same") == contrib
 
 
-@pytest.mark.integration
-def test_postgres_v2_contribution_and_identity_roundtrip(pg) -> None:
-    contribution = GraphContributionV2(
+def _v2_target() -> GraphContribution:
+    return GraphContribution(
+        contribution_id="contrib:other",
+        world_id=WORLD_ID,
+        source_kind=ContributionSourceKind.MANUAL_IMPORT,
+        produced_at=NOW,
+        assertions=[
+            GraphContributionAssertion(
+                assertion_id="a:other",
+                assertion_kind="attribute",
+            ),
+        ],
+    )
+
+
+def _v2_corrector() -> GraphContributionV2:
+    return GraphContributionV2(
         contribution_id="contrib:v2",
         world_id=WORLD_ID,
         source_kind=ContributionSourceKind.MANUAL_IMPORT,
@@ -309,6 +324,13 @@ def test_postgres_v2_contribution_and_identity_roundtrip(pg) -> None:
             ),
         ],
     )
+
+
+@pytest.mark.integration
+def test_postgres_v2_contribution_and_identity_roundtrip(pg) -> None:
+    target = _v2_target()
+    contribution = _v2_corrector()
+    assert pg.contributions.append(target) == target
     assert pg.contributions.append(contribution) == contribution
     loaded = pg.contributions.get(WORLD_ID, "contrib:v2")
     assert loaded == contribution
@@ -316,6 +338,7 @@ def test_postgres_v2_contribution_and_identity_roundtrip(pg) -> None:
     assert loaded.assertions[0].epistemic_kind is ContributionEpistemicKind.SOURCE_DERIVED_CANDIDATE
     listed = pg.contributions.list_for_world(WORLD_ID)
     assert contribution in listed
+    assert target in listed
 
     decision = IdentityDecisionRecordV2(
         decision_id="idec:v2-merge",
@@ -347,6 +370,31 @@ def test_postgres_v2_contribution_and_identity_roundtrip(pg) -> None:
     assert loaded_decision == decision
     assert loaded_decision.model_dump(mode="json") == decision.model_dump(mode="json")
     assert pg.identity_decisions.list_for_world(WORLD_ID)[-1] == decision
+
+
+@pytest.mark.integration
+def test_postgres_v2_append_rejects_dangling_correction_target(pg) -> None:
+    contribution = _v2_corrector()
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        pg.contributions.append(contribution)
+    assert exc.value.details["reason"] == "correction_target_contribution_missing"
+    assert pg.contributions.get(WORLD_ID, "contrib:v2") is None
+    assert pg.contributions.list_for_world(WORLD_ID) == []
+
+
+@pytest.mark.integration
+def test_postgres_v2_append_rejects_missing_target_assertion(pg) -> None:
+    target = _v2_target()
+    pg.contributions.append(target)
+    broken = _v2_corrector().assertion_corrections[0].model_copy(
+        update={"target_assertion_id": "a:missing"}
+    )
+    dangling = _v2_corrector().model_copy(update={"assertion_corrections": [broken]})
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        pg.contributions.append(dangling)
+    assert exc.value.details["reason"] == "correction_target_assertion_missing"
+    assert pg.contributions.get(WORLD_ID, "contrib:v2") is None
+    assert pg.contributions.list_for_world(WORLD_ID) == [target]
 
 
 @pytest.mark.integration

@@ -17,6 +17,7 @@ from typing import Any, TypeVar
 
 from ...application.existing_world_adoption import (
     bind_existing_world_adoption_command,
+    require_v2_contribution_correction_closure,
     terminal_existing_world_adoption_receipt,
 )
 from ...application.repositories import (
@@ -26,7 +27,11 @@ from ...application.repositories import (
     DurableIdentityDecision,
     normalize_semantic_document_batch,
 )
-from ...contracts.contribution import ContributionStatus, GraphContribution
+from ...contracts.contribution import (
+    ContributionStatus,
+    GraphContribution,
+    GraphContributionV2,
+)
 from ...contracts.contribution_review import (
     ContributionReviewRecord,
     ContributionReviewState,
@@ -228,6 +233,12 @@ class InMemoryContributionRepository:
                         "different payload"
                     )
                 return _copy(existing)
+            if isinstance(contribution, GraphContributionV2):
+                world_id = contribution.world_id
+                require_v2_contribution_correction_closure(
+                    contribution,
+                    resolve_target=lambda target_id: self._items.get((world_id, target_id)),
+                )
             self._items[key] = _copy(contribution)
             return _copy(contribution)
 

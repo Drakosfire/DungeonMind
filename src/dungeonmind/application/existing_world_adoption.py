@@ -9,6 +9,7 @@ the repository mutation path. Success is never inferred from the current head.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any, NoReturn
 
@@ -54,8 +55,6 @@ from .repositories import (
 
 _SUPPORTED_GRAPH_SCHEMA = GRAPH_SCHEMA_V6
 ExistingWorldAdoptionBundle = ExistingWorldAdoptionBundleV1 | ExistingWorldAdoptionBundleV2
-
-_SUPPORTED_GRAPH_SCHEMA = GRAPH_SCHEMA_V6
 
 
 def _integrity(reason: str, **details: Any) -> NoReturn:
@@ -217,37 +216,64 @@ def _validate_contribution_source_closure(
         )
 
 
+def _ledger_correction_fail(reason: str) -> NoReturn:
+    raise PersistenceIntegrityError(
+        "graph contribution correction history failed persistence-integrity validation",
+        details={"reason": reason},
+    ) from None
+
+
+def require_v2_contribution_correction_closure(
+    contribution: GraphContributionV2,
+    *,
+    resolve_target: Callable[[str], GraphContribution | GraphContributionV2 | None],
+    fail: Callable[[str], NoReturn] = _ledger_correction_fail,
+) -> None:
+    """Fail closed when a v2 contribution's correction links do not resolve.
+
+    Replacement assertion identity is local to ``contribution``. Target
+    contribution/assertion identity is resolved through ``resolve_target``.
+    Public ledger append supplies already-durable same-world records; adoption
+    bundle validation supplies the in-bundle contribution map.
+    """
+    for correction in contribution.assertion_corrections:
+        target = resolve_target(correction.target_contribution_id)
+        if target is None:
+            return fail("correction_target_contribution_missing")
+        target_assertion = next(
+            (
+                assertion
+                for assertion in target.assertions
+                if assertion.assertion_id == correction.target_assertion_id
+            ),
+            None,
+        )
+        if target_assertion is None:
+            return fail("correction_target_assertion_missing")
+        if correction.replacement_assertion_id is None:
+            continue
+        replacement = next(
+            (
+                assertion
+                for assertion in contribution.assertions
+                if assertion.assertion_id == correction.replacement_assertion_id
+            ),
+            None,
+        )
+        if replacement is None:
+            return fail("correction_replacement_assertion_missing")
+        if replacement.acceptance_state is not AcceptanceState.ACCEPTED:
+            return fail("correction_replacement_assertion_not_accepted")
+
+
 def _validate_correction_closure(bundle: ExistingWorldAdoptionBundleV2) -> None:
     contributions = {item.contribution_id: item for item in bundle.contributions}
     for contribution in bundle.contributions:
-        for correction in contribution.assertion_corrections:
-            target = contributions.get(correction.target_contribution_id)
-            if target is None:
-                _integrity("correction_target_contribution_missing")
-            target_assertion = next(
-                (
-                    assertion
-                    for assertion in target.assertions
-                    if assertion.assertion_id == correction.target_assertion_id
-                ),
-                None,
-            )
-            if target_assertion is None:
-                _integrity("correction_target_assertion_missing")
-            if correction.replacement_assertion_id is None:
-                continue
-            replacement = next(
-                (
-                    assertion
-                    for assertion in contribution.assertions
-                    if assertion.assertion_id == correction.replacement_assertion_id
-                ),
-                None,
-            )
-            if replacement is None:
-                _integrity("correction_replacement_assertion_missing")
-            if replacement.acceptance_state is not AcceptanceState.ACCEPTED:
-                _integrity("correction_replacement_assertion_not_accepted")
+        require_v2_contribution_correction_closure(
+            contribution,
+            resolve_target=lambda target_id: contributions.get(target_id),
+            fail=_integrity,
+        )
 
 
 def _validate_bundle_closures(bundle: ExistingWorldAdoptionBundle) -> None:

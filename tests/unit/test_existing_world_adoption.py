@@ -878,6 +878,51 @@ def test_t15_response_loss_recovery_returns_receipt() -> None:
     assert receipt.bundle_sha256 == sha256_bytes(raw)
 
 
+def test_t15_v2_response_loss_recovery_returns_v2_receipt() -> None:
+    raw = v2_bundle_bytes()
+    _, _, _, _, inner = make_stores()
+
+    class _CommitThenUnavailable:
+        def __init__(self) -> None:
+            self.adopt_calls = 0
+            self.recovery_probes = 0
+
+        def adopt(self, command):
+            self.adopt_calls += 1
+            inner.adopt(command)
+            raise PersistenceUnavailableError("response lost")
+
+        def get(self, world_id: str, adoption_id: str):
+            return inner.get(world_id, adoption_id)
+
+        def get_for_world(self, world_id: str):
+            receipt = inner.get_for_world(world_id)
+            if self.adopt_calls:
+                self.recovery_probes += 1
+            return receipt
+
+    wrapper = _CommitThenUnavailable()
+    receipt = adopt_existing_world(
+        raw,
+        adopted_at=NOW,
+        adoption_repository=wrapper,  # type: ignore[arg-type]
+        graph_reader=graph_reader(),
+    )
+    assert wrapper.adopt_calls == 1
+    assert wrapper.recovery_probes == 1
+    assert receipt.schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA
+    assert receipt.world_id == WORLD_ID
+    assert receipt.bundle_sha256 == sha256_bytes(raw)
+    replayed = adopt_existing_world(
+        raw,
+        adopted_at=LATER,
+        adoption_repository=inner,
+        graph_reader=_BoomReader(),  # type: ignore[arg-type]
+    )
+    assert replayed == receipt
+    assert wrapper.adopt_calls == 1
+
+
 def test_t16_unknown_outcome_when_recovery_unavailable() -> None:
     class _Unavailable:
         def __init__(self) -> None:
@@ -1407,11 +1452,37 @@ def test_merged_away_id_is_not_rejected_for_missing_graph_object() -> None:
 
 def test_memory_v2_record_repos_append_get_list() -> None:
     _, _, contributions, identity, _ = make_stores()
-    contrib = make_v2_bundle().contributions[1]
+    target, contrib = make_v2_bundle().contributions
     decision = make_v2_bundle().identity_decisions[1]
+    assert contributions.append(target) == target
     assert contributions.append(contrib) == contrib
     assert contributions.get(WORLD_ID, contrib.contribution_id) == contrib
-    assert contributions.list_for_world(WORLD_ID) == [contrib]
+    assert contributions.list_for_world(WORLD_ID) == [contrib, target]
     assert identity.append(decision) == decision
     assert identity.get(WORLD_ID, decision.decision_id) == decision
     assert identity.list_for_world(WORLD_ID) == [decision]
+
+
+def test_memory_v2_append_rejects_dangling_correction_target() -> None:
+    _, _, contributions, _, _ = make_stores()
+    corrector = make_v2_bundle().contributions[1]
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        contributions.append(corrector)
+    assert exc.value.details["reason"] == "correction_target_contribution_missing"
+    assert contributions.get(WORLD_ID, corrector.contribution_id) is None
+    assert contributions.list_for_world(WORLD_ID) == []
+
+
+def test_memory_v2_append_rejects_missing_target_assertion() -> None:
+    _, _, contributions, _, _ = make_stores()
+    target, corrector = make_v2_bundle().contributions
+    contributions.append(target)
+    broken = corrector.assertion_corrections[0].model_copy(
+        update={"target_assertion_id": "asrt:missing"}
+    )
+    dangling = corrector.model_copy(update={"assertion_corrections": [broken]})
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        contributions.append(dangling)
+    assert exc.value.details["reason"] == "correction_target_assertion_missing"
+    assert contributions.get(WORLD_ID, dangling.contribution_id) is None
+    assert contributions.list_for_world(WORLD_ID) == [target]

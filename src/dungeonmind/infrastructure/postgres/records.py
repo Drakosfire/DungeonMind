@@ -8,6 +8,7 @@ from typing import Any
 from psycopg import sql
 from pydantic import ValidationError
 
+from ...application.existing_world_adoption import require_v2_contribution_correction_closure
 from ...application.repositories import DurableGraphContribution, DurableIdentityDecision
 from ...contracts.contribution import (
     GRAPH_CONTRIBUTION_SCHEMA,
@@ -288,6 +289,27 @@ def _append_contribution_in_transaction(
         ) from None
 
 
+def _load_contribution_in_transaction(
+    conn: Any,
+    *,
+    world_id: str,
+    contribution_id: str,
+) -> DurableGraphContribution | None:
+    row = conn.execute(
+        sql.SQL(
+            f"""
+            SELECT {_CONTRIBUTION_SELECT}
+            FROM {{}}.graph_contributions
+            WHERE world_id = %s AND contribution_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (world_id, contribution_id),
+    ).fetchone()
+    if row is None:
+        return None
+    return _return_contribution(row)
+
+
 def _get_contribution_in_transaction(
     conn: Any,
     *,
@@ -380,6 +402,16 @@ class PostgresContributionRepository:
     def append(self, contribution: DurableGraphContribution) -> DurableGraphContribution:
         with self._database.transaction() as conn:
             ensure_world(conn, contribution.world_id, created_at=contribution.produced_at)
+            if isinstance(contribution, GraphContributionV2):
+                world_id = contribution.world_id
+                require_v2_contribution_correction_closure(
+                    contribution,
+                    resolve_target=lambda target_id: _load_contribution_in_transaction(
+                        conn,
+                        world_id=world_id,
+                        contribution_id=target_id,
+                    ),
+                )
             return _append_contribution_in_transaction(conn, contribution)
 
     def get(self, world_id: str, contribution_id: str) -> DurableGraphContribution | None:
