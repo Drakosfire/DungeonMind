@@ -6,6 +6,7 @@ package.
 """
 
 from .database import PostgresDatabase
+from .existing_world_adoption import PostgresExistingWorldAdoptionRepository
 from .graph import PostgresWorldGraphRepository
 from .records import (
     PostgresContributionRepository,
@@ -27,6 +28,7 @@ __all__ = [
     "PostgresContributionReviewRepository",
     "PostgresDatabase",
     "PostgresEmbeddingRunRepository",
+    "PostgresExistingWorldAdoptionRepository",
     "PostgresFinalizedReviewPublicationRepository",
     "PostgresIdentityDecisionRepository",
     "PostgresMindThreadRepository",
@@ -46,9 +48,8 @@ class PostgresRepositoryBundle:
         self.world_graph = PostgresWorldGraphRepository(database)
         self.contributions = PostgresContributionRepository(database)
         self.contribution_reviews = PostgresContributionReviewRepository(database)
-        self.finalized_review_publications = PostgresFinalizedReviewPublicationRepository(
-            database
-        )
+        self.finalized_review_publications = PostgresFinalizedReviewPublicationRepository(database)
+        self.existing_world_adoptions = PostgresExistingWorldAdoptionRepository(database)
         self.identity_decisions = PostgresIdentityDecisionRepository(database)
         self.sources = PostgresSourceRepository(database)
         self.retrieval_sessions = PostgresRetrievalSessionRepository(database)

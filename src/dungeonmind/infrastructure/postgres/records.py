@@ -130,9 +130,7 @@ def _return_artifact(row: dict[str, Any]) -> SourceArtifactRecord:
             identity=_source_artifact_identity(row),
         ).model_copy(deep=True)
     if schema_version != SOURCE_ARTIFACT_SCHEMA:
-        raise PersistenceIntegrityError(
-            f"unsupported source artifact schema {schema_version!r}"
-        )
+        raise PersistenceIntegrityError(f"unsupported source artifact schema {schema_version!r}")
     return reconstruct(
         SourceArtifact,
         dict(row["payload"]),
@@ -204,9 +202,7 @@ def _append_contribution_in_transaction(
 ) -> GraphContribution:
     """Insert/reconcile one contribution inside an existing transaction."""
     fingerprint = model_fingerprint(contribution)
-    upsert_evidence_refs(
-        conn, collect_evidence_from_contribution_payload(contribution)
-    )
+    upsert_evidence_refs(conn, collect_evidence_from_contribution_payload(contribution))
     conn.execute(
         sql.SQL(
             """
@@ -279,9 +275,7 @@ def _get_contribution_in_transaction(
         (world_id, contribution_id),
     ).fetchone()
     if row is None:
-        raise PersistenceIntegrityError(
-            f"review contribution child {contribution_id!r} is missing"
-        )
+        raise PersistenceIntegrityError(f"review contribution child {contribution_id!r} is missing")
     try:
         return _return_contribution(row)
     except PersistenceIntegrityError:
@@ -305,11 +299,9 @@ def _return_review_record(row: dict[str, Any]) -> ContributionReviewRecord:
     )
     if (
         record.plan_ref.source_plan_id != row["source_plan_id"]
-        or record.stored_candidate_contribution_id
-        != row["candidate_contribution_id"]
+        or record.stored_candidate_contribution_id != row["candidate_contribution_id"]
         or record.reviewed_contribution_id != row["reviewed_contribution_id"]
-        or record.plan_ref.expected_parent_revision_id
-        != row["expected_parent_revision_id"]
+        or record.plan_ref.expected_parent_revision_id != row["expected_parent_revision_id"]
         or record.reviewer_id != row["reviewer_id"]
         or record.reviewed_at != row["reviewed_at"]
     ):
@@ -513,9 +505,7 @@ class PostgresContributionReviewRepository:
 
     def finalize(self, state: ContributionReviewState) -> ContributionReviewState:
         try:
-            validated = ContributionReviewState.model_validate(
-                state.model_dump(mode="json")
-            )
+            validated = ContributionReviewState.model_validate(state.model_dump(mode="json"))
         except ValidationError:
             raise PersistenceIntegrityError(
                 "review state failed validation before PostgreSQL persistence"
@@ -531,20 +521,15 @@ class PostgresContributionReviewRepository:
                     record.campaign_id,
                     created_at=record.reviewed_at,
                 )
-            existing = self._find_by_operation(
-                conn, record.world_id, record.operation_id
-            )
+            existing = self._find_by_operation(conn, record.world_id, record.operation_id)
             if existing is None:
-                existing = self._find_by_plan(
-                    conn, record.world_id, record.plan_ref.source_plan_id
-                )
+                existing = self._find_by_plan(conn, record.world_id, record.plan_ref.source_plan_id)
             if existing is not None:
                 existing_record = _return_review_record(existing)
                 existing_state = _return_review_state(conn, existing)
-                if (
-                    existing_record.review_id == record.review_id
-                    and model_fingerprint(existing_state) == model_fingerprint(validated)
-                ):
+                if existing_record.review_id == record.review_id and model_fingerprint(
+                    existing_state
+                ) == model_fingerprint(validated):
                     return existing_state
                 if existing_record.operation_id == record.operation_id:
                     raise IdempotencyConflictError(
@@ -558,15 +543,10 @@ class PostgresContributionReviewRepository:
                     f"operation {record.operation_id!r} replayed with different payload"
                 )
 
-            candidate = _append_contribution_in_transaction(
-                conn, validated.candidate_contribution
-            )
-            reviewed = _append_contribution_in_transaction(
-                conn, validated.reviewed_contribution
-            )
+            candidate = _append_contribution_in_transaction(conn, validated.candidate_contribution)
+            reviewed = _append_contribution_in_transaction(conn, validated.reviewed_contribution)
             if (
-                candidate.contribution_id
-                != record.stored_candidate_contribution_id
+                candidate.contribution_id != record.stored_candidate_contribution_id
                 or reviewed.contribution_id != record.reviewed_contribution_id
             ):
                 raise PersistenceIntegrityError(
@@ -645,12 +625,65 @@ class PostgresContributionReviewRepository:
             ).fetchone()
             return None if row is None else _return_review_state(conn, row)
 
-    def get_for_plan(
-        self, world_id: str, source_plan_id: str
-    ) -> ContributionReviewState | None:
+    def get_for_plan(self, world_id: str, source_plan_id: str) -> ContributionReviewState | None:
         with self._database.transaction() as conn:
             row = self._find_by_plan(conn, world_id, source_plan_id)
             return None if row is None else _return_review_state(conn, row)
+
+
+def _append_identity_in_transaction(
+    conn: Any,
+    decision: IdentityDecisionRecord,
+) -> IdentityDecisionRecord:
+    """Insert/reconcile one identity decision inside an existing transaction."""
+    fingerprint = model_fingerprint(decision)
+    ensure_world(conn, decision.world_id, created_at=decision.created_at)
+    conn.execute(
+        sql.SQL(
+            """
+            INSERT INTO {}.identity_decisions (
+                world_id,
+                decision_id,
+                decision_kind,
+                status,
+                created_at,
+                schema_version,
+                record_fingerprint,
+                payload
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (world_id, decision_id) DO NOTHING
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (
+            decision.world_id,
+            decision.decision_id,
+            decision.decision_kind.value,
+            decision.status.value,
+            decision.created_at,
+            decision.schema_version,
+            fingerprint,
+            jsonb(dump_payload(decision)),
+        ),
+    )
+    row = conn.execute(
+        sql.SQL(
+            f"""
+            SELECT {_IDENTITY_SELECT}
+            FROM {{}}.identity_decisions
+            WHERE world_id = %s AND decision_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (decision.world_id, decision.decision_id),
+    ).fetchone()
+    if row is None:
+        raise PersistenceIntegrityError(
+            f"identity decision {decision.decision_id!r} missing after insert/reconcile"
+        )
+    if row["record_fingerprint"] != fingerprint:
+        raise IdempotencyConflictError(
+            f"identity decision {decision.decision_id!r} replayed with different payload"
+        )
+    return _return_identity(row)
 
 
 class PostgresIdentityDecisionRepository:
@@ -658,57 +691,8 @@ class PostgresIdentityDecisionRepository:
         self._database = database
 
     def append(self, decision: IdentityDecisionRecord) -> IdentityDecisionRecord:
-        fingerprint = model_fingerprint(decision)
         with self._database.transaction() as conn:
-            ensure_world(conn, decision.world_id, created_at=decision.created_at)
-            conn.execute(
-                sql.SQL(
-                    """
-                    INSERT INTO {}.identity_decisions (
-                        world_id,
-                        decision_id,
-                        decision_kind,
-                        status,
-                        created_at,
-                        schema_version,
-                        record_fingerprint,
-                        payload
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (world_id, decision_id) DO NOTHING
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (
-                    decision.world_id,
-                    decision.decision_id,
-                    decision.decision_kind.value,
-                    decision.status.value,
-                    decision.created_at,
-                    decision.schema_version,
-                    fingerprint,
-                    jsonb(dump_payload(decision)),
-                ),
-            )
-            row = conn.execute(
-                sql.SQL(
-                    f"""
-                    SELECT {_IDENTITY_SELECT}
-                    FROM {{}}.identity_decisions
-                    WHERE world_id = %s AND decision_id = %s
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (decision.world_id, decision.decision_id),
-            ).fetchone()
-            if row is None:
-                raise PersistenceIntegrityError(
-                    f"identity decision {decision.decision_id!r} missing after "
-                    "insert/reconcile"
-                )
-            if row["record_fingerprint"] != fingerprint:
-                raise IdempotencyConflictError(
-                    f"identity decision {decision.decision_id!r} replayed with "
-                    "different payload"
-                )
-            return _return_identity(row)
+            return _append_identity_in_transaction(conn, decision)
 
     def get(self, world_id: str, decision_id: str) -> IdentityDecisionRecord | None:
         with self._database.transaction() as conn:
@@ -742,100 +726,155 @@ class PostgresIdentityDecisionRepository:
         return [_return_identity(row) for row in rows]
 
 
+def _put_artifact_in_transaction(
+    conn: Any,
+    artifact: SourceArtifactRecord,
+) -> SourceArtifactRecord:
+    """Insert/reconcile one source artifact inside an existing transaction."""
+    fingerprint = model_fingerprint(artifact)
+    if isinstance(artifact, SourceArtifactV2):
+        source_domain = artifact.source_domain.value if artifact.source_domain is not None else None
+        visibility = artifact.visibility.value if artifact.visibility is not None else None
+        # Producer timestamps may be unknown. Persist NULL — never invent.
+        created_at = artifact.created_at
+        # World/campaign registry rows still require a substrate timestamp.
+        # This is relational ensure metadata only; it is not written into
+        # the artifact payload or the source_artifacts.created_at column
+        # when the producer value is unknown.
+        substrate_created_at = artifact.created_at or artifact.updated_at or datetime.now(UTC)
+    else:
+        source_domain = artifact.source_domain.value
+        visibility = artifact.visibility.value
+        created_at = artifact.created_at
+        substrate_created_at = artifact.created_at
+    ensure_world(conn, artifact.world_id, created_at=substrate_created_at)
+    if artifact.campaign_id is not None:
+        ensure_campaign(
+            conn,
+            artifact.world_id,
+            artifact.campaign_id,
+            created_at=substrate_created_at,
+        )
+    conn.execute(
+        sql.SQL(
+            """
+            INSERT INTO {}.source_artifacts (
+                source_artifact_id,
+                world_id,
+                campaign_id,
+                session_id,
+                source_domain,
+                status,
+                visibility,
+                current_revision_id,
+                created_at,
+                schema_version,
+                record_fingerprint,
+                payload
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (source_artifact_id) DO NOTHING
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (
+            artifact.source_artifact_id,
+            artifact.world_id,
+            artifact.campaign_id,
+            artifact.session_id,
+            source_domain,
+            artifact.status.value,
+            visibility,
+            artifact.current_revision_id,
+            created_at,
+            artifact.schema_version,
+            fingerprint,
+            jsonb(dump_payload(artifact)),
+        ),
+    )
+    row = conn.execute(
+        sql.SQL(
+            f"""
+            SELECT {_ARTIFACT_SELECT}
+            FROM {{}}.source_artifacts
+            WHERE source_artifact_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (artifact.source_artifact_id,),
+    ).fetchone()
+    if row is None:
+        raise PersistenceIntegrityError(
+            f"source artifact {artifact.source_artifact_id!r} missing after insert/reconcile"
+        )
+    if row["record_fingerprint"] != fingerprint:
+        raise IdempotencyConflictError(
+            f"source artifact {artifact.source_artifact_id!r} replayed with "
+            "different payload; mutable lifecycle needs a typed operation"
+        )
+    return _return_artifact(row)
+
+
+def _put_revision_in_transaction(
+    conn: Any,
+    revision: SourceRevision,
+) -> SourceRevision:
+    """Insert/reconcile one source revision inside an existing transaction."""
+    fingerprint = model_fingerprint(revision)
+    conn.execute(
+        sql.SQL(
+            """
+            INSERT INTO {}.source_revisions (
+                source_revision_id,
+                source_artifact_id,
+                content_sha256,
+                body_storage,
+                locator,
+                created_at,
+                schema_version,
+                record_fingerprint,
+                payload
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (source_revision_id) DO NOTHING
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (
+            revision.source_revision_id,
+            revision.source_artifact_id,
+            revision.content_sha256,
+            revision.body_storage,
+            revision.locator,
+            revision.created_at,
+            revision.schema_version,
+            fingerprint,
+            jsonb(dump_payload(revision)),
+        ),
+    )
+    row = conn.execute(
+        sql.SQL(
+            f"""
+            SELECT {_REVISION_SELECT}
+            FROM {{}}.source_revisions
+            WHERE source_revision_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (revision.source_revision_id,),
+    ).fetchone()
+    if row is None:
+        raise PersistenceIntegrityError(
+            f"source revision {revision.source_revision_id!r} missing after insert/reconcile"
+        )
+    if row["record_fingerprint"] != fingerprint:
+        raise IdempotencyConflictError(
+            f"source revision {revision.source_revision_id!r} replayed with different payload"
+        )
+    return _return_revision(row)
+
+
 class PostgresSourceRepository:
     def __init__(self, database: PostgresDatabase) -> None:
         self._database = database
 
     def put_artifact(self, artifact: SourceArtifactRecord) -> SourceArtifactRecord:
-        fingerprint = model_fingerprint(artifact)
-        if isinstance(artifact, SourceArtifactV2):
-            source_domain = (
-                artifact.source_domain.value if artifact.source_domain is not None else None
-            )
-            visibility = (
-                artifact.visibility.value if artifact.visibility is not None else None
-            )
-            # Producer timestamps may be unknown. Persist NULL — never invent.
-            created_at = artifact.created_at
-            # World/campaign registry rows still require a substrate timestamp.
-            # This is relational ensure metadata only; it is not written into
-            # the artifact payload or the source_artifacts.created_at column
-            # when the producer value is unknown.
-            substrate_created_at = (
-                artifact.created_at
-                or artifact.updated_at
-                or datetime.now(UTC)
-            )
-        else:
-            source_domain = artifact.source_domain.value
-            visibility = artifact.visibility.value
-            created_at = artifact.created_at
-            substrate_created_at = artifact.created_at
         with self._database.transaction() as conn:
-            ensure_world(conn, artifact.world_id, created_at=substrate_created_at)
-            if artifact.campaign_id is not None:
-                ensure_campaign(
-                    conn,
-                    artifact.world_id,
-                    artifact.campaign_id,
-                    created_at=substrate_created_at,
-                )
-            conn.execute(
-                sql.SQL(
-                    """
-                    INSERT INTO {}.source_artifacts (
-                        source_artifact_id,
-                        world_id,
-                        campaign_id,
-                        session_id,
-                        source_domain,
-                        status,
-                        visibility,
-                        current_revision_id,
-                        created_at,
-                        schema_version,
-                        record_fingerprint,
-                        payload
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (source_artifact_id) DO NOTHING
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (
-                    artifact.source_artifact_id,
-                    artifact.world_id,
-                    artifact.campaign_id,
-                    artifact.session_id,
-                    source_domain,
-                    artifact.status.value,
-                    visibility,
-                    artifact.current_revision_id,
-                    created_at,
-                    artifact.schema_version,
-                    fingerprint,
-                    jsonb(dump_payload(artifact)),
-                ),
-            )
-            row = conn.execute(
-                sql.SQL(
-                    f"""
-                    SELECT {_ARTIFACT_SELECT}
-                    FROM {{}}.source_artifacts
-                    WHERE source_artifact_id = %s
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (artifact.source_artifact_id,),
-            ).fetchone()
-            if row is None:
-                raise PersistenceIntegrityError(
-                    f"source artifact {artifact.source_artifact_id!r} missing after "
-                    "insert/reconcile"
-                )
-            if row["record_fingerprint"] != fingerprint:
-                raise IdempotencyConflictError(
-                    f"source artifact {artifact.source_artifact_id!r} replayed with "
-                    "different payload; mutable lifecycle needs a typed operation"
-                )
-            return _return_artifact(row)
+            return _put_artifact_in_transaction(conn, artifact)
 
     def get_artifact(self, source_artifact_id: str) -> SourceArtifactRecord | None:
         with self._database.transaction() as conn:
@@ -854,58 +893,8 @@ class PostgresSourceRepository:
         return _return_artifact(row)
 
     def put_revision(self, revision: SourceRevision) -> SourceRevision:
-        fingerprint = model_fingerprint(revision)
         with self._database.transaction() as conn:
-            conn.execute(
-                sql.SQL(
-                    """
-                    INSERT INTO {}.source_revisions (
-                        source_revision_id,
-                        source_artifact_id,
-                        content_sha256,
-                        body_storage,
-                        locator,
-                        created_at,
-                        schema_version,
-                        record_fingerprint,
-                        payload
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (source_revision_id) DO NOTHING
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (
-                    revision.source_revision_id,
-                    revision.source_artifact_id,
-                    revision.content_sha256,
-                    revision.body_storage,
-                    revision.locator,
-                    revision.created_at,
-                    revision.schema_version,
-                    fingerprint,
-                    jsonb(dump_payload(revision)),
-                ),
-            )
-            row = conn.execute(
-                sql.SQL(
-                    f"""
-                    SELECT {_REVISION_SELECT}
-                    FROM {{}}.source_revisions
-                    WHERE source_revision_id = %s
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (revision.source_revision_id,),
-            ).fetchone()
-            if row is None:
-                raise PersistenceIntegrityError(
-                    f"source revision {revision.source_revision_id!r} missing after "
-                    "insert/reconcile"
-                )
-            if row["record_fingerprint"] != fingerprint:
-                raise IdempotencyConflictError(
-                    f"source revision {revision.source_revision_id!r} replayed with "
-                    "different payload"
-                )
-            return _return_revision(row)
+            return _put_revision_in_transaction(conn, revision)
 
     def get_revision(self, source_revision_id: str) -> SourceRevision | None:
         with self._database.transaction() as conn:
@@ -991,8 +980,7 @@ class PostgresRetrievalSessionRepository:
             ).fetchone()
             if row is None:
                 raise PersistenceIntegrityError(
-                    f"retrieval session {session.session_id!r} missing after "
-                    "insert/reconcile"
+                    f"retrieval session {session.session_id!r} missing after insert/reconcile"
                 )
             if row["record_fingerprint"] != fingerprint:
                 raise IdempotencyConflictError(
@@ -1033,9 +1021,7 @@ class PostgresRetrievalSessionRepository:
                 (session.session_id,),
             ).fetchone()
             if existing is None:
-                raise DocumentNotFoundError(
-                    f"retrieval session {session.session_id!r} not found"
-                )
+                raise DocumentNotFoundError(f"retrieval session {session.session_id!r} not found")
             upsert_evidence_refs(conn, session.evidence)
             conn.execute(
                 sql.SQL(
