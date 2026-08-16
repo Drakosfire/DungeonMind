@@ -31,6 +31,8 @@ from tests.unit.test_existing_world_adoption import (
     make_bundle,
     make_command,
     make_isolated_bundle,
+    make_v2_bundle,
+    v2_bundle_bytes,
 )
 
 pytestmark = pytest.mark.integration
@@ -474,3 +476,83 @@ def test_cross_world_adoption_id_race_one_winner(migrated_database: str, pg) -> 
         + _counts(pg, second_bundle.world_id)["receipts"]
         == 1
     )
+
+
+@pytest.mark.integration
+def test_postgres_v2_adopts_and_reloads_nested_history(pg) -> None:
+    from dungeonmind.contracts.contribution import GraphContributionV2
+    from dungeonmind.contracts.identity import IdentityDecisionRecordV2
+    from dungeonmind.contracts.vocabulary import ContributionEpistemicKind
+
+    raw = v2_bundle_bytes()
+    receipt = _adopt(pg, raw)
+    assert receipt.schema_version == "dm_existing_world_adoption_receipt_v2"
+    expected = make_v2_bundle()
+    loaded_contrib = pg.contributions.get(WORLD_ID, "contrib:corrector")
+    assert isinstance(loaded_contrib, GraphContributionV2)
+    assert loaded_contrib.model_dump(mode="json") == expected.contributions[1].model_dump(
+        mode="json"
+    )
+    assert (
+        loaded_contrib.assertions[1].epistemic_kind
+        is ContributionEpistemicKind.SOURCE_DERIVED_CANDIDATE
+    )
+    loaded_merge = pg.identity_decisions.get(WORLD_ID, "iddec:merge")
+    assert isinstance(loaded_merge, IdentityDecisionRecordV2)
+    assert loaded_merge.model_dump(mode="json") == expected.identity_decisions[1].model_dump(
+        mode="json"
+    )
+    replayed = _adopt(pg, raw, adopted_at=LATER)
+    assert replayed == receipt
+    assert _counts(pg)["receipts"] == 1
+    assert _counts(pg)["revisions"] == 1
+
+
+@pytest.mark.integration
+def test_postgres_cross_version_adoption_conflicts(pg) -> None:
+    first = _adopt(pg)
+    with pytest.raises(IdempotencyConflictError):
+        _adopt(pg, v2_bundle_bytes())
+    assert pg.existing_world_adoptions.get_for_world(WORLD_ID) == first
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "stage",
+    ["source_records", "contributions", "identity_decisions", "graph", "receipt"],
+)
+def test_postgres_v2_failure_injection_rolls_back(
+    migrated_database: str,
+    pg,
+    stage: str,
+) -> None:
+    from dungeonmind.infrastructure.postgres import (
+        PostgresDatabase,
+        PostgresExistingWorldAdoptionRepository,
+    )
+
+    def hook(current: str) -> None:
+        if current == stage:
+            raise RuntimeError(f"injected {stage} abort")
+
+    repository = PostgresExistingWorldAdoptionRepository(
+        PostgresDatabase(migrated_database),
+        failure_hook=hook,
+    )
+    with pytest.raises(ExistingWorldAdoptionOutcomeUnknownError):
+        adopt_existing_world(
+            v2_bundle_bytes(),
+            adopted_at=NOW,
+            adoption_repository=repository,
+            graph_reader=graph_reader(),
+        )
+    assert _counts(pg) == {
+        "heads": 0,
+        "revisions": 0,
+        "head_events": 0,
+        "contributions": 0,
+        "identity": 0,
+        "artifacts": 0,
+        "receipts": 0,
+        "revisions_source": 0,
+    }

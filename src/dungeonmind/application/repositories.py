@@ -12,16 +12,22 @@ Failure model (from ``domain.errors``):
 """
 
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, TypeAlias
 
-from ..contracts.contribution import ContributionStatus, GraphContribution
+from ..contracts.contribution import (
+    ContributionStatus,
+    GraphContribution,
+    GraphContributionV2,
+)
 from ..contracts.contribution_review import (
     ContributionReviewState,
 )
 from ..contracts.evidence import SourceArtifactRecord, SourceRevision
 from ..contracts.existing_world_adoption import (
     ExistingWorldAdoptionCommandV1,
+    ExistingWorldAdoptionCommandV2,
     ExistingWorldAdoptionReceiptV1,
+    ExistingWorldAdoptionReceiptV2,
 )
 from ..contracts.graph import (
     PublishRevisionCommand,
@@ -29,7 +35,7 @@ from ..contracts.graph import (
     WorldGraphHead,
     WorldGraphRevision,
 )
-from ..contracts.identity import IdentityDecisionRecord
+from ..contracts.identity import IdentityDecisionRecord, IdentityDecisionRecordV2
 from ..contracts.mind_turn import MindTurnRequest, MindTurnResponse
 from ..contracts.retrieval import GraphRetrievalSession
 from ..contracts.review_publication import (
@@ -44,6 +50,15 @@ from ..contracts.semantic import (
 )
 from ..domain.canonical import canonical_json
 from ..domain.errors import IdempotencyConflictError
+
+DurableGraphContribution: TypeAlias = GraphContribution | GraphContributionV2
+DurableIdentityDecision: TypeAlias = IdentityDecisionRecord | IdentityDecisionRecordV2
+DurableExistingWorldAdoptionCommand: TypeAlias = (
+    ExistingWorldAdoptionCommandV1 | ExistingWorldAdoptionCommandV2
+)
+DurableExistingWorldAdoptionReceipt: TypeAlias = (
+    ExistingWorldAdoptionReceiptV1 | ExistingWorldAdoptionReceiptV2
+)
 
 
 def normalize_semantic_document_batch(
@@ -96,13 +111,13 @@ class WorldGraphRepository(Protocol):
 class ContributionRepository(Protocol):
     """The governed write ledger. Append is idempotent by contribution_id."""
 
-    def append(self, contribution: GraphContribution) -> GraphContribution: ...
+    def append(self, contribution: DurableGraphContribution) -> DurableGraphContribution: ...
 
-    def get(self, world_id: str, contribution_id: str) -> GraphContribution | None: ...
+    def get(self, world_id: str, contribution_id: str) -> DurableGraphContribution | None: ...
 
     def list_for_world(
         self, world_id: str, *, status: ContributionStatus | None = None
-    ) -> list[GraphContribution]: ...
+    ) -> list[DurableGraphContribution]: ...
 
     def update_status(
         self,
@@ -111,7 +126,7 @@ class ContributionRepository(Protocol):
         status: ContributionStatus,
         *,
         superseded_by: str | None = None,
-    ) -> GraphContribution: ...
+    ) -> DurableGraphContribution: ...
 
 
 class ContributionReviewRepository(Protocol):
@@ -162,21 +177,25 @@ class ExistingWorldAdoptionRepository(Protocol):
     ``adoption_id`` already claimed by another world is an identity conflict.
     """
 
-    def adopt(self, command: ExistingWorldAdoptionCommandV1) -> ExistingWorldAdoptionReceiptV1: ...
+    def adopt(
+        self, command: DurableExistingWorldAdoptionCommand
+    ) -> DurableExistingWorldAdoptionReceipt: ...
 
-    def get(self, world_id: str, adoption_id: str) -> ExistingWorldAdoptionReceiptV1 | None: ...
+    def get(
+        self, world_id: str, adoption_id: str
+    ) -> DurableExistingWorldAdoptionReceipt | None: ...
 
-    def get_for_world(self, world_id: str) -> ExistingWorldAdoptionReceiptV1 | None: ...
+    def get_for_world(self, world_id: str) -> DurableExistingWorldAdoptionReceipt | None: ...
 
 
 class IdentityDecisionRepository(Protocol):
     """Durable, replayable identity decisions. Append is idempotent by decision_id."""
 
-    def append(self, decision: IdentityDecisionRecord) -> IdentityDecisionRecord: ...
+    def append(self, decision: DurableIdentityDecision) -> DurableIdentityDecision: ...
 
-    def get(self, world_id: str, decision_id: str) -> IdentityDecisionRecord | None: ...
+    def get(self, world_id: str, decision_id: str) -> DurableIdentityDecision | None: ...
 
-    def list_for_world(self, world_id: str) -> list[IdentityDecisionRecord]: ...
+    def list_for_world(self, world_id: str) -> list[DurableIdentityDecision]: ...
 
 
 class SourceRepository(Protocol):

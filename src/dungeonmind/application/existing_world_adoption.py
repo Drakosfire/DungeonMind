@@ -9,17 +9,32 @@ the repository mutation path. Success is never inferred from the current head.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any, NoReturn
 
 from pydantic import ValidationError
 
-from ..contracts.contribution import GraphContribution, GraphContributionAssertion
+from ..contracts.contribution import (
+    AcceptanceState,
+    GraphContribution,
+    GraphContributionV2,
+)
 from ..contracts.existing_world_adoption import (
+    EXISTING_WORLD_ADOPTION_BUNDLE_SCHEMA,
+    EXISTING_WORLD_ADOPTION_BUNDLE_V2_SCHEMA,
+    EXISTING_WORLD_ADOPTION_COMMAND_SCHEMA,
+    EXISTING_WORLD_ADOPTION_COMMAND_V2_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
     ExistingWorldAdoptionBundleV1,
+    ExistingWorldAdoptionBundleV2,
     ExistingWorldAdoptionCommandV1,
+    ExistingWorldAdoptionCommandV2,
     ExistingWorldAdoptionReceiptV1,
+    ExistingWorldAdoptionReceiptV2,
     existing_world_adoption_bundle_canonical_bytes,
+    existing_world_adoption_bundle_v2_canonical_bytes,
     sha256_bytes,
 )
 from ..domain.canonical import canonical_sha256
@@ -32,9 +47,14 @@ from ..domain.errors import (
 )
 from ..domain.revision_ids import compute_revision_id
 from .graph_snapshot import GRAPH_SCHEMA_V6, GraphSnapshotReader
-from .repositories import ExistingWorldAdoptionRepository
+from .repositories import (
+    DurableExistingWorldAdoptionCommand,
+    DurableExistingWorldAdoptionReceipt,
+    ExistingWorldAdoptionRepository,
+)
 
 _SUPPORTED_GRAPH_SCHEMA = GRAPH_SCHEMA_V6
+ExistingWorldAdoptionBundle = ExistingWorldAdoptionBundleV1 | ExistingWorldAdoptionBundleV2
 
 
 def _integrity(reason: str, **details: Any) -> NoReturn:
@@ -45,10 +65,17 @@ def _integrity(reason: str, **details: Any) -> NoReturn:
 
 
 def _reload_receipt(
-    receipt: ExistingWorldAdoptionReceiptV1, *, world_id: str
-) -> ExistingWorldAdoptionReceiptV1:
+    receipt: DurableExistingWorldAdoptionReceipt, *, world_id: str
+) -> DurableExistingWorldAdoptionReceipt:
+    schema = getattr(receipt, "schema_version", None)
+    if schema == EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA:
+        receipt_type: type[DurableExistingWorldAdoptionReceipt] = ExistingWorldAdoptionReceiptV1
+    elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA:
+        receipt_type = ExistingWorldAdoptionReceiptV2
+    else:
+        _integrity("unsupported_adoption_receipt_schema")
     try:
-        reloaded = ExistingWorldAdoptionReceiptV1.model_validate(receipt.model_dump(mode="json"))
+        reloaded = receipt_type.model_validate(receipt.model_dump(mode="json"))
     except (AttributeError, TypeError, ValidationError, ValueError):
         _integrity("adoption_receipt_reload_validation")
     if reloaded.world_id != world_id:
@@ -56,18 +83,22 @@ def _reload_receipt(
     return reloaded
 
 
-def _peek_world_identity(raw: bytes) -> tuple[str | None, str | None]:
+def _peek_world_identity(raw: bytes) -> tuple[str | None, str | None, str | None]:
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
-        return None, None
+        return None, None, None
     if not isinstance(payload, dict):
-        return None, None
+        return None, None, None
     world_id = payload.get("world_id")
     adoption_id = payload.get("adoption_id")
+    schema_version = payload.get("schema_version")
     peeked_world = world_id if isinstance(world_id, str) and world_id.strip() else None
     peeked_adoption = adoption_id if isinstance(adoption_id, str) and adoption_id.strip() else None
-    return peeked_world, peeked_adoption
+    peeked_schema = (
+        schema_version if isinstance(schema_version, str) and schema_version.strip() else None
+    )
+    return peeked_world, peeked_adoption, peeked_schema
 
 
 def _unique(ids: list[str], *, field_name: str) -> None:
@@ -79,7 +110,7 @@ def _unique(ids: list[str], *, field_name: str) -> None:
 
 
 def _source_maps(
-    bundle: ExistingWorldAdoptionBundleV1,
+    bundle: ExistingWorldAdoptionBundle,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     artifacts = {artifact.source_artifact_id: artifact for artifact in bundle.source_artifacts}
     revisions = {revision.source_revision_id: revision for revision in bundle.source_revisions}
@@ -107,7 +138,7 @@ def _require_source_closure(
             _integrity("source_revision_artifact_mismatch", field=field_name)
 
 
-def _validate_uniqueness(bundle: ExistingWorldAdoptionBundleV1) -> None:
+def _validate_uniqueness(bundle: ExistingWorldAdoptionBundle) -> None:
     _unique(
         [artifact.source_artifact_id for artifact in bundle.source_artifacts],
         field_name="source_artifact_id",
@@ -133,7 +164,7 @@ def _validate_uniqueness(bundle: ExistingWorldAdoptionBundleV1) -> None:
     )
 
 
-def _validate_world_binding(bundle: ExistingWorldAdoptionBundleV1) -> None:
+def _validate_world_binding(bundle: ExistingWorldAdoptionBundle) -> None:
     world_id = bundle.world_id
     for artifact in bundle.source_artifacts:
         if artifact.world_id != world_id:
@@ -146,7 +177,7 @@ def _validate_world_binding(bundle: ExistingWorldAdoptionBundleV1) -> None:
             _integrity("world_id_drift", field="identity_decision")
 
 
-def _validate_source_revision_closure(bundle: ExistingWorldAdoptionBundleV1) -> None:
+def _validate_source_revision_closure(bundle: ExistingWorldAdoptionBundle) -> None:
     artifacts, revisions = _source_maps(bundle)
     for artifact in bundle.source_artifacts:
         current = artifact.current_revision_id
@@ -163,7 +194,7 @@ def _validate_source_revision_closure(bundle: ExistingWorldAdoptionBundleV1) -> 
 
 
 def _validate_contribution_source_closure(
-    contribution: GraphContribution,
+    contribution: GraphContribution | GraphContributionV2,
     *,
     artifacts: dict[str, Any],
     revisions: dict[str, Any],
@@ -175,7 +206,6 @@ def _validate_contribution_source_closure(
         revisions=revisions,
         field_name="contribution",
     )
-    assertion: GraphContributionAssertion
     for assertion in contribution.assertions:
         _require_source_closure(
             source_artifact_id=assertion.source_artifact_id,
@@ -186,7 +216,67 @@ def _validate_contribution_source_closure(
         )
 
 
-def _validate_bundle_closures(bundle: ExistingWorldAdoptionBundleV1) -> None:
+def _ledger_correction_fail(reason: str) -> NoReturn:
+    raise PersistenceIntegrityError(
+        "graph contribution correction history failed persistence-integrity validation",
+        details={"reason": reason},
+    ) from None
+
+
+def require_v2_contribution_correction_closure(
+    contribution: GraphContributionV2,
+    *,
+    resolve_target: Callable[[str], GraphContribution | GraphContributionV2 | None],
+    fail: Callable[[str], NoReturn] = _ledger_correction_fail,
+) -> None:
+    """Fail closed when a v2 contribution's correction links do not resolve.
+
+    Replacement assertion identity is local to ``contribution``. Target
+    contribution/assertion identity is resolved through ``resolve_target``.
+    Public ledger append supplies already-durable same-world records; adoption
+    bundle validation supplies the in-bundle contribution map.
+    """
+    for correction in contribution.assertion_corrections:
+        target = resolve_target(correction.target_contribution_id)
+        if target is None:
+            return fail("correction_target_contribution_missing")
+        target_assertion = next(
+            (
+                assertion
+                for assertion in target.assertions
+                if assertion.assertion_id == correction.target_assertion_id
+            ),
+            None,
+        )
+        if target_assertion is None:
+            return fail("correction_target_assertion_missing")
+        if correction.replacement_assertion_id is None:
+            continue
+        replacement = next(
+            (
+                assertion
+                for assertion in contribution.assertions
+                if assertion.assertion_id == correction.replacement_assertion_id
+            ),
+            None,
+        )
+        if replacement is None:
+            return fail("correction_replacement_assertion_missing")
+        if replacement.acceptance_state is not AcceptanceState.ACCEPTED:
+            return fail("correction_replacement_assertion_not_accepted")
+
+
+def _validate_correction_closure(bundle: ExistingWorldAdoptionBundleV2) -> None:
+    contributions = {item.contribution_id: item for item in bundle.contributions}
+    for contribution in bundle.contributions:
+        require_v2_contribution_correction_closure(
+            contribution,
+            resolve_target=lambda target_id: contributions.get(target_id),
+            fail=_integrity,
+        )
+
+
+def _validate_bundle_closures(bundle: ExistingWorldAdoptionBundle) -> None:
     _validate_uniqueness(bundle)
     _validate_world_binding(bundle)
     _validate_source_revision_closure(bundle)
@@ -195,10 +285,12 @@ def _validate_bundle_closures(bundle: ExistingWorldAdoptionBundleV1) -> None:
         _validate_contribution_source_closure(
             contribution, artifacts=artifacts, revisions=revisions
         )
+    if isinstance(bundle, ExistingWorldAdoptionBundleV2):
+        _validate_correction_closure(bundle)
 
 
 def _validate_graph(
-    bundle: ExistingWorldAdoptionBundleV1,
+    bundle: ExistingWorldAdoptionBundle,
     graph_reader: GraphSnapshotReader,
 ) -> None:
     if bundle.graph_schema != _SUPPORTED_GRAPH_SCHEMA:
@@ -231,19 +323,28 @@ def _validate_graph(
 
 
 def bind_existing_world_adoption_command(
-    command: ExistingWorldAdoptionCommandV1,
-) -> ExistingWorldAdoptionCommandV1:
+    command: DurableExistingWorldAdoptionCommand,
+) -> DurableExistingWorldAdoptionCommand:
     """Reload one command and bind its caller-supplied hashes to the bundle.
 
     Repository adapters must invoke this before any replay, pristine-target,
     or mutation branch. Caller-minted digests cannot manufacture a receipt.
     """
+    schema = getattr(command, "schema_version", None)
+    if schema == EXISTING_WORLD_ADOPTION_COMMAND_SCHEMA:
+        command_type: type[DurableExistingWorldAdoptionCommand] = ExistingWorldAdoptionCommandV1
+        canonical_bytes = existing_world_adoption_bundle_canonical_bytes
+    elif schema == EXISTING_WORLD_ADOPTION_COMMAND_V2_SCHEMA:
+        command_type = ExistingWorldAdoptionCommandV2
+        canonical_bytes = existing_world_adoption_bundle_v2_canonical_bytes
+    else:
+        _integrity("unsupported_adoption_command_schema")
     try:
-        validated = ExistingWorldAdoptionCommandV1.model_validate(command.model_dump(mode="json"))
+        validated = command_type.model_validate(command.model_dump(mode="json"))
     except (AttributeError, TypeError, ValidationError, ValueError):
         _integrity("adoption_command_validation")
     bundle = validated.bundle
-    expected_bundle_sha256 = sha256_bytes(existing_world_adoption_bundle_canonical_bytes(bundle))
+    expected_bundle_sha256 = sha256_bytes(canonical_bytes(bundle))  # type: ignore[arg-type]
     expected_graph_payload_sha256 = canonical_sha256(bundle.graph_payload)
     expected_published_revision_id = compute_revision_id(
         world_id=bundle.world_id,
@@ -265,7 +366,7 @@ def parse_existing_world_adoption_bundle(
     raw_bundle: bytes,
     *,
     graph_reader: GraphSnapshotReader,
-) -> ExistingWorldAdoptionBundleV1:
+) -> ExistingWorldAdoptionBundle:
     """Parse, canonicalize, and close one adoption bundle before mutation."""
     if not isinstance(raw_bundle, (bytes, bytearray)):
         _integrity("raw_bundle_not_bytes")
@@ -274,16 +375,93 @@ def parse_existing_world_adoption_bundle(
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
         _integrity("raw_bundle_not_json")
+    if not isinstance(payload, dict):
+        _integrity("bundle_shape_invalid")
+    schema = payload.get("schema_version")
+    if schema == EXISTING_WORLD_ADOPTION_BUNDLE_SCHEMA:
+        bundle_type: type[ExistingWorldAdoptionBundle] = ExistingWorldAdoptionBundleV1
+        canonical_bytes = existing_world_adoption_bundle_canonical_bytes
+    elif schema == EXISTING_WORLD_ADOPTION_BUNDLE_V2_SCHEMA:
+        bundle_type = ExistingWorldAdoptionBundleV2
+        canonical_bytes = existing_world_adoption_bundle_v2_canonical_bytes
+    else:
+        _integrity("unsupported_adoption_bundle_schema")
     try:
-        bundle = ExistingWorldAdoptionBundleV1.model_validate(payload)
+        bundle = bundle_type.model_validate(payload)
     except (TypeError, ValidationError, ValueError):
         _integrity("bundle_shape_invalid")
-    canonical = existing_world_adoption_bundle_canonical_bytes(bundle)
+    canonical = canonical_bytes(bundle)  # type: ignore[arg-type]
     if canonical != raw:
         _integrity("non_canonical_bundle_bytes")
     _validate_bundle_closures(bundle)
     _validate_graph(bundle, graph_reader)
     return bundle
+
+
+def terminal_existing_world_adoption_receipt(
+    command: DurableExistingWorldAdoptionCommand,
+    *,
+    published_revision_id: str,
+) -> DurableExistingWorldAdoptionReceipt:
+    """Build the terminal receipt for one bound adoption command."""
+    bundle = command.bundle
+    if command.schema_version == EXISTING_WORLD_ADOPTION_COMMAND_V2_SCHEMA:
+        return ExistingWorldAdoptionReceiptV2(
+            adoption_id=bundle.adoption_id,
+            world_id=bundle.world_id,
+            bundle_sha256=command.bundle_sha256,
+            source_provenance=bundle.source_provenance,
+            published_revision_id=published_revision_id,
+            graph_schema=bundle.graph_schema,
+            graph_payload_sha256=command.graph_payload_sha256,
+            adopted_at=command.requested_adopted_at,
+            source_artifact_count=len(bundle.source_artifacts),
+            source_revision_count=len(bundle.source_revisions),
+            contribution_count=len(bundle.contributions),
+            identity_decision_count=len(bundle.identity_decisions),
+        )
+    return ExistingWorldAdoptionReceiptV1(
+        adoption_id=bundle.adoption_id,
+        world_id=bundle.world_id,
+        bundle_sha256=command.bundle_sha256,
+        source_provenance=bundle.source_provenance,
+        published_revision_id=published_revision_id,
+        graph_schema=bundle.graph_schema,
+        graph_payload_sha256=command.graph_payload_sha256,
+        adopted_at=command.requested_adopted_at,
+        source_artifact_count=len(bundle.source_artifacts),
+        source_revision_count=len(bundle.source_revisions),
+        contribution_count=len(bundle.contributions),
+        identity_decision_count=len(bundle.identity_decisions),
+    )
+
+
+def _build_command(
+    bundle: ExistingWorldAdoptionBundle,
+    *,
+    bundle_sha256: str,
+    graph_payload_sha256: str,
+    expected_published_revision_id: str,
+    adopted_at: datetime,
+) -> DurableExistingWorldAdoptionCommand:
+    try:
+        if isinstance(bundle, ExistingWorldAdoptionBundleV2):
+            return ExistingWorldAdoptionCommandV2(
+                bundle=bundle,
+                bundle_sha256=bundle_sha256,
+                expected_published_revision_id=expected_published_revision_id,
+                graph_payload_sha256=graph_payload_sha256,
+                requested_adopted_at=adopted_at,
+            )
+        return ExistingWorldAdoptionCommandV1(
+            bundle=bundle,
+            bundle_sha256=bundle_sha256,
+            expected_published_revision_id=expected_published_revision_id,
+            graph_payload_sha256=graph_payload_sha256,
+            requested_adopted_at=adopted_at,
+        )
+    except (TypeError, ValidationError, ValueError):
+        _integrity("adoption_command_validation")
 
 
 def adopt_existing_world(
@@ -292,13 +470,13 @@ def adopt_existing_world(
     adopted_at: datetime,
     adoption_repository: ExistingWorldAdoptionRepository,
     graph_reader: GraphSnapshotReader,
-) -> ExistingWorldAdoptionReceiptV1:
+) -> DurableExistingWorldAdoptionReceipt:
     """Adopt or exactly replay one existing-world migration bundle."""
     if not isinstance(raw_bundle, (bytes, bytearray)):
         _integrity("raw_bundle_not_bytes")
     raw = bytes(raw_bundle)
     bundle_sha256 = sha256_bytes(raw)
-    peeked_world_id, peeked_adoption_id = _peek_world_identity(raw)
+    peeked_world_id, peeked_adoption_id, peeked_schema = _peek_world_identity(raw)
 
     if peeked_world_id is not None:
         existing = adoption_repository.get_for_world(peeked_world_id)
@@ -311,6 +489,8 @@ def adopt_existing_world(
                     "world_id": peeked_world_id,
                     "adoption_id": existing.adoption_id,
                     "bundle_sha256": bundle_sha256,
+                    "stored_receipt_schema": existing.schema_version,
+                    "requested_bundle_schema": peeked_schema,
                 },
             )
 
@@ -323,16 +503,13 @@ def adopt_existing_world(
         graph_schema=bundle.graph_schema,
         graph_payload_sha256=graph_payload_sha256,
     )
-    try:
-        command = ExistingWorldAdoptionCommandV1(
-            bundle=bundle,
-            bundle_sha256=bundle_sha256,
-            expected_published_revision_id=expected_published_revision_id,
-            graph_payload_sha256=graph_payload_sha256,
-            requested_adopted_at=adopted_at,
-        )
-    except (TypeError, ValidationError, ValueError):
-        _integrity("adoption_command_validation")
+    command = _build_command(
+        bundle,
+        bundle_sha256=bundle_sha256,
+        graph_payload_sha256=graph_payload_sha256,
+        expected_published_revision_id=expected_published_revision_id,
+        adopted_at=adopted_at,
+    )
 
     try:
         receipt = adoption_repository.adopt(command)

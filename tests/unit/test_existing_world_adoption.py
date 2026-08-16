@@ -28,6 +28,10 @@ from dungeonmind.contracts.contribution import (
     ContributionSourceKind,
     GraphContribution,
     GraphContributionAssertion,
+    GraphContributionAssertionCorrection,
+    GraphContributionAssertionCorrectionKind,
+    GraphContributionAssertionV2,
+    GraphContributionV2,
 )
 from dungeonmind.contracts.evidence import (
     SourceArtifactV2,
@@ -38,21 +42,28 @@ from dungeonmind.contracts.evidence import (
 )
 from dungeonmind.contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_BUNDLE_SCHEMA,
+    EXISTING_WORLD_ADOPTION_BUNDLE_V2_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
     ExistingWorldAdoptionAuthorityRefV1,
     ExistingWorldAdoptionBundleV1,
+    ExistingWorldAdoptionBundleV2,
     ExistingWorldAdoptionCommandV1,
     ExistingWorldAdoptionSourceProvenanceV1,
     existing_world_adoption_bundle_canonical_bytes,
+    existing_world_adoption_bundle_v2_canonical_bytes,
     sha256_bytes,
 )
 from dungeonmind.contracts.graph import PublishRevisionCommand
 from dungeonmind.contracts.identity import (
+    IdentityAliasMapRewrite,
     IdentityDecisionKind,
     IdentityDecisionRecord,
+    IdentityDecisionRecordV2,
     IdentityDecisionStatus,
+    IdentityMergeSideEffects,
 )
 from dungeonmind.contracts.semantic_profile import SemanticProfileDescriptor
-from dungeonmind.contracts.vocabulary import Visibility
+from dungeonmind.contracts.vocabulary import ContributionEpistemicKind, Visibility
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import (
     ExistingWorldAdoptionOutcomeUnknownError,
@@ -459,6 +470,150 @@ def make_stores(
     return graph, sources, contributions, identity, adoptions
 
 
+def _v2_assertion(
+    assertion_id: str,
+    artifact_id: str,
+    revision_id: str,
+    *,
+    epistemic_kind: ContributionEpistemicKind = ContributionEpistemicKind.ASSERTED,
+    acceptance_state: AcceptanceState = AcceptanceState.ACCEPTED,
+) -> GraphContributionAssertionV2:
+    return GraphContributionAssertionV2(
+        assertion_id=assertion_id,
+        assertion_kind="attribute",
+        subject_object_id="obj:college",
+        label="imported",
+        source_artifact_id=artifact_id,
+        source_revision_id=revision_id,
+        campaign_scope=CAMPAIGN_ID,
+        epistemic_kind=epistemic_kind,
+        acceptance_state=acceptance_state,
+    )
+
+
+def _v2_contribution(
+    contribution_id: str,
+    artifact_id: str,
+    revision_id: str,
+    *,
+    world_id: str = WORLD_ID,
+    assertions: list[GraphContributionAssertionV2] | None = None,
+    corrections: list[GraphContributionAssertionCorrection] | None = None,
+) -> GraphContributionV2:
+    return GraphContributionV2(
+        contribution_id=contribution_id,
+        world_id=world_id,
+        source_kind=ContributionSourceKind.MANUAL_IMPORT,
+        source_artifact_id=artifact_id,
+        source_revision_id=revision_id,
+        produced_at=NOW,
+        campaign_scope=CAMPAIGN_ID,
+        assertions=assertions
+        or [_v2_assertion(f"asrt:{contribution_id}", artifact_id, revision_id)],
+        assertion_corrections=corrections or [],
+    )
+
+
+def _merge_side_effects() -> IdentityMergeSideEffects:
+    return IdentityMergeSideEffects(
+        aliases_added_to_target=["College of Wizardry"],
+        evidence_ref_ids_added_to_target=["ev:a"],
+        source_domains_added_to_target=["worldbuilding"],
+        alias_map_rewrites=[
+            IdentityAliasMapRewrite(
+                alias_key="merged-headmaster",
+                prior_owner_node_id="obj:merged-away",
+                new_owner_node_id="obj:college",
+            ),
+            IdentityAliasMapRewrite(
+                alias_key="college",
+                prior_owner_node_id=None,
+                new_owner_node_id="obj:college",
+            ),
+        ],
+    )
+
+
+def make_v2_bundle(
+    *,
+    adoption_id: str = "adopt:existing-fixture-v2",
+    world_id: str = WORLD_ID,
+    contributions: list[GraphContributionV2] | None = None,
+    identity_decisions: list[IdentityDecisionRecordV2] | None = None,
+) -> ExistingWorldAdoptionBundleV2:
+    v1 = make_bundle(adoption_id=adoption_id, world_id=world_id)
+    if contributions is None:
+        target = _v2_contribution("contrib:target", ART_A, REV_A, world_id=world_id)
+        corrector = _v2_contribution(
+            "contrib:corrector",
+            ART_B,
+            REV_B,
+            world_id=world_id,
+            assertions=[
+                _v2_assertion("asrt:replacement", ART_B, REV_B),
+                _v2_assertion(
+                    "asrt:source-derived",
+                    ART_B,
+                    REV_B,
+                    epistemic_kind=ContributionEpistemicKind.SOURCE_DERIVED_CANDIDATE,
+                    acceptance_state=AcceptanceState.CANDIDATE,
+                ),
+            ],
+            corrections=[
+                GraphContributionAssertionCorrection(
+                    correction_kind=GraphContributionAssertionCorrectionKind.CONTRADICTS,
+                    target_contribution_id="contrib:target",
+                    target_assertion_id="asrt:contrib:target",
+                ),
+                GraphContributionAssertionCorrection(
+                    correction_kind=GraphContributionAssertionCorrectionKind.CONTRADICTS_AND_REPLACES,
+                    target_contribution_id="contrib:target",
+                    target_assertion_id="asrt:contrib:target",
+                    replacement_assertion_id="asrt:replacement",
+                ),
+            ],
+        )
+        contributions = [target, corrector]
+    if identity_decisions is None:
+        identity_decisions = [
+            IdentityDecisionRecordV2(
+                decision_id="iddec:alias-add",
+                world_id=world_id,
+                decision_kind=IdentityDecisionKind.ALIAS_ADD,
+                subject_object_ids=["obj:college"],
+                alias="College",
+                status=IdentityDecisionStatus.ACTIVE,
+                created_at=NOW,
+                merge_side_effects=None,
+            ),
+            IdentityDecisionRecordV2(
+                decision_id="iddec:merge",
+                world_id=world_id,
+                decision_kind=IdentityDecisionKind.MERGE,
+                subject_object_ids=["obj:merged-away", "obj:college"],
+                target_object_ids=["obj:college"],
+                status=IdentityDecisionStatus.ACTIVE,
+                created_at=NOW,
+                merge_side_effects=_merge_side_effects(),
+            ),
+        ]
+    return ExistingWorldAdoptionBundleV2(
+        adoption_id=v1.adoption_id,
+        world_id=v1.world_id,
+        source_provenance=v1.source_provenance,
+        graph_schema=v1.graph_schema,
+        graph_payload=v1.graph_payload,
+        source_artifacts=v1.source_artifacts,
+        source_revisions=v1.source_revisions,
+        contributions=contributions,
+        identity_decisions=identity_decisions,
+    )
+
+
+def v2_bundle_bytes(bundle: ExistingWorldAdoptionBundleV2 | None = None) -> bytes:
+    return existing_world_adoption_bundle_v2_canonical_bytes(bundle or make_v2_bundle())
+
+
 class _SpyAdoption:
     def __init__(self, inner: InMemoryExistingWorldAdoptionRepository) -> None:
         self.inner = inner
@@ -721,6 +876,51 @@ def test_t15_response_loss_recovery_returns_receipt() -> None:
     )
     assert receipt.world_id == WORLD_ID
     assert receipt.bundle_sha256 == sha256_bytes(raw)
+
+
+def test_t15_v2_response_loss_recovery_returns_v2_receipt() -> None:
+    raw = v2_bundle_bytes()
+    _, _, _, _, inner = make_stores()
+
+    class _CommitThenUnavailable:
+        def __init__(self) -> None:
+            self.adopt_calls = 0
+            self.recovery_probes = 0
+
+        def adopt(self, command):
+            self.adopt_calls += 1
+            inner.adopt(command)
+            raise PersistenceUnavailableError("response lost")
+
+        def get(self, world_id: str, adoption_id: str):
+            return inner.get(world_id, adoption_id)
+
+        def get_for_world(self, world_id: str):
+            receipt = inner.get_for_world(world_id)
+            if self.adopt_calls:
+                self.recovery_probes += 1
+            return receipt
+
+    wrapper = _CommitThenUnavailable()
+    receipt = adopt_existing_world(
+        raw,
+        adopted_at=NOW,
+        adoption_repository=wrapper,  # type: ignore[arg-type]
+        graph_reader=graph_reader(),
+    )
+    assert wrapper.adopt_calls == 1
+    assert wrapper.recovery_probes == 1
+    assert receipt.schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA
+    assert receipt.world_id == WORLD_ID
+    assert receipt.bundle_sha256 == sha256_bytes(raw)
+    replayed = adopt_existing_world(
+        raw,
+        adopted_at=LATER,
+        adoption_repository=inner,
+        graph_reader=_BoomReader(),  # type: ignore[arg-type]
+    )
+    assert replayed == receipt
+    assert wrapper.adopt_calls == 1
 
 
 def test_t16_unknown_outcome_when_recovery_unavailable() -> None:
@@ -1056,3 +1256,233 @@ def test_t37_fixture_is_synthetic_not_eldyrwild() -> None:
         or rel.get("relationship_id") == "rel:travels"
         for rel in payload["relationships"]
     )
+
+
+BASELINE_V1_BUNDLE_SHA256 = "a98e3f833fd0cae43581f435a84916727f0a75dd7a27e6216b5e187b1b588f08"
+BASELINE_V1_BUNDLE_LEN = 9079
+
+
+def test_v1_canonical_bytes_unchanged_from_dispatch_base() -> None:
+    raw = bundle_bytes()
+    assert len(raw) == BASELINE_V1_BUNDLE_LEN
+    assert sha256_bytes(raw) == BASELINE_V1_BUNDLE_SHA256
+    parsed = parse_existing_world_adoption_bundle(raw, graph_reader=graph_reader())
+    assert isinstance(parsed, ExistingWorldAdoptionBundleV1)
+    assert "assertion_corrections" not in parsed.contributions[0].model_dump(mode="json")
+    assert "merge_side_effects" not in parsed.identity_decisions[0].model_dump(mode="json")
+
+
+def test_v2_canonical_bytes_are_order_independent() -> None:
+    forward = make_v2_bundle()
+    reversed_bundle = forward.model_copy(
+        update={"contributions": list(reversed(forward.contributions))}
+    )
+    assert v2_bundle_bytes(forward) == v2_bundle_bytes(reversed_bundle)
+    parsed = parse_existing_world_adoption_bundle(
+        v2_bundle_bytes(forward), graph_reader=graph_reader()
+    )
+    assert parsed.schema_version == EXISTING_WORLD_ADOPTION_BUNDLE_V2_SCHEMA
+
+
+def test_unknown_adoption_bundle_schema_fails_before_mutation() -> None:
+    payload = json.loads(bundle_bytes())
+    payload["schema_version"] = "dm_existing_world_adoption_bundle_v9"
+    raw = (
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+    spy = _SpyAdoption(make_stores()[4])
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        adopt_existing_world(
+            raw,
+            adopted_at=NOW,
+            adoption_repository=spy,
+            graph_reader=graph_reader(),
+        )
+    assert exc.value.details["reason"] == "unsupported_adoption_bundle_schema"
+    assert spy.adopt_calls == 0
+
+
+def test_v2_correction_missing_target_contribution_refuses() -> None:
+    bundle = make_v2_bundle()
+    broken = bundle.contributions[1].assertion_corrections[0].model_copy(
+        update={"target_contribution_id": "contrib:missing"}
+    )
+    corrector = bundle.contributions[1].model_copy(update={"assertion_corrections": [broken]})
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        parse_existing_world_adoption_bundle(
+            v2_bundle_bytes(
+                bundle.model_copy(update={"contributions": [bundle.contributions[0], corrector]})
+            ),
+            graph_reader=graph_reader(),
+        )
+    assert exc.value.details["reason"] == "correction_target_contribution_missing"
+
+
+def test_v2_correction_missing_target_assertion_refuses() -> None:
+    bundle = make_v2_bundle()
+    broken = bundle.contributions[1].assertion_corrections[0].model_copy(
+        update={"target_assertion_id": "asrt:missing"}
+    )
+    corrector = bundle.contributions[1].model_copy(update={"assertion_corrections": [broken]})
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        parse_existing_world_adoption_bundle(
+            v2_bundle_bytes(
+                bundle.model_copy(update={"contributions": [bundle.contributions[0], corrector]})
+            ),
+            graph_reader=graph_reader(),
+        )
+    assert exc.value.details["reason"] == "correction_target_assertion_missing"
+
+
+def test_v2_correction_missing_replacement_assertion_refuses() -> None:
+    bundle = make_v2_bundle()
+    broken = bundle.contributions[1].assertion_corrections[1].model_copy(
+        update={"replacement_assertion_id": "asrt:missing-replacement"}
+    )
+    corrections = [bundle.contributions[1].assertion_corrections[0], broken]
+    corrector = bundle.contributions[1].model_copy(update={"assertion_corrections": corrections})
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        parse_existing_world_adoption_bundle(
+            v2_bundle_bytes(
+                bundle.model_copy(update={"contributions": [bundle.contributions[0], corrector]})
+            ),
+            graph_reader=graph_reader(),
+        )
+    assert exc.value.details["reason"] == "correction_replacement_assertion_missing"
+
+
+def test_v2_replacement_on_wrong_contribution_refuses() -> None:
+    bundle = make_v2_bundle()
+    broken = bundle.contributions[1].assertion_corrections[1].model_copy(
+        update={"replacement_assertion_id": "asrt:contrib:target"}
+    )
+    corrections = [bundle.contributions[1].assertion_corrections[0], broken]
+    corrector = bundle.contributions[1].model_copy(update={"assertion_corrections": corrections})
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        parse_existing_world_adoption_bundle(
+            v2_bundle_bytes(
+                bundle.model_copy(update={"contributions": [bundle.contributions[0], corrector]})
+            ),
+            graph_reader=graph_reader(),
+        )
+    assert exc.value.details["reason"] == "correction_replacement_assertion_missing"
+
+
+def test_memory_v2_history_and_adoption_round_trip() -> None:
+    raw = v2_bundle_bytes()
+    graph, _, contributions, identity, adoptions = make_stores()
+    receipt = adopt_existing_world(
+        raw,
+        adopted_at=NOW,
+        adoption_repository=adoptions,
+        graph_reader=graph_reader(),
+    )
+    assert receipt.schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA
+    loaded_contrib = contributions.get(WORLD_ID, "contrib:corrector")
+    assert isinstance(loaded_contrib, GraphContributionV2)
+    assert loaded_contrib.model_dump(mode="json") == make_v2_bundle().contributions[1].model_dump(
+        mode="json"
+    )
+    assert (
+        loaded_contrib.assertions[1].epistemic_kind
+        is ContributionEpistemicKind.SOURCE_DERIVED_CANDIDATE
+    )
+    loaded_merge = identity.get(WORLD_ID, "iddec:merge")
+    assert isinstance(loaded_merge, IdentityDecisionRecordV2)
+    assert loaded_merge.merge_side_effects == _merge_side_effects()
+    replayed = adopt_existing_world(
+        raw,
+        adopted_at=LATER,
+        adoption_repository=adoptions,
+        graph_reader=_BoomReader(),  # type: ignore[arg-type]
+    )
+    assert replayed == receipt
+    assert graph.get_head(WORLD_ID) is not None
+
+
+def test_cross_version_replay_conflicts() -> None:
+    _, _, _, _, adoptions = make_stores()
+    v1_receipt = adopt_existing_world(
+        bundle_bytes(),
+        adopted_at=NOW,
+        adoption_repository=adoptions,
+        graph_reader=graph_reader(),
+    )
+    with pytest.raises(IdempotencyConflictError) as exc:
+        adopt_existing_world(
+            v2_bundle_bytes(),
+            adopted_at=LATER,
+            adoption_repository=adoptions,
+            graph_reader=graph_reader(),
+        )
+    assert exc.value.details["stored_receipt_schema"] == v1_receipt.schema_version
+    other_graph, _, _, _, other_adoptions = make_stores()
+    v2_receipt = adopt_existing_world(
+        v2_bundle_bytes(),
+        adopted_at=NOW,
+        adoption_repository=other_adoptions,
+        graph_reader=graph_reader(),
+    )
+    with pytest.raises(IdempotencyConflictError):
+        adopt_existing_world(
+            bundle_bytes(),
+            adopted_at=LATER,
+            adoption_repository=other_adoptions,
+            graph_reader=graph_reader(),
+        )
+    assert v2_receipt.schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA
+    assert other_graph.get_head(WORLD_ID) is not None
+
+
+def test_merged_away_id_is_not_rejected_for_missing_graph_object() -> None:
+    bundle = make_v2_bundle()
+    parsed = parse_existing_world_adoption_bundle(
+        v2_bundle_bytes(bundle), graph_reader=graph_reader()
+    )
+    merge = next(
+        decision
+        for decision in parsed.identity_decisions
+        if decision.decision_kind is IdentityDecisionKind.MERGE
+    )
+    assert merge.merge_side_effects is not None
+    assert merge.merge_side_effects.alias_map_rewrites[0].prior_owner_node_id == "obj:merged-away"
+    object_ids = {item["object_id"] for item in parsed.graph_payload["objects"]}
+    assert "obj:merged-away" not in object_ids
+
+
+def test_memory_v2_record_repos_append_get_list() -> None:
+    _, _, contributions, identity, _ = make_stores()
+    target, contrib = make_v2_bundle().contributions
+    decision = make_v2_bundle().identity_decisions[1]
+    assert contributions.append(target) == target
+    assert contributions.append(contrib) == contrib
+    assert contributions.get(WORLD_ID, contrib.contribution_id) == contrib
+    assert contributions.list_for_world(WORLD_ID) == [contrib, target]
+    assert identity.append(decision) == decision
+    assert identity.get(WORLD_ID, decision.decision_id) == decision
+    assert identity.list_for_world(WORLD_ID) == [decision]
+
+
+def test_memory_v2_append_rejects_dangling_correction_target() -> None:
+    _, _, contributions, _, _ = make_stores()
+    corrector = make_v2_bundle().contributions[1]
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        contributions.append(corrector)
+    assert exc.value.details["reason"] == "correction_target_contribution_missing"
+    assert contributions.get(WORLD_ID, corrector.contribution_id) is None
+    assert contributions.list_for_world(WORLD_ID) == []
+
+
+def test_memory_v2_append_rejects_missing_target_assertion() -> None:
+    _, _, contributions, _, _ = make_stores()
+    target, corrector = make_v2_bundle().contributions
+    contributions.append(target)
+    broken = corrector.assertion_corrections[0].model_copy(
+        update={"target_assertion_id": "asrt:missing"}
+    )
+    dangling = corrector.model_copy(update={"assertion_corrections": [broken]})
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        contributions.append(dangling)
+    assert exc.value.details["reason"] == "correction_target_assertion_missing"
+    assert contributions.get(WORLD_ID, dangling.contribution_id) is None
+    assert contributions.list_for_world(WORLD_ID) == [target]

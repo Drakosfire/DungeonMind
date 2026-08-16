@@ -15,17 +15,33 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any, TypeVar
 
-from ...application.existing_world_adoption import bind_existing_world_adoption_command
-from ...application.repositories import normalize_semantic_document_batch
-from ...contracts.contribution import ContributionStatus, GraphContribution
+from ...application.existing_world_adoption import (
+    bind_existing_world_adoption_command,
+    require_v2_contribution_correction_closure,
+    terminal_existing_world_adoption_receipt,
+)
+from ...application.repositories import (
+    DurableExistingWorldAdoptionCommand,
+    DurableExistingWorldAdoptionReceipt,
+    DurableGraphContribution,
+    DurableIdentityDecision,
+    normalize_semantic_document_batch,
+)
+from ...contracts.contribution import (
+    ContributionStatus,
+    GraphContribution,
+    GraphContributionV2,
+)
 from ...contracts.contribution_review import (
     ContributionReviewRecord,
     ContributionReviewState,
 )
 from ...contracts.evidence import SourceArtifactRecord, SourceRevision
 from ...contracts.existing_world_adoption import (
-    ExistingWorldAdoptionCommandV1,
+    EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
     ExistingWorldAdoptionReceiptV1,
+    ExistingWorldAdoptionReceiptV2,
 )
 from ...contracts.graph import (
     PublishRevisionCommand,
@@ -33,7 +49,6 @@ from ...contracts.graph import (
     WorldGraphHead,
     WorldGraphRevision,
 )
-from ...contracts.identity import IdentityDecisionRecord
 from ...contracts.mind_turn import MindTurnRequest, MindTurnResponse
 from ...contracts.retrieval import GraphRetrievalSession
 from ...contracts.review_publication import (
@@ -203,11 +218,11 @@ class InMemoryWorldGraphRepository:
 
 class InMemoryContributionRepository:
     def __init__(self) -> None:
-        self._items: dict[tuple[str, str], GraphContribution] = {}
+        self._items: dict[tuple[str, str], DurableGraphContribution] = {}
         self._finalized_review_ids: set[tuple[str, str]] = set()
         self._lock = threading.RLock()
 
-    def append(self, contribution: GraphContribution) -> GraphContribution:
+    def append(self, contribution: DurableGraphContribution) -> DurableGraphContribution:
         key = (contribution.world_id, contribution.contribution_id)
         with self._lock:
             existing = self._items.get(key)
@@ -218,17 +233,23 @@ class InMemoryContributionRepository:
                         "different payload"
                     )
                 return _copy(existing)
+            if isinstance(contribution, GraphContributionV2):
+                world_id = contribution.world_id
+                require_v2_contribution_correction_closure(
+                    contribution,
+                    resolve_target=lambda target_id: self._items.get((world_id, target_id)),
+                )
             self._items[key] = _copy(contribution)
             return _copy(contribution)
 
-    def get(self, world_id: str, contribution_id: str) -> GraphContribution | None:
+    def get(self, world_id: str, contribution_id: str) -> DurableGraphContribution | None:
         with self._lock:
             item = self._items.get((world_id, contribution_id))
             return _copy(item) if item is not None else None
 
     def list_for_world(
         self, world_id: str, *, status: ContributionStatus | None = None
-    ) -> list[GraphContribution]:
+    ) -> list[DurableGraphContribution]:
         with self._lock:
             items = [c for (w, _), c in self._items.items() if w == world_id]
             if status is not None:
@@ -243,7 +264,7 @@ class InMemoryContributionRepository:
         status: ContributionStatus,
         *,
         superseded_by: str | None = None,
-    ) -> GraphContribution:
+    ) -> DurableGraphContribution:
         key = (world_id, contribution_id)
         with self._lock:
             existing = self._items.get(key)
@@ -294,6 +315,12 @@ class InMemoryContributionReviewRepository:
         if candidate is None or reviewed is None:
             raise PersistenceIntegrityError(
                 f"review {record.review_id!r} is missing a contribution child"
+            )
+        if not isinstance(candidate, GraphContribution) or not isinstance(
+            reviewed, GraphContribution
+        ):
+            raise PersistenceIntegrityError(
+                f"review {record.review_id!r} received a non-v1 contribution"
             )
         try:
             return ContributionReviewState(
@@ -808,10 +835,10 @@ class InMemoryFinalizedReviewPublicationRepository:
 
 class InMemoryIdentityDecisionRepository:
     def __init__(self) -> None:
-        self._items: dict[tuple[str, str], IdentityDecisionRecord] = {}
+        self._items: dict[tuple[str, str], DurableIdentityDecision] = {}
         self._lock = threading.Lock()
 
-    def append(self, decision: IdentityDecisionRecord) -> IdentityDecisionRecord:
+    def append(self, decision: DurableIdentityDecision) -> DurableIdentityDecision:
         key = (decision.world_id, decision.decision_id)
         with self._lock:
             existing = self._items.get(key)
@@ -825,11 +852,11 @@ class InMemoryIdentityDecisionRepository:
             self._items[key] = _copy(decision)
             return _copy(decision)
 
-    def get(self, world_id: str, decision_id: str) -> IdentityDecisionRecord | None:
+    def get(self, world_id: str, decision_id: str) -> DurableIdentityDecision | None:
         item = self._items.get((world_id, decision_id))
         return _copy(item) if item is not None else None
 
-    def list_for_world(self, world_id: str) -> list[IdentityDecisionRecord]:
+    def list_for_world(self, world_id: str) -> list[DurableIdentityDecision]:
         items = [d for (w, _), d in self._items.items() if w == world_id]
         items.sort(key=lambda d: d.decision_id)
         return [_copy(d) for d in items]
@@ -1540,16 +1567,27 @@ class InMemoryExistingWorldAdoptionRepository:
         self._sources = source_repository
         self._contributions = contribution_repository
         self._identity = identity_repository
-        self._receipts_by_world: dict[str, ExistingWorldAdoptionReceiptV1] = {}
-        self._receipts_by_adoption: dict[str, ExistingWorldAdoptionReceiptV1] = {}
+        self._receipts_by_world: dict[str, DurableExistingWorldAdoptionReceipt] = {}
+        self._receipts_by_adoption: dict[str, DurableExistingWorldAdoptionReceipt] = {}
         self._failure_hook = failure_hook
 
     @staticmethod
     def _validate_record(
-        receipt: ExistingWorldAdoptionReceiptV1,
-    ) -> ExistingWorldAdoptionReceiptV1:
+        receipt: DurableExistingWorldAdoptionReceipt,
+    ) -> DurableExistingWorldAdoptionReceipt:
+        schema = getattr(receipt, "schema_version", None)
+        if schema == EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA:
+            receipt_type: type[DurableExistingWorldAdoptionReceipt] = (
+                ExistingWorldAdoptionReceiptV1
+            )
+        elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA:
+            receipt_type = ExistingWorldAdoptionReceiptV2
+        else:
+            raise PersistenceIntegrityError(
+                "existing-world adoption receipt failed reconstruction"
+            )
         try:
-            return ExistingWorldAdoptionReceiptV1.model_validate(receipt.model_dump(mode="json"))
+            return receipt_type.model_validate(receipt.model_dump(mode="json"))
         except Exception:
             raise PersistenceIntegrityError(
                 "existing-world adoption receipt failed reconstruction"
@@ -1678,7 +1716,7 @@ class InMemoryExistingWorldAdoptionRepository:
             return
         self._sources._revisions[revision.source_revision_id] = _copy(revision)
 
-    def _append_contribution_locked(self, contribution: GraphContribution) -> None:
+    def _append_contribution_locked(self, contribution: DurableGraphContribution) -> None:
         key = (contribution.world_id, contribution.contribution_id)
         existing = self._contributions._items.get(key)
         if existing is not None:
@@ -1689,7 +1727,7 @@ class InMemoryExistingWorldAdoptionRepository:
             return
         self._contributions._items[key] = _copy(contribution)
 
-    def _append_identity_locked(self, decision: IdentityDecisionRecord) -> None:
+    def _append_identity_locked(self, decision: DurableIdentityDecision) -> None:
         key = (decision.world_id, decision.decision_id)
         existing = self._identity._items.get(key)
         if existing is not None:
@@ -1701,8 +1739,8 @@ class InMemoryExistingWorldAdoptionRepository:
         self._identity._items[key] = _copy(decision)
 
     def _reconstruct_unlocked(
-        self, receipt: ExistingWorldAdoptionReceiptV1
-    ) -> ExistingWorldAdoptionReceiptV1:
+        self, receipt: DurableExistingWorldAdoptionReceipt
+    ) -> DurableExistingWorldAdoptionReceipt:
         verified = self._validate_record(receipt)
         stored = self._graph._revisions.get((verified.world_id, verified.published_revision_id))
         if stored is None:
@@ -1719,21 +1757,23 @@ class InMemoryExistingWorldAdoptionRepository:
             )
         return _copy(verified)
 
-    def get(self, world_id: str, adoption_id: str) -> ExistingWorldAdoptionReceiptV1 | None:
+    def get(self, world_id: str, adoption_id: str) -> DurableExistingWorldAdoptionReceipt | None:
         with self._graph._lock_for(world_id):
             receipt = self._receipts_by_world.get(world_id)
             if receipt is None or receipt.adoption_id != adoption_id:
                 return None
             return self._reconstruct_unlocked(receipt)
 
-    def get_for_world(self, world_id: str) -> ExistingWorldAdoptionReceiptV1 | None:
+    def get_for_world(self, world_id: str) -> DurableExistingWorldAdoptionReceipt | None:
         with self._graph._lock_for(world_id):
             receipt = self._receipts_by_world.get(world_id)
             if receipt is None:
                 return None
             return self._reconstruct_unlocked(receipt)
 
-    def adopt(self, command: ExistingWorldAdoptionCommandV1) -> ExistingWorldAdoptionReceiptV1:
+    def adopt(
+        self, command: DurableExistingWorldAdoptionCommand
+    ) -> DurableExistingWorldAdoptionReceipt:
         validated = bind_existing_world_adoption_command(command)
         bundle = validated.bundle
         world_id = bundle.world_id
@@ -1758,11 +1798,16 @@ class InMemoryExistingWorldAdoptionRepository:
                     self._put_artifact_locked(artifact)
                 for revision in bundle.source_revisions:
                     self._put_revision_locked(revision)
+                if self._failure_hook is not None:
+                    self._failure_hook("source_records")
                 for contribution in bundle.contributions:
                     self._append_contribution_locked(contribution)
+                if self._failure_hook is not None:
+                    self._failure_hook("contributions")
                 for decision in bundle.identity_decisions:
                     self._append_identity_locked(decision)
                 if self._failure_hook is not None:
+                    self._failure_hook("identity_decisions")
                     self._failure_hook("source_history")
                 graph_command = PublishRevisionCommand(
                     world_id=world_id,
@@ -1784,19 +1829,9 @@ class InMemoryExistingWorldAdoptionRepository:
                     )
                 if self._failure_hook is not None:
                     self._failure_hook("graph")
-                receipt = ExistingWorldAdoptionReceiptV1(
-                    adoption_id=bundle.adoption_id,
-                    world_id=world_id,
-                    bundle_sha256=validated.bundle_sha256,
-                    source_provenance=bundle.source_provenance,
+                receipt = terminal_existing_world_adoption_receipt(
+                    validated,
                     published_revision_id=revision.revision_id,
-                    graph_schema=bundle.graph_schema,
-                    graph_payload_sha256=validated.graph_payload_sha256,
-                    adopted_at=validated.requested_adopted_at,
-                    source_artifact_count=len(bundle.source_artifacts),
-                    source_revision_count=len(bundle.source_revisions),
-                    contribution_count=len(bundle.contributions),
-                    identity_decision_count=len(bundle.identity_decisions),
                 )
                 self._receipts_by_world[world_id] = receipt
                 self._receipts_by_adoption[bundle.adoption_id] = receipt

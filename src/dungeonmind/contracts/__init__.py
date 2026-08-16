@@ -14,11 +14,16 @@ from .capability import (
 )
 from .contribution import (
     GRAPH_CONTRIBUTION_SCHEMA,
+    GRAPH_CONTRIBUTION_V2_SCHEMA,
     AcceptanceState,
     ContributionSourceKind,
     ContributionStatus,
     GraphContribution,
     GraphContributionAssertion,
+    GraphContributionAssertionCorrection,
+    GraphContributionAssertionCorrectionKind,
+    GraphContributionAssertionV2,
+    GraphContributionV2,
 )
 from .contribution_review import (
     COMMIT_CONFIRMATION_RECEIPT_SCHEMA,
@@ -65,15 +70,22 @@ from .evidence import (
 from .existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_AUTHORITY_REF_SCHEMA,
     EXISTING_WORLD_ADOPTION_BUNDLE_SCHEMA,
+    EXISTING_WORLD_ADOPTION_BUNDLE_V2_SCHEMA,
     EXISTING_WORLD_ADOPTION_COMMAND_SCHEMA,
+    EXISTING_WORLD_ADOPTION_COMMAND_V2_SCHEMA,
     EXISTING_WORLD_ADOPTION_PROVENANCE_SCHEMA,
     EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
     ExistingWorldAdoptionAuthorityRefV1,
     ExistingWorldAdoptionBundleV1,
+    ExistingWorldAdoptionBundleV2,
     ExistingWorldAdoptionCommandV1,
+    ExistingWorldAdoptionCommandV2,
     ExistingWorldAdoptionReceiptV1,
+    ExistingWorldAdoptionReceiptV2,
     ExistingWorldAdoptionSourceProvenanceV1,
     existing_world_adoption_bundle_canonical_bytes,
+    existing_world_adoption_bundle_v2_canonical_bytes,
     sha256_bytes,
 )
 from .fictional_time import (
@@ -108,9 +120,13 @@ from .graph import (
 )
 from .identity import (
     IDENTITY_DECISION_SCHEMA,
+    IDENTITY_DECISION_V2_SCHEMA,
+    IdentityAliasMapRewrite,
     IdentityDecisionKind,
     IdentityDecisionRecord,
+    IdentityDecisionRecordV2,
     IdentityDecisionStatus,
+    IdentityMergeSideEffects,
     IdentityOutcome,
 )
 from .ids import new_id
@@ -178,7 +194,7 @@ from .semantic import (
     SemanticDocumentKind,
     SemanticQuery,
 )
-from .vocabulary import CanonState, EpistemicKind, Visibility
+from .vocabulary import CanonState, ContributionEpistemicKind, EpistemicKind, Visibility
 
 __all__ = [
     "CAPABILITY_POLICY_SCHEMA",
@@ -196,9 +212,12 @@ __all__ = [
     "EVIDENCE_REF_V2_SCHEMA",
     "EXISTING_WORLD_ADOPTION_AUTHORITY_REF_SCHEMA",
     "EXISTING_WORLD_ADOPTION_BUNDLE_SCHEMA",
+    "EXISTING_WORLD_ADOPTION_BUNDLE_V2_SCHEMA",
     "EXISTING_WORLD_ADOPTION_COMMAND_SCHEMA",
+    "EXISTING_WORLD_ADOPTION_COMMAND_V2_SCHEMA",
     "EXISTING_WORLD_ADOPTION_PROVENANCE_SCHEMA",
     "EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA",
+    "EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA",
     "FICTIONAL_TIME_ANCHOR_REF_SCHEMA",
     "FICTIONAL_TIME_CLAIM_BUNDLE_SCHEMA",
     "FICTIONAL_TIME_QUERY_RESULT_SCHEMA",
@@ -208,9 +227,11 @@ __all__ = [
     "FINALIZED_REVIEW_PUBLICATION_REQUEST_SCHEMA",
     "FINALIZED_REVIEW_PUBLICATION_SCHEMA",
     "GRAPH_CONTRIBUTION_SCHEMA",
+    "GRAPH_CONTRIBUTION_V2_SCHEMA",
     "GRAPH_HEAD_SCHEMA",
     "GRAPH_REVISION_SCHEMA",
     "IDENTITY_DECISION_SCHEMA",
+    "IDENTITY_DECISION_V2_SCHEMA",
     "KNOWLEDGE_ASSERTION_METADATA_SCHEMA",
     "MIND_TURN_SCHEMA",
     "PROJECTION_REQUEST_SCHEMA",
@@ -236,6 +257,7 @@ __all__ = [
     "CommitConfirmationReceipt",
     "ContextChange",
     "ContributionAssertionVerdict",
+    "ContributionEpistemicKind",
     "ContributionIdentityProposal",
     "ContributionIdentityVerdict",
     "ContributionIdentityVerdictKind",
@@ -258,8 +280,11 @@ __all__ = [
     "EvidenceRole",
     "ExistingWorldAdoptionAuthorityRefV1",
     "ExistingWorldAdoptionBundleV1",
+    "ExistingWorldAdoptionBundleV2",
     "ExistingWorldAdoptionCommandV1",
+    "ExistingWorldAdoptionCommandV2",
     "ExistingWorldAdoptionReceiptV1",
+    "ExistingWorldAdoptionReceiptV2",
     "ExistingWorldAdoptionSourceProvenanceV1",
     "FictionalTimeAnchor",
     "FictionalTimeAnchorRefV1",
@@ -280,11 +305,18 @@ __all__ = [
     "FocusKind",
     "GraphContribution",
     "GraphContributionAssertion",
+    "GraphContributionAssertionCorrection",
+    "GraphContributionAssertionCorrectionKind",
+    "GraphContributionAssertionV2",
+    "GraphContributionV2",
     "GraphRetrievalSession",
     "GraphScope",
+    "IdentityAliasMapRewrite",
     "IdentityDecisionKind",
     "IdentityDecisionRecord",
+    "IdentityDecisionRecordV2",
     "IdentityDecisionStatus",
+    "IdentityMergeSideEffects",
     "IdentityOutcome",
     "KnowledgeAssertionMetadataV1",
     "MindTurnRequest",
@@ -324,6 +356,7 @@ __all__ = [
     "WorldGraphProjectionRequest",
     "WorldGraphRevision",
     "existing_world_adoption_bundle_canonical_bytes",
+    "existing_world_adoption_bundle_v2_canonical_bytes",
     "new_id",
     "sha256_bytes",
 ]
