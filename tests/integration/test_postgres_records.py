@@ -8,11 +8,19 @@ import pytest
 
 from dungeonmind.contracts import (
     Admissibility,
+    ContributionEpistemicKind,
     ContributionSourceKind,
     GraphContribution,
+    GraphContributionAssertionCorrection,
+    GraphContributionAssertionCorrectionKind,
+    GraphContributionAssertionV2,
+    GraphContributionV2,
     GraphRetrievalSession,
+    IdentityAliasMapRewrite,
     IdentityDecisionKind,
     IdentityDecisionRecord,
+    IdentityDecisionRecordV2,
+    IdentityMergeSideEffects,
     ProjectionSnapshot,
     SourceArtifact,
     SourceDomain,
@@ -264,3 +272,99 @@ def test_identical_duplicate_evidence_in_contribution_ok(pg) -> None:
     )
     assert pg.contributions.append(contrib) == contrib
     assert pg.contributions.get(WORLD_ID, "contrib:ev-same") == contrib
+
+
+@pytest.mark.integration
+def test_postgres_v2_contribution_and_identity_roundtrip(pg) -> None:
+    contribution = GraphContributionV2(
+        contribution_id="contrib:v2",
+        world_id=WORLD_ID,
+        source_kind=ContributionSourceKind.MANUAL_IMPORT,
+        produced_at=NOW,
+        assertions=[
+            GraphContributionAssertionV2(
+                assertion_id="a:source",
+                assertion_kind="attribute",
+                source_artifact_id="src:v2",
+                epistemic_kind=ContributionEpistemicKind.SOURCE_DERIVED_CANDIDATE,
+            ),
+            GraphContributionAssertionV2(
+                assertion_id="a:replacement",
+                assertion_kind="attribute",
+                source_artifact_id="src:v2",
+                acceptance_state="accepted",
+            ),
+        ],
+        assertion_corrections=[
+            GraphContributionAssertionCorrection(
+                correction_kind=GraphContributionAssertionCorrectionKind.CONTRADICTS,
+                target_contribution_id="contrib:other",
+                target_assertion_id="a:other",
+            ),
+            GraphContributionAssertionCorrection(
+                correction_kind=GraphContributionAssertionCorrectionKind.CONTRADICTS_AND_REPLACES,
+                target_contribution_id="contrib:other",
+                target_assertion_id="a:other",
+                replacement_assertion_id="a:replacement",
+            ),
+        ],
+    )
+    assert pg.contributions.append(contribution) == contribution
+    loaded = pg.contributions.get(WORLD_ID, "contrib:v2")
+    assert loaded == contribution
+    assert loaded.model_dump(mode="json") == contribution.model_dump(mode="json")
+    assert loaded.assertions[0].epistemic_kind is ContributionEpistemicKind.SOURCE_DERIVED_CANDIDATE
+    listed = pg.contributions.list_for_world(WORLD_ID)
+    assert contribution in listed
+
+    decision = IdentityDecisionRecordV2(
+        decision_id="idec:v2-merge",
+        world_id=WORLD_ID,
+        decision_kind=IdentityDecisionKind.MERGE,
+        subject_object_ids=["obj:merged-away", "obj:keep"],
+        target_object_ids=["obj:keep"],
+        created_at=NOW,
+        merge_side_effects=IdentityMergeSideEffects(
+            aliases_added_to_target=["kept"],
+            evidence_ref_ids_added_to_target=["ev:1"],
+            source_domains_added_to_target=["worldbuilding"],
+            alias_map_rewrites=[
+                IdentityAliasMapRewrite(
+                    alias_key="old",
+                    prior_owner_node_id="obj:merged-away",
+                    new_owner_node_id="obj:keep",
+                ),
+                IdentityAliasMapRewrite(
+                    alias_key="kept",
+                    prior_owner_node_id=None,
+                    new_owner_node_id="obj:keep",
+                ),
+            ],
+        ),
+    )
+    assert pg.identity_decisions.append(decision) == decision
+    loaded_decision = pg.identity_decisions.get(WORLD_ID, "idec:v2-merge")
+    assert loaded_decision == decision
+    assert loaded_decision.model_dump(mode="json") == decision.model_dump(mode="json")
+    assert pg.identity_decisions.list_for_world(WORLD_ID)[-1] == decision
+
+
+@pytest.mark.integration
+def test_postgres_unsupported_contribution_schema_fails_closed(
+    migrated_database: str, pg
+) -> None:
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+    from dungeonmind.infrastructure.postgres.database import SCHEMA, PostgresDatabase
+
+    contrib = _contribution("contrib:bad-schema")
+    pg.contributions.append(contrib)
+    db = PostgresDatabase(migrated_database)
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE {SCHEMA}.graph_contributions "
+            "SET schema_version = 'dm_graph_contribution_v9' "
+            "WHERE contribution_id = %s",
+            ("contrib:bad-schema",),
+        )
+    with pytest.raises(PersistenceIntegrityError, match="unsupported contribution schema"):
+        pg.contributions.get(WORLD_ID, "contrib:bad-schema")

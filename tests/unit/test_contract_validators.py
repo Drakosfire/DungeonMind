@@ -10,11 +10,18 @@ from dungeonmind.contracts import (
     Admissibility,
     Claim,
     ClaimAuthority,
+    ContributionEpistemicKind,
     FocusKind,
     GraphContributionAssertion,
+    GraphContributionAssertionCorrection,
+    GraphContributionAssertionCorrectionKind,
+    GraphContributionAssertionV2,
     GraphScope,
+    IdentityAliasMapRewrite,
     IdentityDecisionKind,
     IdentityDecisionRecord,
+    IdentityDecisionRecordV2,
+    IdentityMergeSideEffects,
     MindTurnRequest,
     ProjectionFocus,
     ProjectionSnapshot,
@@ -29,6 +36,7 @@ from dungeonmind.contracts import (
     SurfaceContext,
     WorldGraphProjectionRequest,
 )
+from dungeonmind.contracts.vocabulary import EpistemicKind
 
 NOW = datetime(2026, 7, 29, tzinfo=UTC)
 REV = "rev:" + "ab" * 16
@@ -342,3 +350,155 @@ def test_alias_requires_alias_field() -> None:
 def test_graph_fact_claim_requires_evidence() -> None:
     with pytest.raises(ValidationError):
         Claim(claim_id="c:1", text="fact", authority=ClaimAuthority.GRAPH_FACT)
+
+
+def test_unknown_correction_kind_rejected() -> None:
+    with pytest.raises(ValidationError):
+        GraphContributionAssertionCorrection.model_validate(
+            {
+                "correction_kind": "soft_retract",
+                "target_contribution_id": "ctr:1",
+                "target_assertion_id": "a:1",
+            }
+        )
+
+
+def test_blank_correction_targets_rejected() -> None:
+    with pytest.raises(ValidationError):
+        GraphContributionAssertionCorrection(
+            correction_kind=GraphContributionAssertionCorrectionKind.CONTRADICTS,
+            target_contribution_id="  ",
+            target_assertion_id="a:1",
+        )
+    with pytest.raises(ValidationError):
+        GraphContributionAssertionCorrection(
+            correction_kind=GraphContributionAssertionCorrectionKind.CONTRADICTS,
+            target_contribution_id="ctr:1",
+            target_assertion_id="",
+        )
+
+
+def test_contradicts_rejects_replacement() -> None:
+    with pytest.raises(ValidationError):
+        GraphContributionAssertionCorrection(
+            correction_kind=GraphContributionAssertionCorrectionKind.CONTRADICTS,
+            target_contribution_id="ctr:1",
+            target_assertion_id="a:1",
+            replacement_assertion_id="a:2",
+        )
+
+
+def test_contradicts_and_replaces_requires_replacement() -> None:
+    with pytest.raises(ValidationError):
+        GraphContributionAssertionCorrection(
+            correction_kind=GraphContributionAssertionCorrectionKind.CONTRADICTS_AND_REPLACES,
+            target_contribution_id="ctr:1",
+            target_assertion_id="a:1",
+        )
+
+
+def test_merge_v2_requires_side_effects() -> None:
+    with pytest.raises(ValidationError):
+        IdentityDecisionRecordV2(
+            decision_id="dec:1",
+            world_id="world:demo",
+            decision_kind=IdentityDecisionKind.MERGE,
+            subject_object_ids=["obj:1", "obj:2"],
+            target_object_ids=["obj:1"],
+            created_at=NOW,
+        )
+
+
+def test_non_merge_v2_rejects_side_effects() -> None:
+    with pytest.raises(ValidationError):
+        IdentityDecisionRecordV2(
+            decision_id="dec:1",
+            world_id="world:demo",
+            decision_kind=IdentityDecisionKind.ALIAS_ADD,
+            subject_object_ids=["obj:1"],
+            alias="Name",
+            created_at=NOW,
+            merge_side_effects=IdentityMergeSideEffects(),
+        )
+
+
+def test_alias_rewrite_blank_key_or_owner_rejected() -> None:
+    with pytest.raises(ValidationError):
+        IdentityAliasMapRewrite(
+            alias_key="  ",
+            prior_owner_node_id=None,
+            new_owner_node_id="obj:1",
+        )
+    with pytest.raises(ValidationError):
+        IdentityAliasMapRewrite(
+            alias_key="alias",
+            prior_owner_node_id=None,
+            new_owner_node_id="",
+        )
+
+
+def test_alias_rewrite_new_owner_must_match_merge_target() -> None:
+    with pytest.raises(ValidationError):
+        IdentityDecisionRecordV2(
+            decision_id="dec:1",
+            world_id="world:demo",
+            decision_kind=IdentityDecisionKind.MERGE,
+            subject_object_ids=["obj:1", "obj:2"],
+            target_object_ids=["obj:1"],
+            created_at=NOW,
+            merge_side_effects=IdentityMergeSideEffects(
+                alias_map_rewrites=[
+                    IdentityAliasMapRewrite(
+                        alias_key="alias",
+                        prior_owner_node_id="obj:2",
+                        new_owner_node_id="obj:other",
+                    )
+                ]
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        ContributionEpistemicKind.ASSERTED,
+        ContributionEpistemicKind.INFERRED,
+        ContributionEpistemicKind.SPECULATIVE,
+        ContributionEpistemicKind.SOURCE_DERIVED_CANDIDATE,
+    ],
+)
+def test_contribution_v2_epistemic_kinds_round_trip(kind: ContributionEpistemicKind) -> None:
+    assertion = GraphContributionAssertionV2(
+        assertion_id="a:1",
+        assertion_kind="attribute",
+        epistemic_kind=kind,
+    )
+    restored = GraphContributionAssertionV2.model_validate(assertion.model_dump(mode="json"))
+    assert restored.epistemic_kind is kind
+
+
+def test_unknown_contribution_epistemic_kind_rejected() -> None:
+    with pytest.raises(ValidationError):
+        GraphContributionAssertionV2.model_validate(
+            {
+                "assertion_id": "a:1",
+                "assertion_kind": "attribute",
+                "epistemic_kind": "fact",
+            }
+        )
+
+
+def test_v1_assertion_still_rejects_source_derived_candidate() -> None:
+    with pytest.raises(ValidationError):
+        GraphContributionAssertion.model_validate(
+            {
+                "assertion_id": "a:1",
+                "assertion_kind": "attribute",
+                "epistemic_kind": "source_derived_candidate",
+            }
+        )
+    assert [member.value for member in EpistemicKind] == [
+        "asserted",
+        "inferred",
+        "speculative",
+    ]

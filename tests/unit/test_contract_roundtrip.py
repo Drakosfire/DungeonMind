@@ -10,14 +10,22 @@ from dungeonmind.contracts import (
     CapabilityCategory,
     CapabilityEffect,
     CapabilityPolicy,
+    ContributionEpistemicKind,
     ContributionSourceKind,
     EvidenceRef,
     GraphContribution,
     GraphContributionAssertion,
+    GraphContributionAssertionCorrection,
+    GraphContributionAssertionCorrectionKind,
+    GraphContributionAssertionV2,
+    GraphContributionV2,
     GraphRetrievalSession,
     GraphScope,
+    IdentityAliasMapRewrite,
     IdentityDecisionKind,
     IdentityDecisionRecord,
+    IdentityDecisionRecordV2,
+    IdentityMergeSideEffects,
     MindTurnRequest,
     MindTurnResponse,
     ProjectionSnapshot,
@@ -122,6 +130,68 @@ def _instances() -> list[object]:
             target_object_ids=["obj:1"],
             created_at=NOW,
         ),
+        GraphContributionV2(
+            contribution_id="ctr:v2",
+            world_id="world:demo",
+            source_kind=ContributionSourceKind.EXTRACTION,
+            produced_at=NOW,
+            assertions=[
+                GraphContributionAssertionV2(
+                    assertion_id="a:v2-source",
+                    assertion_kind="attribute",
+                    subject_object_id="obj:1",
+                    label="candidate",
+                    source_artifact_id="src:1",
+                    epistemic_kind=ContributionEpistemicKind.SOURCE_DERIVED_CANDIDATE,
+                ),
+                GraphContributionAssertionV2(
+                    assertion_id="a:v2-replacement",
+                    assertion_kind="attribute",
+                    subject_object_id="obj:1",
+                    label="replacement",
+                    source_artifact_id="src:1",
+                    acceptance_state="accepted",
+                ),
+            ],
+            assertion_corrections=[
+                GraphContributionAssertionCorrection(
+                    correction_kind=GraphContributionAssertionCorrectionKind.CONTRADICTS,
+                    target_contribution_id="ctr:1",
+                    target_assertion_id="a:1",
+                ),
+                GraphContributionAssertionCorrection(
+                    correction_kind=GraphContributionAssertionCorrectionKind.CONTRADICTS_AND_REPLACES,
+                    target_contribution_id="ctr:1",
+                    target_assertion_id="a:1",
+                    replacement_assertion_id="a:v2-replacement",
+                ),
+            ],
+        ),
+        IdentityDecisionRecordV2(
+            decision_id="dec:v2",
+            world_id="world:demo",
+            decision_kind=IdentityDecisionKind.MERGE,
+            subject_object_ids=["obj:1", "obj:2"],
+            target_object_ids=["obj:1"],
+            created_at=NOW,
+            merge_side_effects=IdentityMergeSideEffects(
+                aliases_added_to_target=["alias-a"],
+                evidence_ref_ids_added_to_target=["evd:1"],
+                source_domains_added_to_target=["worldbuilding"],
+                alias_map_rewrites=[
+                    IdentityAliasMapRewrite(
+                        alias_key="old-name",
+                        prior_owner_node_id="obj:2",
+                        new_owner_node_id="obj:1",
+                    ),
+                    IdentityAliasMapRewrite(
+                        alias_key="new-name",
+                        prior_owner_node_id=None,
+                        new_owner_node_id="obj:1",
+                    ),
+                ],
+            ),
+        ),
         WorldGraphProjectionRequest(
             world_id="world:demo",
             campaign_id="camp:1",
@@ -215,3 +285,60 @@ def test_campaign_scope_blank_forbidden() -> None:
             produced_at=NOW,
             campaign_scope="",
         )
+
+
+BASELINE_V1_CONTRIBUTION_FINGERPRINT = (
+    "e036fb6ab1ca37fe2d22b96cce3117413d851b9c6b1f2f7e7c9f940651795b96"
+)
+BASELINE_V1_IDENTITY_FINGERPRINT = (
+    "54763ebace338ca832f7d90654b430e30550931cee14839b1c7736adeafa4f77"
+)
+
+
+def test_v1_contribution_dump_and_fingerprint_unchanged() -> None:
+    contribution = next(
+        instance for instance in _instances() if type(instance) is GraphContribution
+    )
+    dump = contribution.model_dump(mode="json")
+    assert "assertion_corrections" not in dump
+    from dungeonmind.domain.canonical import canonical_sha256
+
+    assert canonical_sha256(dump) == BASELINE_V1_CONTRIBUTION_FINGERPRINT
+
+
+def test_v1_identity_dump_and_fingerprint_unchanged() -> None:
+    decision = next(
+        instance for instance in _instances() if type(instance) is IdentityDecisionRecord
+    )
+    dump = decision.model_dump(mode="json")
+    assert "merge_side_effects" not in dump
+    from dungeonmind.domain.canonical import canonical_sha256
+
+    assert canonical_sha256(dump) == BASELINE_V1_IDENTITY_FINGERPRINT
+
+
+def test_v2_contribution_round_trip_keeps_corrections_and_epistemic() -> None:
+    contribution = next(
+        instance for instance in _instances() if type(instance) is GraphContributionV2
+    )
+    restored = GraphContributionV2.model_validate_json(contribution.model_dump_json())
+    assert restored.assertion_corrections == contribution.assertion_corrections
+    assert restored.assertions[0].epistemic_kind is (
+        ContributionEpistemicKind.SOURCE_DERIVED_CANDIDATE
+    )
+    assert restored.model_dump(mode="json")["assertion_corrections"]
+
+
+def test_v2_identity_round_trip_keeps_merge_side_effects() -> None:
+    decision = next(
+        instance for instance in _instances() if type(instance) is IdentityDecisionRecordV2
+    )
+    restored = IdentityDecisionRecordV2.model_validate_json(decision.model_dump_json())
+    assert restored.merge_side_effects == decision.merge_side_effects
+    effects = restored.merge_side_effects
+    assert effects is not None
+    assert effects.aliases_added_to_target == ["alias-a"]
+    assert effects.evidence_ref_ids_added_to_target == ["evd:1"]
+    assert effects.source_domains_added_to_target == ["worldbuilding"]
+    assert effects.alias_map_rewrites[0].prior_owner_node_id == "obj:2"
+    assert effects.alias_map_rewrites[1].prior_owner_node_id is None
