@@ -184,6 +184,33 @@ class FinalizedReviewPublicationOutcomeUnknownError(DungeonMindError):
         )
 
 
+class ExistingWorldAdoptionOutcomeUnknownError(DungeonMindError):
+    """An adoption call may have committed, but exact recovery was unavailable."""
+
+    code = "existing_world_adoption_outcome_unknown"
+
+    def __init__(
+        self,
+        *,
+        world_id: str,
+        adoption_id: str,
+        bundle_sha256: str,
+        expected_published_revision_id: str,
+        reason: str,
+    ) -> None:
+        super().__init__(
+            "existing-world adoption outcome is unknown",
+            details={
+                "world_id": world_id,
+                "adoption_id": adoption_id,
+                "bundle_sha256": bundle_sha256,
+                "expected_published_revision_id": expected_published_revision_id,
+                "reason": reason,
+                "retry_safe": True,
+            },
+        )
+
+
 class ContributionMaterializationError(DungeonMindError):
     """A finalized review cannot be materialized into a valid graph payload."""
 

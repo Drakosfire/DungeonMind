@@ -32,6 +32,7 @@ EXPECTED_TABLES = {
     "embedding_runs",
     "active_embedding_runs",
     "semantic_documents",
+    "existing_world_adoptions",
 }
 
 
@@ -68,7 +69,7 @@ def test_vector_extension_and_schema_tables(db) -> None:
             "SELECT version_num FROM dungeonmind.alembic_version"
         ).fetchone()
         assert version is not None
-        assert version["version_num"] == "0005_source_created_at_null"
+        assert version["version_num"] == "0006_existing_world_adoptions"
 
         constraints = conn.execute(
             """
@@ -136,7 +137,7 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
             version = conn.execute(
                 "SELECT version_num FROM dungeonmind.alembic_version"
             ).fetchone()
-            assert version["version_num"] == "0005_source_created_at_null"
+            assert version["version_num"] == "0006_existing_world_adoptions"
             tables = conn.execute(
                 """
                 SELECT COUNT(*) AS n
