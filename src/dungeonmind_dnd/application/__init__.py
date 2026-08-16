@@ -6,6 +6,7 @@ appends, decides, or publishes.
 
 from .contribution_planning import plan_threat_candidate_contribution
 from .contribution_review import build_threat_contribution_review_intent
+from .relationship_aspect_materialization import materialize_relationship_aspect_plan_v1
 from .threat_candidates import (
     builtin_threat_vocabulary_ref,
     load_builtin_threat_vocabulary,
@@ -80,6 +81,7 @@ __all__ = [
     "load_builtin_world_property_v2_vocabulary",
     "load_builtin_world_property_v3_vocabulary",
     "load_builtin_world_property_vocabulary",
+    "materialize_relationship_aspect_plan_v1",
     "parse_threat_candidate_packet",
     "plan_threat_candidate_contribution",
     "render_threat_vocabulary_prompt",
