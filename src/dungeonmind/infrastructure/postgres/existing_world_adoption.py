@@ -8,10 +8,19 @@ from typing import Any
 from psycopg import Connection, sql
 from psycopg.errors import UniqueViolation
 
-from ...application.existing_world_adoption import bind_existing_world_adoption_command
+from ...application.existing_world_adoption import (
+    bind_existing_world_adoption_command,
+    terminal_existing_world_adoption_receipt,
+)
+from ...application.repositories import (
+    DurableExistingWorldAdoptionCommand,
+    DurableExistingWorldAdoptionReceipt,
+)
 from ...contracts.existing_world_adoption import (
-    ExistingWorldAdoptionCommandV1,
+    EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
     ExistingWorldAdoptionReceiptV1,
+    ExistingWorldAdoptionReceiptV2,
 )
 from ...contracts.graph import PublishRevisionCommand
 from ...domain.errors import IdempotencyConflictError, PersistenceIntegrityError
@@ -127,11 +136,22 @@ class PostgresExistingWorldAdoptionRepository:
         self._graph = PostgresWorldGraphRepository(database)
         self._failure_hook = failure_hook
 
-    def _return_receipt(self, row: dict[str, Any]) -> ExistingWorldAdoptionReceiptV1:
+    def _return_receipt(self, row: dict[str, Any]) -> DurableExistingWorldAdoptionReceipt:
         identity = _adoption_identity(row)
+        schema_version = row["schema_version"]
+        if schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA:
+            receipt_type: type[DurableExistingWorldAdoptionReceipt] = (
+                ExistingWorldAdoptionReceiptV1
+            )
+        elif schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA:
+            receipt_type = ExistingWorldAdoptionReceiptV2
+        else:
+            raise PersistenceIntegrityError(
+                f"unsupported existing-world adoption receipt schema {schema_version!r}"
+            )
         try:
             receipt = reconstruct(
-                ExistingWorldAdoptionReceiptV1,
+                receipt_type,
                 dict(row["payload"]),
                 expected_fingerprint=row["record_fingerprint"],
                 identity=identity,
@@ -146,7 +166,7 @@ class PostgresExistingWorldAdoptionRepository:
         self,
         conn: Connection[Any],
         row: dict[str, Any],
-    ) -> ExistingWorldAdoptionReceiptV1:
+    ) -> DurableExistingWorldAdoptionReceipt:
         receipt = self._return_receipt(row)
         revision_row = conn.execute(
             sql.SQL(
@@ -206,7 +226,7 @@ class PostgresExistingWorldAdoptionRepository:
     def _insert_receipt(
         self,
         conn: Connection[Any],
-        receipt: ExistingWorldAdoptionReceiptV1,
+        receipt: DurableExistingWorldAdoptionReceipt,
     ) -> dict[str, Any]:
         fingerprint = model_fingerprint(receipt)
         conn.execute(
@@ -254,17 +274,19 @@ class PostgresExistingWorldAdoptionRepository:
             raise PersistenceIntegrityError("existing-world adoption receipt missing after insert")
         return row
 
-    def get(self, world_id: str, adoption_id: str) -> ExistingWorldAdoptionReceiptV1 | None:
+    def get(self, world_id: str, adoption_id: str) -> DurableExistingWorldAdoptionReceipt | None:
         with self._database.transaction() as conn:
             row = _adoption_row(conn, world_id=world_id, adoption_id=adoption_id)
             return None if row is None else self._load_verified(conn, row)
 
-    def get_for_world(self, world_id: str) -> ExistingWorldAdoptionReceiptV1 | None:
+    def get_for_world(self, world_id: str) -> DurableExistingWorldAdoptionReceipt | None:
         with self._database.transaction() as conn:
             row = _adoption_row(conn, world_id=world_id)
             return None if row is None else self._load_verified(conn, row)
 
-    def adopt(self, command: ExistingWorldAdoptionCommandV1) -> ExistingWorldAdoptionReceiptV1:
+    def adopt(
+        self, command: DurableExistingWorldAdoptionCommand
+    ) -> DurableExistingWorldAdoptionReceipt:
         validated = bind_existing_world_adoption_command(command)
         bundle = validated.bundle
         world_id = bundle.world_id
@@ -288,11 +310,16 @@ class PostgresExistingWorldAdoptionRepository:
                 _put_artifact_in_transaction(conn, artifact)
             for revision in bundle.source_revisions:
                 _put_revision_in_transaction(conn, revision)
+            if self._failure_hook is not None:
+                self._failure_hook("source_records")
             for contribution in bundle.contributions:
                 _append_contribution_in_transaction(conn, contribution)
+            if self._failure_hook is not None:
+                self._failure_hook("contributions")
             for decision in bundle.identity_decisions:
                 _append_identity_in_transaction(conn, decision)
             if self._failure_hook is not None:
+                self._failure_hook("identity_decisions")
                 self._failure_hook("source_history")
             graph_command = PublishRevisionCommand(
                 world_id=world_id,
@@ -318,19 +345,9 @@ class PostgresExistingWorldAdoptionRepository:
                 )
             if self._failure_hook is not None:
                 self._failure_hook("graph")
-            receipt = ExistingWorldAdoptionReceiptV1(
-                adoption_id=bundle.adoption_id,
-                world_id=world_id,
-                bundle_sha256=validated.bundle_sha256,
-                source_provenance=bundle.source_provenance,
+            receipt = terminal_existing_world_adoption_receipt(
+                validated,
                 published_revision_id=revision.revision_id,
-                graph_schema=bundle.graph_schema,
-                graph_payload_sha256=validated.graph_payload_sha256,
-                adopted_at=validated.requested_adopted_at,
-                source_artifact_count=len(bundle.source_artifacts),
-                source_revision_count=len(bundle.source_revisions),
-                contribution_count=len(bundle.contributions),
-                identity_decision_count=len(bundle.identity_decisions),
             )
             try:
                 row = self._insert_receipt(conn, receipt)

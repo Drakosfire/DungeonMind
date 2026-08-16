@@ -8,7 +8,14 @@ from typing import Any
 from psycopg import sql
 from pydantic import ValidationError
 
-from ...contracts.contribution import ContributionStatus, GraphContribution
+from ...application.repositories import DurableGraphContribution, DurableIdentityDecision
+from ...contracts.contribution import (
+    GRAPH_CONTRIBUTION_SCHEMA,
+    GRAPH_CONTRIBUTION_V2_SCHEMA,
+    ContributionStatus,
+    GraphContribution,
+    GraphContributionV2,
+)
 from ...contracts.contribution_review import (
     ContributionReviewRecord,
     ContributionReviewState,
@@ -21,7 +28,12 @@ from ...contracts.evidence import (
     SourceArtifactV2,
     SourceRevision,
 )
-from ...contracts.identity import IdentityDecisionRecord
+from ...contracts.identity import (
+    IDENTITY_DECISION_SCHEMA,
+    IDENTITY_DECISION_V2_SCHEMA,
+    IdentityDecisionRecord,
+    IdentityDecisionRecordV2,
+)
 from ...contracts.retrieval import GraphRetrievalSession
 from ...domain.errors import (
     ContributionReviewAlreadyFinalizedError,
@@ -102,18 +114,36 @@ def _session_identity(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _return_contribution(row: dict[str, Any]) -> GraphContribution:
+def _return_contribution(row: dict[str, Any]) -> DurableGraphContribution:
+    schema_version = row["schema_version"]
+    if schema_version == GRAPH_CONTRIBUTION_SCHEMA:
+        model_type: type[DurableGraphContribution] = GraphContribution
+    elif schema_version == GRAPH_CONTRIBUTION_V2_SCHEMA:
+        model_type = GraphContributionV2
+    else:
+        raise PersistenceIntegrityError(
+            f"unsupported contribution schema {schema_version!r}"
+        )
     return reconstruct(
-        GraphContribution,
+        model_type,
         dict(row["payload"]),
         expected_fingerprint=row["record_fingerprint"],
         identity=_contribution_identity(row),
     ).model_copy(deep=True)
 
 
-def _return_identity(row: dict[str, Any]) -> IdentityDecisionRecord:
+def _return_identity(row: dict[str, Any]) -> DurableIdentityDecision:
+    schema_version = row["schema_version"]
+    if schema_version == IDENTITY_DECISION_SCHEMA:
+        model_type: type[DurableIdentityDecision] = IdentityDecisionRecord
+    elif schema_version == IDENTITY_DECISION_V2_SCHEMA:
+        model_type = IdentityDecisionRecordV2
+    else:
+        raise PersistenceIntegrityError(
+            f"unsupported identity decision schema {schema_version!r}"
+        )
     return reconstruct(
-        IdentityDecisionRecord,
+        model_type,
         dict(row["payload"]),
         expected_fingerprint=row["record_fingerprint"],
         identity=_identity_decision_identity(row),
@@ -198,8 +228,8 @@ _REVIEW_SELECT = """
 
 def _append_contribution_in_transaction(
     conn: Any,
-    contribution: GraphContribution,
-) -> GraphContribution:
+    contribution: DurableGraphContribution,
+) -> DurableGraphContribution:
     """Insert/reconcile one contribution inside an existing transaction."""
     fingerprint = model_fingerprint(contribution)
     upsert_evidence_refs(conn, collect_evidence_from_contribution_payload(contribution))
@@ -277,11 +307,16 @@ def _get_contribution_in_transaction(
     if row is None:
         raise PersistenceIntegrityError(f"review contribution child {contribution_id!r} is missing")
     try:
-        return _return_contribution(row)
+        loaded = _return_contribution(row)
     except PersistenceIntegrityError:
         raise PersistenceIntegrityError(
             f"review contribution child {contribution_id!r} failed reconstruction"
         ) from None
+    if not isinstance(loaded, GraphContribution):
+        raise PersistenceIntegrityError(
+            f"review contribution child {contribution_id!r} is not dm_graph_contribution_v1"
+        )
+    return loaded
 
 
 def _return_review_record(row: dict[str, Any]) -> ContributionReviewRecord:
@@ -342,12 +377,12 @@ class PostgresContributionRepository:
     def __init__(self, database: PostgresDatabase) -> None:
         self._database = database
 
-    def append(self, contribution: GraphContribution) -> GraphContribution:
+    def append(self, contribution: DurableGraphContribution) -> DurableGraphContribution:
         with self._database.transaction() as conn:
             ensure_world(conn, contribution.world_id, created_at=contribution.produced_at)
             return _append_contribution_in_transaction(conn, contribution)
 
-    def get(self, world_id: str, contribution_id: str) -> GraphContribution | None:
+    def get(self, world_id: str, contribution_id: str) -> DurableGraphContribution | None:
         with self._database.transaction() as conn:
             row = conn.execute(
                 sql.SQL(
@@ -365,7 +400,7 @@ class PostgresContributionRepository:
 
     def list_for_world(
         self, world_id: str, *, status: ContributionStatus | None = None
-    ) -> list[GraphContribution]:
+    ) -> list[DurableGraphContribution]:
         with self._database.transaction() as conn:
             if status is None:
                 rows = conn.execute(
@@ -400,7 +435,7 @@ class PostgresContributionRepository:
         status: ContributionStatus,
         *,
         superseded_by: str | None = None,
-    ) -> GraphContribution:
+    ) -> DurableGraphContribution:
         with self._database.transaction() as conn:
             row = conn.execute(
                 sql.SQL(
@@ -417,12 +452,7 @@ class PostgresContributionRepository:
                 raise DocumentNotFoundError(
                     f"contribution {contribution_id!r} not found in world {world_id!r}"
                 )
-            existing = reconstruct(
-                GraphContribution,
-                dict(row["payload"]),
-                expected_fingerprint=row["record_fingerprint"],
-                identity=_contribution_identity(row),
-            )
+            existing = _return_contribution(row)
             protected = conn.execute(
                 sql.SQL(
                     """
@@ -633,8 +663,8 @@ class PostgresContributionReviewRepository:
 
 def _append_identity_in_transaction(
     conn: Any,
-    decision: IdentityDecisionRecord,
-) -> IdentityDecisionRecord:
+    decision: DurableIdentityDecision,
+) -> DurableIdentityDecision:
     """Insert/reconcile one identity decision inside an existing transaction."""
     fingerprint = model_fingerprint(decision)
     ensure_world(conn, decision.world_id, created_at=decision.created_at)
@@ -690,11 +720,11 @@ class PostgresIdentityDecisionRepository:
     def __init__(self, database: PostgresDatabase) -> None:
         self._database = database
 
-    def append(self, decision: IdentityDecisionRecord) -> IdentityDecisionRecord:
+    def append(self, decision: DurableIdentityDecision) -> DurableIdentityDecision:
         with self._database.transaction() as conn:
             return _append_identity_in_transaction(conn, decision)
 
-    def get(self, world_id: str, decision_id: str) -> IdentityDecisionRecord | None:
+    def get(self, world_id: str, decision_id: str) -> DurableIdentityDecision | None:
         with self._database.transaction() as conn:
             row = conn.execute(
                 sql.SQL(
@@ -710,7 +740,7 @@ class PostgresIdentityDecisionRepository:
             return None
         return _return_identity(row)
 
-    def list_for_world(self, world_id: str) -> list[IdentityDecisionRecord]:
+    def list_for_world(self, world_id: str) -> list[DurableIdentityDecision]:
         with self._database.transaction() as conn:
             rows = conn.execute(
                 sql.SQL(
