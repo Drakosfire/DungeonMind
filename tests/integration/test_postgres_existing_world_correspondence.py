@@ -21,6 +21,7 @@ from dungeonmind.application.existing_world_correspondence import (
     ExistingWorldCorrespondenceService,
 )
 from dungeonmind.contracts.existing_world_adoption import (
+    ExistingWorldAdoptionBundleV2,
     existing_world_adoption_bundle_v2_canonical_bytes,
 )
 from dungeonmind.contracts.existing_world_correspondence import (
@@ -72,8 +73,17 @@ def _adopt(pg) -> None:
     )
 
 
+def _parse_v2(raw: bytes) -> ExistingWorldAdoptionBundleV2:
+    bundle = parse_existing_world_adoption_bundle(
+        raw,
+        graph_reader=eldyrwild_graph_reader(),
+    )
+    assert isinstance(bundle, ExistingWorldAdoptionBundleV2)
+    return bundle
+
+
 def _changed_source_snapshot_bytes() -> bytes:
-    bundle = parse_sealed_bundle()
+    bundle = _parse_v2(raw_bundle())
     changed = bundle.model_copy(
         update={
             "source_provenance": bundle.source_provenance.model_copy(
@@ -92,7 +102,7 @@ def _changed_source_snapshot_bytes() -> bytes:
 
 def _changed_adoption_id_snapshot_bytes() -> bytes:
     """Canonical bundle identical to the adopted one except ``adoption_id``."""
-    bundle = parse_sealed_bundle()
+    bundle = _parse_v2(raw_bundle())
     changed = bundle.model_copy(update={"adoption_id": ADOPTION_ID + "-tampered"})
     raw = existing_world_adoption_bundle_v2_canonical_bytes(changed)
     reparsed = parse_existing_world_adoption_bundle(
@@ -116,6 +126,65 @@ def _evidence_referenced_source_revision_id() -> str:
         if record.source_revision_id is not None:
             return record.source_revision_id
     raise AssertionError("fixture evidence must reference at least one source revision")
+
+
+UNREFERENCED_ARTIFACT_ID = "artifact:unreferenced-source-record"
+UNREFERENCED_REVISION_ID = "revision:unreferenced-source-record"
+
+
+def _extended_bundle_with_unreferenced_source() -> bytes:
+    """The sealed bundle plus one source artifact/revision referenced by
+    neither evidence nor contributions — the adversarial surface that
+    reachable-closure-only resolution cannot account for."""
+    bundle = _parse_v2(raw_bundle())
+    extra_artifact = bundle.source_artifacts[0].model_copy(
+        update={
+            "source_artifact_id": UNREFERENCED_ARTIFACT_ID,
+            "current_revision_id": UNREFERENCED_REVISION_ID,
+        }
+    )
+    extra_revision = bundle.source_revisions[0].model_copy(
+        update={
+            "source_revision_id": UNREFERENCED_REVISION_ID,
+            "source_artifact_id": UNREFERENCED_ARTIFACT_ID,
+            "content_sha256": "1" * 64,
+        }
+    )
+    extended = bundle.model_copy(
+        update={
+            "source_artifacts": [*bundle.source_artifacts, extra_artifact],
+            "source_revisions": [*bundle.source_revisions, extra_revision],
+        }
+    )
+    raw = existing_world_adoption_bundle_v2_canonical_bytes(extended)
+    reparsed = parse_existing_world_adoption_bundle(
+        raw,
+        graph_reader=eldyrwild_graph_reader(),
+    )
+    assert len(reparsed.source_artifacts) == len(bundle.source_artifacts) + 1
+    assert len(reparsed.source_revisions) == len(bundle.source_revisions) + 1
+    return raw
+
+
+def _adopt_extended(pg) -> None:
+    adopt_existing_world(
+        _extended_bundle_with_unreferenced_source(),
+        adopted_at=NOW,
+        adoption_repository=pg.existing_world_adoptions,
+        graph_reader=eldyrwild_graph_reader(),
+    )
+
+
+def _changed_extended_snapshot_bytes() -> bytes:
+    bundle = _parse_v2(_extended_bundle_with_unreferenced_source())
+    changed = bundle.model_copy(
+        update={
+            "source_provenance": bundle.source_provenance.model_copy(
+                update={"source_world_revision_id": CHANGED_SOURCE_REVISION_ID}
+            )
+        }
+    )
+    return existing_world_adoption_bundle_v2_canonical_bytes(changed)
 
 
 def _coherent_contribution_tamper(pg) -> str:
@@ -454,3 +523,54 @@ def test_postgres_deleted_evidence_referenced_source_revision_fails_closed_befor
     assert exc.value.details["reason"] == "adopted_source_revision_missing"
     assert exc.value.details["source_revision_id"] == target
     assert _counts(pg) == {**before, "revisions_source": before["revisions_source"] - 1}
+
+
+def test_postgres_deleted_unreferenced_source_revision_fails_closed_before_stale(
+    pg,
+) -> None:
+    """The Cycle-2 adversarial case at the owning boundary: adopt A (carrying
+    a source record referenced by neither evidence nor contributions) →
+    delete that record → present valid B must raise, never STALE."""
+    _adopt_extended(pg)
+    before = _counts(pg)
+    with pg.database.connect() as conn:
+        conn.execute(
+            "DELETE FROM dungeonmind.source_revisions WHERE source_revision_id = %s",
+            (UNREFERENCED_REVISION_ID,),
+        )
+        conn.commit()
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _service(pg).check(_changed_extended_snapshot_bytes(), world_id=WORLD_ID)
+    expected = len(parse_sealed_bundle().source_revisions) + 1
+    assert exc.value.details["reason"] == "adopted_source_revision_missing"
+    assert exc.value.details["adopted_source_revision_count"] == expected
+    assert exc.value.details["durable_source_revision_count"] == expected - 1
+    assert _counts(pg) == {**before, "revisions_source": before["revisions_source"] - 1}
+
+
+def test_postgres_deleted_unreferenced_source_artifact_fails_closed_before_stale(
+    pg,
+) -> None:
+    """Same adversarial sequence at artifact granularity: the receipt's
+    source-artifact count pin catches the deletion before STALE."""
+    _adopt_extended(pg)
+    before = _counts(pg)
+    with pg.database.connect() as conn:
+        conn.execute(
+            "DELETE FROM dungeonmind.source_artifacts WHERE source_artifact_id = %s",
+            (UNREFERENCED_ARTIFACT_ID,),
+        )
+        conn.commit()
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _service(pg).check(_changed_extended_snapshot_bytes(), world_id=WORLD_ID)
+    expected = len(parse_sealed_bundle().source_artifacts) + 1
+    assert exc.value.details["reason"] == "adopted_source_artifact_missing"
+    assert exc.value.details["adopted_source_artifact_count"] == expected
+    assert exc.value.details["durable_source_artifact_count"] == expected - 1
+    # The orphaned revision row remains in the table but leaves the
+    # world-scoped count, which joins revisions through source_artifacts.
+    assert _counts(pg) == {
+        **before,
+        "artifacts": before["artifacts"] - 1,
+        "revisions_source": before["revisions_source"] - 1,
+    }
