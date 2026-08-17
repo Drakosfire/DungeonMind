@@ -22,6 +22,7 @@ from dungeonmind.contracts.contribution import (
     GraphContributionV2,
 )
 from dungeonmind.contracts.existing_world_adoption import (
+    ExistingWorldAdoptionBundleV2,
     existing_world_adoption_bundle_v2_canonical_bytes,
 )
 from dungeonmind.contracts.existing_world_correspondence import (
@@ -107,8 +108,18 @@ def _checks_by_name(
     return {check.check: check for check in result.checks}
 
 
-def _changed_source_snapshot_bytes() -> bytes:
-    bundle = parse_sealed_bundle()
+def _parse_v2(raw: bytes) -> ExistingWorldAdoptionBundleV2:
+    bundle = parse_existing_world_adoption_bundle(
+        raw,
+        graph_reader=eldyrwild_graph_reader(),
+    )
+    assert isinstance(bundle, ExistingWorldAdoptionBundleV2)
+    return bundle
+
+
+def _changed_snapshot_bytes(raw_bundle_bytes: bytes) -> bytes:
+    """A valid changed-source snapshot derived from the given bundle bytes."""
+    bundle = _parse_v2(raw_bundle_bytes)
     changed = bundle.model_copy(
         update={
             "source_provenance": bundle.source_provenance.model_copy(
@@ -126,9 +137,67 @@ def _changed_source_snapshot_bytes() -> bytes:
     return raw
 
 
+def _changed_source_snapshot_bytes() -> bytes:
+    return _changed_snapshot_bytes(raw_bundle())
+
+
+UNREFERENCED_ARTIFACT_ID = "artifact:unreferenced-source-record"
+UNREFERENCED_REVISION_ID = "revision:unreferenced-source-record"
+
+
+def _extended_bundle_with_unreferenced_source() -> bytes:
+    """The sealed bundle plus one source artifact/revision referenced by
+    neither evidence nor contributions.
+
+    The adoption closures require referenced records to be in-bundle but do
+    not require every in-bundle record to be referenced, so this bundle is
+    valid and adopts cleanly; the extra record is exactly the adversarial
+    surface that reachable-closure-only resolution cannot account for.
+    """
+    bundle = _parse_v2(raw_bundle())
+    extra_artifact = bundle.source_artifacts[0].model_copy(
+        update={
+            "source_artifact_id": UNREFERENCED_ARTIFACT_ID,
+            "current_revision_id": UNREFERENCED_REVISION_ID,
+        }
+    )
+    extra_revision = bundle.source_revisions[0].model_copy(
+        update={
+            "source_revision_id": UNREFERENCED_REVISION_ID,
+            "source_artifact_id": UNREFERENCED_ARTIFACT_ID,
+            "content_sha256": "1" * 64,
+        }
+    )
+    extended = bundle.model_copy(
+        update={
+            "source_artifacts": [*bundle.source_artifacts, extra_artifact],
+            "source_revisions": [*bundle.source_revisions, extra_revision],
+        }
+    )
+    raw = existing_world_adoption_bundle_v2_canonical_bytes(extended)
+    reparsed = parse_existing_world_adoption_bundle(
+        raw,
+        graph_reader=eldyrwild_graph_reader(),
+    )
+    assert len(reparsed.source_artifacts) == len(bundle.source_artifacts) + 1
+    assert len(reparsed.source_revisions) == len(bundle.source_revisions) + 1
+    return raw
+
+
+def _extended_adopted_harness() -> _WorldHarness:
+    harness = _WorldHarness()
+    adopt_existing_world(
+        _extended_bundle_with_unreferenced_source(),
+        adopted_at=NOW,
+        adoption_repository=harness.adoptions,
+        graph_reader=eldyrwild_graph_reader(),
+    )
+    return harness
+
+
 def _changed_adoption_id_snapshot_bytes() -> bytes:
     """Canonical bundle identical to the adopted one except ``adoption_id``."""
-    bundle = parse_sealed_bundle()
+    bundle = _parse_v2(raw_bundle())
     changed = bundle.model_copy(update={"adoption_id": ADOPTION_ID + "-tampered"})
     raw = existing_world_adoption_bundle_v2_canonical_bytes(changed)
     reparsed = parse_existing_world_adoption_bundle(
@@ -144,7 +213,7 @@ def _changed_adoption_id_snapshot_bytes() -> bytes:
 
 def _changed_producer_snapshot_bytes() -> bytes:
     """Canonical bundle identical to the adopted one except producer provenance."""
-    bundle = parse_sealed_bundle()
+    bundle = _parse_v2(raw_bundle())
     changed = bundle.model_copy(
         update={
             "source_provenance": bundle.source_provenance.model_copy(
@@ -605,6 +674,66 @@ def test_same_cardinality_contribution_swap_fails_closed_on_identity() -> None:
         harness.check()
     assert exc.value.details["reason"] == "adopted_contribution_missing"
     assert exc.value.details["contribution_id"] == target.contribution_id
+
+
+def test_deleted_unreferenced_source_revision_fails_closed_before_stale() -> None:
+    """A source record referenced by neither evidence nor contributions is
+    still adopted history: deleting it must fail closed via the receipt's
+    source-revision count pin before any STALE classification."""
+    harness = _extended_adopted_harness()
+    harness.sources._revisions.pop(UNREFERENCED_REVISION_ID)
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        harness.check(
+            _changed_snapshot_bytes(_extended_bundle_with_unreferenced_source())
+        )
+    expected = len(parse_sealed_bundle().source_revisions) + 1
+    assert exc.value.details["reason"] == "adopted_source_revision_missing"
+    assert exc.value.details["adopted_source_revision_count"] == expected
+    assert exc.value.details["durable_source_revision_count"] == expected - 1
+
+
+def test_deleted_unreferenced_source_artifact_fails_closed_before_stale() -> None:
+    """Same adversarial sequence at artifact granularity: the receipt's
+    source-artifact count pin catches the deletion before STALE."""
+    harness = _extended_adopted_harness()
+    harness.sources._artifacts.pop(UNREFERENCED_ARTIFACT_ID)
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        harness.check(
+            _changed_snapshot_bytes(_extended_bundle_with_unreferenced_source())
+        )
+    expected = len(parse_sealed_bundle().source_artifacts) + 1
+    assert exc.value.details["reason"] == "adopted_source_artifact_missing"
+    assert exc.value.details["adopted_source_artifact_count"] == expected
+    assert exc.value.details["durable_source_artifact_count"] == expected - 1
+
+
+def test_deleted_unreferenced_source_record_fails_closed_when_identity_matched() -> None:
+    """Deleting an unreferenced adopted source record fails closed even when
+    the presented snapshot is the exact adopted bundle."""
+    harness = _extended_adopted_harness()
+    harness.sources._revisions.pop(UNREFERENCED_REVISION_ID)
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        harness.check(_extended_bundle_with_unreferenced_source())
+    assert exc.value.details["reason"] == "adopted_source_revision_missing"
+
+
+def test_extra_durable_source_artifact_is_mismatch() -> None:
+    """A post-adoption extra source artifact is enumerated with the world's
+    complete source membership and diverges source_history for an
+    identity-matched snapshot."""
+    harness = _adopted_harness()
+    extra = parse_sealed_bundle().source_artifacts[0].model_copy(
+        update={
+            "source_artifact_id": "artifact:post-adoption-extra",
+            "current_revision_id": None,
+        }
+    )
+    harness.sources.put_artifact(extra)
+    result = harness.check()
+    assert result.classification == "MISMATCH"
+    checks = _checks_by_name(result)
+    assert checks["source_history"].outcome == "diverged"
+    assert "artifact:post-adoption-extra" in (checks["source_history"].detail or "")
 
 
 def test_dangling_source_revision_raises_integrity_error() -> None:
