@@ -36,29 +36,29 @@ receipt-referenced state is resolved before any classification):
    supplied snapshot: the pinned published revision and graph payload (hash
    chain plus parse), the per-world contribution and identity histories
    (enumerated; a count below the receipt's adoption-time pin means adopted
-   rows are missing), and every source artifact/revision referenced by the
-   adopted payload's evidence or by those enumerated contributions —
-   missing or integrity-invalid referenced state raises;
+   rows are missing), and the complete per-world source membership
+   (artifacts enumerated via ``list_artifacts_for_world``, revisions per
+   artifact; counts below the receipt's pins mean adopted source rows are
+   missing, and every source record referenced by the adopted payload's
+   evidence or the enumerated contributions must be present) — missing or
+   integrity-invalid referenced state raises;
 4. ``source_identity`` — exact bundle identity (canonical SHA-256,
    ``adoption_id``, full ``source_provenance``); a divergence classifies
    ``STALE`` and every other check is ``not_evaluated`` (a different valid
    snapshot's history is its own, never the receipt's referenced history);
 5. only for an identity-matched snapshot — whose bytes are exactly the
    adopted bundle, so its claimed history is the receipt-committed history —
-   resolve any remaining claimed source records (missing rows raise) and
+   verify every claimed identity against the resolved membership (a
+   same-cardinality swap is caught here by identity, never by count) and
    compare; ``CORRESPONDING`` when every check matches, ``MISMATCH`` when at
    least one diverges.
 
-Port-surface boundary: contribution and identity history are enumerated per
-world, so extra durable records diverge. Source artifacts are read by
-identity only; the receipt's adoption-time cardinality pins are compared
-against the snapshot, but a post-adoption extra source artifact is outside
-what the current read-only ports expose to this seam. Step 3 resolves every
-source record the adopted state references through payload evidence and
-contribution provenance; a source record referenced by neither is
-observationally inert — it cannot affect reconstruction — and its deletion
-is detectable only for an identity-matched snapshot (step 5), never under
-``STALE``.
+Port-surface boundary: contribution, identity, and source-artifact history
+are all enumerated per world, so extra durable records diverge at compare
+time and deleted records fail closed before classification. Source revisions
+are enumerated per artifact through the world's complete artifact
+membership, so the receipt's adoption-time cardinality pins are fully
+operational for source history.
 """
 
 from __future__ import annotations
@@ -375,13 +375,16 @@ class ExistingWorldCorrespondenceService:
     ) -> _ResolvedHistory:
         """Resolve receipt-referenced history independent of the supplied snapshot.
 
-        The receipt pins per-world contribution/identity cardinality at
-        adoption time; enumeration below the pin means adopted rows are
-        missing. The adopted payload's evidence and the enumerated
-        contributions name the source artifacts/revisions the adopted state
-        references; each must still resolve. Adapter reads fail closed on
-        integrity-invalid records. Runs before any classification so corrupted
-        adopted state can never hide behind a ``STALE`` result.
+        The receipt pins per-world contribution/identity/source cardinality at
+        adoption time; enumeration below a pin means adopted rows are missing.
+        Source membership is enumerated completely (artifacts per world, then
+        revisions per artifact), so even a source record referenced by neither
+        evidence nor contributions is accounted for before classification.
+        Every source record the adopted payload's evidence or the enumerated
+        contributions reference must be present in that membership. Adapter
+        reads fail closed on integrity-invalid records. Runs before any
+        classification so corrupted adopted state can never hide behind a
+        ``STALE`` result.
         """
         referenced_artifact_ids: set[str] = set()
         referenced_revision_ids: set[str] = set()
@@ -424,29 +427,46 @@ class ExistingWorldCorrespondenceService:
                 durable_identity_decision_count=len(identity_decisions),
             )
 
-        artifacts: dict[str, SourceArtifactRecord] = {}
+        artifacts = {
+            artifact.source_artifact_id: artifact
+            for artifact in self._sources.list_artifacts_for_world(world_id)
+        }
         revision_ids_by_artifact: dict[str, set[str]] = {}
+        revisions: dict[str, SourceRevision] = {}
+        for artifact_id in sorted(artifacts):
+            artifact_revisions = self._sources.list_revisions(artifact_id)
+            revision_ids_by_artifact[artifact_id] = {
+                revision.source_revision_id for revision in artifact_revisions
+            }
+            for revision in artifact_revisions:
+                revisions[revision.source_revision_id] = revision
+
         for artifact_id in sorted(referenced_artifact_ids):
-            durable = self._sources.get_artifact(artifact_id)
-            if durable is None:
+            if artifact_id not in artifacts:
                 _integrity(
                     "adopted_source_artifact_missing",
                     source_artifact_id=artifact_id,
                 )
-            artifacts[artifact_id] = durable
-            revision_ids_by_artifact[artifact_id] = {
-                revision.source_revision_id
-                for revision in self._sources.list_revisions(artifact_id)
-            }
-        revisions: dict[str, SourceRevision] = {}
         for revision_id in sorted(referenced_revision_ids):
-            durable = self._sources.get_revision(revision_id)
-            if durable is None:
+            if revision_id not in revisions:
                 _integrity(
                     "adopted_source_revision_missing",
                     source_revision_id=revision_id,
                 )
-            revisions[revision_id] = durable
+        if len(artifacts) < receipt.source_artifact_count:
+            _integrity(
+                "adopted_source_artifact_missing",
+                world_id=world_id,
+                adopted_source_artifact_count=receipt.source_artifact_count,
+                durable_source_artifact_count=len(artifacts),
+            )
+        if len(revisions) < receipt.source_revision_count:
+            _integrity(
+                "adopted_source_revision_missing",
+                world_id=world_id,
+                adopted_source_revision_count=receipt.source_revision_count,
+                durable_source_revision_count=len(revisions),
+            )
         return _ResolvedHistory(
             artifacts=artifacts,
             revisions=revisions,
@@ -554,6 +574,10 @@ class ExistingWorldCorrespondenceService:
             for artifact_id, durable_ids in history.revision_ids_by_artifact.items()
             if durable_ids != bundle_revision_ids_by_artifact.get(artifact_id, set())
         )
+        extra_artifacts = sorted(
+            set(history.artifacts)
+            - {artifact.source_artifact_id for artifact in bundle.source_artifacts}
+        )
         count_drift: list[str] = []
         if len(bundle.source_artifacts) != receipt.source_artifact_count:
             count_drift.append(
@@ -565,7 +589,13 @@ class ExistingWorldCorrespondenceService:
                 f"source_revisions:{len(bundle.source_revisions)}"
                 f"!=adopted:{receipt.source_revision_count}"
             )
-        problems = drifted_artifacts + drifted_revisions + revision_set_drift + count_drift
+        problems = (
+            drifted_artifacts
+            + drifted_revisions
+            + revision_set_drift
+            + extra_artifacts
+            + count_drift
+        )
         if not problems:
             return ExistingWorldCorrespondenceCheckV1(check="source_history", outcome="match")
         return ExistingWorldCorrespondenceCheckV1(
@@ -576,6 +606,7 @@ class ExistingWorldCorrespondenceService:
                 f"drifted_artifacts={drifted_artifacts} "
                 f"drifted_revisions={drifted_revisions} "
                 f"revision_set_drift={revision_set_drift} "
+                f"extra_artifacts={extra_artifacts} "
                 f"count_drift={count_drift}"
             ),
         )
