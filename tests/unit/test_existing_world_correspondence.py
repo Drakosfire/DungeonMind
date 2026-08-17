@@ -126,6 +126,56 @@ def _changed_source_snapshot_bytes() -> bytes:
     return raw
 
 
+def _changed_adoption_id_snapshot_bytes() -> bytes:
+    """Canonical bundle identical to the adopted one except ``adoption_id``."""
+    bundle = parse_sealed_bundle()
+    changed = bundle.model_copy(update={"adoption_id": ADOPTION_ID + "-tampered"})
+    raw = existing_world_adoption_bundle_v2_canonical_bytes(changed)
+    reparsed = parse_existing_world_adoption_bundle(
+        raw,
+        graph_reader=eldyrwild_graph_reader(),
+    )
+    assert reparsed.adoption_id == ADOPTION_ID + "-tampered"
+    assert (
+        reparsed.source_provenance.source_world_revision_id == SOURCE_WORLD_REVISION_ID
+    )
+    return raw
+
+
+def _changed_producer_snapshot_bytes() -> bytes:
+    """Canonical bundle identical to the adopted one except producer provenance."""
+    bundle = parse_sealed_bundle()
+    changed = bundle.model_copy(
+        update={
+            "source_provenance": bundle.source_provenance.model_copy(
+                update={"producer_revision": "producer-revision-tampered"}
+            )
+        }
+    )
+    raw = existing_world_adoption_bundle_v2_canonical_bytes(changed)
+    reparsed = parse_existing_world_adoption_bundle(
+        raw,
+        graph_reader=eldyrwild_graph_reader(),
+    )
+    assert reparsed.source_provenance.producer_revision == "producer-revision-tampered"
+    assert (
+        reparsed.source_provenance.source_world_revision_id == SOURCE_WORLD_REVISION_ID
+    )
+    return raw
+
+
+def _evidence_referenced_source_revision_id() -> str:
+    bundle = parse_sealed_bundle()
+    snapshot = eldyrwild_graph_reader().parse(
+        graph_schema=bundle.graph_schema,
+        graph_payload=bundle.graph_payload,
+    )
+    for record in snapshot.evidence.values():
+        if record.source_revision_id is not None:
+            return record.source_revision_id
+    raise AssertionError("fixture evidence must reference at least one source revision")
+
+
 def _tamper_contribution(harness: _WorldHarness) -> str:
     """Simulate a coherent-but-different durable write: same identity, new content."""
     target = parse_sealed_bundle().contributions[0]
@@ -296,6 +346,29 @@ def test_mismatch_contract_requires_matched_source_and_one_divergence() -> None:
         )
 
 
+def test_mismatch_contract_allows_not_evaluated_only_after_first_divergence() -> None:
+    checks = _all_match_checks()
+    checks[2] = _check("source_history", "diverged", "source drift")
+    checks[3] = _check("contribution_history", "not_evaluated", "short-circuited")
+    checks[4] = _check("identity_history", "not_evaluated", "short-circuited")
+    result = ExistingWorldCorrespondenceResultV1(
+        classification="MISMATCH",
+        **_result_kwargs(checks),  # type: ignore[arg-type]
+    )
+    assert result.classification == "MISMATCH"
+
+
+def test_mismatch_contract_rejects_not_evaluated_before_first_divergence() -> None:
+    checks = _all_match_checks()
+    checks[1] = _check("graph_payload", "not_evaluated", "skipped early")
+    checks[3] = _check("contribution_history", "diverged", "contribution drift")
+    with pytest.raises(ValidationError):
+        ExistingWorldCorrespondenceResultV1(
+            classification="MISMATCH",
+            **_result_kwargs(checks),  # type: ignore[arg-type]
+        )
+
+
 def test_result_contract_requires_canonical_check_order() -> None:
     reordered = _all_match_checks()
     reordered[1], reordered[2] = reordered[2], reordered[1]
@@ -342,6 +415,33 @@ def test_changed_valid_source_snapshot_is_stale() -> None:
     for name in CORRESPONDENCE_CHECK_ORDER[1:]:
         assert checks[name].outcome == "not_evaluated"
         assert checks[name].detail == NOT_EVALUATED_DETAIL
+
+
+def test_same_revision_but_changed_adoption_id_is_stale_never_corresponding() -> None:
+    harness = _adopted_harness()
+    result = harness.check(_changed_adoption_id_snapshot_bytes())
+    assert result.classification == "STALE"
+    assert result.observed_source_revision == SOURCE_WORLD_REVISION_ID
+    assert result.adopted_source_revision == SOURCE_WORLD_REVISION_ID
+    checks = _checks_by_name(result)
+    assert checks["source_identity"].outcome == "diverged"
+    assert ADOPTION_ID in checks["source_identity"].detail
+    assert f"{ADOPTION_ID}-tampered" in checks["source_identity"].detail
+    for name in CORRESPONDENCE_CHECK_ORDER[1:]:
+        assert checks[name].outcome == "not_evaluated"
+
+
+def test_same_revision_but_changed_producer_provenance_is_stale() -> None:
+    harness = _adopted_harness()
+    result = harness.check(_changed_producer_snapshot_bytes())
+    assert result.classification == "STALE"
+    assert result.observed_source_revision == SOURCE_WORLD_REVISION_ID
+    assert result.adopted_source_revision == SOURCE_WORLD_REVISION_ID
+    checks = _checks_by_name(result)
+    assert checks["source_identity"].outcome == "diverged"
+    assert "producer_revision" in checks["source_identity"].detail
+    for name in CORRESPONDENCE_CHECK_ORDER[1:]:
+        assert checks[name].outcome == "not_evaluated"
 
 
 def test_coherent_contribution_drift_is_mismatch_even_with_matching_graph() -> None:
@@ -478,7 +578,29 @@ def test_service_resolution_names_the_missing_revision() -> None:
 def test_dangling_contribution_raises_integrity_error() -> None:
     harness = _adopted_harness()
     target = parse_sealed_bundle().contributions[0]
+    expected = len(parse_sealed_bundle().contributions)
     harness.contributions._items.pop((WORLD_ID, target.contribution_id))
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        harness.check()
+    assert exc.value.details["reason"] == "adopted_contribution_missing"
+    assert exc.value.details["adopted_contribution_count"] == expected
+    assert exc.value.details["durable_contribution_count"] == expected - 1
+
+
+def test_same_cardinality_contribution_swap_fails_closed_on_identity() -> None:
+    """A delete-plus-insert swap keeps the count pin intact; the matched
+    snapshot's receipt-committed identities still name the missing row."""
+    harness = _adopted_harness()
+    target = parse_sealed_bundle().contributions[0]
+    harness.contributions._items.pop((WORLD_ID, target.contribution_id))
+    harness.contributions.append(
+        GraphContributionV2(
+            contribution_id="contribution:extraneous-durable-write",
+            world_id=WORLD_ID,
+            source_kind=ContributionSourceKind.MANUAL_IMPORT,
+            produced_at=NOW,
+        )
+    )
     with pytest.raises(PersistenceIntegrityError) as exc:
         harness.check()
     assert exc.value.details["reason"] == "adopted_contribution_missing"
@@ -510,6 +632,35 @@ def test_dangling_identity_decision_raises_integrity_error() -> None:
     with pytest.raises(PersistenceIntegrityError) as exc:
         harness.check()
     assert exc.value.details["reason"] == "adopted_identity_decision_missing"
+
+
+def test_deleted_adopted_contribution_fails_closed_before_stale_classification() -> None:
+    """adopt A → delete adopted history → present valid B must raise, never STALE."""
+    harness = _adopted_harness()
+    target = parse_sealed_bundle().contributions[0]
+    harness.contributions._items.pop((WORLD_ID, target.contribution_id))
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        harness.check(_changed_source_snapshot_bytes())
+    assert exc.value.details["reason"] == "adopted_contribution_missing"
+
+
+def test_deleted_adopted_identity_decision_fails_closed_before_stale() -> None:
+    harness = _adopted_harness()
+    target = parse_sealed_bundle().identity_decisions[0]
+    harness.identity._items.pop((WORLD_ID, target.decision_id))
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        harness.check(_changed_source_snapshot_bytes())
+    assert exc.value.details["reason"] == "adopted_identity_decision_missing"
+
+
+def test_deleted_evidence_referenced_source_revision_fails_closed_before_stale() -> None:
+    harness = _adopted_harness()
+    target = _evidence_referenced_source_revision_id()
+    harness.sources._revisions.pop(target)
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        harness.check(_changed_source_snapshot_bytes())
+    assert exc.value.details["reason"] == "adopted_source_revision_missing"
+    assert exc.value.details["source_revision_id"] == target
 
 
 def test_corrupted_graph_payload_hash_raises_integrity_error() -> None:
