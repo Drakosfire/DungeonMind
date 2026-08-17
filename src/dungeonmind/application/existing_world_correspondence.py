@@ -7,40 +7,58 @@ never auto-adopts or catches up, and never infers adoption state from the
 current head, a world label, or latest-by-timestamp state. The adoption
 receipt is retrieved independently via ``get_for_world(world_id)``.
 
+``source_identity`` pins the exact adopted bundle identity, not a field
+subset: the supplied bytes' SHA-256 (the bundle parser proves supplied bytes
+are the canonical bytes) must equal the receipt's ``bundle_sha256``, and the
+bundle's ``adoption_id`` and full ``source_provenance`` must equal the
+receipt's. A snapshot that is merely revision-compatible — same source
+revision, graph, and history but a different adoption identity — is
+``STALE``, never ``CORRESPONDING``.
+
 Errors are raised, never returned as classifications:
 
 - malformed or integrity-invalid source input raises
   ``PersistenceIntegrityError`` (the unchanged #33 bundle parser names the
   parse/schema/self-hash failure in ``details["reason"]``);
-- a receipt whose pinned published revision or payload is missing or
-  integrity-invalid raises ``PersistenceIntegrityError`` — corrupted adopted
-  state is never ``NOT_ADOPTED`` and never ``MISMATCH``;
-- once the supplied snapshot claims the adopted source identity, the
-  receipt's required history is exactly the snapshot-claimed history; a
-  missing durable artifact/revision/contribution/identity decision raises
-  ``PersistenceIntegrityError`` (dangling adopted state);
+- a receipt whose referenced world/revision/payload/history/evidence is
+  missing or integrity-invalid raises ``PersistenceIntegrityError`` —
+  corrupted adopted state is never ``NOT_ADOPTED``, never ``STALE``, and
+  never ``MISMATCH``;
 - persistence outages raise ``PersistenceUnavailableError``; no result is
   produced and a retry is a fresh read-only re-evaluation.
 
-Evaluation order (receipt presence is decided before any comparison):
+Evaluation order (receipt presence is decided before any comparison, and
+receipt-referenced state is resolved before any classification):
 
 1. parse/validate the source input;
 2. receipt lookup — a miss classifies ``NOT_ADOPTED``;
-3. resolve the receipt's pinned world/revision/payload — missing or
-   integrity-invalid referenced state raises;
-4. ``source_identity`` — a diverged source revision classifies ``STALE``
-   and every other check is ``not_evaluated`` (a different valid snapshot's
-   history is its own, never the receipt's referenced history);
-5. only for an identity-matched snapshot, resolve the snapshot-claimed
-   (i.e. receipt-required) history — missing rows raise — then compare;
-   ``CORRESPONDING`` when every check matches, ``MISMATCH`` when at least
-   one diverges.
+3. resolve the receipt's referenced durable state, independent of the
+   supplied snapshot: the pinned published revision and graph payload (hash
+   chain plus parse), the per-world contribution and identity histories
+   (enumerated; a count below the receipt's adoption-time pin means adopted
+   rows are missing), and every source artifact/revision referenced by the
+   adopted payload's evidence or by those enumerated contributions —
+   missing or integrity-invalid referenced state raises;
+4. ``source_identity`` — exact bundle identity (canonical SHA-256,
+   ``adoption_id``, full ``source_provenance``); a divergence classifies
+   ``STALE`` and every other check is ``not_evaluated`` (a different valid
+   snapshot's history is its own, never the receipt's referenced history);
+5. only for an identity-matched snapshot — whose bytes are exactly the
+   adopted bundle, so its claimed history is the receipt-committed history —
+   resolve any remaining claimed source records (missing rows raise) and
+   compare; ``CORRESPONDING`` when every check matches, ``MISMATCH`` when at
+   least one diverges.
 
 Port-surface boundary: contribution and identity history are enumerated per
 world, so extra durable records diverge. Source artifacts are read by
 identity only; the receipt's adoption-time cardinality pins are compared
 against the snapshot, but a post-adoption extra source artifact is outside
-what the current read-only ports expose to this seam.
+what the current read-only ports expose to this seam. Step 3 resolves every
+source record the adopted state references through payload evidence and
+contribution provenance; a source record referenced by neither is
+observationally inert — it cannot affect reconstruction — and its deletion
+is detectable only for an identity-matched snapshot (step 5), never under
+``STALE``.
 """
 
 from __future__ import annotations
@@ -51,6 +69,10 @@ from typing import Any, NoReturn
 from pydantic import BaseModel, ValidationError
 
 from ..contracts.evidence import SourceArtifactRecord, SourceRevision
+from ..contracts.existing_world_adoption import (
+    ExistingWorldAdoptionSourceProvenanceV1,
+    sha256_bytes,
+)
 from ..contracts.existing_world_correspondence import (
     CORRESPONDENCE_CHECK_ORDER,
     CorrespondenceCheckName,
@@ -86,6 +108,33 @@ def _integrity(reason: str, **details: Any) -> NoReturn:
 
 def _record_digest(model: BaseModel) -> str:
     return canonical_sha256(model.model_dump(mode="json"))
+
+
+def _provenance_drifts(
+    observed: ExistingWorldAdoptionSourceProvenanceV1,
+    adopted: ExistingWorldAdoptionSourceProvenanceV1,
+) -> list[str]:
+    drifts: list[str] = []
+    for field in (
+        "producer_id",
+        "producer_revision",
+        "source_world_revision_id",
+        "source_graph_payload_sha256",
+    ):
+        observed_value = getattr(observed, field)
+        adopted_value = getattr(adopted, field)
+        if observed_value != adopted_value:
+            drifts.append(
+                f"source_provenance.{field}: observed {observed_value!r} "
+                f"differs from adopted {adopted_value!r}"
+            )
+    if observed.authority_refs != adopted.authority_refs:
+        drifts.append(
+            "source_provenance.authority_refs: observed "
+            f"{len(observed.authority_refs)} refs differ from adopted "
+            f"{len(adopted.authority_refs)} refs"
+        )
+    return drifts
 
 
 @dataclass(frozen=True)
@@ -141,6 +190,7 @@ class ExistingWorldCorrespondenceService:
                 world_id=world_id,
             )
         observed_source_revision = bundle.source_provenance.source_world_revision_id
+        observed_bundle_sha256 = sha256_bytes(bytes(raw_bundle))
 
         receipt = self._adoptions.get_for_world(world_id)
         if receipt is None:
@@ -157,18 +207,19 @@ class ExistingWorldCorrespondenceService:
             )
 
         resolved = self._resolve_revision(world_id=world_id, receipt=receipt)
-        adopted_source_revision = receipt.source_provenance.source_world_revision_id
+        history = self._resolve_adopted_history(
+            world_id=world_id,
+            receipt=receipt,
+            resolved=resolved,
+        )
 
         checks: dict[CorrespondenceCheckName, ExistingWorldCorrespondenceCheckV1] = {}
-        if observed_source_revision != adopted_source_revision:
-            checks["source_identity"] = ExistingWorldCorrespondenceCheckV1(
-                check="source_identity",
-                outcome="diverged",
-                detail=(
-                    f"observed source revision {observed_source_revision!r} differs "
-                    f"from adopted source revision {adopted_source_revision!r}"
-                ),
-            )
+        checks["source_identity"] = self._source_identity_check(
+            bundle,
+            observed_bundle_sha256=observed_bundle_sha256,
+            receipt=receipt,
+        )
+        if checks["source_identity"].outcome == "diverged":
             for name in CORRESPONDENCE_CHECK_ORDER[1:]:
                 checks[name] = ExistingWorldCorrespondenceCheckV1(
                     check=name,
@@ -183,11 +234,7 @@ class ExistingWorldCorrespondenceService:
                 checks=checks,
             )
 
-        checks["source_identity"] = ExistingWorldCorrespondenceCheckV1(
-            check="source_identity",
-            outcome="match",
-        )
-        history = self._resolve_history(bundle, world_id=world_id)
+        self._resolve_claimed_history(bundle, history=history)
         bundle_snapshot = self._graph_reader.parse(
             graph_schema=bundle.graph_schema,
             graph_payload=bundle.graph_payload,
@@ -286,54 +333,120 @@ class ExistingWorldCorrespondenceService:
             )
         return _ResolvedRevision(stored=stored, snapshot=snapshot)
 
-    def _resolve_history(
+    def _source_identity_check(
         self,
         bundle: ExistingWorldAdoptionBundle,
         *,
+        observed_bundle_sha256: str,
+        receipt: DurableExistingWorldAdoptionReceipt,
+    ) -> ExistingWorldCorrespondenceCheckV1:
+        """Pin the exact adopted bundle identity: canonical SHA-256, adoption
+        id, and full source provenance — not a revision-compatible subset."""
+        drifts: list[str] = []
+        if observed_bundle_sha256 != receipt.bundle_sha256:
+            drifts.append(
+                f"observed bundle sha256 {observed_bundle_sha256!r} differs from "
+                f"adopted bundle sha256 {receipt.bundle_sha256!r}"
+            )
+        if bundle.adoption_id != receipt.adoption_id:
+            drifts.append(
+                f"observed adoption_id {bundle.adoption_id!r} differs from "
+                f"adopted adoption_id {receipt.adoption_id!r}"
+            )
+        drifts.extend(
+            _provenance_drifts(bundle.source_provenance, receipt.source_provenance)
+        )
+        if not drifts:
+            return ExistingWorldCorrespondenceCheckV1(
+                check="source_identity", outcome="match"
+            )
+        return ExistingWorldCorrespondenceCheckV1(
+            check="source_identity",
+            outcome="diverged",
+            detail="source identity diverged: " + "; ".join(drifts),
+        )
+
+    def _resolve_adopted_history(
+        self,
+        *,
         world_id: str,
+        receipt: DurableExistingWorldAdoptionReceipt,
+        resolved: _ResolvedRevision,
     ) -> _ResolvedHistory:
-        artifacts: dict[str, SourceArtifactRecord] = {}
-        revision_ids_by_artifact: dict[str, set[str]] = {}
-        for artifact in bundle.source_artifacts:
-            durable = self._sources.get_artifact(artifact.source_artifact_id)
-            if durable is None:
-                _integrity(
-                    "adopted_source_artifact_missing",
-                    source_artifact_id=artifact.source_artifact_id,
-                )
-            artifacts[artifact.source_artifact_id] = durable
-            revision_ids_by_artifact[artifact.source_artifact_id] = {
-                revision.source_revision_id
-                for revision in self._sources.list_revisions(artifact.source_artifact_id)
-            }
-        revisions: dict[str, SourceRevision] = {}
-        for revision in bundle.source_revisions:
-            durable = self._sources.get_revision(revision.source_revision_id)
-            if durable is None:
-                _integrity(
-                    "adopted_source_revision_missing",
-                    source_revision_id=revision.source_revision_id,
-                )
-            revisions[revision.source_revision_id] = durable
+        """Resolve receipt-referenced history independent of the supplied snapshot.
+
+        The receipt pins per-world contribution/identity cardinality at
+        adoption time; enumeration below the pin means adopted rows are
+        missing. The adopted payload's evidence and the enumerated
+        contributions name the source artifacts/revisions the adopted state
+        references; each must still resolve. Adapter reads fail closed on
+        integrity-invalid records. Runs before any classification so corrupted
+        adopted state can never hide behind a ``STALE`` result.
+        """
+        referenced_artifact_ids: set[str] = set()
+        referenced_revision_ids: set[str] = set()
+        for evidence in resolved.snapshot.evidence.values():
+            if evidence.source_artifact_id:
+                referenced_artifact_ids.add(evidence.source_artifact_id)
+            if evidence.source_revision_id is not None:
+                referenced_revision_ids.add(evidence.source_revision_id)
+
         contributions = {
             item.contribution_id: item
             for item in self._contributions.list_for_world(world_id)
         }
-        for contribution in bundle.contributions:
-            if contribution.contribution_id not in contributions:
-                _integrity(
-                    "adopted_contribution_missing",
-                    contribution_id=contribution.contribution_id,
-                )
+        if len(contributions) < receipt.contribution_count:
+            _integrity(
+                "adopted_contribution_missing",
+                world_id=world_id,
+                adopted_contribution_count=receipt.contribution_count,
+                durable_contribution_count=len(contributions),
+            )
+        for contribution in contributions.values():
+            if contribution.source_artifact_id is not None:
+                referenced_artifact_ids.add(contribution.source_artifact_id)
+            if contribution.source_revision_id is not None:
+                referenced_revision_ids.add(contribution.source_revision_id)
+            for assertion in contribution.assertions:
+                if assertion.source_artifact_id is not None:
+                    referenced_artifact_ids.add(assertion.source_artifact_id)
+                if assertion.source_revision_id is not None:
+                    referenced_revision_ids.add(assertion.source_revision_id)
+
         identity_decisions = {
             item.decision_id: item for item in self._identity.list_for_world(world_id)
         }
-        for decision in bundle.identity_decisions:
-            if decision.decision_id not in identity_decisions:
+        if len(identity_decisions) < receipt.identity_decision_count:
+            _integrity(
+                "adopted_identity_decision_missing",
+                world_id=world_id,
+                adopted_identity_decision_count=receipt.identity_decision_count,
+                durable_identity_decision_count=len(identity_decisions),
+            )
+
+        artifacts: dict[str, SourceArtifactRecord] = {}
+        revision_ids_by_artifact: dict[str, set[str]] = {}
+        for artifact_id in sorted(referenced_artifact_ids):
+            durable = self._sources.get_artifact(artifact_id)
+            if durable is None:
                 _integrity(
-                    "adopted_identity_decision_missing",
-                    decision_id=decision.decision_id,
+                    "adopted_source_artifact_missing",
+                    source_artifact_id=artifact_id,
                 )
+            artifacts[artifact_id] = durable
+            revision_ids_by_artifact[artifact_id] = {
+                revision.source_revision_id
+                for revision in self._sources.list_revisions(artifact_id)
+            }
+        revisions: dict[str, SourceRevision] = {}
+        for revision_id in sorted(referenced_revision_ids):
+            durable = self._sources.get_revision(revision_id)
+            if durable is None:
+                _integrity(
+                    "adopted_source_revision_missing",
+                    source_revision_id=revision_id,
+                )
+            revisions[revision_id] = durable
         return _ResolvedHistory(
             artifacts=artifacts,
             revisions=revisions,
@@ -341,6 +454,57 @@ class ExistingWorldCorrespondenceService:
             contributions=contributions,
             identity_decisions=identity_decisions,
         )
+
+    def _resolve_claimed_history(
+        self,
+        bundle: ExistingWorldAdoptionBundle,
+        *,
+        history: _ResolvedHistory,
+    ) -> None:
+        """Complete resolution for an identity-matched snapshot.
+
+        The supplied bytes are exactly the adopted bundle, so every claimed
+        identity is receipt-committed; a missing row is dangling adopted
+        state. A same-cardinality contribution/identity swap is caught here by
+        identity, never by count.
+        """
+        for artifact in bundle.source_artifacts:
+            if artifact.source_artifact_id not in history.artifacts:
+                durable = self._sources.get_artifact(artifact.source_artifact_id)
+                if durable is None:
+                    _integrity(
+                        "adopted_source_artifact_missing",
+                        source_artifact_id=artifact.source_artifact_id,
+                    )
+                history.artifacts[artifact.source_artifact_id] = durable
+            if artifact.source_artifact_id not in history.revision_ids_by_artifact:
+                history.revision_ids_by_artifact[artifact.source_artifact_id] = {
+                    revision.source_revision_id
+                    for revision in self._sources.list_revisions(
+                        artifact.source_artifact_id
+                    )
+                }
+        for revision in bundle.source_revisions:
+            if revision.source_revision_id not in history.revisions:
+                durable = self._sources.get_revision(revision.source_revision_id)
+                if durable is None:
+                    _integrity(
+                        "adopted_source_revision_missing",
+                        source_revision_id=revision.source_revision_id,
+                    )
+                history.revisions[revision.source_revision_id] = durable
+        for contribution in bundle.contributions:
+            if contribution.contribution_id not in history.contributions:
+                _integrity(
+                    "adopted_contribution_missing",
+                    contribution_id=contribution.contribution_id,
+                )
+        for decision in bundle.identity_decisions:
+            if decision.decision_id not in history.identity_decisions:
+                _integrity(
+                    "adopted_identity_decision_missing",
+                    decision_id=decision.decision_id,
+                )
 
     def _graph_payload_check(
         self,
