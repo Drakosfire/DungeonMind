@@ -8,13 +8,21 @@ integrity-invalid durable state, dangling adoption receipts, and persistence
 outages raise typed ``DungeonMindError`` subclasses instead (see
 ``application.existing_world_correspondence``).
 
+``source_identity`` pins the exact adopted bundle identity, not a field
+subset: the supplied bytes' SHA-256, the bundle's ``adoption_id``, and the
+full ``source_provenance`` must all equal the adoption receipt's pins. A
+snapshot that is merely revision-compatible — same source revision, graph,
+and history but a different adoption identity — is ``STALE``, never
+``CORRESPONDING``.
+
 The classification algebra is closed and enforced by the result model:
 
 - ``CORRESPONDING``: all six checks ``match``.
 - ``STALE``: ``source_identity`` ``diverged``; every other check
   ``not_evaluated``.
 - ``MISMATCH``: ``source_identity`` ``match`` and at least one other check
-  ``diverged``; checks past the first divergence may be ``not_evaluated``.
+  ``diverged``; ``not_evaluated`` entries may appear only after the first
+  divergence (short-circuit order is part of the closed algebra).
 - ``NOT_ADOPTED``: no adoption receipt for the world; every ``adopted_*``
   field is null and ``checks`` is empty.
 """
@@ -140,6 +148,12 @@ class ExistingWorldCorrespondenceResultV1(DungeonMindModel):
         elif self.classification == "MISMATCH":
             if source_identity.outcome != "match":
                 raise ValueError("MISMATCH requires source_identity to match")
-            if not any(check.outcome == "diverged" for check in remaining):
+            outcomes = [check.outcome for check in remaining]
+            if "diverged" not in outcomes:
                 raise ValueError("MISMATCH requires at least one diverged check")
+            first_diverged = outcomes.index("diverged")
+            if any(outcome == "not_evaluated" for outcome in outcomes[:first_diverged]):
+                raise ValueError(
+                    "MISMATCH not_evaluated checks must follow the first divergence"
+                )
         return self
