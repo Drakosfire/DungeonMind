@@ -90,6 +90,34 @@ def _changed_source_snapshot_bytes() -> bytes:
     return raw
 
 
+def _changed_adoption_id_snapshot_bytes() -> bytes:
+    """Canonical bundle identical to the adopted one except ``adoption_id``."""
+    bundle = parse_sealed_bundle()
+    changed = bundle.model_copy(update={"adoption_id": ADOPTION_ID + "-tampered"})
+    raw = existing_world_adoption_bundle_v2_canonical_bytes(changed)
+    reparsed = parse_existing_world_adoption_bundle(
+        raw,
+        graph_reader=eldyrwild_graph_reader(),
+    )
+    assert reparsed.adoption_id == ADOPTION_ID + "-tampered"
+    assert (
+        reparsed.source_provenance.source_world_revision_id == SOURCE_WORLD_REVISION_ID
+    )
+    return raw
+
+
+def _evidence_referenced_source_revision_id() -> str:
+    bundle = parse_sealed_bundle()
+    snapshot = eldyrwild_graph_reader().parse(
+        graph_schema=bundle.graph_schema,
+        graph_payload=bundle.graph_payload,
+    )
+    for record in snapshot.evidence.values():
+        if record.source_revision_id is not None:
+            return record.source_revision_id
+    raise AssertionError("fixture evidence must reference at least one source revision")
+
+
 def _coherent_contribution_tamper(pg) -> str:
     """Rewrite one durable contribution the way a coherent future writer would:
     same identity columns, new payload content, matching fingerprint."""
@@ -235,6 +263,33 @@ def test_postgres_coherent_graph_payload_drift_is_mismatch(pg) -> None:
     assert _counts(pg) == before
 
 
+def _coherent_receipt_bundle_identity_tamper(pg) -> str:
+    """Rewrite the receipt's bundle identity pin the way a coherent future
+    writer would: identity column, payload, and fingerprint all agree on the
+    forged sha, so read-time verification passes and only the correspondence
+    check itself can catch the drift."""
+    receipt = pg.existing_world_adoptions.get_for_world(WORLD_ID)
+    assert receipt is not None
+    forged_sha = "0" * 64
+    forged = receipt.model_copy(update={"bundle_sha256": forged_sha})
+    with pg.database.connect() as conn:
+        conn.execute(
+            """
+            UPDATE dungeonmind.existing_world_adoptions
+            SET bundle_sha256 = %s, payload = %s, record_fingerprint = %s
+            WHERE world_id = %s
+            """,
+            (
+                forged_sha,
+                Jsonb(forged.model_dump(mode="json")),
+                model_fingerprint(forged),
+                WORLD_ID,
+            ),
+        )
+        conn.commit()
+    return forged_sha
+
+
 def test_postgres_dangling_contribution_fails_closed(pg) -> None:
     _adopt(pg)
     before = _counts(pg)
@@ -250,7 +305,8 @@ def test_postgres_dangling_contribution_fails_closed(pg) -> None:
     with pytest.raises(PersistenceIntegrityError) as exc:
         _service(pg).check(raw_bundle(), world_id=WORLD_ID)
     assert exc.value.details["reason"] == "adopted_contribution_missing"
-    assert exc.value.details["contribution_id"] == WITNESS_CONTRIBUTION_ID
+    assert exc.value.details["adopted_contribution_count"] == before["contributions"]
+    assert exc.value.details["durable_contribution_count"] == before["contributions"] - 1
     assert _counts(pg) == {**before, "contributions": before["contributions"] - 1}
 
 
@@ -302,3 +358,99 @@ def test_postgres_missing_receipt_is_not_adopted(pg) -> None:
     assert result.adopted_revision is None
     assert result.checks == []
     assert _counts(pg) == _zero_counts()
+
+
+def test_postgres_same_revision_changed_adoption_id_is_stale(pg) -> None:
+    """Revision-compatible is not corresponding: the exact adoption identity
+    must match the receipt, or the snapshot is a different snapshot."""
+    _adopt(pg)
+    before = _counts(pg)
+    result = _service(pg).check(_changed_adoption_id_snapshot_bytes(), world_id=WORLD_ID)
+    assert result.classification == "STALE"
+    assert result.observed_source_revision == SOURCE_WORLD_REVISION_ID
+    assert result.adopted_source_revision == SOURCE_WORLD_REVISION_ID
+    assert result.adoption_id == ADOPTION_ID
+    checks = {check.check: check for check in result.checks}
+    assert checks["source_identity"].outcome == "diverged"
+    assert ADOPTION_ID in checks["source_identity"].detail
+    assert f"{ADOPTION_ID}-tampered" in checks["source_identity"].detail
+    for name in CORRESPONDENCE_CHECK_ORDER[1:]:
+        assert checks[name].outcome == "not_evaluated"
+    assert _counts(pg) == before
+
+
+def test_postgres_receipt_bundle_identity_drift_is_stale_never_corresponding(pg) -> None:
+    """A coherently rewritten receipt bundle pin makes the exact adopted
+    bundle unprovable: the checker must refuse CORRESPONDING."""
+    _adopt(pg)
+    before = _counts(pg)
+    forged_sha = _coherent_receipt_bundle_identity_tamper(pg)
+    result = _service(pg).check(raw_bundle(), world_id=WORLD_ID)
+    assert result.classification == "STALE"
+    checks = {check.check: check for check in result.checks}
+    assert checks["source_identity"].outcome == "diverged"
+    assert forged_sha in checks["source_identity"].detail
+    for name in CORRESPONDENCE_CHECK_ORDER[1:]:
+        assert checks[name].outcome == "not_evaluated"
+    assert _counts(pg) == before
+
+
+def test_postgres_deleted_contribution_fails_closed_before_stale(pg) -> None:
+    """adopt A → delete adopted history → present valid B must raise, never STALE."""
+    _adopt(pg)
+    before = _counts(pg)
+    with pg.database.connect() as conn:
+        conn.execute(
+            """
+            DELETE FROM dungeonmind.graph_contributions
+            WHERE world_id = %s AND contribution_id = %s
+            """,
+            (WORLD_ID, WITNESS_CONTRIBUTION_ID),
+        )
+        conn.commit()
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _service(pg).check(_changed_source_snapshot_bytes(), world_id=WORLD_ID)
+    assert exc.value.details["reason"] == "adopted_contribution_missing"
+    assert _counts(pg) == {**before, "contributions": before["contributions"] - 1}
+
+
+def test_postgres_incoherent_contribution_tamper_fails_closed_before_stale(pg) -> None:
+    """Payload rewritten without its fingerprint: the history read itself
+    fails closed, so a stale snapshot can never mask invalid adopted bytes."""
+    _adopt(pg)
+    before = _counts(pg)
+    stored = pg.contributions.get(WORLD_ID, WITNESS_CONTRIBUTION_ID)
+    assert stored is not None
+    mutated = stored.model_copy(update={"extraction_profile": "tampered-postgres-profile"})
+    with pg.database.connect() as conn:
+        conn.execute(
+            """
+            UPDATE dungeonmind.graph_contributions
+            SET payload = %s
+            WHERE world_id = %s AND contribution_id = %s
+            """,
+            (Jsonb(mutated.model_dump(mode="json")), WORLD_ID, WITNESS_CONTRIBUTION_ID),
+        )
+        conn.commit()
+    with pytest.raises(PersistenceIntegrityError):
+        _service(pg).check(_changed_source_snapshot_bytes(), world_id=WORLD_ID)
+    assert _counts(pg) == before
+
+
+def test_postgres_deleted_evidence_referenced_source_revision_fails_closed_before_stale(
+    pg,
+) -> None:
+    _adopt(pg)
+    before = _counts(pg)
+    target = _evidence_referenced_source_revision_id()
+    with pg.database.connect() as conn:
+        conn.execute(
+            "DELETE FROM dungeonmind.source_revisions WHERE source_revision_id = %s",
+            (target,),
+        )
+        conn.commit()
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _service(pg).check(_changed_source_snapshot_bytes(), world_id=WORLD_ID)
+    assert exc.value.details["reason"] == "adopted_source_revision_missing"
+    assert exc.value.details["source_revision_id"] == target
+    assert _counts(pg) == {**before, "revisions_source": before["revisions_source"] - 1}
