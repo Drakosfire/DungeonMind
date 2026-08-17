@@ -56,6 +56,7 @@ pytestmark = pytest.mark.integration
 
 def _counts(pg, world_id: str = WORLD_ID) -> dict[str, int]:
     queries = {
+        "worlds": ("SELECT COUNT(*) AS count FROM dungeonmind.worlds WHERE world_id = %s"),
         "heads": (
             "SELECT COUNT(*) AS count FROM dungeonmind.world_graph_heads WHERE world_id = %s"
         ),
@@ -94,11 +95,18 @@ def _counts(pg, world_id: str = WORLD_ID) -> dict[str, int]:
             (world_id,),
         ).fetchone()
         counts["revisions_source"] = int(rev_row["count"])
+        # evidence_refs has no world_id; count the whole isolated table so orphan
+        # leaks still fail the zero-state and replay-cardinality proofs.
+        evidence_row = conn.execute(
+            "SELECT COUNT(*) AS count FROM dungeonmind.evidence_refs"
+        ).fetchone()
+        counts["evidence_refs"] = int(evidence_row["count"])
     return counts
 
 
 def _zero_counts() -> dict[str, int]:
     return {
+        "worlds": 0,
         "heads": 0,
         "revisions": 0,
         "head_events": 0,
@@ -107,6 +115,22 @@ def _zero_counts() -> dict[str, int]:
         "artifacts": 0,
         "receipts": 0,
         "revisions_source": 0,
+        "evidence_refs": 0,
+    }
+
+
+def _adopted_counts() -> dict[str, int]:
+    return {
+        "worlds": 1,
+        "heads": 1,
+        "revisions": 1,
+        "head_events": 1,
+        "contributions": EXPECTED_CONTRIBUTIONS,
+        "identity": EXPECTED_IDENTITY_DECISIONS,
+        "artifacts": EXPECTED_SOURCE_ARTIFACTS,
+        "receipts": 1,
+        "revisions_source": EXPECTED_SOURCE_REVISIONS,
+        "evidence_refs": len(contribution_evidence_bindings(parse_sealed_bundle())),
     }
 
 
@@ -310,14 +334,10 @@ def test_postgres_first_adoption_commits_receipt_graph_and_history(pg) -> None:
     assert _counts(pg) == _zero_counts()
     receipt = _adopt(pg)
     counts = _counts(pg)
-    assert counts["receipts"] == 1
-    assert counts["heads"] == 1
-    assert counts["revisions"] == 1
+    assert counts == _adopted_counts()
+    assert counts["worlds"] == 1
     assert counts["head_events"] == 1
-    assert counts["contributions"] == EXPECTED_CONTRIBUTIONS
-    assert counts["identity"] == EXPECTED_IDENTITY_DECISIONS
-    assert counts["artifacts"] == EXPECTED_SOURCE_ARTIFACTS
-    assert counts["revisions_source"] == EXPECTED_SOURCE_REVISIONS
+    assert counts["evidence_refs"] > 0
     assert receipt.schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA
     assert receipt.world_id == WORLD_ID
     assert receipt.adoption_id == ADOPTION_ID
@@ -341,15 +361,14 @@ def test_postgres_first_adoption_commits_receipt_graph_and_history(pg) -> None:
 
 def test_postgres_exact_retry_is_idempotent(pg) -> None:
     first = _adopt(pg)
+    after_first = _counts(pg)
+    assert after_first == _adopted_counts()
+    assert after_first["worlds"] == 1
+    assert after_first["head_events"] == 1
     replayed = _adopt(pg, adopted_at=LATER)
     assert replayed == first
     assert replayed.adopted_at == NOW
-    counts = _counts(pg)
-    assert counts["receipts"] == 1
-    assert counts["revisions"] == 1
-    assert counts["contributions"] == EXPECTED_CONTRIBUTIONS
-    assert counts["identity"] == EXPECTED_IDENTITY_DECISIONS
-    assert counts["artifacts"] == EXPECTED_SOURCE_ARTIFACTS
+    assert _counts(pg) == after_first
     assert pg.world_graph.get_head(WORLD_ID).head_revision_id == PUBLISHED_REVISION_ID
     _assert_current_graph(pg)
     _assert_history_round_trip(pg)
@@ -358,6 +377,7 @@ def test_postgres_exact_retry_is_idempotent(pg) -> None:
 def test_postgres_changed_valid_bundle_conflicts_without_mutation(pg) -> None:
     first = _adopt(pg)
     original_counts = _counts(pg)
+    assert original_counts == _adopted_counts()
     changed = _changed_valid_bundle_bytes()
     with pytest.raises(IdempotencyConflictError) as exc:
         _adopt(pg, changed, adopted_at=LATER)
@@ -389,6 +409,8 @@ def test_postgres_every_precommit_failpoint_rolls_back_then_retries(
         PostgresDatabase(migrated_database),
         failure_hook=hook,
     )
+    before = _counts(pg)
+    assert before == _zero_counts()
     with pytest.raises(ExistingWorldAdoptionOutcomeUnknownError):
         adopt_existing_world(
             raw_bundle(),
@@ -396,11 +418,11 @@ def test_postgres_every_precommit_failpoint_rolls_back_then_retries(
             adoption_repository=repository,
             graph_reader=eldyrwild_graph_reader(),
         )
-    assert _counts(pg) == _zero_counts()
+    assert _counts(pg) == before
     assert pg.existing_world_adoptions.get_for_world(WORLD_ID) is None
     receipt = _adopt(pg)
     assert receipt.published_revision_id == PUBLISHED_REVISION_ID
-    assert _counts(pg)["receipts"] == 1
+    assert _counts(pg) == _adopted_counts()
     assert pg.world_graph.get_head(WORLD_ID).head_revision_id == PUBLISHED_REVISION_ID
 
 
@@ -441,12 +463,13 @@ def test_postgres_postcommit_response_loss_recovers_the_durable_receipt(pg) -> N
     assert receipt.bundle_sha256 == BUNDLE_SHA256
     assert receipt.published_revision_id == PUBLISHED_REVISION_ID
     assert pg.existing_world_adoptions.get_for_world(WORLD_ID) == receipt
+    after_commit = _counts(pg)
+    assert after_commit == _adopted_counts()
+    assert after_commit["worlds"] == 1
+    assert after_commit["head_events"] == 1
     replayed = _adopt(pg, adopted_at=LATER)
     assert replayed == receipt
     assert replayed.adopted_at == NOW
-    counts = _counts(pg)
-    assert counts["receipts"] == 1
-    assert counts["revisions"] == 1
-    assert counts["contributions"] == EXPECTED_CONTRIBUTIONS
+    assert _counts(pg) == after_commit
     _assert_current_graph(pg)
     _assert_history_round_trip(pg)
