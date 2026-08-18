@@ -641,6 +641,11 @@ class _SpyAdoption:
         self.get_for_world_calls += 1
         return self.inner.get_for_world(world_id)
 
+    def promote_to_v3_receipt(self, world_id: str, *, expected, promoted):
+        return self.inner.promote_to_v3_receipt(
+            world_id, expected=expected, promoted=promoted
+        )
+
 
 class _BoomReader:
     def parse(self, *, graph_schema: str, graph_payload: dict[str, Any]):

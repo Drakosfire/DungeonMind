@@ -39,6 +39,9 @@ from dungeonmind.domain.errors import (
     PersistenceIntegrityError,
     PersistenceUnavailableError,
 )
+from dungeonmind.domain.existing_world_membership import (
+    existing_world_adoption_membership_sha256,
+)
 from dungeonmind.infrastructure.memory import (
     InMemoryContributionRepository,
     InMemoryExistingWorldAdoptionRepository,
@@ -633,6 +636,9 @@ def test_service_resolution_names_the_missing_revision() -> None:
         def get_for_world(self, world_id: str):
             return receipt
 
+        def promote_to_v3_receipt(self, world_id: str, *, expected, promoted):
+            raise NotImplementedError
+
     service = ExistingWorldCorrespondenceService(
         adoption_repository=_UncheckingAdoptions(),
         world_graph_repository=harness.world_graph,
@@ -818,6 +824,11 @@ def test_unavailable_receipt_read_raises_and_never_classifies() -> None:
         def get_for_world(self, world_id: str):
             raise PersistenceUnavailableError("simulated receipt-store outage")
 
+        def promote_to_v3_receipt(self, world_id: str, *, expected, promoted):
+            return inner.promote_to_v3_receipt(
+                world_id, expected=expected, promoted=promoted
+            )
+
     service = ExistingWorldCorrespondenceService(
         adoption_repository=_UnavailableAdoptions(),
         world_graph_repository=harness.world_graph,
@@ -928,6 +939,24 @@ def test_unpromoted_v2_receipt_fails_closed_on_stale_path_until_promoted() -> No
     assert isinstance(promoted, ExistingWorldAdoptionReceiptV3)
     result = harness.check(_changed_source_snapshot_bytes())
     assert result.classification == "STALE"
+
+
+def test_sealed_bundle_membership_digest_matches_canonical_vector() -> None:
+    """Anti-drift pin: the sealed Eldyrwild bundle's exact membership digest
+    is a cross-repo contract — Buddy verifies this value when the real
+    Eldyrwild V2 receipt is promoted — so the algorithm cannot drift
+    silently even when both sides of an equality check move together."""
+    bundle = parse_sealed_bundle()
+    digest = existing_world_adoption_membership_sha256(
+        source_artifacts=bundle.source_artifacts,
+        source_revisions=bundle.source_revisions,
+        contributions=bundle.contributions,
+        identity_decisions=bundle.identity_decisions,
+    )
+    assert (
+        digest
+        == "538195e399158bfb4fafce01f9c5af3c63e2137f70694fdead7a26e5800e0890"
+    )
 
 
 def test_unavailable_history_read_raises_and_retry_reevaluates_fresh() -> None:
