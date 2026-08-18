@@ -7,8 +7,21 @@ from datetime import datetime
 from typing import Any
 
 import pytest
+from psycopg.types.json import Jsonb
 
-from dungeonmind.application.existing_world_adoption import adopt_existing_world
+from dungeonmind.application.existing_world_adoption import (
+    adopt_existing_world,
+    parse_existing_world_adoption_bundle,
+    promote_existing_world_adoption_receipt_v3,
+)
+from dungeonmind.application.existing_world_correspondence import (
+    ExistingWorldCorrespondenceService,
+)
+from dungeonmind.contracts.existing_world_adoption import (
+    ExistingWorldAdoptionBundleV2,
+    ExistingWorldAdoptionReceiptV2,
+    ExistingWorldAdoptionReceiptV3,
+)
 from dungeonmind.contracts.graph import PublishRevisionCommand
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import (
@@ -16,7 +29,11 @@ from dungeonmind.domain.errors import (
     IdempotencyConflictError,
     PersistenceIntegrityError,
 )
+from dungeonmind.domain.existing_world_membership import (
+    existing_world_adoption_membership_sha256,
+)
 from dungeonmind.domain.revision_ids import compute_revision_id
+from dungeonmind.infrastructure.postgres.serialization import model_fingerprint
 from tests.unit.test_existing_world_adoption import (
     ADOPTION_ID,
     ART_A,
@@ -486,7 +503,7 @@ def test_postgres_v2_adopts_and_reloads_nested_history(pg) -> None:
 
     raw = v2_bundle_bytes()
     receipt = _adopt(pg, raw)
-    assert receipt.schema_version == "dm_existing_world_adoption_receipt_v2"
+    assert receipt.schema_version == "dm_existing_world_adoption_receipt_v3"
     expected = make_v2_bundle()
     loaded_contrib = pg.contributions.get(WORLD_ID, "contrib:corrector")
     assert isinstance(loaded_contrib, GraphContributionV2)
@@ -556,3 +573,166 @@ def test_postgres_v2_failure_injection_rolls_back(
         "receipts": 0,
         "revisions_source": 0,
     }
+
+
+def _parse_v2(raw: bytes) -> ExistingWorldAdoptionBundleV2:
+    bundle = parse_existing_world_adoption_bundle(raw, graph_reader=graph_reader())
+    assert isinstance(bundle, ExistingWorldAdoptionBundleV2)
+    return bundle
+
+
+def _bundle_membership_sha256(bundle: ExistingWorldAdoptionBundleV2) -> str:
+    return existing_world_adoption_membership_sha256(
+        source_artifacts=bundle.source_artifacts,
+        source_revisions=bundle.source_revisions,
+        contributions=bundle.contributions,
+        identity_decisions=bundle.identity_decisions,
+    )
+
+
+def _correspondence(pg) -> ExistingWorldCorrespondenceService:
+    return ExistingWorldCorrespondenceService(
+        adoption_repository=pg.existing_world_adoptions,
+        world_graph_repository=pg.world_graph,
+        contribution_repository=pg.contributions,
+        identity_repository=pg.identity_decisions,
+        source_repository=pg.sources,
+        graph_reader=graph_reader(),
+    )
+
+
+def _promote(pg, raw: bytes) -> ExistingWorldAdoptionReceiptV3:
+    return promote_existing_world_adoption_receipt_v3(
+        raw,
+        world_id=WORLD_ID,
+        adoption_repository=pg.existing_world_adoptions,
+        source_repository=pg.sources,
+        contribution_repository=pg.contributions,
+        identity_repository=pg.identity_decisions,
+        graph_reader=graph_reader(),
+        correspondence_service=_correspondence(pg),
+    )
+
+
+def _downgrade_stored_receipt_to_v2(pg) -> ExistingWorldAdoptionReceiptV2:
+    """Simulate a pre-V3 durable receipt at the PostgreSQL boundary."""
+    stored = pg.existing_world_adoptions.get_for_world(WORLD_ID)
+    assert isinstance(stored, ExistingWorldAdoptionReceiptV3)
+    downgraded = ExistingWorldAdoptionReceiptV2(
+        **{
+            key: value
+            for key, value in stored.model_dump().items()
+            if key not in {"schema_version", "membership_sha256"}
+        }
+    )
+    with pg.database.connect() as conn:
+        conn.execute(
+            """
+            UPDATE dungeonmind.existing_world_adoptions
+            SET schema_version = %s, payload = %s, record_fingerprint = %s
+            WHERE world_id = %s
+            """,
+            (
+                downgraded.schema_version,
+                Jsonb(downgraded.model_dump(mode="json")),
+                model_fingerprint(downgraded),
+                WORLD_ID,
+            ),
+        )
+        conn.commit()
+    return downgraded
+
+
+@pytest.mark.integration
+def test_postgres_v3_receipt_persists_membership_checkpoint(pg) -> None:
+    raw = v2_bundle_bytes()
+    receipt = _adopt(pg, raw)
+    assert isinstance(receipt, ExistingWorldAdoptionReceiptV3)
+    assert receipt.membership_sha256 == _bundle_membership_sha256(_parse_v2(raw))
+    with pg.database.connect() as conn:
+        row = conn.execute(
+            """
+            SELECT schema_version, payload
+            FROM dungeonmind.existing_world_adoptions
+            WHERE world_id = %s
+            """,
+            (WORLD_ID,),
+        ).fetchone()
+    assert row["schema_version"] == "dm_existing_world_adoption_receipt_v3"
+    assert row["payload"]["membership_sha256"] == receipt.membership_sha256
+    reloaded = pg.existing_world_adoptions.get_for_world(WORLD_ID)
+    assert isinstance(reloaded, ExistingWorldAdoptionReceiptV3)
+    assert reloaded == receipt
+
+
+@pytest.mark.integration
+def test_postgres_promotion_is_atomic_and_preserves_world_state(pg) -> None:
+    raw = v2_bundle_bytes()
+    _adopt(pg, raw)
+    _downgrade_stored_receipt_to_v2(pg)
+    before = _counts(pg)
+    head_before = pg.world_graph.get_head(WORLD_ID)
+
+    promoted = _promote(pg, raw)
+
+    assert isinstance(promoted, ExistingWorldAdoptionReceiptV3)
+    assert promoted.membership_sha256 == _bundle_membership_sha256(_parse_v2(raw))
+    assert _counts(pg) == before
+    assert pg.world_graph.get_head(WORLD_ID) == head_before
+    reloaded = pg.existing_world_adoptions.get_for_world(WORLD_ID)
+    assert isinstance(reloaded, ExistingWorldAdoptionReceiptV3)
+    assert reloaded == promoted
+
+
+@pytest.mark.integration
+def test_postgres_promotion_replay_is_exact_noop(pg) -> None:
+    raw = v2_bundle_bytes()
+    original = _adopt(pg, raw)
+    assert isinstance(original, ExistingWorldAdoptionReceiptV3)
+    before = _counts(pg)
+    replayed = _promote(pg, raw)
+    assert replayed == original
+    assert _counts(pg) == before
+
+
+@pytest.mark.integration
+def test_postgres_promotion_fails_closed_after_same_cardinality_substitution(
+    pg,
+) -> None:
+    raw = v2_bundle_bytes()
+    _adopt(pg, raw)
+    _downgrade_stored_receipt_to_v2(pg)
+    removed = _parse_v2(raw).source_revisions[0]
+    substitute = removed.model_copy(
+        update={"source_revision_id": "srcrev:substitute-after-adoption"}
+    )
+    with pg.database.connect() as conn:
+        conn.execute(
+            "DELETE FROM dungeonmind.source_revisions WHERE source_revision_id = %s",
+            (removed.source_revision_id,),
+        )
+        conn.commit()
+    pg.sources.put_revision(substitute)
+    before = _counts(pg)
+
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _promote(pg, raw)
+    assert exc.value.details["reason"] == "adoption_promotion_membership_mismatch"
+    assert _counts(pg) == before
+    stored = pg.existing_world_adoptions.get_for_world(WORLD_ID)
+    assert isinstance(stored, ExistingWorldAdoptionReceiptV2)
+
+
+@pytest.mark.integration
+def test_postgres_promotion_requires_identity_agreement(pg) -> None:
+    raw = v2_bundle_bytes()
+    _adopt(pg, raw)
+    _downgrade_stored_receipt_to_v2(pg)
+    other = v2_bundle_bytes(make_v2_bundle(adoption_id="adopt:existing-fixture-other"))
+    before = _counts(pg)
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _promote(pg, other)
+    assert exc.value.details["reason"] == "adoption_receipt_promotion_identity_mismatch"
+    assert _counts(pg) == before
+    stored = pg.existing_world_adoptions.get_for_world(WORLD_ID)
+    assert isinstance(stored, ExistingWorldAdoptionReceiptV2)

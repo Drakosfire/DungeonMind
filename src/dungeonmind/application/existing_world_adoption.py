@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from pydantic import ValidationError
 
@@ -27,12 +27,14 @@ from ..contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_COMMAND_V2_SCHEMA,
     EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
     EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA,
     ExistingWorldAdoptionBundleV1,
     ExistingWorldAdoptionBundleV2,
     ExistingWorldAdoptionCommandV1,
     ExistingWorldAdoptionCommandV2,
     ExistingWorldAdoptionReceiptV1,
     ExistingWorldAdoptionReceiptV2,
+    ExistingWorldAdoptionReceiptV3,
     existing_world_adoption_bundle_canonical_bytes,
     existing_world_adoption_bundle_v2_canonical_bytes,
     sha256_bytes,
@@ -45,13 +47,22 @@ from ..domain.errors import (
     PersistenceIntegrityError,
     PersistenceUnavailableError,
 )
+from ..domain.existing_world_membership import (
+    existing_world_adoption_membership_sha256,
+)
 from ..domain.revision_ids import compute_revision_id
 from .graph_snapshot import GRAPH_SCHEMA_V6, GraphSnapshotReader
 from .repositories import (
+    ContributionRepository,
     DurableExistingWorldAdoptionCommand,
     DurableExistingWorldAdoptionReceipt,
     ExistingWorldAdoptionRepository,
+    IdentityDecisionRepository,
+    SourceRepository,
 )
+
+if TYPE_CHECKING:
+    from .existing_world_correspondence import ExistingWorldCorrespondenceService
 
 _SUPPORTED_GRAPH_SCHEMA = GRAPH_SCHEMA_V6
 ExistingWorldAdoptionBundle = ExistingWorldAdoptionBundleV1 | ExistingWorldAdoptionBundleV2
@@ -72,6 +83,8 @@ def _reload_receipt(
         receipt_type: type[DurableExistingWorldAdoptionReceipt] = ExistingWorldAdoptionReceiptV1
     elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA:
         receipt_type = ExistingWorldAdoptionReceiptV2
+    elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA:
+        receipt_type = ExistingWorldAdoptionReceiptV3
     else:
         _integrity("unsupported_adoption_receipt_schema")
     try:
@@ -403,10 +416,17 @@ def terminal_existing_world_adoption_receipt(
     *,
     published_revision_id: str,
 ) -> DurableExistingWorldAdoptionReceipt:
-    """Build the terminal receipt for one bound adoption command."""
+    """Build the terminal receipt for one bound adoption command.
+
+    V2 commands emit a V3 receipt: the exact adopted-membership checkpoint is
+    computed from the sealed bundle's four history families at adoption time,
+    so later correspondence can recompute current durable membership and
+    compare before any ``STALE`` classification is legal. V1 commands retain
+    the legacy V1 receipt.
+    """
     bundle = command.bundle
     if command.schema_version == EXISTING_WORLD_ADOPTION_COMMAND_V2_SCHEMA:
-        return ExistingWorldAdoptionReceiptV2(
+        return ExistingWorldAdoptionReceiptV3(
             adoption_id=bundle.adoption_id,
             world_id=bundle.world_id,
             bundle_sha256=command.bundle_sha256,
@@ -419,6 +439,12 @@ def terminal_existing_world_adoption_receipt(
             source_revision_count=len(bundle.source_revisions),
             contribution_count=len(bundle.contributions),
             identity_decision_count=len(bundle.identity_decisions),
+            membership_sha256=existing_world_adoption_membership_sha256(
+                source_artifacts=bundle.source_artifacts,
+                source_revisions=bundle.source_revisions,
+                contributions=bundle.contributions,
+                identity_decisions=bundle.identity_decisions,
+            ),
         )
     return ExistingWorldAdoptionReceiptV1(
         adoption_id=bundle.adoption_id,
@@ -530,3 +556,136 @@ def adopt_existing_world(
             expected_published_revision_id=command.expected_published_revision_id,
             reason="adoption_attempt_or_recovery_probe_failed",
         ) from None
+
+
+def promote_existing_world_adoption_receipt_v3(
+    raw_bundle: bytes,
+    *,
+    world_id: str,
+    adoption_repository: ExistingWorldAdoptionRepository,
+    source_repository: SourceRepository,
+    contribution_repository: ContributionRepository,
+    identity_repository: IdentityDecisionRepository,
+    graph_reader: GraphSnapshotReader,
+    correspondence_service: ExistingWorldCorrespondenceService,
+) -> ExistingWorldAdoptionReceiptV3:
+    """Steward-supervised v2→v3 receipt promotion for one adopted world.
+
+    The expected membership digest is derived from the exact sealed Buddy
+    bundle — never minted from current database state. Promotion is legal
+    only when the sealed bundle, the durable receipt, and the current durable
+    membership all agree exactly; only the receipt's versioned representation
+    changes (no graph/history mutation). Replay with the same facts and digest
+    is an exact no-op success; any disagreement fails closed with zero
+    mutation. V1 receipts are out of scope and fail closed.
+    """
+    if not isinstance(raw_bundle, (bytes, bytearray)):
+        _integrity("raw_bundle_not_bytes")
+    raw = bytes(raw_bundle)
+    bundle = parse_existing_world_adoption_bundle(raw, graph_reader=graph_reader)
+    if not isinstance(bundle, ExistingWorldAdoptionBundleV2):
+        _integrity(
+            "adoption_promotion_bundle_schema_unsupported",
+            world_id=world_id,
+            bundle_schema=bundle.schema_version,
+        )
+    bundle_sha256 = sha256_bytes(raw)
+
+    stored = adoption_repository.get_for_world(world_id)
+    if stored is None:
+        _integrity("adoption_receipt_missing", world_id=world_id)
+    receipt = _reload_receipt(stored, world_id=world_id)
+    if isinstance(receipt, ExistingWorldAdoptionReceiptV1):
+        _integrity(
+            "adoption_receipt_promotion_unsupported_schema",
+            world_id=world_id,
+            receipt_schema=receipt.schema_version,
+        )
+
+    graph_payload_sha256 = canonical_sha256(bundle.graph_payload)
+    expected_published_revision_id = compute_revision_id(
+        world_id=bundle.world_id,
+        parent_revision_id=None,
+        operation_ids=[bundle.adoption_id],
+        graph_schema=bundle.graph_schema,
+        graph_payload_sha256=graph_payload_sha256,
+    )
+    identity_agrees = (
+        receipt.world_id == world_id == bundle.world_id
+        and receipt.adoption_id == bundle.adoption_id
+        and receipt.bundle_sha256 == bundle_sha256
+        and receipt.source_provenance == bundle.source_provenance
+        and receipt.graph_schema == bundle.graph_schema
+        and receipt.graph_payload_sha256 == graph_payload_sha256
+        and receipt.published_revision_id == expected_published_revision_id
+    )
+    if not identity_agrees:
+        _integrity(
+            "adoption_receipt_promotion_identity_mismatch",
+            world_id=world_id,
+            adoption_id=bundle.adoption_id,
+        )
+
+    bundle_membership_sha256 = existing_world_adoption_membership_sha256(
+        source_artifacts=bundle.source_artifacts,
+        source_revisions=bundle.source_revisions,
+        contributions=bundle.contributions,
+        identity_decisions=bundle.identity_decisions,
+    )
+    if isinstance(receipt, ExistingWorldAdoptionReceiptV3):
+        if receipt.membership_sha256 != bundle_membership_sha256:
+            _integrity(
+                "adoption_receipt_promotion_identity_mismatch",
+                world_id=world_id,
+                adoption_id=bundle.adoption_id,
+            )
+        return receipt
+
+    artifacts = source_repository.list_artifacts_for_world(world_id)
+    revisions = [
+        revision
+        for artifact in artifacts
+        for revision in source_repository.list_revisions(artifact.source_artifact_id)
+    ]
+    current_membership_sha256 = existing_world_adoption_membership_sha256(
+        source_artifacts=artifacts,
+        source_revisions=revisions,
+        contributions=contribution_repository.list_for_world(world_id),
+        identity_decisions=identity_repository.list_for_world(world_id),
+    )
+    if current_membership_sha256 != bundle_membership_sha256:
+        _integrity(
+            "adoption_promotion_membership_mismatch",
+            world_id=world_id,
+            adoption_id=bundle.adoption_id,
+            expected_membership_sha256=bundle_membership_sha256,
+            current_membership_sha256=current_membership_sha256,
+        )
+
+    result = correspondence_service.check(raw, world_id=world_id)
+    if result.classification != "CORRESPONDING":
+        _integrity(
+            "adoption_receipt_promotion_correspondence_failed",
+            world_id=world_id,
+            adoption_id=bundle.adoption_id,
+            classification=result.classification,
+        )
+
+    promoted = ExistingWorldAdoptionReceiptV3(
+        adoption_id=receipt.adoption_id,
+        world_id=receipt.world_id,
+        bundle_sha256=receipt.bundle_sha256,
+        source_provenance=receipt.source_provenance,
+        published_revision_id=receipt.published_revision_id,
+        graph_schema=receipt.graph_schema,
+        graph_payload_sha256=receipt.graph_payload_sha256,
+        adopted_at=receipt.adopted_at,
+        source_artifact_count=receipt.source_artifact_count,
+        source_revision_count=receipt.source_revision_count,
+        contribution_count=receipt.contribution_count,
+        identity_decision_count=receipt.identity_decision_count,
+        membership_sha256=bundle_membership_sha256,
+    )
+    return adoption_repository.promote_to_v3_receipt(
+        world_id, expected=receipt, promoted=promoted
+    )

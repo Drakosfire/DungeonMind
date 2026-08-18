@@ -16,6 +16,10 @@ from pydantic import ValidationError
 from dungeonmind.application.existing_world_adoption import (
     adopt_existing_world,
     parse_existing_world_adoption_bundle,
+    promote_existing_world_adoption_receipt_v3,
+)
+from dungeonmind.application.existing_world_correspondence import (
+    ExistingWorldCorrespondenceService,
 )
 from dungeonmind.application.graph_snapshot import (
     GRAPH_SCHEMA_V6,
@@ -43,11 +47,13 @@ from dungeonmind.contracts.evidence import (
 from dungeonmind.contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_BUNDLE_SCHEMA,
     EXISTING_WORLD_ADOPTION_BUNDLE_V2_SCHEMA,
-    EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA,
     ExistingWorldAdoptionAuthorityRefV1,
     ExistingWorldAdoptionBundleV1,
     ExistingWorldAdoptionBundleV2,
     ExistingWorldAdoptionCommandV1,
+    ExistingWorldAdoptionReceiptV2,
+    ExistingWorldAdoptionReceiptV3,
     ExistingWorldAdoptionSourceProvenanceV1,
     existing_world_adoption_bundle_canonical_bytes,
     existing_world_adoption_bundle_v2_canonical_bytes,
@@ -70,6 +76,10 @@ from dungeonmind.domain.errors import (
     IdempotencyConflictError,
     PersistenceIntegrityError,
     PersistenceUnavailableError,
+)
+from dungeonmind.domain.existing_world_membership import (
+    EXISTING_WORLD_ADOPTION_MEMBERSHIP_SCHEMA,
+    existing_world_adoption_membership_sha256,
 )
 from dungeonmind.domain.revision_ids import compute_revision_id
 from dungeonmind.infrastructure.memory import (
@@ -878,7 +888,7 @@ def test_t15_response_loss_recovery_returns_receipt() -> None:
     assert receipt.bundle_sha256 == sha256_bytes(raw)
 
 
-def test_t15_v2_response_loss_recovery_returns_v2_receipt() -> None:
+def test_t15_v2_response_loss_recovery_returns_v3_receipt() -> None:
     raw = v2_bundle_bytes()
     _, _, _, _, inner = make_stores()
 
@@ -910,7 +920,7 @@ def test_t15_v2_response_loss_recovery_returns_v2_receipt() -> None:
     )
     assert wrapper.adopt_calls == 1
     assert wrapper.recovery_probes == 1
-    assert receipt.schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA
+    assert receipt.schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA
     assert receipt.world_id == WORLD_ID
     assert receipt.bundle_sha256 == sha256_bytes(raw)
     replayed = adopt_existing_world(
@@ -1377,7 +1387,7 @@ def test_memory_v2_history_and_adoption_round_trip() -> None:
         adoption_repository=adoptions,
         graph_reader=graph_reader(),
     )
-    assert receipt.schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA
+    assert receipt.schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA
     loaded_contrib = contributions.get(WORLD_ID, "contrib:corrector")
     assert isinstance(loaded_contrib, GraphContributionV2)
     assert loaded_contrib.model_dump(mode="json") == make_v2_bundle().contributions[1].model_dump(
@@ -1430,7 +1440,7 @@ def test_cross_version_replay_conflicts() -> None:
             adoption_repository=other_adoptions,
             graph_reader=graph_reader(),
         )
-    assert v2_receipt.schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA
+    assert v2_receipt.schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA
     assert other_graph.get_head(WORLD_ID) is not None
 
 
@@ -1486,3 +1496,335 @@ def test_memory_v2_append_rejects_missing_target_assertion() -> None:
     assert exc.value.details["reason"] == "correction_target_assertion_missing"
     assert contributions.get(WORLD_ID, dangling.contribution_id) is None
     assert contributions.list_for_world(WORLD_ID) == [target]
+
+
+def _bundle_membership_sha256(bundle: ExistingWorldAdoptionBundleV2) -> str:
+    return existing_world_adoption_membership_sha256(
+        source_artifacts=bundle.source_artifacts,
+        source_revisions=bundle.source_revisions,
+        contributions=bundle.contributions,
+        identity_decisions=bundle.identity_decisions,
+    )
+
+
+def _parse_v2(raw: bytes) -> ExistingWorldAdoptionBundleV2:
+    bundle = parse_existing_world_adoption_bundle(raw, graph_reader=graph_reader())
+    assert isinstance(bundle, ExistingWorldAdoptionBundleV2)
+    return bundle
+
+
+def _correspondence(
+    graph: InMemoryWorldGraphRepository,
+    sources: InMemorySourceRepository,
+    contributions: InMemoryContributionRepository,
+    identity: InMemoryIdentityDecisionRepository,
+    adoptions: InMemoryExistingWorldAdoptionRepository,
+) -> ExistingWorldCorrespondenceService:
+    return ExistingWorldCorrespondenceService(
+        adoption_repository=adoptions,
+        world_graph_repository=graph,
+        contribution_repository=contributions,
+        identity_repository=identity,
+        source_repository=sources,
+        graph_reader=graph_reader(),
+    )
+
+
+def _downgrade_receipt_to_v2(
+    adoptions: InMemoryExistingWorldAdoptionRepository, world_id: str
+) -> ExistingWorldAdoptionReceiptV2:
+    """Simulate a pre-V3 durable receipt for promotion-path proofs."""
+    stored = adoptions.get_for_world(world_id)
+    assert isinstance(stored, ExistingWorldAdoptionReceiptV3)
+    downgraded = ExistingWorldAdoptionReceiptV2(
+        **{
+            key: value
+            for key, value in stored.model_dump().items()
+            if key not in {"schema_version", "membership_sha256"}
+        }
+    )
+    adoptions._receipts_by_world[world_id] = downgraded
+    adoptions._receipts_by_adoption[downgraded.adoption_id] = downgraded
+    return downgraded
+
+
+def test_membership_digest_is_order_independent() -> None:
+    bundle = make_v2_bundle()
+    shuffled = bundle.model_copy(
+        update={
+            "source_artifacts": list(reversed(bundle.source_artifacts)),
+            "source_revisions": list(reversed(bundle.source_revisions)),
+            "contributions": list(reversed(bundle.contributions)),
+            "identity_decisions": list(reversed(bundle.identity_decisions)),
+        }
+    )
+    assert _bundle_membership_sha256(bundle) == _bundle_membership_sha256(shuffled)
+
+
+def test_membership_digest_changes_with_record_id() -> None:
+    bundle = make_v2_bundle()
+    renamed = bundle.source_revisions[0].model_copy(
+        update={"source_revision_id": "srcrev:renamed"}
+    )
+    changed = existing_world_adoption_membership_sha256(
+        source_artifacts=bundle.source_artifacts,
+        source_revisions=[renamed, *bundle.source_revisions[1:]],
+        contributions=bundle.contributions,
+        identity_decisions=bundle.identity_decisions,
+    )
+    assert changed != _bundle_membership_sha256(bundle)
+
+
+def test_membership_digest_changes_with_record_payload() -> None:
+    bundle = make_v2_bundle()
+    mutated = bundle.source_revisions[0].model_copy(
+        update={"content_sha256": "0" * 64}
+    )
+    changed = existing_world_adoption_membership_sha256(
+        source_artifacts=bundle.source_artifacts,
+        source_revisions=[mutated, *bundle.source_revisions[1:]],
+        contributions=bundle.contributions,
+        identity_decisions=bundle.identity_decisions,
+    )
+    assert changed != _bundle_membership_sha256(bundle)
+
+
+def test_membership_digest_rejects_duplicate_record_ids() -> None:
+    bundle = make_v2_bundle()
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        existing_world_adoption_membership_sha256(
+            source_artifacts=bundle.source_artifacts,
+            source_revisions=[bundle.source_revisions[0], bundle.source_revisions[0]],
+            contributions=bundle.contributions,
+            identity_decisions=bundle.identity_decisions,
+        )
+    assert exc.value.details["reason"] == "membership_duplicate_record_id"
+    assert exc.value.details["family"] == "source_revisions"
+
+
+def test_membership_digest_is_domain_separated() -> None:
+    bundle = make_v2_bundle()
+    digest = _bundle_membership_sha256(bundle)
+    pair = {
+        "record_id": bundle.source_revisions[0].source_revision_id,
+        "record_fingerprint": canonical_sha256(
+            bundle.source_revisions[0].model_dump(mode="json")
+        ),
+    }
+    other_schema = canonical_sha256(
+        {
+            "schema_version": "dm_existing_world_adoption_membership_v0",
+            "source_artifacts": [],
+            "source_revisions": [pair],
+            "contributions": [],
+            "identity_decisions": [],
+        }
+    )
+    assert digest != other_schema
+    moved_family = canonical_sha256(
+        {
+            "schema_version": EXISTING_WORLD_ADOPTION_MEMBERSHIP_SCHEMA,
+            "source_artifacts": [pair],
+            "source_revisions": [],
+            "contributions": [],
+            "identity_decisions": [],
+        }
+    )
+    assert digest != moved_family
+
+
+def test_v2_adoption_emits_v3_receipt_with_membership_checkpoint() -> None:
+    raw = v2_bundle_bytes()
+    _, _, _, _, adoptions = make_stores()
+    receipt = adopt_existing_world(
+        raw,
+        adopted_at=NOW,
+        adoption_repository=adoptions,
+        graph_reader=graph_reader(),
+    )
+    assert isinstance(receipt, ExistingWorldAdoptionReceiptV3)
+    assert receipt.membership_sha256 == _bundle_membership_sha256(_parse_v2(raw))
+    reloaded = adoptions.get_for_world(WORLD_ID)
+    assert isinstance(reloaded, ExistingWorldAdoptionReceiptV3)
+    assert reloaded == receipt
+
+
+def test_promotion_upgrades_v2_receipt_to_v3_without_history_mutation() -> None:
+    raw = v2_bundle_bytes()
+    graph, sources, contributions, identity, adoptions = make_stores()
+    adopt_existing_world(
+        raw, adopted_at=NOW, adoption_repository=adoptions, graph_reader=graph_reader()
+    )
+    _downgrade_receipt_to_v2(adoptions, WORLD_ID)
+    before = adoptions._snapshot_world(WORLD_ID)
+
+    promoted = promote_existing_world_adoption_receipt_v3(
+        raw,
+        world_id=WORLD_ID,
+        adoption_repository=adoptions,
+        source_repository=sources,
+        contribution_repository=contributions,
+        identity_repository=identity,
+        graph_reader=graph_reader(),
+        correspondence_service=_correspondence(
+            graph, sources, contributions, identity, adoptions
+        ),
+    )
+    assert isinstance(promoted, ExistingWorldAdoptionReceiptV3)
+    assert promoted.membership_sha256 == _bundle_membership_sha256(_parse_v2(raw))
+    after = adoptions._snapshot_world(WORLD_ID)
+    for family in (
+        "artifacts",
+        "revisions",
+        "contributions",
+        "identity",
+        "revisions_graph",
+        "head",
+    ):
+        assert after[family] == before[family]
+    assert isinstance(after["receipt"], ExistingWorldAdoptionReceiptV3)
+
+
+def test_promotion_replay_is_exact_noop() -> None:
+    raw = v2_bundle_bytes()
+    graph, sources, contributions, identity, adoptions = make_stores()
+    original = adopt_existing_world(
+        raw, adopted_at=NOW, adoption_repository=adoptions, graph_reader=graph_reader()
+    )
+    assert isinstance(original, ExistingWorldAdoptionReceiptV3)
+    replayed = promote_existing_world_adoption_receipt_v3(
+        raw,
+        world_id=WORLD_ID,
+        adoption_repository=adoptions,
+        source_repository=sources,
+        contribution_repository=contributions,
+        identity_repository=identity,
+        graph_reader=graph_reader(),
+        correspondence_service=_correspondence(
+            graph, sources, contributions, identity, adoptions
+        ),
+    )
+    assert replayed == original
+
+
+def test_promotion_rejects_identity_divergent_bundle() -> None:
+    raw = v2_bundle_bytes()
+    graph, sources, contributions, identity, adoptions = make_stores()
+    adopt_existing_world(
+        raw, adopted_at=NOW, adoption_repository=adoptions, graph_reader=graph_reader()
+    )
+    _downgrade_receipt_to_v2(adoptions, WORLD_ID)
+    other = v2_bundle_bytes(make_v2_bundle(adoption_id="adopt:existing-fixture-other"))
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        promote_existing_world_adoption_receipt_v3(
+            other,
+            world_id=WORLD_ID,
+            adoption_repository=adoptions,
+            source_repository=sources,
+            contribution_repository=contributions,
+            identity_repository=identity,
+            graph_reader=graph_reader(),
+            correspondence_service=_correspondence(
+                graph, sources, contributions, identity, adoptions
+            ),
+        )
+    assert exc.value.details["reason"] == "adoption_receipt_promotion_identity_mismatch"
+    assert not isinstance(adoptions.get_for_world(WORLD_ID), ExistingWorldAdoptionReceiptV3)
+
+
+def test_promotion_fails_after_same_cardinality_substitution() -> None:
+    raw = v2_bundle_bytes()
+    graph, sources, contributions, identity, adoptions = make_stores()
+    adopt_existing_world(
+        raw, adopted_at=NOW, adoption_repository=adoptions, graph_reader=graph_reader()
+    )
+    _downgrade_receipt_to_v2(adoptions, WORLD_ID)
+    bundle = _parse_v2(raw)
+    removed = bundle.source_revisions[0]
+    sources._revisions.pop(removed.source_revision_id)
+    substitute = removed.model_copy(
+        update={"source_revision_id": "srcrev:substitute-after-adoption"}
+    )
+    sources._revisions[substitute.source_revision_id] = substitute
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        promote_existing_world_adoption_receipt_v3(
+            raw,
+            world_id=WORLD_ID,
+            adoption_repository=adoptions,
+            source_repository=sources,
+            contribution_repository=contributions,
+            identity_repository=identity,
+            graph_reader=graph_reader(),
+            correspondence_service=_correspondence(
+                graph, sources, contributions, identity, adoptions
+            ),
+        )
+    assert exc.value.details["reason"] == "adoption_promotion_membership_mismatch"
+    assert not isinstance(adoptions.get_for_world(WORLD_ID), ExistingWorldAdoptionReceiptV3)
+
+
+def test_promotion_requires_an_existing_receipt() -> None:
+    raw = v2_bundle_bytes()
+    graph, sources, contributions, identity, adoptions = make_stores()
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        promote_existing_world_adoption_receipt_v3(
+            raw,
+            world_id=WORLD_ID,
+            adoption_repository=adoptions,
+            source_repository=sources,
+            contribution_repository=contributions,
+            identity_repository=identity,
+            graph_reader=graph_reader(),
+            correspondence_service=_correspondence(
+                graph, sources, contributions, identity, adoptions
+            ),
+        )
+    assert exc.value.details["reason"] == "adoption_receipt_missing"
+
+
+def test_promotion_rejects_v1_bundle() -> None:
+    graph, sources, contributions, identity, adoptions = make_stores()
+    adopt_existing_world(
+        bundle_bytes(),
+        adopted_at=NOW,
+        adoption_repository=adoptions,
+        graph_reader=graph_reader(),
+    )
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        promote_existing_world_adoption_receipt_v3(
+            bundle_bytes(),
+            world_id=WORLD_ID,
+            adoption_repository=adoptions,
+            source_repository=sources,
+            contribution_repository=contributions,
+            identity_repository=identity,
+            graph_reader=graph_reader(),
+            correspondence_service=_correspondence(
+                graph, sources, contributions, identity, adoptions
+            ),
+        )
+    assert exc.value.details["reason"] == "adoption_promotion_bundle_schema_unsupported"
+
+
+def test_promotion_rejects_v1_receipt() -> None:
+    graph, sources, contributions, identity, adoptions = make_stores()
+    adopt_existing_world(
+        bundle_bytes(),
+        adopted_at=NOW,
+        adoption_repository=adoptions,
+        graph_reader=graph_reader(),
+    )
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        promote_existing_world_adoption_receipt_v3(
+            v2_bundle_bytes(),
+            world_id=WORLD_ID,
+            adoption_repository=adoptions,
+            source_repository=sources,
+            contribution_repository=contributions,
+            identity_repository=identity,
+            graph_reader=graph_reader(),
+            correspondence_service=_correspondence(
+                graph, sources, contributions, identity, adoptions
+            ),
+        )
+    assert exc.value.details["reason"] == "adoption_receipt_promotion_unsupported_schema"

@@ -11,7 +11,7 @@ from dungeonmind.application.existing_world_adoption import (
 from dungeonmind.contracts.contribution import GraphContributionV2
 from dungeonmind.contracts.evidence import EvidenceRef
 from dungeonmind.contracts.existing_world_adoption import (
-    EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA,
     existing_world_adoption_bundle_v2_canonical_bytes,
 )
 from dungeonmind.contracts.identity import IdentityDecisionRecordV2
@@ -338,7 +338,7 @@ def test_postgres_first_adoption_commits_receipt_graph_and_history(pg) -> None:
     assert counts["worlds"] == 1
     assert counts["head_events"] == 1
     assert counts["evidence_refs"] > 0
-    assert receipt.schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA
+    assert receipt.schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA
     assert receipt.world_id == WORLD_ID
     assert receipt.adoption_id == ADOPTION_ID
     assert receipt.bundle_sha256 == BUNDLE_SHA256
