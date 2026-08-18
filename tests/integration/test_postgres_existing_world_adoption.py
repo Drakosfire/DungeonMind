@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any
 
 import pytest
+from psycopg.errors import LockNotAvailable
 from psycopg.types.json import Jsonb
 
 from dungeonmind.application.existing_world_adoption import (
@@ -34,6 +35,19 @@ from dungeonmind.domain.existing_world_membership import (
 )
 from dungeonmind.domain.revision_ids import compute_revision_id
 from dungeonmind.infrastructure.postgres.serialization import model_fingerprint
+from tests.unit.test_eldyrwild_existing_world_adoption_bundle_v2 import (
+    PUBLISHED_REVISION_ID as ELDYRWILD_PUBLISHED_REVISION_ID,
+)
+from tests.unit.test_eldyrwild_existing_world_adoption_bundle_v2 import (
+    WORLD_ID as ELDYRWILD_WORLD_ID,
+)
+from tests.unit.test_eldyrwild_existing_world_adoption_bundle_v2 import (
+    eldyrwild_graph_reader,
+    parse_sealed_bundle,
+)
+from tests.unit.test_eldyrwild_existing_world_adoption_bundle_v2 import (
+    raw_bundle as eldyrwild_raw_bundle,
+)
 from tests.unit.test_existing_world_adoption import (
     ADOPTION_ID,
     ART_A,
@@ -50,6 +64,10 @@ from tests.unit.test_existing_world_adoption import (
     make_isolated_bundle,
     make_v2_bundle,
     v2_bundle_bytes,
+)
+
+SEALED_ELDRYWILD_MEMBERSHIP_SHA256 = (
+    "538195e399158bfb4fafce01f9c5af3c63e2137f70694fdead7a26e5800e0890"
 )
 
 pytestmark = pytest.mark.integration
@@ -590,33 +608,46 @@ def _bundle_membership_sha256(bundle: ExistingWorldAdoptionBundleV2) -> str:
     )
 
 
-def _correspondence(pg) -> ExistingWorldCorrespondenceService:
+def _correspondence(pg, *, reader=None) -> ExistingWorldCorrespondenceService:
     return ExistingWorldCorrespondenceService(
         adoption_repository=pg.existing_world_adoptions,
         world_graph_repository=pg.world_graph,
         contribution_repository=pg.contributions,
         identity_repository=pg.identity_decisions,
         source_repository=pg.sources,
-        graph_reader=graph_reader(),
+        graph_reader=reader if reader is not None else graph_reader(),
     )
 
 
-def _promote(pg, raw: bytes) -> ExistingWorldAdoptionReceiptV3:
+def _promote(
+    pg,
+    raw: bytes,
+    *,
+    world_id: str = WORLD_ID,
+    reader=None,
+    adoption_repository=None,
+) -> ExistingWorldAdoptionReceiptV3:
     return promote_existing_world_adoption_receipt_v3(
         raw,
-        world_id=WORLD_ID,
-        adoption_repository=pg.existing_world_adoptions,
+        world_id=world_id,
+        adoption_repository=(
+            adoption_repository
+            if adoption_repository is not None
+            else pg.existing_world_adoptions
+        ),
         source_repository=pg.sources,
         contribution_repository=pg.contributions,
         identity_repository=pg.identity_decisions,
-        graph_reader=graph_reader(),
-        correspondence_service=_correspondence(pg),
+        graph_reader=reader if reader is not None else graph_reader(),
+        correspondence_service=_correspondence(pg, reader=reader),
     )
 
 
-def _downgrade_stored_receipt_to_v2(pg) -> ExistingWorldAdoptionReceiptV2:
+def _downgrade_stored_receipt_to_v2(
+    pg, world_id: str = WORLD_ID
+) -> ExistingWorldAdoptionReceiptV2:
     """Simulate a pre-V3 durable receipt at the PostgreSQL boundary."""
-    stored = pg.existing_world_adoptions.get_for_world(WORLD_ID)
+    stored = pg.existing_world_adoptions.get_for_world(world_id)
     assert isinstance(stored, ExistingWorldAdoptionReceiptV3)
     downgraded = ExistingWorldAdoptionReceiptV2(
         **{
@@ -636,11 +667,40 @@ def _downgrade_stored_receipt_to_v2(pg) -> ExistingWorldAdoptionReceiptV2:
                 downgraded.schema_version,
                 Jsonb(downgraded.model_dump(mode="json")),
                 model_fingerprint(downgraded),
-                WORLD_ID,
+                world_id,
             ),
         )
         conn.commit()
     return downgraded
+
+
+def _durable_membership_sha256(pg, world_id: str) -> str:
+    """Independently enumerate the four durable families via the repositories."""
+    artifacts = pg.sources.list_artifacts_for_world(world_id)
+    return existing_world_adoption_membership_sha256(
+        source_artifacts=artifacts,
+        source_revisions=[
+            revision
+            for artifact in artifacts
+            for revision in pg.sources.list_revisions(artifact.source_artifact_id)
+        ],
+        contributions=pg.contributions.list_for_world(world_id),
+        identity_decisions=pg.identity_decisions.list_for_world(world_id),
+    )
+
+
+def _graph_revision_ids(pg, world_id: str) -> list[str]:
+    with pg.database.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT revision_id
+            FROM dungeonmind.graph_revisions
+            WHERE world_id = %s
+            ORDER BY revision_id
+            """,
+            (world_id,),
+        ).fetchall()
+    return [row["revision_id"] for row in rows]
 
 
 @pytest.mark.integration
@@ -736,3 +796,177 @@ def test_postgres_promotion_requires_identity_agreement(pg) -> None:
     assert _counts(pg) == before
     stored = pg.existing_world_adoptions.get_for_world(WORLD_ID)
     assert isinstance(stored, ExistingWorldAdoptionReceiptV2)
+
+
+class _GapCommitAdoptions:
+    """Pause at the repository boundary and commit a valid history mutation
+    through an independent transaction before delegating — the review cycle 1
+    exit-proof shape (writer commits between the application's pre-boundary
+    proof and the adapter's serialization boundary)."""
+
+    def __init__(self, inner, identity) -> None:
+        self._inner = inner
+        self._identity = identity
+
+    def adopt(self, command):
+        return self._inner.adopt(command)
+
+    def get(self, world_id: str, adoption_id: str):
+        return self._inner.get(world_id, adoption_id)
+
+    def get_for_world(self, world_id: str):
+        return self._inner.get_for_world(world_id)
+
+    def promote_to_v3_receipt(
+        self, world_id: str, *, expected, promoted, current_membership_sha256
+    ):
+        gap_decision = (
+            _parse_v2(v2_bundle_bytes())
+            .identity_decisions[0]
+            .model_copy(update={"decision_id": "decision:committed-in-promotion-gap"})
+        )
+        self._identity.append(gap_decision)
+        return self._inner.promote_to_v3_receipt(
+            world_id,
+            expected=expected,
+            promoted=promoted,
+            current_membership_sha256=current_membership_sha256,
+        )
+
+
+@pytest.mark.integration
+def test_postgres_promotion_fails_when_history_commits_in_the_gap(pg) -> None:
+    """Required exit proof: pause promotion after its initial membership
+    proof, commit a valid history mutation concurrently, resume — promotion
+    must fail with the receipt still V2."""
+    raw = v2_bundle_bytes()
+    _adopt(pg, raw)
+    _downgrade_stored_receipt_to_v2(pg)
+    gap_adoptions = _GapCommitAdoptions(pg.existing_world_adoptions, pg.identity_decisions)
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _promote(pg, raw, adoption_repository=gap_adoptions)
+    assert exc.value.details["reason"] == "adoption_promotion_membership_mismatch"
+    stored = pg.existing_world_adoptions.get_for_world(WORLD_ID)
+    assert isinstance(stored, ExistingWorldAdoptionReceiptV2)
+    # The gap commit is a valid independent write and remains; promotion
+    # itself mutated nothing.
+    counts = _counts(pg)
+    assert counts["identity"] == len(_parse_v2(raw).identity_decisions) + 1
+    assert counts["receipts"] == 1
+
+
+@pytest.mark.integration
+def test_postgres_promotion_boundary_blocks_concurrent_writer(pg) -> None:
+    """The equality proof and the V3 commit share one genuine serialization
+    boundary: while the promotion transaction is parked after acquiring its
+    locks, a concurrent writer's table-level DML lock cannot be acquired, and
+    the promotion still completes cleanly once released."""
+    raw = v2_bundle_bytes()
+    _adopt(pg, raw)
+    expected = _downgrade_stored_receipt_to_v2(pg)
+    promoted = ExistingWorldAdoptionReceiptV3(
+        **{
+            key: value
+            for key, value in expected.model_dump().items()
+            if key != "schema_version"
+        },
+        membership_sha256=_bundle_membership_sha256(_parse_v2(raw)),
+    )
+    before = _counts(pg)
+    entered = threading.Event()
+    release = threading.Event()
+    outcome: list[object] = []
+
+    def gated_provider() -> str:
+        entered.set()
+        assert release.wait(timeout=30)
+        return _durable_membership_sha256(pg, WORLD_ID)
+
+    def run_promotion() -> None:
+        try:
+            outcome.append(
+                pg.existing_world_adoptions.promote_to_v3_receipt(
+                    WORLD_ID,
+                    expected=expected,
+                    promoted=promoted,
+                    current_membership_sha256=gated_provider,
+                )
+            )
+        except BaseException as exc:
+            outcome.append(exc)
+
+    worker = threading.Thread(target=run_promotion)
+    worker.start()
+    try:
+        assert entered.wait(timeout=30)
+        # The promotion transaction now holds the world row lock and SHARE ROW
+        # EXCLUSIVE on all four membership families. A writer's INSERT needs
+        # ROW EXCLUSIVE on graph_contributions: it must block.
+        with pg.database.connect() as conn:
+            conn.execute("SET lock_timeout = '2s'")
+            with pytest.raises(LockNotAvailable):
+                conn.execute(
+                    "LOCK TABLE dungeonmind.graph_contributions IN ROW EXCLUSIVE MODE"
+                )
+            conn.rollback()
+    finally:
+        release.set()
+    worker.join(timeout=30)
+    assert not worker.is_alive()
+    result = outcome[0]
+    assert isinstance(result, ExistingWorldAdoptionReceiptV3)
+    assert result.membership_sha256 == promoted.membership_sha256
+    assert _counts(pg) == before
+    # The block was the boundary, not a permanent conflict.
+    with pg.database.connect() as conn:
+        conn.execute("SET lock_timeout = '2s'")
+        conn.execute("LOCK TABLE dungeonmind.graph_contributions IN ROW EXCLUSIVE MODE")
+        conn.rollback()
+
+
+@pytest.mark.integration
+def test_postgres_eldyrwild_historical_v2_receipt_promotes_to_exact_v3_checkpoint(
+    pg,
+) -> None:
+    """§9 required proof: the exact historical Eldyrwild V2 state undergoes
+    supervised promotion using the exact sealed bytes; the sealed digest
+    equals the independently enumerated durable digest; nothing else moves."""
+    raw = eldyrwild_raw_bundle()
+    reader = eldyrwild_graph_reader()
+    adopted = adopt_existing_world(
+        raw,
+        adopted_at=NOW,
+        adoption_repository=pg.existing_world_adoptions,
+        graph_reader=reader,
+    )
+    assert isinstance(adopted, ExistingWorldAdoptionReceiptV3)
+    v2 = _downgrade_stored_receipt_to_v2(pg, ELDYRWILD_WORLD_ID)
+    before_counts = _counts(pg, ELDYRWILD_WORLD_ID)
+    head_before = pg.world_graph.get_head(ELDYRWILD_WORLD_ID)
+    revisions_before = _graph_revision_ids(pg, ELDYRWILD_WORLD_ID)
+
+    promoted = _promote(pg, raw, world_id=ELDYRWILD_WORLD_ID, reader=reader)
+
+    assert isinstance(promoted, ExistingWorldAdoptionReceiptV3)
+    assert promoted.membership_sha256 == SEALED_ELDRYWILD_MEMBERSHIP_SHA256
+    assert (
+        _durable_membership_sha256(pg, ELDYRWILD_WORLD_ID)
+        == SEALED_ELDRYWILD_MEMBERSHIP_SHA256
+    )
+    sealed = parse_sealed_bundle()
+    assert isinstance(sealed, ExistingWorldAdoptionBundleV2)
+    assert _bundle_membership_sha256(sealed) == SEALED_ELDRYWILD_MEMBERSHIP_SHA256
+    assert {
+        key: value
+        for key, value in promoted.model_dump().items()
+        if key not in {"schema_version", "membership_sha256"}
+    } == {
+        key: value for key, value in v2.model_dump().items() if key != "schema_version"
+    }
+    assert _counts(pg, ELDYRWILD_WORLD_ID) == before_counts
+    assert pg.world_graph.get_head(ELDYRWILD_WORLD_ID) == head_before
+    assert revisions_before == [ELDYRWILD_PUBLISHED_REVISION_ID]
+    assert _graph_revision_ids(pg, ELDYRWILD_WORLD_ID) == revisions_before
+    reloaded = pg.existing_world_adoptions.get_for_world(ELDYRWILD_WORLD_ID)
+    assert isinstance(reloaded, ExistingWorldAdoptionReceiptV3)
+    assert reloaded == promoted
