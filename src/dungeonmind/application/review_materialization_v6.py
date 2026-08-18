@@ -51,6 +51,25 @@ from .graph_snapshot_v6 import (
 )
 from .review_materialization import FinalizedReviewGraphMaterialization
 
+# Adopted-era records carry ``ka:*`` synthetic assertion ids produced by the
+# existing-world adoption pipeline.  Correcting adopted-era knowledge requires
+# receipt-aware authority and is explicitly a future slice, so corrections
+# targeting those records fail closed by construction (dispatch §5/§9).
+_ADOPTED_ERA_ASSERTION_ID_PREFIX = "ka:"
+
+# Mechanics/statblock bindings are owned by a separate mechanics authority and
+# never cross this World Graph publication seam — even smuggled inside an
+# otherwise reviewable assertion kind.  These are Buddy's real binding shapes:
+# the ``uses_statblock`` edge predicate (raw or profile-qualified) and the
+# ``threat_statblock_binding`` / ``statblock_binding`` value payloads.
+_MECHANICS_BINDING_PREDICATE = "uses_statblock"
+_MECHANICS_BINDING_VALUE_KEYS = frozenset({"threat_statblock_binding", "statblock_binding"})
+
+# Assertion kinds whose source-identity-only fallback evidence the dispatch
+# names a graph-object key for (object id for node/alias/attribute,
+# relationship id for edge).  ``evidence_ref`` stays fail-closed.
+_FALLBACK_EVIDENCE_KINDS = frozenset({"node", "edge", "alias", "attribute"})
+
 
 def _fail(reason: str, **details: Any) -> NoReturn:
     raise ContributionMaterializationError(reason, details=details) from None
@@ -151,6 +170,49 @@ def _parse_value(assertion: GraphContributionAssertionV2) -> dict[str, Any]:
             field="value",
         )
     return parsed
+
+
+def _session_refs(assertion: GraphContributionAssertionV2, value: dict[str, Any]) -> list[str]:
+    """``value["session_ids"]`` carried into assertion metadata, fail-closed.
+
+    The list is passed through exactly; blank or duplicate entries are rejected
+    by the ``KnowledgeAssertionMetadataV1`` contract inside ``_metadata``.
+    """
+    raw = value.get("session_ids")
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or any(not isinstance(item, str) for item in raw):
+        _fail(
+            "unsupported_field_shape",
+            assertion_id=assertion.assertion_id,
+            field="session_ids",
+        )
+    return list(raw)
+
+
+def _reject_mechanics_binding(assertion: GraphContributionAssertionV2) -> None:
+    """Fail closed on statblock/mechanics binding material in any assertion."""
+    value = _parse_value(assertion)
+    predicates = [assertion.predicate]
+    qualified = value.get("dm_predicate")
+    if isinstance(qualified, str):
+        predicates.append(qualified)
+    for predicate in predicates:
+        if predicate and predicate.rsplit(":", 1)[-1] == _MECHANICS_BINDING_PREDICATE:
+            _fail(
+                "unsupported_assertion_kind",
+                assertion_id=assertion.assertion_id,
+                assertion_kind=assertion.assertion_kind,
+                binding=_MECHANICS_BINDING_PREDICATE,
+            )
+    for key in sorted(_MECHANICS_BINDING_VALUE_KEYS):
+        if key in value:
+            _fail(
+                "unsupported_assertion_kind",
+                assertion_id=assertion.assertion_id,
+                assertion_kind=assertion.assertion_kind,
+                binding=key,
+            )
 
 
 def _temporal_scope(assertion: GraphContributionAssertionV2) -> TemporalScopeRefV1:
@@ -266,15 +328,16 @@ def _assertion_evidence(
 ) -> tuple[list[str], dict[str, EvidenceRefV2]]:
     """Evidence ids for one applied assertion plus any new payload records.
 
-    Node/edge assertions without explicit evidence synthesize the same
-    contribution-scoped fallback Buddy's merge creates.  Alias, attribute, and
-    evidence_ref assertions must carry explicit evidence (Buddy's merge never
-    synthesizes for them).
+    Accepted node/edge/alias/attribute assertions with source identity but no
+    explicit evidence synthesize the contribution-scoped fallback id
+    ``evidence:{reviewed_contribution}:{graph_object}`` (dispatch §5), keyed so
+    Buddy-side replay derives the identical id.  ``evidence_ref`` assertions
+    name no graph-object key in the dispatch and stay fail-closed.
     """
     lifted = _lift_evidence(assertion)
     if lifted:
         return sorted(lifted), lifted
-    if kind not in {"node", "edge"}:
+    if kind not in _FALLBACK_EVIDENCE_KINDS:
         _fail(
             "accepted_assertion_missing_graph_evidence",
             assertion_id=assertion.assertion_id,
@@ -295,6 +358,7 @@ def _alias_record(
     alias: str,
     assertion_id: str,
     evidence_ref_ids: list[str],
+    session_refs: list[str],
 ) -> AliasAssertionV4Record:
     return AliasAssertionV4Record(
         value=alias,
@@ -302,7 +366,7 @@ def _alias_record(
             assertion,
             assertion_id=assertion_id,
             evidence_ref_ids=evidence_ref_ids,
-            session_refs=[],
+            session_refs=session_refs,
         ),
     )
 
@@ -388,6 +452,7 @@ class _V6Materialization:
             reviewed_source_revision_id=self.reviewed.source_revision_id,
             graph_object_id=object_id,
         )
+        session_refs = _session_refs(assertion, value)
         self._register_evidence(evidence_records)
         if existing is None:
             kind = value.get("dm_kind")
@@ -405,15 +470,16 @@ class _V6Materialization:
             seen_aliases: set[str] = set()
             for alias in alias_values:
                 alias_text = str(alias)
-                if not alias_text.strip() or alias_text in seen_aliases:
+                if not alias_text.strip() or alias_text.casefold() in seen_aliases:
                     continue
-                seen_aliases.add(alias_text)
+                seen_aliases.add(alias_text.casefold())
                 alias_records.append(
                     _alias_record(
                         assertion,
                         alias=alias_text,
                         assertion_id=f"{assertion.assertion_id}:alias:{alias_text}",
                         evidence_ref_ids=evidence_ids,
+                        session_refs=session_refs,
                     )
                 )
             node = GraphObjectV6Record(
@@ -424,7 +490,7 @@ class _V6Materialization:
                     assertion,
                     assertion_id=assertion.assertion_id,
                     evidence_ref_ids=evidence_ids,
-                    session_refs=[],
+                    session_refs=session_refs,
                 ),
                 aliases=alias_records,
                 summary=None,
@@ -438,18 +504,19 @@ class _V6Materialization:
         # Merge onto the existing object: additive aliases and evidence only;
         # kind/label are never rewritten (Buddy kernel merge semantics).
         merged_aliases = list(existing.aliases)
-        known_aliases = {record.value for record in merged_aliases}
+        known_aliases = {record.value.casefold() for record in merged_aliases}
         for alias in value.get("aliases") or []:
             alias_text = str(alias)
-            if not alias_text.strip() or alias_text in known_aliases:
+            if not alias_text.strip() or alias_text.casefold() in known_aliases:
                 continue
-            known_aliases.add(alias_text)
+            known_aliases.add(alias_text.casefold())
             merged_aliases.append(
                 _alias_record(
                     assertion,
                     alias=alias_text,
                     assertion_id=f"{assertion.assertion_id}:alias:{alias_text}",
                     evidence_ref_ids=evidence_ids,
+                    session_refs=session_refs,
                 )
             )
         merged_evidence = list(existing.assertion_metadata.evidence_ref_ids)
@@ -503,19 +570,44 @@ class _V6Materialization:
             reviewed_source_revision_id=self.reviewed.source_revision_id,
             graph_object_id=relationship_id,
         )
+        session_refs = _session_refs(assertion, value)
         existing = self.relationships.get(relationship_id)
         if existing is not None:
             if (
-                existing.source_object_id == subject
-                and existing.target_object_id == target
-                and existing.predicate == qualified_predicate
+                existing.source_object_id != subject
+                or existing.target_object_id != target
+                or existing.predicate != qualified_predicate
             ):
-                # Exact duplicate: replay-safe no-op (Buddy merge semantics).
-                return
-            _fail(
-                "relationship_id_collision",
-                relationship_id=relationship_id,
+                _fail(
+                    "relationship_id_collision",
+                    relationship_id=relationship_id,
+                )
+            # Same graph identity: merge retained support exactly like Buddy's
+            # kernel edge merge — the accepted assertion's evidence and session
+            # provenance is registered and retained, never silently dropped.
+            # An exact duplicate replays to identical content (a true no-op).
+            self._register_evidence(evidence_records)
+            metadata = existing.assertion_metadata
+            merged_evidence = list(metadata.evidence_ref_ids)
+            for evidence_ref_id in evidence_ids:
+                if evidence_ref_id not in merged_evidence:
+                    merged_evidence.append(evidence_ref_id)
+            merged_sessions = list(metadata.session_refs)
+            for session_ref in session_refs:
+                if session_ref not in merged_sessions:
+                    merged_sessions.append(session_ref)
+            self.relationships[relationship_id] = existing.model_copy(
+                update={
+                    "assertion_metadata": metadata.model_copy(
+                        update={
+                            "evidence_ref_ids": merged_evidence,
+                            "session_refs": merged_sessions,
+                        }
+                    )
+                }
             )
+            self.expected_relationship_ids.add(relationship_id)
+            return
         self._register_evidence(evidence_records)
         record = GraphRelationshipV6Record(
             relationship_id=relationship_id,
@@ -526,7 +618,7 @@ class _V6Materialization:
                 assertion,
                 assertion_id=assertion.assertion_id,
                 evidence_ref_ids=evidence_ids,
-                session_refs=[],
+                session_refs=session_refs,
             ),
             source_aspect_assertion_id=None,
             target_aspect_assertion_id=None,
@@ -546,8 +638,8 @@ class _V6Materialization:
         existing = self.objects.get(object_id)
         if existing is None:
             _fail("orphan_accepted_assertion", assertion_id=assertion.assertion_id)
-        if alias in {record.value for record in existing.aliases}:
-            return  # exact duplicate: replay-safe no-op
+        if alias.casefold() in {record.value.casefold() for record in existing.aliases}:
+            return  # casefolded duplicate: replay-safe no-op (dispatch §5)
         evidence_ids, evidence_records = _assertion_evidence(
             assertion,
             kind="alias",
@@ -556,6 +648,7 @@ class _V6Materialization:
             reviewed_source_revision_id=self.reviewed.source_revision_id,
             graph_object_id=object_id,
         )
+        session_refs = _session_refs(assertion, value)
         self._register_evidence(evidence_records)
         merged_aliases = [
             *existing.aliases,
@@ -564,6 +657,7 @@ class _V6Materialization:
                 alias=alias,
                 assertion_id=assertion.assertion_id,
                 evidence_ref_ids=evidence_ids,
+                session_refs=session_refs,
             ),
         ]
         # Buddy's alias merge also extends the object's retained evidence.
@@ -583,6 +677,8 @@ class _V6Materialization:
 
     def apply_evidence_only(self, assertion: GraphContributionAssertionV2) -> None:
         """Attribute/evidence_ref assertions materialize provenance only."""
+        if assertion.assertion_kind == "attribute" and assertion.subject_object_id is None:
+            _fail("orphan_accepted_assertion", assertion_id=assertion.assertion_id)
         graph_object_id = assertion.subject_object_id or assertion.assertion_id
         _evidence_ids, evidence_records = _assertion_evidence(
             assertion,
@@ -597,6 +693,14 @@ class _V6Materialization:
     def apply_corrections(self) -> None:
         for correction in self.reviewed.assertion_corrections:
             target_id = correction.target_assertion_id
+            if target_id.startswith(_ADOPTED_ERA_ASSERTION_ID_PREFIX):
+                # Adopted-era correction is a future receipt-aware slice; fail
+                # closed by construction rather than mutating sealed history.
+                _fail(
+                    "correction_target_unresolvable",
+                    assertion_id=target_id,
+                    contribution_id=correction.target_contribution_id,
+                )
             found = False
             for object_id in list(self.objects):
                 record = self.objects[object_id]
@@ -718,6 +822,7 @@ def materialize_finalized_review_v6(
                 assertion_id=assertion.assertion_id,
                 assertion_kind=assertion.assertion_kind,
             )
+        _reject_mechanics_binding(assertion)
         if assertion.assertion_kind == "node":
             workspace.apply_node(assertion)
         elif assertion.assertion_kind == "edge":
