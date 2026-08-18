@@ -49,8 +49,10 @@ persist with no migration.
    `dm_union_graph_v6`, and the reviewable assertion vocabulary is the five
    Buddy kernel kinds (`node`, `edge`, `alias`, `attribute`, `evidence_ref`).
    Candidate assertions of any other kind are admissible only with a
-   `rejected` verdict. Identity proposals must cover exactly the candidate
-   `node`/`alias` subject targets. Candidate contributions carry no
+   `rejected` verdict. Identity proposals must cover exactly the **accepted**
+   candidate `node`/`alias` subject targets — a rejected `node`/`alias`
+   assertion demands no identity adjudication and keeps its candidate
+   identity outcome untouched. Candidate contributions carry no
    `identity_decision_ids` (that seam is unchanged v1 behavior).
 2. **New materializer `review_materialization_v6`.** Applies accepted v2
    assertions to a typed `UnionGraphV6Payload`:
@@ -61,25 +63,41 @@ persist with no migration.
    - `edge` uses `value.edge_id` or derives
      `edge:{subject}:{predicate}:{target}` (Buddy's convention, reimplemented
      without importing Buddy), requires `value.dm_predicate`, fails closed on
-     missing endpoints and on id collisions with different content; an exact
-     duplicate is a replay-safe no-op. Endpoint aspects are rejected as
-     unsupported.
-   - `alias` appends one `AliasAssertionV4Record` with exact-string dedup and
-     extends the object's retained evidence, mirroring Buddy's merge.
+     missing endpoints and on id collisions with different content. A
+     same-identity duplicate merges additively: identical content is a true
+     replay-safe no-op, and distinct assertion/evidence content is retained —
+     evidence refs and session refs union onto the existing record, never
+     silently dropped. Endpoint aspects are rejected as unsupported.
+   - `alias` appends one `AliasAssertionV4Record` with **casefolded** dedup
+     (a casefolded duplicate no-ops before evidence registration) and extends
+     the object's retained evidence, mirroring Buddy's merge.
    - `attribute` / `evidence_ref` register evidence only; the v6 graph model
      has no property/assertion landing zone for them yet.
+   - `value["session_ids"]` materializes into `session_refs` on every record
+     the assertion creates (object existence, alias, relationship); a
+     malformed non-list value fails closed `unsupported_field_shape`.
    - Evidence lifts `EvidenceRef` (v1) to `EvidenceRefV2`, reusing an
      identical parent record and failing closed on same-id conflicting
-     content. Node/edge assertions with source identity but no evidence refs
-     synthesize the contribution-scoped fallback id
-     `evidence:{reviewed_contribution}:{graph_object}`, mirroring Buddy.
+     content. Source-identity-only `node`/`edge`/`alias`/`attribute`
+     assertions synthesize the contribution-scoped fallback id
+     `evidence:{reviewed_contribution}:{graph_object}`, mirroring Buddy;
+     `evidence_ref` assertions stay fail-closed
+     (`accepted_assertion_missing_graph_evidence`).
+   - Mechanics/statblock binding material is excluded from this World Graph
+     publication seam: an assertion carrying the `uses_statblock` predicate
+     (raw or profile-qualified) or `threat_statblock_binding` /
+     `statblock_binding` value keys fails closed
+     (`unsupported_assertion_kind`), regardless of assertion kind.
    - Accepted assertions whose identity outcome is non-mutating
      (`unresolved`, `ambiguous`, `deferred`, `rejected`) are skipped, matching
      Buddy's merge filter.
    - `assertion_corrections` remove matching alias/summary/property/aspect
      records and whole relationships; targeting an existence record fails
      `correction_target_existence`, and an unresolvable target fails
-     `correction_target_unresolvable`.
+     `correction_target_unresolvable`. Adopted-era `ka:*` records predate
+     contribution receipts, so corrections targeting them fail closed
+     `correction_target_unresolvable` with zero mutation; the receipt-aware
+     correction slice is explicitly future work.
    - The parent payload must round-trip through `UnionGraphV6Payload`
      byte-identically before any mutation is computed, and the result payload
      revalidates through the pinned profile reader.
@@ -100,6 +118,35 @@ persist with no migration.
    construction that preserves candidate provenance (`source_kind`,
    `unresolved_mentions`, `diagnostics`, `assertion_corrections`) on the
    reviewed contribution.
+
+## Amendments
+
+**2026-08-18 — PR #37 Review Cycle 1 (review 4963405179).** The initial
+implementation deviated from the dispatch on seven bounded semantics; all
+seven are corrected above and pinned by conformance + owning-boundary
+integration tests:
+
+1. Adopted-era `ka:*` corrections fail closed `correction_target_unresolvable`
+   (the initial implementation applied the removal).
+2. Mechanics/statblock binding material fails closed on any assertion kind
+   (the initial implementation gated only `assertion_kind`).
+3. Fallback evidence extends to `alias`/`attribute` (initially node/edge
+   only); `evidence_ref` stays fail-closed.
+4. `value["session_ids"]` materializes into `session_refs` (initially
+   discarded).
+5. Identity proposal coverage counts accepted `node`/`alias` targets only
+   (initially all candidates, forcing adjudication of rejected assertions).
+6. Same-identity duplicate edges merge retained evidence/session refs;
+   identical content is a true no-op (initially any same-identity duplicate
+   no-opped before evidence registration, silently dropping provenance).
+7. Alias dedup is casefolded (initially exact-string).
+
+A cross-PR concern surfaced in the same review is deliberately **not**
+addressed here: two reviews may finalize before publication with only one
+winning the head CAS, leaving the loser durable-but-unpublished, and Buddy
+PR #619's hydration adapter must bind to the published head rather than
+replaying every active contribution. That repair belongs to Buddy #619; this
+ADR's review lifecycle is unchanged.
 
 ## Rejected alternatives
 
