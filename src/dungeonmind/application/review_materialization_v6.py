@@ -582,32 +582,25 @@ class _V6Materialization:
                     "relationship_id_collision",
                     relationship_id=relationship_id,
                 )
-            # Same graph identity: merge retained support exactly like Buddy's
-            # kernel edge merge — the accepted assertion's evidence and session
-            # provenance is registered and retained, never silently dropped.
-            # An exact duplicate replays to identical content (a true no-op).
+            # Same graph identity.  Replay safety is owned by the publication
+            # layer, and the record carries exactly one assertion identity, so
+            # a duplicate no-ops only when the materialized assertion metadata
+            # is genuinely identical; any distinct accepted assertion identity
+            # fails closed rather than disappearing from the graph.
             self._register_evidence(evidence_records)
-            metadata = existing.assertion_metadata
-            merged_evidence = list(metadata.evidence_ref_ids)
-            for evidence_ref_id in evidence_ids:
-                if evidence_ref_id not in merged_evidence:
-                    merged_evidence.append(evidence_ref_id)
-            merged_sessions = list(metadata.session_refs)
-            for session_ref in session_refs:
-                if session_ref not in merged_sessions:
-                    merged_sessions.append(session_ref)
-            self.relationships[relationship_id] = existing.model_copy(
-                update={
-                    "assertion_metadata": metadata.model_copy(
-                        update={
-                            "evidence_ref_ids": merged_evidence,
-                            "session_refs": merged_sessions,
-                        }
-                    )
-                }
+            incoming = _metadata(
+                assertion,
+                assertion_id=assertion.assertion_id,
+                evidence_ref_ids=evidence_ids,
+                session_refs=session_refs,
             )
-            self.expected_relationship_ids.add(relationship_id)
-            return
+            if existing.assertion_metadata == incoming:
+                self.expected_relationship_ids.add(relationship_id)
+                return
+            _fail(
+                "relationship_id_collision",
+                relationship_id=relationship_id,
+            )
         self._register_evidence(evidence_records)
         record = GraphRelationshipV6Record(
             relationship_id=relationship_id,
@@ -814,6 +807,9 @@ def materialize_finalized_review_v6(
     for assertion in verified_state.reviewed_contribution.assertions:
         if assertion.acceptance_state is not AcceptanceState.ACCEPTED:
             continue
+        # The mechanics authority screen gates every accepted assertion,
+        # including ones a non-mutating identity outcome will skip.
+        _reject_mechanics_binding(assertion)
         if assertion.identity_resolution_outcome in NON_MUTATING_IDENTITY_OUTCOMES:
             continue
         if assertion.assertion_kind not in REVIEWABLE_V2_ASSERTION_KINDS:
@@ -822,7 +818,6 @@ def materialize_finalized_review_v6(
                 assertion_id=assertion.assertion_id,
                 assertion_kind=assertion.assertion_kind,
             )
-        _reject_mechanics_binding(assertion)
         if assertion.assertion_kind == "node":
             workspace.apply_node(assertion)
         elif assertion.assertion_kind == "edge":

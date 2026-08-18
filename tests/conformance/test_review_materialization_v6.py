@@ -214,22 +214,43 @@ def test_v6_materialization_node_threat_statblock_binding_fails_closed() -> None
     assert excinfo.value.details["binding"] == "threat_statblock_binding"
 
 
-def test_v6_materialization_exact_duplicate_edge_is_replay_safe() -> None:
+def test_v6_materialization_non_mutating_mechanics_binding_fails_closed() -> None:
+    # The mechanics authority screen runs immediately after the accepted gate,
+    # before the non-mutating identity skip: an accepted attribute marked
+    # ambiguous still fails closed when it carries statblock binding material.
+    candidate_payload = _candidate().model_dump(mode="json")
+    candidate_payload["assertions"][3]["identity_resolution_outcome"] = "ambiguous"
+    candidate_payload["assertions"][3]["value"] = (
+        '{"attribute": "disposition", "detail": "alert",'
+        ' "statblock_binding": {"statblock_id": "mm:goblin"}}'
+    )
+    candidate = GraphContributionV2.model_validate(candidate_payload)
+    state = _build_review_state(_submission(_intent(candidate=candidate)))
+    with pytest.raises(ContributionMaterializationError) as excinfo:
+        _materialize(state)
+    assert excinfo.value.details["reason"] == "unsupported_assertion_kind"
+    assert excinfo.value.details["binding"] == "statblock_binding"
+
+
+def test_v6_materialization_distinct_duplicate_edge_fails_closed() -> None:
+    # A second accepted edge assertion on the same graph identity carries a
+    # distinct assertion identity the single-identity record cannot retain.
+    # Replay safety is owned by the publication layer, so this fails closed
+    # rather than silently dropping the second assertion (dispatch §5).
     candidate_payload = _candidate().model_dump(mode="json")
     duplicate = copy.deepcopy(candidate_payload["assertions"][2])
     duplicate["assertion_id"] = "assertion:test:edge:duplicate"
     candidate_payload["assertions"].append(duplicate)
     candidate = GraphContributionV2.model_validate(candidate_payload)
     state = _build_review_state(_submission(_intent(candidate=candidate)))
-    _, result = _materialize(state)
-    _, single = _materialize()
-    assert len(result.graph_payload["relationships"]) == 1
-    # Identical content merges to a true no-op: the payload is byte-identical
-    # to the single-assertion materialization (dispatch §5).
-    assert result.graph_payload == single.graph_payload
+    with pytest.raises(ContributionMaterializationError) as excinfo:
+        _materialize(state)
+    assert excinfo.value.details["reason"] == "relationship_id_collision"
 
 
-def test_v6_materialization_duplicate_edge_merges_retained_evidence() -> None:
+def test_v6_materialization_distinct_edge_evidence_fails_closed() -> None:
+    # Distinct evidence on a same-identity duplicate cannot be merged without
+    # losing the second assertion identity: fail closed (dispatch §5).
     candidate_payload = _candidate().model_dump(mode="json")
     duplicate = copy.deepcopy(candidate_payload["assertions"][2])
     duplicate["assertion_id"] = "assertion:test:edge:second"
@@ -238,19 +259,39 @@ def test_v6_materialization_duplicate_edge_merges_retained_evidence() -> None:
     candidate_payload["assertions"].append(duplicate)
     candidate = GraphContributionV2.model_validate(candidate_payload)
     state = _build_review_state(_submission(_intent(candidate=candidate)))
-    _, result = _materialize(state)
-    relationships = {rel["relationship_id"]: rel for rel in result.graph_payload["relationships"]}
-    edge = relationships[f"edge:{NEW_OBJECT_ID}:knows_about:{EXISTING_OBJECT_ID}"]
-    # The second accepted assertion's provenance is retained, never dropped:
-    # evidence refs and session refs merge additively onto the same-identity
-    # relationship record (dispatch §5).
-    assert edge["assertion_metadata"]["evidence_ref_ids"] == [
-        "evidence:new:edge",
-        "evidence:new:edge:second",
-    ]
-    assert edge["assertion_metadata"]["session_refs"] == ["session-3"]
-    evidence_ids = {record["evidence_ref_id"] for record in result.graph_payload["evidence_refs"]}
-    assert "evidence:new:edge:second" in evidence_ids
+    with pytest.raises(ContributionMaterializationError) as excinfo:
+        _materialize(state)
+    assert excinfo.value.details["reason"] == "relationship_id_collision"
+
+
+def test_v6_materialization_identical_edge_replay_noops() -> None:
+    # Re-materializing the same candidate against its own output is a genuine
+    # replay: the identical edge assertion metadata no-ops and the payload is
+    # byte-identical (dispatch §5).
+    candidate_payload = _candidate().model_dump(mode="json")
+    edge = copy.deepcopy(candidate_payload["assertions"][2])
+    edge["subject_object_id"] = EXISTING_OBJECT_ID
+    edge["object_object_id"] = SECOND_OBJECT_ID
+    edge["value"] = '{"dm_predicate": "dnd5e:knows_about"}'
+    candidate_payload["assertions"] = [edge]
+    candidate = GraphContributionV2.model_validate(candidate_payload)
+    first_state = _build_review_state(
+        _submission(_intent(candidate=candidate, identity_proposals=[], identity_verdicts=[]))
+    )
+    _, first = _materialize(first_state)
+    replay_parent = _stored_parent(first.graph_payload)
+    replay_state = _build_review_state(
+        _submission(
+            _intent(
+                candidate=candidate,
+                parent=replay_parent,
+                identity_proposals=[],
+                identity_verdicts=[],
+            )
+        )
+    )
+    _, second = _materialize(replay_state, parent=replay_parent)
+    assert second.graph_payload == first.graph_payload
 
 
 def _correction_payload(target_assertion_id: str, replacement_assertion_id: str | None) -> dict:
