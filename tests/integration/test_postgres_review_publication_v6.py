@@ -8,6 +8,7 @@ CAS-loser proofs at the same boundary.
 
 from __future__ import annotations
 
+import copy
 import threading
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -561,6 +562,30 @@ def test_postgres_v6_mechanics_binding_fails_closed(pg) -> None:
 
     assert excinfo.value.details["reason"] == "unsupported_assertion_kind"
     assert excinfo.value.details["binding"] == "statblock_binding"
+    assert _table_counts(pg) == before
+    assert pg.world_graph.get_head(WORLD_ID).head_revision_id == PUBLISHED_REVISION_ID  # type: ignore[union-attr]
+
+
+@pytest.mark.integration
+def test_postgres_v6_distinct_duplicate_edge_fails_closed(pg) -> None:
+    # A second accepted edge assertion on the same graph identity carries a
+    # distinct assertion identity the single-identity record cannot retain:
+    # fail closed with zero mutation (Cycle-2; replay is publication-owned).
+    _adopt(pg)
+    parent = pg.world_graph.get_revision(WORLD_ID, PUBLISHED_REVISION_ID)
+    assert parent is not None
+    candidate_payload = _candidate().model_dump(mode="json")
+    duplicate = copy.deepcopy(candidate_payload["assertions"][2])
+    duplicate["assertion_id"] = "assertion:cutover:edge:duplicate"
+    candidate_payload["assertions"].append(duplicate)
+    candidate = GraphContributionV2.model_validate(candidate_payload)
+    state = _finalize(pg, _intent(parent, candidate=candidate))
+    before = _table_counts(pg)
+
+    with pytest.raises(ContributionMaterializationError) as excinfo:
+        _publish(pg, state.record.review_id)
+
+    assert excinfo.value.details["reason"] == "relationship_id_collision"
     assert _table_counts(pg) == before
     assert pg.world_graph.get_head(WORLD_ID).head_revision_id == PUBLISHED_REVISION_ID  # type: ignore[union-attr]
 
