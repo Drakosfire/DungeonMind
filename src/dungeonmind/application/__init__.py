@@ -7,6 +7,10 @@ following the statblocks_v1 discipline in DungeonMindServer.
 """
 
 from .contribution_review import finalize_contribution_review, load_contribution_review
+from .contribution_review_v2 import (
+    finalize_contribution_review_v2,
+    load_contribution_review_v2,
+)
 from .existing_world_adoption import adopt_existing_world
 from .existing_world_correspondence import ExistingWorldCorrespondenceService
 from .fictional_time import evaluate_fictional_time_query
@@ -38,6 +42,7 @@ from .review_materialization import (
     FinalizedReviewGraphMaterialization,
     materialize_finalized_review,
 )
+from .review_materialization_v6 import materialize_finalized_review_v6
 from .review_publication import (
     FinalizedReviewPublication,
     publish_finalized_review,
@@ -70,8 +75,11 @@ __all__ = [
     "adopt_existing_world",
     "evaluate_fictional_time_query",
     "finalize_contribution_review",
+    "finalize_contribution_review_v2",
     "load_contribution_review",
+    "load_contribution_review_v2",
     "materialize_finalized_review",
+    "materialize_finalized_review_v6",
     "publish_finalized_review",
     "query_fictional_time_shadow_at_revision",
 ]
