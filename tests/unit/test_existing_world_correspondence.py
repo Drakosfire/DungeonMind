@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from dungeonmind.application.existing_world_adoption import (
     adopt_existing_world,
     parse_existing_world_adoption_bundle,
+    promote_existing_world_adoption_receipt_v3,
 )
 from dungeonmind.application.existing_world_correspondence import (
     ExistingWorldCorrespondenceService,
@@ -23,6 +24,8 @@ from dungeonmind.contracts.contribution import (
 )
 from dungeonmind.contracts.existing_world_adoption import (
     ExistingWorldAdoptionBundleV2,
+    ExistingWorldAdoptionReceiptV2,
+    ExistingWorldAdoptionReceiptV3,
     existing_world_adoption_bundle_v2_canonical_bytes,
 )
 from dungeonmind.contracts.existing_world_correspondence import (
@@ -827,6 +830,104 @@ def test_unavailable_receipt_read_raises_and_never_classifies() -> None:
         service.check(raw_bundle(), world_id=WORLD_ID)
     retried = harness.check()
     assert retried.classification == "CORRESPONDING"
+
+
+SUBSTITUTE_ARTIFACT_ID = "artifact:substituted-source-record"
+SUBSTITUTE_REVISION_ID = "revision:substituted-source-record"
+
+
+def _downgrade_harness_receipt_to_v2(harness: _WorldHarness) -> None:
+    """Simulate a pre-V3 durable receipt for degradation-path proofs."""
+    stored = harness.adoptions.get_for_world(WORLD_ID)
+    assert isinstance(stored, ExistingWorldAdoptionReceiptV3)
+    downgraded = ExistingWorldAdoptionReceiptV2(
+        **{
+            key: value
+            for key, value in stored.model_dump().items()
+            if key not in {"schema_version", "membership_sha256"}
+        }
+    )
+    harness.adoptions._receipts_by_world[WORLD_ID] = downgraded
+    harness.adoptions._receipts_by_adoption[downgraded.adoption_id] = downgraded
+
+
+def _substitute_unreferenced_source(harness: _WorldHarness) -> None:
+    """Delete the unreferenced adopted source record and insert a different
+    valid one, restoring both source cardinality pins (same-count swap)."""
+    artifact = harness.sources._artifacts.pop(UNREFERENCED_ARTIFACT_ID)
+    revision = harness.sources._revisions.pop(UNREFERENCED_REVISION_ID)
+    harness.sources._artifacts[SUBSTITUTE_ARTIFACT_ID] = artifact.model_copy(
+        update={
+            "source_artifact_id": SUBSTITUTE_ARTIFACT_ID,
+            "current_revision_id": SUBSTITUTE_REVISION_ID,
+        }
+    )
+    harness.sources._revisions[SUBSTITUTE_REVISION_ID] = revision.model_copy(
+        update={
+            "source_revision_id": SUBSTITUTE_REVISION_ID,
+            "source_artifact_id": SUBSTITUTE_ARTIFACT_ID,
+        }
+    )
+
+
+def test_same_cardinality_source_substitution_fails_checkpoint_before_stale() -> None:
+    """adopt A → delete unreferenced U → insert different valid X (counts
+    restored) → present valid stale B must raise, never STALE: the V3
+    membership checkpoint proves the exact adopted identity set."""
+    harness = _extended_adopted_harness()
+    _substitute_unreferenced_source(harness)
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        harness.check(_changed_source_snapshot_bytes())
+    assert exc.value.details["reason"] == "adopted_membership_checkpoint_mismatch"
+
+
+def test_same_id_coherent_source_rewrite_fails_checkpoint_before_stale() -> None:
+    """A coherent rewrite of an adopted source record under the same id keeps
+    every count and identity pin intact; only the V3 checkpoint's per-record
+    fingerprint sees it before STALE."""
+    harness = _extended_adopted_harness()
+    stored = harness.sources._revisions[UNREFERENCED_REVISION_ID]
+    harness.sources._revisions[UNREFERENCED_REVISION_ID] = stored.model_copy(
+        update={"content_sha256": "2" * 64}
+    )
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        harness.check(_changed_source_snapshot_bytes())
+    assert exc.value.details["reason"] == "adopted_membership_checkpoint_mismatch"
+
+
+def test_intact_v3_membership_still_classifies_stale() -> None:
+    harness = _extended_adopted_harness()
+    result = harness.check(_changed_source_snapshot_bytes())
+    assert result.classification == "STALE"
+
+
+def test_unpromoted_v2_receipt_fails_closed_on_stale_path_until_promoted() -> None:
+    """Legacy degradation is explicit: a pre-V3 receipt has no membership
+    checkpoint, so a diverged-identity snapshot fails closed instead of
+    returning a cardinality-only STALE. Exact-A comparison still works, and
+    steward-supervised promotion restores the STALE path."""
+    harness = _adopted_harness()
+    _downgrade_harness_receipt_to_v2(harness)
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        harness.check(_changed_source_snapshot_bytes())
+    assert exc.value.details["reason"] == "adoption_membership_checkpoint_required"
+
+    exact = harness.check()
+    assert exact.classification == "CORRESPONDING"
+
+    promoted = promote_existing_world_adoption_receipt_v3(
+        raw_bundle(),
+        world_id=WORLD_ID,
+        adoption_repository=harness.adoptions,
+        source_repository=harness.sources,
+        contribution_repository=harness.contributions,
+        identity_repository=harness.identity,
+        graph_reader=eldyrwild_graph_reader(),
+        correspondence_service=harness.service,
+    )
+    assert isinstance(promoted, ExistingWorldAdoptionReceiptV3)
+    result = harness.check(_changed_source_snapshot_bytes())
+    assert result.classification == "STALE"
 
 
 def test_unavailable_history_read_raises_and_retry_reevaluates_fresh() -> None:
