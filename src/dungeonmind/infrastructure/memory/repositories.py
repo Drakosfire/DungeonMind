@@ -845,7 +845,9 @@ class InMemoryFinalizedReviewPublicationRepository:
 class InMemoryIdentityDecisionRepository:
     def __init__(self) -> None:
         self._items: dict[tuple[str, str], DurableIdentityDecision] = {}
-        self._lock = threading.Lock()
+        # Re-entrant: promotion holds this family lock across its membership
+        # re-proof, whose provider enumerates through this same repository.
+        self._lock = threading.RLock()
 
     def append(self, decision: DurableIdentityDecision) -> DurableIdentityDecision:
         key = (decision.world_id, decision.decision_id)
@@ -875,7 +877,9 @@ class InMemorySourceRepository:
     def __init__(self) -> None:
         self._artifacts: dict[str, SourceArtifactRecord] = {}
         self._revisions: dict[str, SourceRevision] = {}
-        self._lock = threading.Lock()
+        # Re-entrant: promotion holds this family lock across its membership
+        # re-proof, whose provider enumerates through this same repository.
+        self._lock = threading.RLock()
 
     def put_artifact(self, artifact: SourceArtifactRecord) -> SourceArtifactRecord:
         with self._lock:
@@ -1566,7 +1570,10 @@ class InMemoryExistingWorldAdoptionRepository:
 
     The graph repository owns the per-world lock. Adoption uses that same lock
     so imported source/history rows, the first revision/head, and the terminal
-    receipt are one reversible in-memory transaction.
+    receipt are one reversible in-memory transaction. Promotion additionally
+    holds every membership family lock across its re-proof and swap, so
+    concurrent history writers are excluded for the whole boundary (the
+    in-memory analog of the PostgreSQL adapter's table locks).
     """
 
     def __init__(
@@ -1798,19 +1805,29 @@ class InMemoryExistingWorldAdoptionRepository:
     ) -> ExistingWorldAdoptionReceiptV3:
         """Atomically replace the stored v2 receipt with its v3 form.
 
-        Runs under the same per-world lock as adoption: re-read and re-verify
-        the current receipt, require fingerprint equality with ``expected``
-        and v2-fact preservation by ``promoted``, re-invoke
-        ``current_membership_sha256()`` under the lock and require exact
-        equality with the promoted checkpoint, then swap only the receipt
+        One writer-excluding boundary: the per-world graph lock, then every
+        membership family lock — sources, contributions, identity, always in
+        that order — held across the receipt re-verification, the
+        ``current_membership_sha256()`` re-proof, and the receipt swap. The
+        family locks are the locks every membership writer acquires, so no
+        history write can commit between the authoritative equality proof and
+        the swap; this is the in-memory analog of the PostgreSQL adapter's
+        ``SHARE ROW EXCLUSIVE`` table locks. (The family locks are re-entrant
+        because the provider enumerates through these same repositories on
+        this thread.) Inside the boundary: re-read and re-verify the current
+        receipt, require fingerprint equality with ``expected`` and v2-fact
+        preservation by ``promoted``, require the re-proof to equal the
+        promoted checkpoint exactly, then swap only the receipt
         representation. An already-promoted receipt fingerprint-equal to
         ``promoted`` is an exact no-op; anything else fails with zero
-        mutation. The in-boundary re-proof mirrors the PostgreSQL adapter's
-        writer-excluding transaction (the owning boundary for the concurrency
-        guarantee); this test double keeps the same call shape so the re-proof
-        contract is exercised deterministically.
+        mutation.
         """
-        with self._graph._lock_for(world_id):
+        with (
+            self._graph._lock_for(world_id),
+            self._sources._lock,
+            self._contributions._lock,
+            self._identity._lock,
+        ):
             current = self._receipts_by_world.get(world_id)
             if current is None:
                 raise PersistenceIntegrityError(

@@ -1892,6 +1892,97 @@ def test_promotion_port_reproofs_membership_under_the_lock() -> None:
     assert isinstance(adoptions.get_for_world(WORLD_ID), ExistingWorldAdoptionReceiptV2)
 
 
+def test_promotion_boundary_excludes_concurrent_membership_writer() -> None:
+    """Review cycle 2 exit proof: the in-memory boundary is writer-excluding,
+    not merely re-checking. The gate parks the promotion inside the boundary
+    with the matching digest already computed — standing in for the instant
+    after the provider returns and before the receipt assignment — and a
+    normal concurrent membership write must not commit until promotion leaves
+    the boundary. Promotion then completes with the pre-write checkpoint and
+    the writer serializes after it."""
+    raw = v2_bundle_bytes()
+    _graph, sources, contributions, identity, adoptions = make_stores()
+    adopt_existing_world(
+        raw, adopted_at=NOW, adoption_repository=adoptions, graph_reader=graph_reader()
+    )
+    expected = _downgrade_receipt_to_v2(adoptions, WORLD_ID)
+    bundle = _parse_v2(raw)
+    promoted = ExistingWorldAdoptionReceiptV3(
+        **{
+            key: value
+            for key, value in expected.model_dump().items()
+            if key != "schema_version"
+        },
+        membership_sha256=_bundle_membership_sha256(bundle),
+    )
+    digest_checked = threading.Event()
+    release = threading.Event()
+    writer_done = threading.Event()
+    outcome: list[object] = []
+
+    def gated_provider() -> str:
+        artifacts = sources.list_artifacts_for_world(WORLD_ID)
+        digest = existing_world_adoption_membership_sha256(
+            source_artifacts=artifacts,
+            source_revisions=[
+                revision
+                for artifact in artifacts
+                for revision in sources.list_revisions(artifact.source_artifact_id)
+            ],
+            contributions=contributions.list_for_world(WORLD_ID),
+            identity_decisions=identity.list_for_world(WORLD_ID),
+        )
+        digest_checked.set()
+        assert release.wait(timeout=30)
+        return digest
+
+    def run_promotion() -> None:
+        try:
+            outcome.append(
+                adoptions.promote_to_v3_receipt(
+                    WORLD_ID,
+                    expected=expected,
+                    promoted=promoted,
+                    current_membership_sha256=gated_provider,
+                )
+            )
+        except BaseException as exc:
+            outcome.append(exc)
+
+    blocked_decision = bundle.identity_decisions[0].model_copy(
+        update={"decision_id": "decision:blocked-by-promotion-boundary"}
+    )
+
+    def run_writer() -> None:
+        try:
+            identity.append(blocked_decision)
+        finally:
+            writer_done.set()
+
+    worker = threading.Thread(target=run_promotion)
+    writer = threading.Thread(target=run_writer)
+    worker.start()
+    try:
+        assert digest_checked.wait(timeout=30)
+        writer.start()
+        # The parked promotion holds every membership family lock: the
+        # writer's append cannot acquire the identity lock and must not
+        # commit while the boundary is held.
+        assert not writer_done.wait(timeout=1)
+    finally:
+        release.set()
+    worker.join(timeout=30)
+    assert not worker.is_alive()
+    writer.join(timeout=30)
+    assert writer_done.is_set()
+    result = outcome[0]
+    assert isinstance(result, ExistingWorldAdoptionReceiptV3)
+    assert result.membership_sha256 == promoted.membership_sha256
+    # The writer serialized after the swap: it committed, and the installed
+    # checkpoint is the pre-write digest — the correct linearization.
+    assert identity.get(WORLD_ID, "decision:blocked-by-promotion-boundary") is not None
+
+
 def test_promotion_requires_an_existing_receipt() -> None:
     raw = v2_bundle_bytes()
     graph, sources, contributions, identity, adoptions = make_stores()

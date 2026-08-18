@@ -204,8 +204,10 @@ class ExistingWorldAdoptionRepository(Protocol):
         Under one serialization boundary that excludes concurrent history
         writers (PostgreSQL: the world row lock plus ``SHARE ROW EXCLUSIVE``
         table locks on the four membership families, because history writers
-        commit through independent transactions without the world row lock),
-        the adapter re-reads and re-verifies the current receipt, then:
+        commit through independent transactions without the world row lock;
+        in-memory: the per-world graph lock plus every membership family
+        repository's lock held across the re-proof and swap), the adapter
+        re-reads and re-verifies the current receipt, then:
 
         - current fingerprint-equals ``expected`` and ``promoted`` preserves
           every v2 adoption fact → persist ``promoted`` (only the versioned
