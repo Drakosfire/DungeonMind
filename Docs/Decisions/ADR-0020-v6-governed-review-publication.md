@@ -64,10 +64,11 @@ persist with no migration.
      `edge:{subject}:{predicate}:{target}` (Buddy's convention, reimplemented
      without importing Buddy), requires `value.dm_predicate`, fails closed on
      missing endpoints and on id collisions with different content. A
-     same-identity duplicate merges additively: identical content is a true
-     replay-safe no-op, and distinct assertion/evidence content is retained —
-     evidence refs and session refs union onto the existing record, never
-     silently dropped. Endpoint aspects are rejected as unsupported.
+     same-identity duplicate no-ops only when the materialized assertion
+     metadata is genuinely identical (true replay); the record carries
+     exactly one assertion identity, so any distinct accepted assertion fails
+     closed `relationship_id_collision` rather than disappearing. Endpoint
+     aspects are rejected as unsupported.
    - `alias` appends one `AliasAssertionV4Record` with **casefolded** dedup
      (a casefolded duplicate no-ops before evidence registration) and extends
      the object's retained evidence, mirroring Buddy's merge.
@@ -87,7 +88,10 @@ persist with no migration.
      publication seam: an assertion carrying the `uses_statblock` predicate
      (raw or profile-qualified) or `threat_statblock_binding` /
      `statblock_binding` value keys fails closed
-     (`unsupported_assertion_kind`), regardless of assertion kind.
+     (`unsupported_assertion_kind`), regardless of assertion kind. The screen
+     runs immediately after the accepted gate, before the non-mutating
+     identity-outcome skip, so a skipped assertion cannot smuggle binding
+     material past the boundary.
    - Accepted assertions whose identity outcome is non-mutating
      (`unresolved`, `ambiguous`, `deferred`, `rejected`) are skipped, matching
      Buddy's merge filter.
@@ -139,6 +143,9 @@ integration tests:
 6. Same-identity duplicate edges merge retained evidence/session refs;
    identical content is a true no-op (initially any same-identity duplicate
    no-opped before evidence registration, silently dropping provenance).
+   **Superseded by Review Cycle 2 below:** merging retained provenance but
+   still lost the second assertion identity, so duplicates now fail closed
+   unless the materialized metadata is genuinely identical.
 7. Alias dedup is casefolded (initially exact-string).
 
 A cross-PR concern surfaced in the same review is deliberately **not**
@@ -147,6 +154,20 @@ winning the head CAS, leaving the loser durable-but-unpublished, and Buddy
 PR #619's hydration adapter must bind to the published head rather than
 replaying every active contribution. That repair belongs to Buddy #619; this
 ADR's review lifecycle is unchanged.
+
+**2026-08-18 — PR #37 Review Cycle 2 (review 4963700792).** Two bounded
+corrections, both pinned by conformance and owning-boundary integration
+tests:
+
+1. The mechanics authority screen now runs immediately after the accepted
+   gate, before the non-mutating identity-outcome skip — an accepted
+   assertion marked `ambiguous` can no longer carry `statblock_binding`
+   material past the boundary.
+2. Same-identity duplicate edges no longer merge evidence/session refs. The
+   relationship record carries exactly one assertion identity, and replay
+   safety is owned by the publication layer, so a duplicate no-ops only when
+   the materialized assertion metadata is genuinely identical; any distinct
+   accepted assertion identity fails closed `relationship_id_collision`.
 
 ## Rejected alternatives
 
