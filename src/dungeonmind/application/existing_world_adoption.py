@@ -578,6 +578,12 @@ def promote_existing_world_adoption_receipt_v3(
     changes (no graph/history mutation). Replay with the same facts and digest
     is an exact no-op success; any disagreement fails closed with zero
     mutation. V1 receipts are out of scope and fail closed.
+
+    The membership equality proof and the receipt swap share one serialization
+    boundary: the adapter re-invokes the membership provider inside its
+    writer-excluding lock/transaction immediately before committing, so a
+    history writer committing between this function's pre-boundary check and
+    the swap cannot leave a stale checkpoint installed.
     """
     if not isinstance(raw_bundle, (bytes, bytearray)):
         _integrity("raw_bundle_not_bytes")
@@ -641,18 +647,24 @@ def promote_existing_world_adoption_receipt_v3(
             )
         return receipt
 
-    artifacts = source_repository.list_artifacts_for_world(world_id)
-    revisions = [
-        revision
-        for artifact in artifacts
-        for revision in source_repository.list_revisions(artifact.source_artifact_id)
-    ]
-    current_membership_sha256 = existing_world_adoption_membership_sha256(
-        source_artifacts=artifacts,
-        source_revisions=revisions,
-        contributions=contribution_repository.list_for_world(world_id),
-        identity_decisions=identity_repository.list_for_world(world_id),
-    )
+    def _current_membership_sha256() -> str:
+        artifacts = source_repository.list_artifacts_for_world(world_id)
+        revisions = [
+            revision
+            for artifact in artifacts
+            for revision in source_repository.list_revisions(artifact.source_artifact_id)
+        ]
+        return existing_world_adoption_membership_sha256(
+            source_artifacts=artifacts,
+            source_revisions=revisions,
+            contributions=contribution_repository.list_for_world(world_id),
+            identity_decisions=identity_repository.list_for_world(world_id),
+        )
+
+    # Fast-fail optimization only: the authoritative equality proof is the
+    # adapter's in-boundary re-invocation of this provider (see the port
+    # contract), which closes the gap between this check and the receipt swap.
+    current_membership_sha256 = _current_membership_sha256()
     if current_membership_sha256 != bundle_membership_sha256:
         _integrity(
             "adoption_promotion_membership_mismatch",
@@ -687,5 +699,8 @@ def promote_existing_world_adoption_receipt_v3(
         membership_sha256=bundle_membership_sha256,
     )
     return adoption_repository.promote_to_v3_receipt(
-        world_id, expected=receipt, promoted=promoted
+        world_id,
+        expected=receipt,
+        promoted=promoted,
+        current_membership_sha256=_current_membership_sha256,
     )

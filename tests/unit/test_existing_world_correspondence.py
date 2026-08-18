@@ -636,7 +636,9 @@ def test_service_resolution_names_the_missing_revision() -> None:
         def get_for_world(self, world_id: str):
             return receipt
 
-        def promote_to_v3_receipt(self, world_id: str, *, expected, promoted):
+        def promote_to_v3_receipt(
+            self, world_id: str, *, expected, promoted, current_membership_sha256
+        ):
             raise NotImplementedError
 
     service = ExistingWorldCorrespondenceService(
@@ -824,9 +826,14 @@ def test_unavailable_receipt_read_raises_and_never_classifies() -> None:
         def get_for_world(self, world_id: str):
             raise PersistenceUnavailableError("simulated receipt-store outage")
 
-        def promote_to_v3_receipt(self, world_id: str, *, expected, promoted):
+        def promote_to_v3_receipt(
+            self, world_id: str, *, expected, promoted, current_membership_sha256
+        ):
             return inner.promote_to_v3_receipt(
-                world_id, expected=expected, promoted=promoted
+                world_id,
+                expected=expected,
+                promoted=promoted,
+                current_membership_sha256=current_membership_sha256,
             )
 
     service = ExistingWorldCorrespondenceService(

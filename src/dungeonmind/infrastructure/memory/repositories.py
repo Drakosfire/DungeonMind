@@ -1794,15 +1794,21 @@ class InMemoryExistingWorldAdoptionRepository:
         *,
         expected: ExistingWorldAdoptionReceiptV2,
         promoted: ExistingWorldAdoptionReceiptV3,
+        current_membership_sha256: Callable[[], str],
     ) -> ExistingWorldAdoptionReceiptV3:
         """Atomically replace the stored v2 receipt with its v3 form.
 
         Runs under the same per-world lock as adoption: re-read and re-verify
         the current receipt, require fingerprint equality with ``expected``
-        and v2-fact preservation by ``promoted``, then swap only the receipt
+        and v2-fact preservation by ``promoted``, re-invoke
+        ``current_membership_sha256()`` under the lock and require exact
+        equality with the promoted checkpoint, then swap only the receipt
         representation. An already-promoted receipt fingerprint-equal to
         ``promoted`` is an exact no-op; anything else fails with zero
-        mutation.
+        mutation. The in-boundary re-proof mirrors the PostgreSQL adapter's
+        writer-excluding transaction (the owning boundary for the concurrency
+        guarantee); this test double keeps the same call shape so the re-proof
+        contract is exercised deterministically.
         """
         with self._graph._lock_for(world_id):
             current = self._receipts_by_world.get(world_id)
@@ -1845,6 +1851,18 @@ class InMemoryExistingWorldAdoptionRepository:
                     details={
                         "reason": "adoption_receipt_promotion_fact_drift",
                         "world_id": world_id,
+                    },
+                )
+            observed_membership_sha256 = current_membership_sha256()
+            if observed_membership_sha256 != promoted.membership_sha256:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption membership changed before promotion",
+                    details={
+                        "reason": "adoption_promotion_membership_mismatch",
+                        "world_id": world_id,
+                        "adoption_id": promoted.adoption_id,
+                        "expected_membership_sha256": promoted.membership_sha256,
+                        "current_membership_sha256": observed_membership_sha256,
                     },
                 )
             stored = _copy(promoted)

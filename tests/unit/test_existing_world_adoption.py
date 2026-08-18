@@ -641,9 +641,14 @@ class _SpyAdoption:
         self.get_for_world_calls += 1
         return self.inner.get_for_world(world_id)
 
-    def promote_to_v3_receipt(self, world_id: str, *, expected, promoted):
+    def promote_to_v3_receipt(
+        self, world_id: str, *, expected, promoted, current_membership_sha256
+    ):
         return self.inner.promote_to_v3_receipt(
-            world_id, expected=expected, promoted=promoted
+            world_id,
+            expected=expected,
+            promoted=promoted,
+            current_membership_sha256=current_membership_sha256,
         )
 
 
@@ -1766,6 +1771,125 @@ def test_promotion_fails_after_same_cardinality_substitution() -> None:
         )
     assert exc.value.details["reason"] == "adoption_promotion_membership_mismatch"
     assert not isinstance(adoptions.get_for_world(WORLD_ID), ExistingWorldAdoptionReceiptV3)
+
+
+class _GapCommitAdoptions:
+    """Pause at the repository boundary and commit a valid history mutation
+    in the gap before delegating — the review cycle 1 exit-proof shape."""
+
+    def __init__(
+        self,
+        inner: InMemoryExistingWorldAdoptionRepository,
+        identity: InMemoryIdentityDecisionRepository,
+    ) -> None:
+        self._inner = inner
+        self._identity = identity
+
+    def adopt(self, command):
+        return self._inner.adopt(command)
+
+    def get(self, world_id: str, adoption_id: str):
+        return self._inner.get(world_id, adoption_id)
+
+    def get_for_world(self, world_id: str):
+        return self._inner.get_for_world(world_id)
+
+    def promote_to_v3_receipt(
+        self, world_id: str, *, expected, promoted, current_membership_sha256
+    ):
+        gap_decision = (
+            _parse_v2(v2_bundle_bytes())
+            .identity_decisions[0]
+            .model_copy(update={"decision_id": "decision:committed-in-promotion-gap"})
+        )
+        self._identity.append(gap_decision)
+        return self._inner.promote_to_v3_receipt(
+            world_id,
+            expected=expected,
+            promoted=promoted,
+            current_membership_sha256=current_membership_sha256,
+        )
+
+
+def test_promotion_fails_when_history_commits_in_the_gap() -> None:
+    """Pause after the application's pre-boundary membership proof, commit a
+    valid history mutation, resume: the in-boundary re-proof must fail the
+    promotion with the receipt still V2."""
+    raw = v2_bundle_bytes()
+    graph, sources, contributions, identity, adoptions = make_stores()
+    adopt_existing_world(
+        raw, adopted_at=NOW, adoption_repository=adoptions, graph_reader=graph_reader()
+    )
+    _downgrade_receipt_to_v2(adoptions, WORLD_ID)
+    gap_adoptions = _GapCommitAdoptions(adoptions, identity)
+    decisions_before = len(identity.list_for_world(WORLD_ID))
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        promote_existing_world_adoption_receipt_v3(
+            raw,
+            world_id=WORLD_ID,
+            adoption_repository=gap_adoptions,
+            source_repository=sources,
+            contribution_repository=contributions,
+            identity_repository=identity,
+            graph_reader=graph_reader(),
+            correspondence_service=_correspondence(
+                graph, sources, contributions, identity, adoptions
+            ),
+        )
+    assert exc.value.details["reason"] == "adoption_promotion_membership_mismatch"
+    assert isinstance(adoptions.get_for_world(WORLD_ID), ExistingWorldAdoptionReceiptV2)
+    # The gap commit is a valid independent write and remains; promotion
+    # itself mutated nothing.
+    assert len(identity.list_for_world(WORLD_ID)) == decisions_before + 1
+
+
+def test_promotion_port_reproofs_membership_under_the_lock() -> None:
+    """Direct port contract: the provider is re-invoked inside the boundary,
+    so a mutation visible at enumeration time fails the swap with zero
+    receipt mutation."""
+    raw = v2_bundle_bytes()
+    _graph, sources, contributions, identity, adoptions = make_stores()
+    adopt_existing_world(
+        raw, adopted_at=NOW, adoption_repository=adoptions, graph_reader=graph_reader()
+    )
+    expected = _downgrade_receipt_to_v2(adoptions, WORLD_ID)
+    bundle = _parse_v2(raw)
+    promoted = ExistingWorldAdoptionReceiptV3(
+        **{
+            key: value
+            for key, value in expected.model_dump().items()
+            if key != "schema_version"
+        },
+        membership_sha256=_bundle_membership_sha256(bundle),
+    )
+
+    def mutating_provider() -> str:
+        identity.append(
+            bundle.identity_decisions[0].model_copy(
+                update={"decision_id": "decision:committed-inside-boundary"}
+            )
+        )
+        artifacts = sources.list_artifacts_for_world(WORLD_ID)
+        return existing_world_adoption_membership_sha256(
+            source_artifacts=artifacts,
+            source_revisions=[
+                revision
+                for artifact in artifacts
+                for revision in sources.list_revisions(artifact.source_artifact_id)
+            ],
+            contributions=contributions.list_for_world(WORLD_ID),
+            identity_decisions=identity.list_for_world(WORLD_ID),
+        )
+
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        adoptions.promote_to_v3_receipt(
+            WORLD_ID,
+            expected=expected,
+            promoted=promoted,
+            current_membership_sha256=mutating_provider,
+        )
+    assert exc.value.details["reason"] == "adoption_promotion_membership_mismatch"
+    assert isinstance(adoptions.get_for_world(WORLD_ID), ExistingWorldAdoptionReceiptV2)
 
 
 def test_promotion_requires_an_existing_receipt() -> None:
