@@ -954,6 +954,21 @@ class PostgresSourceRepository:
             return None
         return _return_artifact(row)
 
+    def list_artifacts_for_world(self, world_id: str) -> list[SourceArtifactRecord]:
+        with self._database.transaction() as conn:
+            rows = conn.execute(
+                sql.SQL(
+                    f"""
+                    SELECT {_ARTIFACT_SELECT}
+                    FROM {{}}.source_artifacts
+                    WHERE world_id = %s
+                    ORDER BY source_artifact_id
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (world_id,),
+            ).fetchall()
+        return [_return_artifact(row) for row in rows]
+
     def put_revision(self, revision: SourceRevision) -> SourceRevision:
         with self._database.transaction() as conn:
             return _put_revision_in_transaction(conn, revision)

@@ -8,6 +8,7 @@ following the statblocks_v1 discipline in DungeonMindServer.
 
 from .contribution_review import finalize_contribution_review, load_contribution_review
 from .existing_world_adoption import adopt_existing_world
+from .existing_world_correspondence import ExistingWorldCorrespondenceService
 from .fictional_time import evaluate_fictional_time_query
 from .fictional_time_query_service import query_fictional_time_shadow_at_revision
 from .graph_snapshot import (
@@ -47,6 +48,7 @@ __all__ = [
     "ContributionReviewRepository",
     "EmbeddingRunRepository",
     "ExistingWorldAdoptionRepository",
+    "ExistingWorldCorrespondenceService",
     "FinalizedReviewGraphMaterialization",
     "FinalizedReviewPublication",
     "FinalizedReviewPublicationRepository",

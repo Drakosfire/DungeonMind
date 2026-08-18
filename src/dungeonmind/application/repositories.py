@@ -205,6 +205,14 @@ class SourceRepository(Protocol):
 
     def get_artifact(self, source_artifact_id: str) -> SourceArtifactRecord | None: ...
 
+    def list_artifacts_for_world(self, world_id: str) -> list[SourceArtifactRecord]:
+        """Read-only per-world artifact membership enumeration.
+
+        Every returned record passes the adapter's read-time integrity
+        verification, same as ``get_artifact``. Ordered by artifact id.
+        """
+        ...
+
     def put_revision(self, revision: SourceRevision) -> SourceRevision: ...
 
     def get_revision(self, source_revision_id: str) -> SourceRevision | None: ...

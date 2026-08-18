@@ -881,6 +881,12 @@ class InMemorySourceRepository:
             self._artifacts[artifact.source_artifact_id] = _copy(artifact)
             return _copy(artifact)
 
+    def list_artifacts_for_world(self, world_id: str) -> list[SourceArtifactRecord]:
+        with self._lock:
+            items = [a for a in self._artifacts.values() if a.world_id == world_id]
+            items.sort(key=lambda a: a.source_artifact_id)
+            return [_copy(a) for a in items]
+
     def get_artifact(self, source_artifact_id: str) -> SourceArtifactRecord | None:
         item = self._artifacts.get(source_artifact_id)
         return _copy(item) if item is not None else None
