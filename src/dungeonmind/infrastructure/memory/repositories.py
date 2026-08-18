@@ -36,6 +36,10 @@ from ...contracts.contribution_review import (
     ContributionReviewRecord,
     ContributionReviewState,
 )
+from ...contracts.contribution_review_v2 import (
+    ContributionReviewRecordV2,
+    ContributionReviewStateV2,
+)
 from ...contracts.evidence import SourceArtifactRecord, SourceRevision
 from ...contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
@@ -310,11 +314,15 @@ class InMemoryContributionReviewRepository:
         failure_hook: Callable[[], None] | None = None,
     ) -> None:
         self._contributions = contributions
-        self._records: dict[tuple[str, str], ContributionReviewRecord] = {}
+        self._records: dict[
+            tuple[str, str], ContributionReviewRecord | ContributionReviewRecordV2
+        ] = {}
         self._lock = contributions._lock
         self._failure_hook = failure_hook
 
-    def _reconstruct_unlocked(self, record: ContributionReviewRecord) -> ContributionReviewState:
+    def _reconstruct_unlocked(
+        self, record: ContributionReviewRecord | ContributionReviewRecordV2
+    ) -> ContributionReviewState | ContributionReviewStateV2:
         candidate = self._contributions._items.get(
             (record.world_id, record.stored_candidate_contribution_id)
         )
@@ -325,26 +333,47 @@ class InMemoryContributionReviewRepository:
             raise PersistenceIntegrityError(
                 f"review {record.review_id!r} is missing a contribution child"
             )
-        if not isinstance(candidate, GraphContribution) or not isinstance(
-            reviewed, GraphContribution
-        ):
-            raise PersistenceIntegrityError(
-                f"review {record.review_id!r} received a non-v1 contribution"
-            )
         try:
+            if isinstance(record, ContributionReviewRecordV2):
+                if not isinstance(candidate, GraphContributionV2) or not isinstance(
+                    reviewed, GraphContributionV2
+                ):
+                    raise PersistenceIntegrityError(
+                        f"review {record.review_id!r} received a non-v2 contribution"
+                    )
+                return ContributionReviewStateV2(
+                    record=_copy(record),
+                    candidate_contribution=_copy(candidate),
+                    reviewed_contribution=_copy(reviewed),
+                )
+            if not isinstance(candidate, GraphContribution) or not isinstance(
+                reviewed, GraphContribution
+            ):
+                raise PersistenceIntegrityError(
+                    f"review {record.review_id!r} received a non-v1 contribution"
+                )
             return ContributionReviewState(
                 record=_copy(record),
                 candidate_contribution=_copy(candidate),
                 reviewed_contribution=_copy(reviewed),
             )
+        except PersistenceIntegrityError:
+            raise
         except Exception:
             raise PersistenceIntegrityError(
                 f"review {record.review_id!r} failed reconstruction"
             ) from None
 
-    def finalize(self, state: ContributionReviewState) -> ContributionReviewState:
+    def finalize(
+        self, state: ContributionReviewState | ContributionReviewStateV2
+    ) -> ContributionReviewState | ContributionReviewStateV2:
         try:
-            validated = ContributionReviewState.model_validate(state.model_dump(mode="json"))
+            dumped = state.model_dump(mode="json")
+            validated: ContributionReviewState | ContributionReviewStateV2 = (
+                ContributionReviewStateV2.model_validate(dumped)
+                if isinstance(state, ContributionReviewStateV2)
+                else ContributionReviewState.model_validate(dumped)
+            )
         except Exception:
             raise PersistenceIntegrityError(
                 "review state failed validation before persistence"
@@ -415,12 +444,16 @@ class InMemoryContributionReviewRepository:
                 self._records.pop((record.world_id, record.review_id), None)
                 raise
 
-    def get(self, world_id: str, review_id: str) -> ContributionReviewState | None:
+    def get(
+        self, world_id: str, review_id: str
+    ) -> ContributionReviewState | ContributionReviewStateV2 | None:
         with self._lock:
             record = self._records.get((world_id, review_id))
             return None if record is None else self._reconstruct_unlocked(record)
 
-    def get_for_plan(self, world_id: str, source_plan_id: str) -> ContributionReviewState | None:
+    def get_for_plan(
+        self, world_id: str, source_plan_id: str
+    ) -> ContributionReviewState | ContributionReviewStateV2 | None:
         with self._lock:
             record = next(
                 (

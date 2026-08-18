@@ -18,8 +18,14 @@ from ...contracts.contribution import (
     GraphContributionV2,
 )
 from ...contracts.contribution_review import (
+    CONTRIBUTION_REVIEW_RECORD_SCHEMA,
     ContributionReviewRecord,
     ContributionReviewState,
+)
+from ...contracts.contribution_review_v2 import (
+    CONTRIBUTION_REVIEW_RECORD_V2_SCHEMA,
+    ContributionReviewRecordV2,
+    ContributionReviewStateV2,
 )
 from ...contracts.evidence import (
     SOURCE_ARTIFACT_SCHEMA,
@@ -341,9 +347,49 @@ def _get_contribution_in_transaction(
     return loaded
 
 
-def _return_review_record(row: dict[str, Any]) -> ContributionReviewRecord:
+def _get_contribution_in_transaction_any_schema(
+    conn: Any,
+    *,
+    world_id: str,
+    contribution_id: str,
+) -> DurableGraphContribution:
+    """Load one review contribution child of either contribution generation."""
+    row = conn.execute(
+        sql.SQL(
+            f"""
+            SELECT {_CONTRIBUTION_SELECT}
+            FROM {{}}.graph_contributions
+            WHERE world_id = %s AND contribution_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (world_id, contribution_id),
+    ).fetchone()
+    if row is None:
+        raise PersistenceIntegrityError(f"review contribution child {contribution_id!r} is missing")
+    try:
+        return _return_contribution(row)
+    except PersistenceIntegrityError:
+        raise PersistenceIntegrityError(
+            f"review contribution child {contribution_id!r} failed reconstruction"
+        ) from None
+
+
+def _return_review_record(
+    row: dict[str, Any],
+) -> ContributionReviewRecord | ContributionReviewRecordV2:
+    schema_version = row["schema_version"]
+    if schema_version == CONTRIBUTION_REVIEW_RECORD_SCHEMA:
+        model_type: type[ContributionReviewRecord | ContributionReviewRecordV2] = (
+            ContributionReviewRecord
+        )
+    elif schema_version == CONTRIBUTION_REVIEW_RECORD_V2_SCHEMA:
+        model_type = ContributionReviewRecordV2
+    else:
+        raise PersistenceIntegrityError(
+            f"unsupported contribution review schema {schema_version!r}"
+        )
     record = reconstruct(
-        ContributionReviewRecord,
+        model_type,
         dict(row["payload"]),
         expected_fingerprint=row["record_fingerprint"],
         identity={
@@ -371,8 +417,35 @@ def _return_review_record(row: dict[str, Any]) -> ContributionReviewRecord:
 def _return_review_state(
     conn: Any,
     row: dict[str, Any],
-) -> ContributionReviewState:
+) -> ContributionReviewState | ContributionReviewStateV2:
     record = _return_review_record(row)
+    if isinstance(record, ContributionReviewRecordV2):
+        candidate = _get_contribution_in_transaction_any_schema(
+            conn,
+            world_id=record.world_id,
+            contribution_id=record.stored_candidate_contribution_id,
+        )
+        reviewed = _get_contribution_in_transaction_any_schema(
+            conn,
+            world_id=record.world_id,
+            contribution_id=record.reviewed_contribution_id,
+        )
+        if not isinstance(candidate, GraphContributionV2) or not isinstance(
+            reviewed, GraphContributionV2
+        ):
+            raise PersistenceIntegrityError(
+                f"review {record.review_id!r} received a non-v2 contribution"
+            )
+        try:
+            return ContributionReviewStateV2(
+                record=record,
+                candidate_contribution=candidate,
+                reviewed_contribution=reviewed,
+            )
+        except ValidationError:
+            raise PersistenceIntegrityError(
+                f"review {record.review_id!r} failed cross-record reconstruction"
+            ) from None
     candidate = _get_contribution_in_transaction(
         conn,
         world_id=record.world_id,
@@ -565,9 +638,16 @@ class PostgresContributionReviewRepository:
             (world_id, source_plan_id),
         ).fetchone()
 
-    def finalize(self, state: ContributionReviewState) -> ContributionReviewState:
+    def finalize(
+        self, state: ContributionReviewState | ContributionReviewStateV2
+    ) -> ContributionReviewState | ContributionReviewStateV2:
         try:
-            validated = ContributionReviewState.model_validate(state.model_dump(mode="json"))
+            dumped = state.model_dump(mode="json")
+            validated: ContributionReviewState | ContributionReviewStateV2 = (
+                ContributionReviewStateV2.model_validate(dumped)
+                if isinstance(state, ContributionReviewStateV2)
+                else ContributionReviewState.model_validate(dumped)
+            )
         except ValidationError:
             raise PersistenceIntegrityError(
                 "review state failed validation before PostgreSQL persistence"
@@ -673,7 +753,9 @@ class PostgresContributionReviewRepository:
                 )
             return _return_review_state(conn, row)
 
-    def get(self, world_id: str, review_id: str) -> ContributionReviewState | None:
+    def get(
+        self, world_id: str, review_id: str
+    ) -> ContributionReviewState | ContributionReviewStateV2 | None:
         with self._database.transaction() as conn:
             row = conn.execute(
                 sql.SQL(
@@ -687,7 +769,9 @@ class PostgresContributionReviewRepository:
             ).fetchone()
             return None if row is None else _return_review_state(conn, row)
 
-    def get_for_plan(self, world_id: str, source_plan_id: str) -> ContributionReviewState | None:
+    def get_for_plan(
+        self, world_id: str, source_plan_id: str
+    ) -> ContributionReviewState | ContributionReviewStateV2 | None:
         with self._database.transaction() as conn:
             row = self._find_by_plan(conn, world_id, source_plan_id)
             return None if row is None else _return_review_state(conn, row)

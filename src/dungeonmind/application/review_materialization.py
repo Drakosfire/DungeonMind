@@ -24,10 +24,19 @@ from ..contracts.contribution_review import (
 from ..contracts.graph import StoredGraphRevision
 from ..domain.canonical import canonical_json, canonical_sha256
 from ..domain.errors import ContributionMaterializationError
-from .graph_snapshot import GraphSnapshotReader, ParsedGraphSnapshot
+from .graph_snapshot import (
+    GRAPH_SCHEMA_V6,
+    GraphSnapshotReader,
+    ParsedGraphSnapshot,
+)
 
 GRAPH_SCHEMA_V3 = "dm_union_graph_v3"
 RELATIONSHIP_ID_SCHEMA = "dm_review_relationship_id_v1"
+
+# Schemas a finalized-review materialization result may carry.  v3 results come
+# from ``materialize_finalized_review``; v6 results from
+# ``review_materialization_v6.materialize_finalized_review_v6``.
+_MATERIALIZATION_RESULT_SCHEMAS = frozenset({GRAPH_SCHEMA_V3, GRAPH_SCHEMA_V6})
 
 
 @dataclass(frozen=True, init=False)
@@ -63,7 +72,7 @@ class FinalizedReviewGraphMaterialization:
         graph_payload_sha256: str,
     ) -> None:
         payload = copy.deepcopy(graph_payload)
-        if graph_schema != GRAPH_SCHEMA_V3:
+        if graph_schema not in _MATERIALIZATION_RESULT_SCHEMAS:
             raise ValueError("materialization result has an unsupported graph schema")
         if canonical_sha256(payload) != graph_payload_sha256:
             raise ValueError("materialization result payload digest does not match")

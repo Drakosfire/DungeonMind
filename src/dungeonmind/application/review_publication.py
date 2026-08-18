@@ -13,7 +13,14 @@ from typing import Any, NoReturn
 
 from pydantic import ValidationError
 
-from ..contracts.contribution_review import ContributionReviewState
+from ..contracts.contribution_review import (
+    CONTRIBUTION_REVIEW_STATE_SCHEMA,
+    ContributionReviewState,
+)
+from ..contracts.contribution_review_v2 import (
+    CONTRIBUTION_REVIEW_STATE_V2_SCHEMA,
+    ContributionReviewStateV2,
+)
 from ..contracts.review_publication import (
     FinalizedReviewPublication,
     FinalizedReviewPublicationCommand,
@@ -31,14 +38,15 @@ from ..domain.revision_ids import compute_revision_id
 from .graph_snapshot import GraphSnapshotReader
 from .repositories import (
     ContributionReviewRepository,
+    DurableContributionReviewState,
     FinalizedReviewPublicationRepository,
     WorldGraphRepository,
 )
 from .review_materialization import (
-    GRAPH_SCHEMA_V3,
     FinalizedReviewGraphMaterialization,
     materialize_finalized_review,
 )
+from .review_materialization_v6 import materialize_finalized_review_v6
 
 
 def _integrity(reason: str) -> NoReturn:
@@ -49,13 +57,22 @@ def _integrity(reason: str) -> NoReturn:
 
 
 def _reload_review(
-    state: ContributionReviewState,
+    state: DurableContributionReviewState,
     *,
     world_id: str,
     review_id: str,
-) -> ContributionReviewState:
+) -> DurableContributionReviewState:
     try:
-        reloaded = ContributionReviewState.model_validate(state.model_dump(mode="json"))
+        dumped = state.model_dump(mode="json")
+        schema_version = dumped.get("schema_version")
+        if schema_version == CONTRIBUTION_REVIEW_STATE_V2_SCHEMA:
+            reloaded: DurableContributionReviewState = (
+                ContributionReviewStateV2.model_validate(dumped)
+            )
+        elif schema_version == CONTRIBUTION_REVIEW_STATE_SCHEMA:
+            reloaded = ContributionReviewState.model_validate(dumped)
+        else:
+            _integrity("finalized_review_reload_validation")
     except Exception:
         _integrity("finalized_review_reload_validation")
     if reloaded.record.world_id != world_id or reloaded.record.review_id != review_id:
@@ -66,7 +83,7 @@ def _reload_review(
 def _validate_materialization(
     materialization: FinalizedReviewGraphMaterialization,
     *,
-    state: ContributionReviewState,
+    state: DurableContributionReviewState,
     expected_parent_revision_id: str,
 ) -> dict[str, Any]:
     record = state.record
@@ -88,7 +105,6 @@ def _validate_materialization(
         or materialization.expected_parent_revision_id != expected_parent_revision_id
         or materialization.parent_graph_payload_sha256
         != plan_ref.base_graph_payload_sha256
-        or materialization.graph_schema != GRAPH_SCHEMA_V3
         or materialization.graph_schema != plan_ref.base_graph_schema
         or payload_digest != materialization.graph_payload_sha256
     ):
@@ -145,11 +161,18 @@ def publish_finalized_review(
             f"revision {expected_parent_revision_id!r} not found for world {world_id!r}"
         )
 
-    materialization = materialize_finalized_review(
-        state,
-        parent=parent,
-        graph_reader=graph_reader,
-    )
+    if isinstance(state, ContributionReviewStateV2):
+        materialization = materialize_finalized_review_v6(
+            state,
+            parent=parent,
+            graph_reader=graph_reader,
+        )
+    else:
+        materialization = materialize_finalized_review(
+            state,
+            parent=parent,
+            graph_reader=graph_reader,
+        )
     payload = _validate_materialization(
         materialization,
         state=state,

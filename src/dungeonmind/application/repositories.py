@@ -23,6 +23,9 @@ from ..contracts.contribution import (
 from ..contracts.contribution_review import (
     ContributionReviewState,
 )
+from ..contracts.contribution_review_v2 import (
+    ContributionReviewStateV2,
+)
 from ..contracts.evidence import SourceArtifactRecord, SourceRevision
 from ..contracts.existing_world_adoption import (
     ExistingWorldAdoptionCommandV1,
@@ -55,6 +58,9 @@ from ..domain.errors import IdempotencyConflictError
 
 DurableGraphContribution: TypeAlias = GraphContribution | GraphContributionV2
 DurableIdentityDecision: TypeAlias = IdentityDecisionRecord | IdentityDecisionRecordV2
+DurableContributionReviewState: TypeAlias = (
+    ContributionReviewState | ContributionReviewStateV2
+)
 DurableExistingWorldAdoptionCommand: TypeAlias = (
     ExistingWorldAdoptionCommandV1 | ExistingWorldAdoptionCommandV2
 )
@@ -134,15 +140,25 @@ class ContributionRepository(Protocol):
 
 
 class ContributionReviewRepository(Protocol):
-    """Atomic durable bundle of one finalized contribution review."""
+    """Atomic durable bundle of one finalized contribution review.
 
-    def finalize(self, state: ContributionReviewState) -> ContributionReviewState: ...
+    Both review generations are stored: v1 states carry ``GraphContribution``
+    payloads for ``dm_union_graph_v3`` reviews; v2 states carry
+    ``GraphContributionV2`` payloads for ``dm_union_graph_v6`` reviews.  The
+    adapter reconstructs whichever generation the durable record names.
+    """
 
-    def get(self, world_id: str, review_id: str) -> ContributionReviewState | None: ...
+    def finalize(
+        self, state: DurableContributionReviewState
+    ) -> DurableContributionReviewState: ...
+
+    def get(
+        self, world_id: str, review_id: str
+    ) -> DurableContributionReviewState | None: ...
 
     def get_for_plan(
         self, world_id: str, source_plan_id: str
-    ) -> ContributionReviewState | None: ...
+    ) -> DurableContributionReviewState | None: ...
 
 
 class FinalizedReviewPublicationRepository(Protocol):
