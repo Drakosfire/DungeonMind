@@ -254,15 +254,21 @@ class ContributionReviewIntentV2(DungeonMindModel):
 
         proposals = self.identity_proposals
         _validate_identity_decisions(proposals, self.identity_verdicts)
+        # Identity disposition is required only for targets that will actually
+        # be materialized: the distinct subject targets of *accepted* node and
+        # alias assertions.  A rejected node/alias assertion demands no
+        # identity proposal and keeps its candidate outcome.
         identity_targets = {
             assertion.subject_object_id
             for assertion in assertions
             if assertion.assertion_kind in _IDENTITY_TARGETED_V2_KINDS
+            and verdicts_by_assertion[assertion.assertion_id].acceptance_state
+            is AcceptanceState.ACCEPTED
         }
         proposal_targets = {item.target_object_id for item in proposals}
         if proposal_targets != identity_targets:
             raise ValueError(
-                "identity proposals must cover exactly the candidate node/alias subject targets"
+                "identity proposals must cover exactly the accepted node/alias subject targets"
             )
 
         expected_digest = derive_review_intent_sha256_v2(
@@ -572,22 +578,31 @@ class ContributionReviewStateV2(DungeonMindModel):
                 raise ValueError("reviewed assertion state disagrees with verdict")
             if after.assertion_kind in _IDENTITY_TARGETED_V2_KINDS:
                 target = after.subject_object_id
-                if target is None or target not in target_to_candidate:
-                    raise ValueError("reviewed node target lacks an identity proposal")
-                candidate_id = target_to_candidate[target]
-                identity_verdict = verdicts[candidate_id]
-                expected_outcome = reviewed_v2_identity_outcome(identity_verdict.verdict)
-                if after.identity_resolution_outcome is not expected_outcome:
-                    raise ValueError("reviewed node identity outcome disagrees with verdict")
-                if (
-                    identity_verdict.verdict is ContributionIdentityVerdictKind.REJECT_CANDIDATE
-                    and after.acceptance_state is not AcceptanceState.REJECTED
-                ):
-                    raise ValueError(
-                        "reject_candidate requires every node assertion to be rejected"
-                    )
-                if proposals[candidate_id].target_object_id != target:
-                    raise ValueError("reviewed node target disagrees with proposal")
+                candidate_id = target_to_candidate.get(target or "")
+                if candidate_id is None:
+                    # Proposals cover accepted node/alias targets exactly, so an
+                    # uncovered target must be a rejected assertion whose
+                    # candidate identity outcome is preserved untouched.
+                    if after.acceptance_state is not AcceptanceState.REJECTED:
+                        raise ValueError("accepted node/alias target lacks an identity proposal")
+                    if after.identity_resolution_outcome != before.identity_resolution_outcome:
+                        raise ValueError(
+                            "reviewed non-identity assertion outcome drifted from candidate"
+                        )
+                else:
+                    identity_verdict = verdicts[candidate_id]
+                    expected_outcome = reviewed_v2_identity_outcome(identity_verdict.verdict)
+                    if after.identity_resolution_outcome is not expected_outcome:
+                        raise ValueError("reviewed node identity outcome disagrees with verdict")
+                    if (
+                        identity_verdict.verdict is ContributionIdentityVerdictKind.REJECT_CANDIDATE
+                        and after.acceptance_state is not AcceptanceState.REJECTED
+                    ):
+                        raise ValueError(
+                            "reject_candidate requires every node assertion to be rejected"
+                        )
+                    if proposals[candidate_id].target_object_id != target:
+                        raise ValueError("reviewed node target disagrees with proposal")
             elif after.identity_resolution_outcome != before.identity_resolution_outcome:
                 raise ValueError("reviewed non-identity assertion outcome drifted from candidate")
 

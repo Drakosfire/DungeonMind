@@ -9,7 +9,9 @@ payload under the builtin dnd semantic profile.
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -115,7 +117,9 @@ def _existence_metadata(assertion_id: str, evidence_ids: list[str]) -> dict[str,
     }
 
 
-def _v6_parent_payload() -> dict[str, object]:
+def _v6_parent_payload(
+    mutate: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, object]:
     from dungeonmind.application.graph_snapshot_v6 import UnionGraphV6Payload
 
     raw = {
@@ -175,14 +179,16 @@ def _v6_parent_payload() -> dict[str, object]:
             }
         ],
     }
+    if mutate is not None:
+        mutate(raw)
     # Normalize through the payload model so the fixture is exactly the
     # materialized shape (all schema_version defaults present), matching what
     # the adoption path stores and what the materializer round-trip requires.
     return UnionGraphV6Payload.model_validate(raw).model_dump(mode="json")
 
 
-def _stored_parent() -> StoredGraphRevision:
-    payload = _v6_parent_payload()
+def _stored_parent(payload: dict[str, object] | None = None) -> StoredGraphRevision:
+    payload = payload if payload is not None else _v6_parent_payload()
     digest = canonical_sha256(payload)
     revision_id = compute_revision_id(
         world_id=WORLD_ID,
@@ -550,6 +556,88 @@ def test_v2_intent_rejects_identity_proposal_coverage_drift() -> None:
     candidate = _candidate()
     with pytest.raises(ValidationError):
         _intent(candidate=candidate, identity_proposals=[_proposals()[0]])
+
+
+def _mixed_review_candidate() -> GraphContributionV2:
+    """Base candidate plus one rejected node on an uncovered third target."""
+    candidate_payload = _candidate().model_dump(mode="json")
+    rejected = copy.deepcopy(candidate_payload["assertions"][0])
+    rejected["assertion_id"] = "assertion:test:node:rejected"
+    rejected["subject_object_id"] = "npc:rejected_npc"
+    rejected["label"] = "Rejected NPC"
+    candidate_payload["assertions"].append(rejected)
+    return GraphContributionV2.model_validate(candidate_payload)
+
+
+def _mixed_review_verdicts(
+    candidate: GraphContributionV2,
+) -> list[ContributionAssertionVerdict]:
+    return [
+        ContributionAssertionVerdict(
+            assertion_id=assertion.assertion_id,
+            acceptance_state=(
+                AcceptanceState.REJECTED
+                if assertion.assertion_id == "assertion:test:node:rejected"
+                else AcceptanceState.ACCEPTED
+            ),
+        )
+        for assertion in sorted(candidate.assertions, key=lambda item: item.assertion_id)
+    ]
+
+
+def test_v2_intent_identity_coverage_counts_accepted_only() -> None:
+    candidate = _mixed_review_candidate()
+    # The rejected node on npc:rejected_npc demands no identity proposal; the
+    # accepted node/alias targets keep their exact coverage.
+    intent = _intent(candidate=candidate, assertion_verdicts=_mixed_review_verdicts(candidate))
+    assert {item.target_object_id for item in intent.identity_proposals} == {
+        EXISTING_OBJECT_ID,
+        NEW_OBJECT_ID,
+    }
+
+    state = _build_review_state(_submission(intent))
+    reviewed = {
+        assertion.assertion_id: assertion for assertion in state.reviewed_contribution.assertions
+    }
+    rejected = reviewed["assertion:test:node:rejected"]
+    assert rejected.acceptance_state is AcceptanceState.REJECTED
+    # No identity proposal covers the rejected target, so the candidate's
+    # identity outcome is preserved untouched.
+    assert rejected.identity_resolution_outcome is None
+    assert reviewed["assertion:test:node:new"].identity_resolution_outcome is (
+        IdentityOutcome.CREATED_NEW
+    )
+    assert reviewed["assertion:test:alias:existing"].identity_resolution_outcome is (
+        IdentityOutcome.RESOLVED_EXISTING
+    )
+
+
+def test_v2_intent_rejects_identity_proposal_for_rejected_only_target() -> None:
+    candidate = _mixed_review_candidate()
+    proposals = [
+        *_proposals(),
+        ContributionIdentityProposal(
+            candidate_id="cand:rejected",
+            candidate_kind="dnd5e:npc",
+            planned_outcome=IdentityOutcome.PROVISIONAL_NEW,
+            target_object_id="npc:rejected_npc",
+        ),
+    ]
+    verdicts = [
+        *_identity_verdicts(),
+        ContributionIdentityVerdict(
+            candidate_id="cand:rejected",
+            verdict=ContributionIdentityVerdictKind.REJECT_CANDIDATE,
+            target_object_id="npc:rejected_npc",
+        ),
+    ]
+    with pytest.raises(ValidationError):
+        _intent(
+            candidate=candidate,
+            identity_proposals=proposals,
+            identity_verdicts=verdicts,
+            assertion_verdicts=_mixed_review_verdicts(candidate),
+        )
 
 
 def test_v2_intent_rejects_candidate_without_evidence_or_source() -> None:

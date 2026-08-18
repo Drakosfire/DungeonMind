@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from ..contracts.capability import CapabilityEffect, CapabilityPolicy
 from ..contracts.contribution import (
+    AcceptanceState,
     ContributionStatus,
     GraphContributionV2,
 )
@@ -108,11 +109,16 @@ def _build_review_state(
         if assertion.assertion_kind in {"node", "alias"}:
             proposal = proposals_by_target.get(assertion.subject_object_id or "")
             if proposal is None:
-                _validation_error("node_target_missing_identity_proposal")
-            identity_verdict = identity_verdicts[proposal.candidate_id]
-            payload["identity_resolution_outcome"] = reviewed_v2_identity_outcome(
-                identity_verdict.verdict
-            ).value
+                # Identity proposals cover accepted node/alias targets exactly;
+                # an uncovered target means the assertion was rejected, and its
+                # candidate identity outcome is preserved untouched.
+                if verdict.acceptance_state is not AcceptanceState.REJECTED:
+                    _validation_error("node_target_missing_identity_proposal")
+            else:
+                identity_verdict = identity_verdicts[proposal.candidate_id]
+                payload["identity_resolution_outcome"] = reviewed_v2_identity_outcome(
+                    identity_verdict.verdict
+                ).value
         assertions.append(payload)
 
     review_id = derive_review_id(
