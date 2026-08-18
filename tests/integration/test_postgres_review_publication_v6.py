@@ -511,6 +511,126 @@ def test_postgres_v6_materialization_failure_leaves_zero_mutation(pg) -> None:
 
 
 @pytest.mark.integration
+def test_postgres_v6_adopted_era_correction_fails_closed(pg) -> None:
+    # Adopted-era ka:* records predate contribution receipts; a correction
+    # targeting one fails closed with correction_target_unresolvable and zero
+    # mutation, even though the record exists in the parent (dispatch §5).
+    _adopt(pg)
+    parent = pg.world_graph.get_revision(WORLD_ID, PUBLISHED_REVISION_ID)
+    assert parent is not None
+    candidate_payload = _candidate().model_dump(mode="json")
+    candidate_payload["assertion_corrections"] = [
+        {
+            "target_contribution_id": "contrib:" + "b" * 32,
+            "target_assertion_id": "ka:object:node:barin_coppergleam",
+            "correction_kind": "contradicts_and_replaces",
+            "replacement_assertion_id": "assertion:cutover:node:new",
+        }
+    ]
+    candidate = GraphContributionV2.model_validate(candidate_payload)
+    state = _finalize(pg, _intent(parent, candidate=candidate))
+    before = _table_counts(pg)
+
+    with pytest.raises(ContributionMaterializationError) as excinfo:
+        _publish(pg, state.record.review_id)
+
+    assert excinfo.value.details["reason"] == "correction_target_unresolvable"
+    assert _table_counts(pg) == before
+    assert pg.world_graph.get_head(WORLD_ID).head_revision_id == PUBLISHED_REVISION_ID  # type: ignore[union-attr]
+
+
+@pytest.mark.integration
+def test_postgres_v6_mechanics_binding_fails_closed(pg) -> None:
+    # Mechanics/statblock bindings are excluded from the World Graph
+    # publication seam (dispatch §4): an otherwise valid edge carrying
+    # statblock binding material fails closed with zero mutation.
+    _adopt(pg)
+    parent = pg.world_graph.get_revision(WORLD_ID, PUBLISHED_REVISION_ID)
+    assert parent is not None
+    candidate_payload = _candidate().model_dump(mode="json")
+    candidate_payload["assertions"][2]["value"] = (
+        '{"dm_predicate": "dnd5e:aware_of", "edge_id": "' + EDGE_ID + '",'
+        ' "statblock_binding": {"statblock_id": "mm:goblin"}}'
+    )
+    candidate = GraphContributionV2.model_validate(candidate_payload)
+    state = _finalize(pg, _intent(parent, candidate=candidate))
+    before = _table_counts(pg)
+
+    with pytest.raises(ContributionMaterializationError) as excinfo:
+        _publish(pg, state.record.review_id)
+
+    assert excinfo.value.details["reason"] == "unsupported_assertion_kind"
+    assert excinfo.value.details["binding"] == "statblock_binding"
+    assert _table_counts(pg) == before
+    assert pg.world_graph.get_head(WORLD_ID).head_revision_id == PUBLISHED_REVISION_ID  # type: ignore[union-attr]
+
+
+@pytest.mark.integration
+def test_postgres_v6_alias_fallback_evidence_synthesized(pg) -> None:
+    # A source-identity-only alias assertion receives deterministic fallback
+    # evidence in the durable published head (dispatch §5).
+    _adopt(pg)
+    parent = pg.world_graph.get_revision(WORLD_ID, PUBLISHED_REVISION_ID)
+    assert parent is not None
+    candidate_payload = _candidate().model_dump(mode="json")
+    candidate_payload["assertions"][1]["evidence_refs"] = []
+    candidate_payload["assertions"][1]["source_artifact_id"] = NEW_EVIDENCE_ARTIFACT
+    candidate = GraphContributionV2.model_validate(candidate_payload)
+    state = _finalize(pg, _intent(parent, candidate=candidate))
+    result = _publish(pg, state.record.review_id)
+
+    child = pg.world_graph.get_revision(WORLD_ID, result.published_revision_id)
+    assert child is not None
+    reviewed_id = state.reviewed_contribution.contribution_id
+    fallback_id = f"evidence:{reviewed_id}:{ADOPTED_OBJECT_ID}"
+    evidence = {
+        record["evidence_ref_id"]: record for record in child.graph_payload["evidence_refs"]
+    }
+    assert evidence[fallback_id]["source_artifact_id"] == NEW_EVIDENCE_ARTIFACT
+    assert evidence[fallback_id]["source_domain_key"] == "manual_seed"
+    objects = {obj["object_id"]: obj for obj in child.graph_payload["objects"]}
+    alias = objects[ADOPTED_OBJECT_ID]["aliases"][-1]
+    assert alias["value"] == "Barin the Cutover Witness"
+    assert alias["assertion_metadata"]["evidence_ref_ids"] == [fallback_id]
+
+
+@pytest.mark.integration
+def test_postgres_v6_session_ids_round_trip(pg) -> None:
+    # value["session_ids"] materializes into session_refs on the records the
+    # assertion creates, durable in the published head (dispatch §5).
+    _adopt(pg)
+    parent = pg.world_graph.get_revision(WORLD_ID, PUBLISHED_REVISION_ID)
+    assert parent is not None
+    candidate = _candidate(
+        node_value=(
+            '{"dm_kind": "dnd5e:npc", "kind": "npc",'
+            ' "aliases": ["Cutover Integration NPC"],'
+            ' "session_ids": ["session-21", "session-22"]}'
+        )
+    )
+    candidate_payload = candidate.model_dump(mode="json")
+    candidate_payload["assertions"][2]["value"] = (
+        '{"dm_predicate": "dnd5e:aware_of", "edge_id": "' + EDGE_ID + '",'
+        ' "session_ids": ["session-22"]}'
+    )
+    candidate = GraphContributionV2.model_validate(candidate_payload)
+    state = _finalize(pg, _intent(parent, candidate=candidate))
+    result = _publish(pg, state.record.review_id)
+
+    child = pg.world_graph.get_revision(WORLD_ID, result.published_revision_id)
+    assert child is not None
+    snapshot = eldyrwild_graph_reader().parse(
+        graph_schema=GRAPH_SCHEMA_V6, graph_payload=child.graph_payload
+    )
+    created = snapshot.objects[NEW_OBJECT_ID]
+    assert created.existence_assertion_metadata is not None
+    assert created.existence_assertion_metadata.session_refs == ["session-21", "session-22"]
+    edge = snapshot.relationships[EDGE_ID]
+    assert edge.assertion_metadata is not None
+    assert edge.assertion_metadata.session_refs == ["session-22"]
+
+
+@pytest.mark.integration
 def test_in_memory_v6_finalize_publish_matches_postgres(pg) -> None:
     _adopt(pg)
     parent = pg.world_graph.get_revision(WORLD_ID, PUBLISHED_REVISION_ID)
