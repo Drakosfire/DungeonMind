@@ -16,12 +16,15 @@ from psycopg.types.json import Jsonb
 from dungeonmind.application.existing_world_adoption import (
     adopt_existing_world,
     parse_existing_world_adoption_bundle,
+    promote_existing_world_adoption_receipt_v3,
 )
 from dungeonmind.application.existing_world_correspondence import (
     ExistingWorldCorrespondenceService,
 )
 from dungeonmind.contracts.existing_world_adoption import (
     ExistingWorldAdoptionBundleV2,
+    ExistingWorldAdoptionReceiptV2,
+    ExistingWorldAdoptionReceiptV3,
     existing_world_adoption_bundle_v2_canonical_bytes,
 )
 from dungeonmind.contracts.existing_world_correspondence import (
@@ -574,3 +577,164 @@ def test_postgres_deleted_unreferenced_source_artifact_fails_closed_before_stale
         "artifacts": before["artifacts"] - 1,
         "revisions_source": before["revisions_source"] - 1,
     }
+
+
+SUBSTITUTE_ARTIFACT_ID = "artifact:substituted-source-record"
+SUBSTITUTE_REVISION_ID = "revision:substituted-source-record"
+
+
+def _downgrade_stored_receipt_to_v2(pg) -> None:
+    """Simulate a pre-V3 durable receipt at the PostgreSQL boundary."""
+    stored = pg.existing_world_adoptions.get_for_world(WORLD_ID)
+    assert isinstance(stored, ExistingWorldAdoptionReceiptV3)
+    downgraded = ExistingWorldAdoptionReceiptV2(
+        **{
+            key: value
+            for key, value in stored.model_dump().items()
+            if key not in {"schema_version", "membership_sha256"}
+        }
+    )
+    with pg.database.connect() as conn:
+        conn.execute(
+            """
+            UPDATE dungeonmind.existing_world_adoptions
+            SET schema_version = %s, payload = %s, record_fingerprint = %s
+            WHERE world_id = %s
+            """,
+            (
+                downgraded.schema_version,
+                Jsonb(downgraded.model_dump(mode="json")),
+                model_fingerprint(downgraded),
+                WORLD_ID,
+            ),
+        )
+        conn.commit()
+
+
+def test_postgres_same_cardinality_source_substitution_fails_checkpoint_before_stale(
+    pg,
+) -> None:
+    """The Cycle-3 adversarial case at the owning boundary: adopt A → delete
+    unreferenced U → insert different valid X so every count pin holds →
+    present valid stale B. Only the V3 membership checkpoint proves the exact
+    adopted identity set; the classification must raise, never return STALE.
+    """
+    _adopt_extended(pg)
+    before = _counts(pg)
+    bundle = _parse_v2(_extended_bundle_with_unreferenced_source())
+    artifact = next(
+        item
+        for item in bundle.source_artifacts
+        if item.source_artifact_id == UNREFERENCED_ARTIFACT_ID
+    )
+    revision = next(
+        item
+        for item in bundle.source_revisions
+        if item.source_revision_id == UNREFERENCED_REVISION_ID
+    )
+    with pg.database.connect() as conn:
+        conn.execute(
+            "DELETE FROM dungeonmind.source_revisions WHERE source_revision_id = %s",
+            (UNREFERENCED_REVISION_ID,),
+        )
+        conn.execute(
+            "DELETE FROM dungeonmind.source_artifacts WHERE source_artifact_id = %s",
+            (UNREFERENCED_ARTIFACT_ID,),
+        )
+        conn.commit()
+    pg.sources.put_artifact(
+        artifact.model_copy(
+            update={
+                "source_artifact_id": SUBSTITUTE_ARTIFACT_ID,
+                "current_revision_id": SUBSTITUTE_REVISION_ID,
+            }
+        )
+    )
+    pg.sources.put_revision(
+        revision.model_copy(
+            update={
+                "source_revision_id": SUBSTITUTE_REVISION_ID,
+                "source_artifact_id": SUBSTITUTE_ARTIFACT_ID,
+            }
+        )
+    )
+    assert _counts(pg) == before
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _service(pg).check(_changed_extended_snapshot_bytes(), world_id=WORLD_ID)
+    assert exc.value.details["reason"] == "adopted_membership_checkpoint_mismatch"
+    assert _counts(pg) == before
+
+
+def test_postgres_same_id_coherent_source_rewrite_fails_checkpoint_before_stale(
+    pg,
+) -> None:
+    """A coherent rewrite of an adopted source record under the same id —
+    content column, payload, and fingerprint all agree — keeps every count
+    and identity pin intact; only the V3 checkpoint's per-record fingerprint
+    sees it before STALE."""
+    _adopt_extended(pg)
+    before = _counts(pg)
+    stored = pg.sources.get_revision(UNREFERENCED_REVISION_ID)
+    assert stored is not None
+    mutated = stored.model_copy(update={"content_sha256": "2" * 64})
+    with pg.database.connect() as conn:
+        conn.execute(
+            """
+            UPDATE dungeonmind.source_revisions
+            SET content_sha256 = %s, payload = %s, record_fingerprint = %s
+            WHERE source_revision_id = %s
+            """,
+            (
+                mutated.content_sha256,
+                Jsonb(mutated.model_dump(mode="json")),
+                model_fingerprint(mutated),
+                UNREFERENCED_REVISION_ID,
+            ),
+        )
+        conn.commit()
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _service(pg).check(_changed_extended_snapshot_bytes(), world_id=WORLD_ID)
+    assert exc.value.details["reason"] == "adopted_membership_checkpoint_mismatch"
+    assert _counts(pg) == before
+
+
+def test_postgres_intact_v3_membership_still_classifies_stale(pg) -> None:
+    _adopt_extended(pg)
+    before = _counts(pg)
+    result = _service(pg).check(_changed_extended_snapshot_bytes(), world_id=WORLD_ID)
+    assert result.classification == "STALE"
+    assert _counts(pg) == before
+
+
+def test_postgres_unpromoted_v2_receipt_fails_closed_on_stale_path_until_promoted(
+    pg,
+) -> None:
+    """Legacy degradation at the owning boundary: a pre-V3 receipt has no
+    membership checkpoint, so a diverged-identity snapshot fails closed
+    instead of returning a cardinality-only STALE; exact-A comparison still
+    works; steward-supervised promotion restores the STALE path."""
+    _adopt(pg)
+    _downgrade_stored_receipt_to_v2(pg)
+    before = _counts(pg)
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _service(pg).check(_changed_source_snapshot_bytes(), world_id=WORLD_ID)
+    assert exc.value.details["reason"] == "adoption_membership_checkpoint_required"
+
+    exact = _service(pg).check(raw_bundle(), world_id=WORLD_ID)
+    assert exact.classification == "CORRESPONDING"
+
+    promoted = promote_existing_world_adoption_receipt_v3(
+        raw_bundle(),
+        world_id=WORLD_ID,
+        adoption_repository=pg.existing_world_adoptions,
+        source_repository=pg.sources,
+        contribution_repository=pg.contributions,
+        identity_repository=pg.identity_decisions,
+        graph_reader=eldyrwild_graph_reader(),
+        correspondence_service=_service(pg),
+    )
+    assert isinstance(promoted, ExistingWorldAdoptionReceiptV3)
+    assert _counts(pg) == before
+    result = _service(pg).check(_changed_source_snapshot_bytes(), world_id=WORLD_ID)
+    assert result.classification == "STALE"
+    assert _counts(pg) == before

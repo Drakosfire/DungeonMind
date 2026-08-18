@@ -11,6 +11,7 @@ Failure model (from ``domain.errors``):
 - reads of unknown ids return ``None`` (transport maps to 404 where relevant)
 """
 
+from collections.abc import Callable
 from datetime import datetime
 from typing import Protocol, TypeAlias
 
@@ -28,6 +29,7 @@ from ..contracts.existing_world_adoption import (
     ExistingWorldAdoptionCommandV2,
     ExistingWorldAdoptionReceiptV1,
     ExistingWorldAdoptionReceiptV2,
+    ExistingWorldAdoptionReceiptV3,
 )
 from ..contracts.graph import (
     PublishRevisionCommand,
@@ -57,7 +59,9 @@ DurableExistingWorldAdoptionCommand: TypeAlias = (
     ExistingWorldAdoptionCommandV1 | ExistingWorldAdoptionCommandV2
 )
 DurableExistingWorldAdoptionReceipt: TypeAlias = (
-    ExistingWorldAdoptionReceiptV1 | ExistingWorldAdoptionReceiptV2
+    ExistingWorldAdoptionReceiptV1
+    | ExistingWorldAdoptionReceiptV2
+    | ExistingWorldAdoptionReceiptV3
 )
 
 
@@ -186,6 +190,44 @@ class ExistingWorldAdoptionRepository(Protocol):
     ) -> DurableExistingWorldAdoptionReceipt | None: ...
 
     def get_for_world(self, world_id: str) -> DurableExistingWorldAdoptionReceipt | None: ...
+
+    def promote_to_v3_receipt(
+        self,
+        world_id: str,
+        *,
+        expected: ExistingWorldAdoptionReceiptV2,
+        promoted: ExistingWorldAdoptionReceiptV3,
+        current_membership_sha256: Callable[[], str],
+    ) -> ExistingWorldAdoptionReceiptV3:
+        """Atomically replace one v2 receipt with its v3 membership-checkpoint form.
+
+        Under one serialization boundary that excludes concurrent history
+        writers (PostgreSQL: the world row lock plus ``SHARE ROW EXCLUSIVE``
+        table locks on the four membership families, because history writers
+        commit through independent transactions without the world row lock;
+        in-memory: the per-world graph lock plus every membership family
+        repository's lock held across the re-proof and swap), the adapter
+        re-reads and re-verifies the current receipt, then:
+
+        - current fingerprint-equals ``expected`` and ``promoted`` preserves
+          every v2 adoption fact → persist ``promoted`` (only the versioned
+          receipt representation changes; no history/graph mutation);
+        - current is already v3 and fingerprint-equals ``promoted`` → exact
+          no-op success returning the stored receipt;
+        - anything else (missing, v1, fingerprint divergence, fact drift) →
+          ``PersistenceIntegrityError`` with zero mutation.
+
+        The adapter MUST invoke ``current_membership_sha256()`` inside that
+        same boundary — after the locks are held, before the receipt swap —
+        and require exact equality with ``promoted.membership_sha256``. A
+        mismatch means adopted history changed after the caller's pre-boundary
+        proof and raises ``PersistenceIntegrityError``
+        (``adoption_promotion_membership_mismatch``) with zero mutation. The
+        caller's own pre-boundary check is a fast-fail optimization only; this
+        in-boundary re-proof is the authoritative equality check, so a writer
+        committing in the gap cannot leave a stale checkpoint installed.
+        """
+        ...
 
 
 class IdentityDecisionRepository(Protocol):

@@ -19,8 +19,10 @@ from ...application.repositories import (
 from ...contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
     EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA,
     ExistingWorldAdoptionReceiptV1,
     ExistingWorldAdoptionReceiptV2,
+    ExistingWorldAdoptionReceiptV3,
 )
 from ...contracts.graph import PublishRevisionCommand
 from ...domain.errors import IdempotencyConflictError, PersistenceIntegrityError
@@ -123,6 +125,13 @@ def _exists(conn: Connection[Any], query: str, params: tuple[Any, ...]) -> bool:
     return row is not None
 
 
+def _v2_adoption_facts(receipt: DurableExistingWorldAdoptionReceipt) -> dict[str, Any]:
+    """The adoption facts shared by v2/v3 receipts (representation excluded)."""
+    return receipt.model_dump(
+        mode="json", exclude={"schema_version", "membership_sha256"}
+    )
+
+
 class PostgresExistingWorldAdoptionRepository:
     """Atomic PostgreSQL existing-world adoption unit of work."""
 
@@ -145,6 +154,8 @@ class PostgresExistingWorldAdoptionRepository:
             )
         elif schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA:
             receipt_type = ExistingWorldAdoptionReceiptV2
+        elif schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA:
+            receipt_type = ExistingWorldAdoptionReceiptV3
         else:
             raise PersistenceIntegrityError(
                 f"unsupported existing-world adoption receipt schema {schema_version!r}"
@@ -283,6 +294,133 @@ class PostgresExistingWorldAdoptionRepository:
         with self._database.transaction() as conn:
             row = _adoption_row(conn, world_id=world_id)
             return None if row is None else self._load_verified(conn, row)
+
+    def promote_to_v3_receipt(
+        self,
+        world_id: str,
+        *,
+        expected: ExistingWorldAdoptionReceiptV2,
+        promoted: ExistingWorldAdoptionReceiptV3,
+        current_membership_sha256: Callable[[], str],
+    ) -> ExistingWorldAdoptionReceiptV3:
+        """Atomically replace the stored v2 receipt with its v3 form.
+
+        One transaction: lock the world row, then lock the four membership
+        family tables ``SHARE ROW EXCLUSIVE`` — history writers (contribution
+        append, source puts, identity append) commit through independent
+        transactions that never take the world row lock, so the table locks
+        are the genuine writer-excluding boundary for this rare
+        steward-supervised operation. Inside that boundary: re-read and
+        re-verify the current receipt, require fingerprint equality with
+        ``expected`` and v2-fact preservation by ``promoted``, re-invoke
+        ``current_membership_sha256()`` and require exact equality with the
+        promoted checkpoint, then update only the receipt's versioned
+        representation columns. An already-promoted receipt fingerprint-equal
+        to ``promoted`` is an exact no-op; anything else fails with zero
+        mutation. The in-boundary membership re-proof is the authoritative
+        equality check: a writer cannot commit a membership change between it
+        and the receipt swap.
+        """
+        with self._database.transaction() as conn:
+            lock_world(conn, world_id, created_at=promoted.adopted_at)
+            conn.execute(
+                sql.SQL(
+                    """
+                    LOCK TABLE {}.source_artifacts,
+                                {}.source_revisions,
+                                {}.graph_contributions,
+                                {}.identity_decisions
+                    IN SHARE ROW EXCLUSIVE MODE
+                    """
+                ).format(
+                    sql.Identifier(SCHEMA),
+                    sql.Identifier(SCHEMA),
+                    sql.Identifier(SCHEMA),
+                    sql.Identifier(SCHEMA),
+                )
+            )
+            row = _adoption_row(conn, world_id=world_id)
+            if row is None:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt promotion found no receipt",
+                    details={"reason": "adoption_receipt_missing", "world_id": world_id},
+                )
+            current = self._load_verified(conn, row)
+            if isinstance(current, ExistingWorldAdoptionReceiptV3):
+                if model_fingerprint(current) == model_fingerprint(promoted):
+                    return current.model_copy(deep=True)
+                raise PersistenceIntegrityError(
+                    "existing-world adoption promotion conflicts with the stored v3 receipt",
+                    details={
+                        "reason": "adoption_receipt_promotion_identity_mismatch",
+                        "world_id": world_id,
+                    },
+                )
+            if not isinstance(current, ExistingWorldAdoptionReceiptV2):
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt promotion requires a v2 receipt",
+                    details={
+                        "reason": "adoption_receipt_promotion_unsupported_schema",
+                        "world_id": world_id,
+                        "receipt_schema": current.schema_version,
+                    },
+                )
+            if model_fingerprint(current) != model_fingerprint(expected):
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt changed before promotion",
+                    details={
+                        "reason": "adoption_receipt_promotion_identity_mismatch",
+                        "world_id": world_id,
+                    },
+                )
+            if _v2_adoption_facts(current) != _v2_adoption_facts(promoted):
+                raise PersistenceIntegrityError(
+                    "existing-world adoption v3 receipt must preserve the v2 adoption facts",
+                    details={
+                        "reason": "adoption_receipt_promotion_fact_drift",
+                        "world_id": world_id,
+                    },
+                )
+            observed_membership_sha256 = current_membership_sha256()
+            if observed_membership_sha256 != promoted.membership_sha256:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption membership changed before promotion",
+                    details={
+                        "reason": "adoption_promotion_membership_mismatch",
+                        "world_id": world_id,
+                        "adoption_id": promoted.adoption_id,
+                        "expected_membership_sha256": promoted.membership_sha256,
+                        "current_membership_sha256": observed_membership_sha256,
+                    },
+                )
+            conn.execute(
+                sql.SQL(
+                    """
+                    UPDATE {}.existing_world_adoptions
+                    SET schema_version = %s,
+                        record_fingerprint = %s,
+                        payload = %s
+                    WHERE world_id = %s
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (
+                    promoted.schema_version,
+                    model_fingerprint(promoted),
+                    jsonb(dump_payload(promoted)),
+                    world_id,
+                ),
+            )
+            updated = _adoption_row(conn, world_id=world_id)
+            if updated is None:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt missing after promotion"
+                )
+            restored = self._load_verified(conn, updated)
+            if not isinstance(restored, ExistingWorldAdoptionReceiptV3):
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt failed reconstruction"
+                )
+            return restored
 
     def adopt(
         self, command: DurableExistingWorldAdoptionCommand

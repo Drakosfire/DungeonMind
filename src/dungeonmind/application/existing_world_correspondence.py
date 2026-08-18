@@ -45,7 +45,15 @@ receipt-referenced state is resolved before any classification):
 4. ``source_identity`` — exact bundle identity (canonical SHA-256,
    ``adoption_id``, full ``source_provenance``); a divergence classifies
    ``STALE`` and every other check is ``not_evaluated`` (a different valid
-   snapshot's history is its own, never the receipt's referenced history);
+   snapshot's history is its own, never the receipt's referenced history) —
+   but ``STALE`` is legal only when the durable adopted membership still
+   exactly matches the receipt's membership checkpoint: a V3 receipt's
+   ``membership_sha256`` is recomputed from the resolved current membership
+   and a mismatch raises (deletion, same-cardinality substitution, and
+   same-id coherent rewrite cannot hide behind a stale snapshot); a pre-V3
+   receipt has no checkpoint, so a diverged identity fails closed with
+   ``adoption_membership_checkpoint_required`` until steward-supervised
+   promotion installs one;
 5. only for an identity-matched snapshot — whose bytes are exactly the
    adopted bundle, so its claimed history is the receipt-committed history —
    verify every claimed identity against the resolved membership (a
@@ -70,6 +78,7 @@ from pydantic import BaseModel, ValidationError
 
 from ..contracts.evidence import SourceArtifactRecord, SourceRevision
 from ..contracts.existing_world_adoption import (
+    ExistingWorldAdoptionReceiptV3,
     ExistingWorldAdoptionSourceProvenanceV1,
     sha256_bytes,
 )
@@ -82,6 +91,9 @@ from ..contracts.existing_world_correspondence import (
 from ..contracts.graph import StoredGraphRevision
 from ..domain.canonical import canonical_json, canonical_sha256
 from ..domain.errors import PersistenceIntegrityError
+from ..domain.existing_world_membership import (
+    existing_world_adoption_membership_sha256,
+)
 from .existing_world_adoption import (
     ExistingWorldAdoptionBundle,
     parse_existing_world_adoption_bundle,
@@ -220,6 +232,11 @@ class ExistingWorldCorrespondenceService:
             receipt=receipt,
         )
         if checks["source_identity"].outcome == "diverged":
+            self._require_stale_checkpoint(
+                world_id=world_id,
+                receipt=receipt,
+                history=history,
+            )
             for name in CORRESPONDENCE_CHECK_ORDER[1:]:
                 checks[name] = ExistingWorldCorrespondenceCheckV1(
                     check=name,
@@ -364,6 +381,46 @@ class ExistingWorldCorrespondenceService:
             check="source_identity",
             outcome="diverged",
             detail="source identity diverged: " + "; ".join(drifts),
+        )
+
+    def _require_stale_checkpoint(
+        self,
+        *,
+        world_id: str,
+        receipt: DurableExistingWorldAdoptionReceipt,
+        history: _ResolvedHistory,
+    ) -> None:
+        """Gate ``STALE`` on the exact adopted-membership checkpoint.
+
+        A different valid snapshot may classify ``STALE`` only when the
+        current durable membership still exactly matches the receipt's
+        checkpoint. A V3 receipt's ``membership_sha256`` is recomputed from
+        the resolved membership; a mismatch means adopted history was deleted,
+        substituted, or coherently rewritten and raises. A pre-V3 receipt has
+        no checkpoint, so the diverged-identity path fails closed until
+        steward-supervised promotion installs one.
+        """
+        if isinstance(receipt, ExistingWorldAdoptionReceiptV3):
+            current_membership_sha256 = existing_world_adoption_membership_sha256(
+                source_artifacts=history.artifacts.values(),
+                source_revisions=history.revisions.values(),
+                contributions=history.contributions.values(),
+                identity_decisions=history.identity_decisions.values(),
+            )
+            if current_membership_sha256 != receipt.membership_sha256:
+                _integrity(
+                    "adopted_membership_checkpoint_mismatch",
+                    world_id=world_id,
+                    adoption_id=receipt.adoption_id,
+                    expected_membership_sha256=receipt.membership_sha256,
+                    current_membership_sha256=current_membership_sha256,
+                )
+            return
+        _integrity(
+            "adoption_membership_checkpoint_required",
+            world_id=world_id,
+            adoption_id=receipt.adoption_id,
+            receipt_schema=receipt.schema_version,
         )
 
     def _resolve_adopted_history(

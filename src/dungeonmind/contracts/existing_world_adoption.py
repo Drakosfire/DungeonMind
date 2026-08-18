@@ -27,6 +27,7 @@ EXISTING_WORLD_ADOPTION_COMMAND_SCHEMA = "dm_existing_world_adoption_command_v1"
 EXISTING_WORLD_ADOPTION_COMMAND_V2_SCHEMA = "dm_existing_world_adoption_command_v2"
 EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA = "dm_existing_world_adoption_receipt_v1"
 EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA = "dm_existing_world_adoption_receipt_v2"
+EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA = "dm_existing_world_adoption_receipt_v3"
 EXISTING_WORLD_ADOPTION_PROVENANCE_SCHEMA = "dm_existing_world_adoption_source_provenance_v1"
 EXISTING_WORLD_ADOPTION_AUTHORITY_REF_SCHEMA = "dm_existing_world_adoption_authority_ref_v1"
 
@@ -323,6 +324,32 @@ class ExistingWorldAdoptionReceiptV2(DungeonMindModel):
         if value < 0:
             raise ValueError("receipt counts must be non-negative")
         return value
+
+
+class ExistingWorldAdoptionReceiptV3(ExistingWorldAdoptionReceiptV2):
+    """Terminal historical correspondence strengthened by one exact
+    adopted-membership checkpoint.
+
+    Every v2 field retains its semantics; the four counts remain diagnostics
+    but are no longer sufficient proof of exact membership.
+    ``membership_sha256`` is computed at adoption (or at steward-supervised
+    v2→v3 promotion) from the exact sealed bundle's four durable history
+    families — source artifacts, source revisions, contributions, and
+    identity decisions — as sorted ``(record_id, record_fingerprint)`` pairs
+    under the domain-separated ``dm_existing_world_adoption_membership_v1``
+    canonical payload. Correspondence recomputes the current durable
+    membership digest before any ``STALE`` classification is legal.
+    """
+
+    schema_version: Literal["dm_existing_world_adoption_receipt_v3"] = (
+        EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA
+    )
+    membership_sha256: str
+
+    @field_validator("membership_sha256")
+    @classmethod
+    def _membership_digest(cls, value: str) -> str:
+        return _require_digest(value, field_name="membership_sha256")
 
 
 def _canonicalize_adoption_bundle_payload(payload: dict[str, Any]) -> bytes:
