@@ -40,8 +40,10 @@ from ...contracts.evidence import SourceArtifactRecord, SourceRevision
 from ...contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
     EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA,
     ExistingWorldAdoptionReceiptV1,
     ExistingWorldAdoptionReceiptV2,
+    ExistingWorldAdoptionReceiptV3,
 )
 from ...contracts.graph import (
     PublishRevisionCommand,
@@ -98,6 +100,13 @@ def _fingerprint(model: object) -> str:
     """Canonical JSON fingerprint of a pydantic model for idempotency checks."""
     dump = model.model_dump(mode="json")  # type: ignore[attr-defined]
     return canonical_json(dump)
+
+
+def _v2_adoption_facts(model: object) -> dict[str, Any]:
+    """The adoption facts shared by v2/v3 receipts (representation excluded)."""
+    return model.model_dump(  # type: ignore[attr-defined]
+        mode="json", exclude={"schema_version", "membership_sha256"}
+    )
 
 
 def _immutable_run_fingerprint(run: EmbeddingRun) -> str:
@@ -1588,6 +1597,8 @@ class InMemoryExistingWorldAdoptionRepository:
             )
         elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA:
             receipt_type = ExistingWorldAdoptionReceiptV2
+        elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA:
+            receipt_type = ExistingWorldAdoptionReceiptV3
         else:
             raise PersistenceIntegrityError(
                 "existing-world adoption receipt failed reconstruction"
@@ -1776,6 +1787,75 @@ class InMemoryExistingWorldAdoptionRepository:
             if receipt is None:
                 return None
             return self._reconstruct_unlocked(receipt)
+
+    def promote_to_v3_receipt(
+        self,
+        world_id: str,
+        *,
+        expected: ExistingWorldAdoptionReceiptV2,
+        promoted: ExistingWorldAdoptionReceiptV3,
+    ) -> ExistingWorldAdoptionReceiptV3:
+        """Atomically replace the stored v2 receipt with its v3 form.
+
+        Runs under the same per-world lock as adoption: re-read and re-verify
+        the current receipt, require fingerprint equality with ``expected``
+        and v2-fact preservation by ``promoted``, then swap only the receipt
+        representation. An already-promoted receipt fingerprint-equal to
+        ``promoted`` is an exact no-op; anything else fails with zero
+        mutation.
+        """
+        with self._graph._lock_for(world_id):
+            current = self._receipts_by_world.get(world_id)
+            if current is None:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt promotion found no receipt",
+                    details={"reason": "adoption_receipt_missing", "world_id": world_id},
+                )
+            verified = self._reconstruct_unlocked(current)
+            if isinstance(verified, ExistingWorldAdoptionReceiptV3):
+                if _fingerprint(verified) == _fingerprint(promoted):
+                    return _copy(verified)
+                raise PersistenceIntegrityError(
+                    "existing-world adoption promotion conflicts with the stored v3 receipt",
+                    details={
+                        "reason": "adoption_receipt_promotion_identity_mismatch",
+                        "world_id": world_id,
+                    },
+                )
+            if not isinstance(verified, ExistingWorldAdoptionReceiptV2):
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt promotion requires a v2 receipt",
+                    details={
+                        "reason": "adoption_receipt_promotion_unsupported_schema",
+                        "world_id": world_id,
+                        "receipt_schema": verified.schema_version,
+                    },
+                )
+            if _fingerprint(verified) != _fingerprint(expected):
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt changed before promotion",
+                    details={
+                        "reason": "adoption_receipt_promotion_identity_mismatch",
+                        "world_id": world_id,
+                    },
+                )
+            if _v2_adoption_facts(verified) != _v2_adoption_facts(promoted):
+                raise PersistenceIntegrityError(
+                    "existing-world adoption v3 receipt must preserve the v2 adoption facts",
+                    details={
+                        "reason": "adoption_receipt_promotion_fact_drift",
+                        "world_id": world_id,
+                    },
+                )
+            stored = _copy(promoted)
+            self._receipts_by_world[world_id] = stored
+            self._receipts_by_adoption[stored.adoption_id] = stored
+            restored = self._reconstruct_unlocked(stored)
+            if not isinstance(restored, ExistingWorldAdoptionReceiptV3):
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt failed reconstruction"
+                )
+            return restored
 
     def adopt(
         self, command: DurableExistingWorldAdoptionCommand

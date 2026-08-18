@@ -28,6 +28,7 @@ from ..contracts.existing_world_adoption import (
     ExistingWorldAdoptionCommandV2,
     ExistingWorldAdoptionReceiptV1,
     ExistingWorldAdoptionReceiptV2,
+    ExistingWorldAdoptionReceiptV3,
 )
 from ..contracts.graph import (
     PublishRevisionCommand,
@@ -57,7 +58,9 @@ DurableExistingWorldAdoptionCommand: TypeAlias = (
     ExistingWorldAdoptionCommandV1 | ExistingWorldAdoptionCommandV2
 )
 DurableExistingWorldAdoptionReceipt: TypeAlias = (
-    ExistingWorldAdoptionReceiptV1 | ExistingWorldAdoptionReceiptV2
+    ExistingWorldAdoptionReceiptV1
+    | ExistingWorldAdoptionReceiptV2
+    | ExistingWorldAdoptionReceiptV3
 )
 
 
@@ -186,6 +189,28 @@ class ExistingWorldAdoptionRepository(Protocol):
     ) -> DurableExistingWorldAdoptionReceipt | None: ...
 
     def get_for_world(self, world_id: str) -> DurableExistingWorldAdoptionReceipt | None: ...
+
+    def promote_to_v3_receipt(
+        self,
+        world_id: str,
+        *,
+        expected: ExistingWorldAdoptionReceiptV2,
+        promoted: ExistingWorldAdoptionReceiptV3,
+    ) -> ExistingWorldAdoptionReceiptV3:
+        """Atomically replace one v2 receipt with its v3 membership-checkpoint form.
+
+        Under the world lock/row lock the adapter re-reads and re-verifies the
+        current receipt, then:
+
+        - current fingerprint-equals ``expected`` and ``promoted`` preserves
+          every v2 adoption fact → persist ``promoted`` (only the versioned
+          receipt representation changes; no history/graph mutation);
+        - current is already v3 and fingerprint-equals ``promoted`` → exact
+          no-op success returning the stored receipt;
+        - anything else (missing, v1, fingerprint divergence, fact drift) →
+          ``PersistenceIntegrityError`` with zero mutation.
+        """
+        ...
 
 
 class IdentityDecisionRepository(Protocol):
