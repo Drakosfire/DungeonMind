@@ -21,6 +21,7 @@ from ...application.existing_world_adoption import (
     terminal_existing_world_adoption_receipt,
 )
 from ...application.repositories import (
+    DurableContributionReviewState,
     DurableExistingWorldAdoptionCommand,
     DurableExistingWorldAdoptionReceipt,
     DurableGraphContribution,
@@ -502,7 +503,7 @@ class InMemoryFinalizedReviewPublicationRepository:
     @staticmethod
     def _validate_review_binding(
         command: FinalizedReviewPublicationCommand,
-        state: ContributionReviewState,
+        state: DurableContributionReviewState,
     ) -> None:
         record = state.record
         expected = (
@@ -582,7 +583,7 @@ class InMemoryFinalizedReviewPublicationRepository:
     def _validate_record_review(
         cls,
         publication: FinalizedReviewPublication,
-        state: ContributionReviewState,
+        state: DurableContributionReviewState,
     ) -> None:
         record = state.record
         if (

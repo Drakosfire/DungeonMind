@@ -200,7 +200,7 @@ def test_cutover_thread_kind_acceptance_witness() -> None:
 
 def test_mechanics_unchanged_and_thread_not_eligible() -> None:
     assert "dnd5e:thread" not in WORLD_OBJECT_MECHANICS_ELIGIBLE_KINDS
-    assert WORLD_OBJECT_MECHANICS_ELIGIBLE_KINDS == frozenset({"dnd5e:threat", "dnd5e:npc"})
+    assert frozenset({"dnd5e:threat", "dnd5e:npc"}) == WORLD_OBJECT_MECHANICS_ELIGIBLE_KINDS
     assert callable(derive_world_object_mechanics_binding)
 
 
