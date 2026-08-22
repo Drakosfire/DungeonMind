@@ -1,8 +1,11 @@
 # DungeonMind — Roadmap and PR ladder
 
 **Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b / B.2c / B.2d /
-B.2e / B.2f-0 / B.2f-a / B.2f-b / B.2f-c landed. B.2f-d transport and
-external consumer proof are in the current implementation branch; product-surface adoption remains a separate successor. External RulesIngestion PR C and product-surface adoption of
+B.2e / B.2f-0 / B.2f-a / B.2f-b / B.2f-c / B.2f-d landed. R.1 (direct World
+Graph projection service, PR #38) landed; R.2 (direct World Graph retrieval
+primitives) is in the current implementation branch. Product-surface adoption
+remains a separate successor. External RulesIngestion PR C and product-surface
+adoption of
 `mind_turn_v1` remain independent successors. Ownership per ADR-0002,
 ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, and
 ADR-0011, and ADR-0012.
@@ -28,8 +31,8 @@ B.2f-a finalized-review graph payload materializer ✅
 B.2f-b expected-parent CAS publication ✅
 B.2f-c durable publication identity + uncertain-outcome recovery ✅
 B.2f-d service transport + external consumer contract ✅
-R.1   direct World Graph projection service (PR #38) ← current review lane
-R.2   direct World Graph retrieval primitives (named successor, this repo)
+R.1   direct World Graph projection service (PR #38) ✅
+R.2   direct World Graph retrieval primitives ← current review lane
 R.3   Buddy graph hydration removal from production reads (Buddy repo)
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
@@ -443,28 +446,42 @@ kernel even though DungeonMind is the graph authority. The R lane retires that
 kernel by exposing DungeonMind's exact, admissibility-scoped graph reads
 directly, then deleting the Buddy-side graph stack.
 
-- **R.1 — direct World Graph projection service** — PR #38 (in review).
-  `WorldGraphProjectionService` resolves one exact revision (pin or current
-  head), parses through an injected `GraphSnapshotReader`, and applies the
-  existing campaign/admissibility/provenance projection — including the
-  additive `world_cross_campaign` scope mode in the new v2 projection
-  contracts (cross-campaign lens: world-owned plus every campaign scope
-  in one exact revision; the frozen v1 `world` mode remains world-owned
+- **R.1 — direct World Graph projection service** — PR #38 ✅ (merged at
+  `70f2f00a`). `WorldGraphProjectionService` resolves one exact revision (pin
+  or current head), parses through an injected `GraphSnapshotReader`, and
+  applies the existing campaign/admissibility/provenance projection —
+  including the additive `world_cross_campaign` scope mode in the new v2
+  projection contracts (cross-campaign lens: world-owned plus every campaign
+  scope in one exact revision; the frozen v1 `world` mode remains world-owned
   only; admissibility is an independent axis, so PLAYER reads under the
   lens still fail closed on GM-only content). No Buddy DTOs, no write path, no
   semantic search.
-- **R.2 — direct World Graph retrieval primitives** (this repo, named
-  successor) — object lookup, search/referent resolution, one-hop
-  neighborhood, and evidence/source-anchor admission over the R.1 scoped
-  projection.
+- **R.2 — direct World Graph retrieval primitives** (this repo, in review) —
+  `WorldGraphRetrievalService` composes the R.1 v2 projection exactly once
+  per operation and owns the five graph-semantic capabilities needed to
+  retire Buddy kernel reads: exact object lookup, deterministic graph-only
+  search/referent resolution, bounded depth-1/depth-2 neighborhood expansion
+  (depth 2 is required by the current production Hermes expansion contract),
+  evidence retrieval by native object/relationship/assertion identity with
+  per-chain provenance revalidation, and admitted source-anchor derivation
+  with opaque context-bound revalidation. Search is lexical only — no vector
+  store, semantic index, LLM, or file-search fallback. Anchor identity binds
+  the complete v2 scope/revision/provenance context; no source body is opened.
 - **R.3 — Buddy graph hydration removal** (DungeonMindBuddy repo, named
-  successor) — replace `world_graph_projection` / `world_graph_retrieval`
-  kernel calls with DungeonMind native reads; remove private Buddy revision
-  translation and the frozen-store read dependency. Buddy `world` scope maps to the v2
-  `world_cross_campaign` mode; Buddy `campaign` scope maps to v2 `campaign`.
+  successor) — `CUTOVER: remove Buddy graph hydration from production reads`:
+  pin the landed DungeonMind R.2 dependency; adapt Buddy `campaign` → v2
+  `campaign` and Buddy `world` → v2 `world_cross_campaign`; replace
+  `world_graph_projection` / `world_graph_retrieval` kernel calls with
+  DungeonMind native reads; move/retain the legitimate product-owned
+  source-body opener outside `graph_memory` after DungeonMind validates the
+  anchor; delete private Buddy revision translation and the frozen-store
+  dependency from production read paths. Not write-path retirement.
 
-Canonical handoff:
-[`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-projection.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-projection.md).
+Canonical handoffs:
+[`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-projection.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-projection.md)
+(R.1) and
+[`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md)
+(R.2).
 
 ## Named future lanes (no dates claimed)
 
