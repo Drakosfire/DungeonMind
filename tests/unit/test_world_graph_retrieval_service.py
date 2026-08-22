@@ -473,7 +473,8 @@ def test_object_lookup_returns_exact_admitted_object_with_identity():
     assert anchor.source_span_ref_id == "span:tavern-1"
     assert anchor.can_open_source is True
     assert "obj:world-tavern" in anchor.supporting_object_ids
-    assert "rel:tavern-gate" in anchor.supporting_object_ids
+    assert "rel:tavern-gate" in anchor.supporting_relationship_ids
+    assert "rel:tavern-gate" not in anchor.supporting_object_ids
     assert "asrt:prop-tavern-population" in anchor.supporting_assertion_ids
 
 
@@ -666,6 +667,26 @@ def test_search_result_caps_and_truncation_are_explicit():
     assert result.matched_object_ids == tuple(sorted(result.matched_object_ids))
 
 
+def test_search_seeds_survive_result_bounds():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, _ = _services(world_graph)
+
+    seeds = ["obj:alpha-keep", "obj:beta-crypt", "obj:world-gate"]
+    result = service.search(
+        _cross(),
+        query_text="tavern",
+        seed_object_ids=seeds,
+        bounds=RetrievalBounds(max_objects=1),
+    )
+    # All three admitted seeds survive even though max_objects=1; non-seed
+    # matches consume only the remaining budget (here zero).
+    assert set(result.matched_object_ids) == set(seeds)
+    assert "obj:world-tavern" not in result.matched_object_ids
+    assert "objects" in result.coverage.truncated_fields
+    assert "exact_seed" in result.match_reasons["obj:beta-crypt"]
+
+
 # ---------------------------------------------------------------------------
 # Neighborhood
 # ---------------------------------------------------------------------------
@@ -768,6 +789,30 @@ def test_neighborhood_input_validation():
         service.get_neighborhood(request, seed_object_ids=["obj:alpha-keep"], depth=3)
 
 
+def test_neighborhood_seeds_survive_result_bounds():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, _ = _services(world_graph)
+
+    seeds = ["obj:world-tavern", "obj:world-gate", "obj:alpha-keep", "obj:beta-crypt"]
+    result = service.get_neighborhood(
+        _cross(),
+        seed_object_ids=seeds,
+        depth=1,
+        bounds=RetrievalBounds(max_objects=2),
+    )
+    # All four admitted seeds survive even though max_objects=2: expansion
+    # results consume only the remaining budget (here zero), so
+    # seed_object_ids never claims a seed absent from objects/object_depths.
+    assert set(result.seed_object_ids) == set(seeds)
+    assert set(result.object_depths) == set(seeds)
+    assert all(depth == 0 for depth in result.object_depths.values())
+    assert {obj.object_id for obj in result.objects} == set(seeds)
+    # The one-hop expansion to the GM-owned vault was reachable but unfunded.
+    assert "obj:alpha-secret" not in result.object_depths
+    assert "objects" in result.coverage.truncated_fields
+
+
 # ---------------------------------------------------------------------------
 # Evidence retrieval
 # ---------------------------------------------------------------------------
@@ -826,7 +871,8 @@ def test_evidence_for_relationship_target():
     assert result.relationship is not None
     assert result.relationship.predicate == "dnd5e:located_in"
     assert [ev.evidence_ref_id for ev in result.evidence] == ["ev:alpha"]
-    assert result.anchors[0].supporting_object_ids == ("rel:tavern-keep",)
+    assert result.anchors[0].supporting_relationship_ids == ("rel:tavern-keep",)
+    assert result.anchors[0].supporting_object_ids == ()
 
 
 def test_evidence_broken_provenance_produces_explicit_safe_coverage():

@@ -118,7 +118,13 @@ _STOPWORDS = frozenset(
 
 @dataclass(frozen=True)
 class RetrievalBounds:
-    """Explicit per-operation result caps. Truncation is always reported."""
+    """Explicit per-operation result caps. Truncation is always reported.
+
+    Explicit admitted seeds always survive ``max_objects``: seeds are
+    selected first and non-seed matches/expansion results consume the
+    remaining budget, so a result never claims a valid seed that is absent
+    from the returned objects.
+    """
 
     max_objects: int = 8
     max_relationships: int = 16
@@ -181,6 +187,10 @@ class SourceAnchorMetadata:
     Carries already-admitted evidence/source identity only. No source body
     content is ever read or returned by this service, and callers can never
     supply a path, URI, locator, or source revision through this type.
+
+    Supporting graph-element identity is modeled per kind: objects,
+    relationships, and assertions are distinct categories and are never
+    collapsed into one another.
     """
 
     anchor_id: str
@@ -192,6 +202,7 @@ class SourceAnchorMetadata:
     can_open_source: bool
     can_highlight_span: bool
     supporting_object_ids: tuple[str, ...]
+    supporting_relationship_ids: tuple[str, ...]
     supporting_assertion_ids: tuple[str, ...]
     evidence: EvidenceRef | EvidenceRefV2
     artifact: SourceArtifactRecord
@@ -564,10 +575,18 @@ class _ResolvedEvidenceChains:
 
 
 @dataclass
+class _SupporterSets:
+    object_ids: set[str] = field(default_factory=set)
+    relationship_ids: set[str] = field(default_factory=set)
+    assertion_ids: set[str] = field(default_factory=set)
+
+
+@dataclass
 class _AnchorAccum:
     validated: ValidatedProvenance
     locator_identity: str
     supporting_object_ids: set[str] = field(default_factory=set)
+    supporting_relationship_ids: set[str] = field(default_factory=set)
     supporting_assertion_ids: set[str] = field(default_factory=set)
 
 
@@ -669,7 +688,9 @@ class WorldGraphRetrievalService:
 
         Exact object IDs, exact admitted labels/aliases, and lexical
         phrase/token matches over admitted kind/summary/property/relationship
-        text rank candidates; explicit seeds are admitted before ranking. A
+        text rank candidates; explicit seeds are admitted before ranking and
+        always survive ``max_objects`` bounding (non-seed matches consume the
+        remaining budget). A
         query that phrase-matches an omitted or ambiguous alias never recovers
         the blocked object as a candidate. An empty query selects seeds only.
         """
@@ -712,7 +733,14 @@ class WorldGraphRetrievalService:
                 scores.pop(object_id, None)
 
         ranked_ids = sorted(scores, key=lambda oid: (-scores[oid], oid))
-        selected_ids, objects_truncated = self._cap(ranked_ids, bounds.max_objects)
+        # Explicit admitted seeds survive result bounding; non-seed matches
+        # consume the remaining budget.
+        seed_set = set(present_seeds)
+        ranked_seeds = [oid for oid in ranked_ids if oid in seed_set]
+        ranked_others = [oid for oid in ranked_ids if oid not in seed_set]
+        remaining = max(bounds.max_objects - len(ranked_seeds), 0)
+        capped_others, objects_truncated = self._cap(ranked_others, remaining)
+        selected_ids = ranked_seeds + list(capped_others)
         selected_set = set(selected_ids)
 
         relationships, relationship_truncated = self._cap(
@@ -773,7 +801,9 @@ class WorldGraphRetrievalService:
         """Deterministic bounded BFS over the admitted projection.
 
         1-8 exact seeds, depth 1 or 2. Missing seeds are reported, never
-        replaced by a search result; traversal never crosses objects or
+        replaced by a search result; admitted seeds always survive
+        ``max_objects`` bounding (expansion results consume the remaining
+        budget); traversal never crosses objects or
         relationships the projection excluded because they are absent from
         the admitted snapshot.
         """
@@ -815,8 +845,11 @@ class WorldGraphRetrievalService:
             (oid for oid in depths if oid not in set(present_seeds)),
             key=lambda oid: (depths[oid], oid),
         )
-        selected_ids = present_seeds + others_ordered
-        selected_ids, objects_truncated = self._cap(selected_ids, bounds.max_objects)
+        # Explicit admitted seeds survive result bounding; expansion results
+        # consume the remaining budget.
+        remaining = max(bounds.max_objects - len(present_seeds), 0)
+        capped_others, objects_truncated = self._cap(others_ordered, remaining)
+        selected_ids = present_seeds + list(capped_others)
         selected_set = set(selected_ids)
 
         candidate_relationships = sorted(
@@ -910,12 +943,16 @@ class WorldGraphRetrievalService:
             evidence_ref_ids = assertion.evidence_ref_ids
 
         chains = self._resolve_evidence_chains(result, evidence_ref_ids)
-        supporters: dict[str, tuple[set[str], set[str]]] = {}
+        supporters: dict[str, _SupporterSets] = {}
         for evidence_ref_id in evidence_ref_ids:
+            supporter_sets = _SupporterSets()
             if target.kind == "assertion":
-                supporters[evidence_ref_id] = (set(), {target.target_id})
+                supporter_sets.assertion_ids.add(target.target_id)
+            elif target.kind == "relationship":
+                supporter_sets.relationship_ids.add(target.target_id)
             else:
-                supporters[evidence_ref_id] = ({target.target_id}, set())
+                supporter_sets.object_ids.add(target.target_id)
+            supporters[evidence_ref_id] = supporter_sets
         anchors, anchor_truncated = self._anchors_from_chains(
             result,
             chains,
@@ -1055,19 +1092,23 @@ class WorldGraphRetrievalService:
         max_anchors: int | None,
     ) -> tuple[tuple[SourceAnchorMetadata, ...], bool, tuple[tuple[str, ...], tuple[str, ...]]]:
         """Derive context-bound anchors for the evidence of selected targets."""
-        supporters: dict[str, tuple[set[str], set[str]]] = {}
+        supporters: dict[str, _SupporterSets] = {}
         for object_id in object_ids:
             obj = result.graph.objects.get(object_id)
             if obj is None:
                 continue
             for evidence_ref_id in obj.evidence_ref_ids:
-                supporters.setdefault(evidence_ref_id, (set(), set()))[0].add(object_id)
+                supporters.setdefault(evidence_ref_id, _SupporterSets()).object_ids.add(
+                    object_id
+                )
         for relationship_id in relationship_ids:
             rel = result.graph.relationships.get(relationship_id)
             if rel is None:
                 continue
             for evidence_ref_id in rel.evidence_ref_ids:
-                supporters.setdefault(evidence_ref_id, (set(), set()))[0].add(relationship_id)
+                supporters.setdefault(evidence_ref_id, _SupporterSets()).relationship_ids.add(
+                    relationship_id
+                )
         if assertion_ids:
             assertion_index = _index_admitted_assertions(result)
             for assertion_id in assertion_ids:
@@ -1075,7 +1116,9 @@ class WorldGraphRetrievalService:
                 if row is None:
                     continue
                 for evidence_ref_id in row.evidence_ref_ids:
-                    supporters.setdefault(evidence_ref_id, (set(), set()))[1].add(assertion_id)
+                    supporters.setdefault(evidence_ref_id, _SupporterSets()).assertion_ids.add(
+                        assertion_id
+                    )
 
         chains = self._resolve_evidence_chains(result, supporters.keys())
         anchors, truncated = self._anchors_from_chains(
@@ -1091,7 +1134,7 @@ class WorldGraphRetrievalService:
         result: WorldGraphProjectionResult,
         chains: _ResolvedEvidenceChains,
         *,
-        supporters: dict[str, tuple[set[str], set[str]]],
+        supporters: dict[str, _SupporterSets],
         max_anchors: int | None,
     ) -> tuple[tuple[SourceAnchorMetadata, ...], bool]:
         snapshot = result.snapshot
@@ -1113,11 +1156,11 @@ class WorldGraphRetrievalService:
                     validated=validated, locator_identity=locator_identity
                 )
                 merged[anchor_id] = entry
-            object_supporters, assertion_supporters = supporters.get(
-                evidence_ref_id, (set(), set())
-            )
-            entry.supporting_object_ids.update(object_supporters)
-            entry.supporting_assertion_ids.update(assertion_supporters)
+            supporter_sets = supporters.get(evidence_ref_id)
+            if supporter_sets is not None:
+                entry.supporting_object_ids.update(supporter_sets.object_ids)
+                entry.supporting_relationship_ids.update(supporter_sets.relationship_ids)
+                entry.supporting_assertion_ids.update(supporter_sets.assertion_ids)
         anchors: list[SourceAnchorMetadata] = []
         for anchor_id in sorted(merged):
             entry = merged[anchor_id]
@@ -1136,6 +1179,9 @@ class WorldGraphRetrievalService:
                     can_open_source=record.can_open_source,
                     can_highlight_span=record.can_highlight_span,
                     supporting_object_ids=tuple(sorted(entry.supporting_object_ids)),
+                    supporting_relationship_ids=tuple(
+                        sorted(entry.supporting_relationship_ids)
+                    ),
                     supporting_assertion_ids=tuple(
                         sorted(entry.supporting_assertion_ids)
                     ),
