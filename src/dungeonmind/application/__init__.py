@@ -47,6 +47,11 @@ from .review_publication import (
     FinalizedReviewPublication,
     publish_finalized_review,
 )
+from .world_graph_projection import (
+    ProjectionClock,
+    WorldGraphProjectionResult,
+    WorldGraphProjectionService,
+)
 
 __all__ = [
     "ContributionRepository",
@@ -65,12 +70,15 @@ __all__ = [
     "MindThreadRepository",
     "MindTurnService",
     "ParsedGraphSnapshot",
+    "ProjectionClock",
     "QueryEmbeddingProvider",
     "RetrievalSessionRepository",
     "SemanticDocumentRepository",
     "SemanticSearchPort",
     "SourceRepository",
     "UnionGraphV1SnapshotReader",
+    "WorldGraphProjectionResult",
+    "WorldGraphProjectionService",
     "WorldGraphRepository",
     "adopt_existing_world",
     "evaluate_fictional_time_query",
