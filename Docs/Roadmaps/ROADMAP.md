@@ -3,12 +3,13 @@
 **Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b / B.2c / B.2d /
 B.2e / B.2f-0 / B.2f-a / B.2f-b / B.2f-c / B.2f-d landed. R.1 (direct World
 Graph projection service, PR #38) landed; R.2 (direct World Graph retrieval
-primitives) is in the current implementation branch. Product-surface adoption
-remains a separate successor. External RulesIngestion PR C and product-surface
-adoption of
-`mind_turn_v1` remain independent successors. Ownership per ADR-0002,
-ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, and
-ADR-0011, and ADR-0012.
+primitives) is in the current implementation branch. **R.2a (World Graph read
+observability + cutover benchmark baseline) is the first-priority successor
+immediately after R.2 and before any Buddy production-read cutover.**
+Product-surface adoption remains a separate successor. External RulesIngestion
+PR C and product-surface adoption of `mind_turn_v1` remain independent
+successors. Ownership per ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0007,
+ADR-0008, ADR-0009, ADR-0010, ADR-0011, and ADR-0012.
 
 Each PR is independently reviewable, in its named repository. Cross-repo work
 is never one PR.
@@ -33,6 +34,7 @@ B.2f-c durable publication identity + uncertain-outcome recovery ✅
 B.2f-d service transport + external consumer contract ✅
 R.1   direct World Graph projection service (PR #38) ✅
 R.2   direct World Graph retrieval primitives ← current review lane
+R.2a  World Graph read observability + cutover benchmark baseline ← first priority after R.2
 R.3   Buddy graph hydration removal from production reads (Buddy repo)
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
@@ -444,7 +446,8 @@ Runbook:
 DungeonMindBuddy currently hydrates and reads through its own legacy graph
 kernel even though DungeonMind is the graph authority. The R lane retires that
 kernel by exposing DungeonMind's exact, admissibility-scoped graph reads
-directly, then deleting the Buddy-side graph stack.
+directly, measuring that authority seam deliberately, then deleting the
+Buddy-side graph stack.
 
 - **R.1 — direct World Graph projection service** — PR #38 ✅ (merged at
   `70f2f00a`). `WorldGraphProjectionService` resolves one exact revision (pin
@@ -467,12 +470,43 @@ directly, then deleting the Buddy-side graph stack.
   with opaque context-bound revalidation. Search is lexical only — no vector
   store, semantic index, LLM, or file-search fallback. Anchor identity binds
   the complete v2 scope/revision/provenance context; no source body is opened.
+- **R.2a — World Graph read observability + cutover benchmark baseline**
+  (**first priority immediately after R.2; must precede R.3**) — make the
+  DungeonMind graph authority seam intentionally observable before Buddy
+  switches production reads. DungeonMind owns the semantic observation model;
+  hosts/adapters own export. Add a dependency-light/no-op-default observer port
+  spanning R.1 projection and R.2 retrieval operations, with privacy-safe,
+  low-cardinality signals for operation/phase duration, success/failure class,
+  exact-pin vs head reads, scope mode/admissibility, graph/result sizes,
+  truncation, neighborhood depth, provenance rejection/gap counts, and anchor
+  resolution outcomes. Do not emit query text, labels/aliases, graph/source
+  IDs, world/campaign IDs, or revision IDs as metric attributes. Establish
+  latency distributions and scaling behavior before defining SLOs.
+
+  Add a reproducible benchmark corpus over generated v6 graphs at multiple
+  controlled sizes/densities and benchmark projection, exact lookup, search,
+  depth-1/depth-2 neighborhood, evidence, and anchor resolution independently.
+  Prefer a dedicated dev-only benchmark harness (e.g. `pyperf`) over ad-hoc
+  stopwatch loops; record machine/environment metadata and comparable baseline
+  artifacts. CI benchmark reporting should start informational rather than
+  enforce brittle absolute latency thresholds. Explicitly characterize
+  algorithmic scaling, especially full-projection cost and
+  `resolve_source_anchor` behavior as graph/evidence volume grows.
+
+  R.2a exit: DungeonMind can explain where graph-read time is spent and expose
+  stable, privacy-safe operational signals without binding core to a telemetry
+  vendor; a checked-in benchmark baseline records distributions/scaling for
+  the native read path; the R.3 cutover has a named parity/performance witness
+  shape ready to compare Buddy-hydrated and direct-DungeonMind reads.
 - **R.3 — Buddy graph hydration removal** (DungeonMindBuddy repo, named
-  successor) — `CUTOVER: remove Buddy graph hydration from production reads`:
-  pin the landed DungeonMind R.2 dependency; adapt Buddy `campaign` → v2
-  `campaign` and Buddy `world` → v2 `world_cross_campaign`; replace
-  `world_graph_projection` / `world_graph_retrieval` kernel calls with
-  DungeonMind native reads; move/retain the legitimate product-owned
+  successor after R.2a) — `CUTOVER: remove Buddy graph hydration from
+  production reads`: pin the landed DungeonMind R.2/R.2a dependency; adapt
+  Buddy `campaign` → v2 `campaign` and Buddy `world` → v2
+  `world_cross_campaign`; replace `world_graph_projection` /
+  `world_graph_retrieval` kernel calls with DungeonMind native reads; during
+  cutover, compare normalized semantic parity and performance/operational
+  signals between the Buddy-hydrated and direct-DungeonMind paths before
+  deleting the old read path; move/retain the legitimate product-owned
   source-body opener outside `graph_memory` after DungeonMind validates the
   anchor; delete private Buddy revision translation and the frozen-store
   dependency from production read paths. Not write-path retirement.
@@ -481,7 +515,8 @@ Canonical handoffs:
 [`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-projection.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-projection.md)
 (R.1) and
 [`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md)
-(R.2).
+(R.2). R.2a handoff is intentionally not yet authored; it is the immediate
+post-R.2 dispatch target.
 
 ## Named future lanes (no dates claimed)
 
