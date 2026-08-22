@@ -45,8 +45,10 @@ from ..contracts.evidence import (
     SourceStatus,
 )
 from ..contracts.knowledge_assertion import KnowledgeAssertionMetadataV1
-from ..contracts.projection import Admissibility
+from ..contracts.projection import Admissibility, ScopeMode
+from ..contracts.projection_v2 import ScopeModeV2
 from ..contracts.vocabulary import Visibility
+from ..domain.errors import ScopeResolutionError
 from .graph_snapshot import (
     GRAPH_SCHEMA_V2,
     GRAPH_SCHEMA_V3,
@@ -80,6 +82,65 @@ class EvidenceScopeVerdict(StrEnum):
     """Sentinel returned when artifact visibility cannot be established."""
 
     SCOPE_UNKNOWN = "scope_unknown"
+
+
+@dataclass(frozen=True)
+class CampaignScope:
+    """Resolved campaign-scope policy for one read.
+
+    The campaign gate is a pure function of the validated
+    ``(mode, campaign_id)`` pair:
+
+    * ``CAMPAIGN`` — the requested campaign plus world-owned knowledge;
+    * ``WORLD`` — world-owned knowledge only (the original v1 meaning);
+    * ``WORLD_CROSS_CAMPAIGN`` — world-owned knowledge plus every campaign
+      scope in the world (the additive cross-campaign lens; v2 vocabulary
+      only — the v1 projection contract is frozen without it).
+
+    Admissibility is an independent axis from scope mode: a PLAYER read
+    under the cross-campaign mode still fails closed on GM-only content.
+    The mode itself encodes no upstream authorization decision.
+
+    ``scope_mode=None`` at the public helpers preserves the pre-cross-campaign
+    inference (``campaign_id=None`` → ``WORLD``; otherwise ``CAMPAIGN``) so
+    existing callers keep their exact behavior. An explicit mode that
+    contradicts ``campaign_id`` fails closed.
+    """
+
+    mode: ScopeMode | ScopeModeV2
+    campaign_id: str | None
+
+    @classmethod
+    def resolve(
+        cls,
+        *,
+        scope_mode: ScopeMode | ScopeModeV2 | None,
+        campaign_id: str | None,
+    ) -> CampaignScope:
+        if scope_mode is None:
+            scope_mode = ScopeMode.WORLD if campaign_id is None else ScopeMode.CAMPAIGN
+        if scope_mode == ScopeModeV2.CAMPAIGN and not campaign_id:
+            raise ScopeResolutionError(
+                "campaign scope_mode requires campaign_id",
+                details={"reason": "scope_campaign_mismatch"},
+            )
+        if (
+            scope_mode in (ScopeMode.WORLD, ScopeModeV2.WORLD, ScopeModeV2.WORLD_CROSS_CAMPAIGN)
+            and campaign_id is not None
+        ):
+            raise ScopeResolutionError(
+                f"{scope_mode.value} scope_mode requires campaign_id to be None",
+                details={"reason": "scope_campaign_mismatch"},
+            )
+        return cls(mode=scope_mode, campaign_id=campaign_id)
+
+    def admits_campaign(self, owner_campaign_id: str | None) -> bool:
+        """Whether knowledge owned by ``owner_campaign_id`` is in this scope."""
+        if self.mode == ScopeModeV2.WORLD_CROSS_CAMPAIGN:
+            return True
+        if self.campaign_id is None:
+            return owner_campaign_id is None
+        return owner_campaign_id in (None, self.campaign_id)
 
 
 @dataclass(frozen=True)
@@ -213,6 +274,7 @@ def source_artifact_in_scope(
     world_id: str,
     campaign_id: str | None,
     admissibility: Admissibility,
+    scope_mode: ScopeMode | ScopeModeV2 | None = None,
 ) -> bool:
     """Return whether a source artifact is visible for this turn's scope.
 
@@ -225,9 +287,16 @@ def source_artifact_in_scope(
     only and never grants access. v2 artifacts with ``visibility is None``
     return ``False`` here; :func:`resolve_evidence_provenance` maps that case to
     ``EvidenceScopeVerdict.SCOPE_UNKNOWN``.
+
+    ``scope_mode=None`` preserves the legacy inference from ``campaign_id``;
+    pass the v2 ``ScopeModeV2.WORLD_CROSS_CAMPAIGN`` for the cross-campaign
+    lens. Scope mode and admissibility are independent axes: the mode
+    widens campaign scope only, and a PLAYER read under it still fails
+    closed on GM-only content.
     """
     if artifact.world_id != world_id:
         return False
+    scope = CampaignScope.resolve(scope_mode=scope_mode, campaign_id=campaign_id)
     if isinstance(artifact, SourceArtifactV2):
         if artifact.visibility is None:
             return False
@@ -239,20 +308,14 @@ def source_artifact_in_scope(
         and visibility is not Visibility.PLAYER
     ):
         return False
-    if campaign_id is None:
-        # World-scoped reads exclude campaign-owned sources.
-        if artifact.campaign_id is not None:
-            return False
-    elif artifact.campaign_id not in (None, campaign_id):
-        return False
-    return True
+    return scope.admits_campaign(artifact.campaign_id)
 
 
 def _establish_artifact_scope(
     artifact: SourceArtifactRecord,
     *,
     world_id: str,
-    campaign_id: str | None,
+    scope: CampaignScope,
     admissibility: Admissibility,
 ) -> EvidenceScopeVerdict | Literal[True] | None:
     """Establish world/campaign/visibility before provenance diagnostics.
@@ -268,8 +331,9 @@ def _establish_artifact_scope(
     if not source_artifact_in_scope(
         artifact,
         world_id=world_id,
-        campaign_id=campaign_id,
+        campaign_id=scope.campaign_id,
         admissibility=admissibility,
+        scope_mode=scope.mode,
     ):
         return None
     return True
@@ -281,7 +345,7 @@ def _resolve_v1_evidence_provenance(
     evidence_ref_id: str,
     sources: SourceRepository,
     world_id: str,
-    campaign_id: str | None,
+    scope: CampaignScope,
     admissibility: Admissibility,
 ) -> ValidatedProvenance | ProvenanceRejection | EvidenceScopeVerdict | None:
     try:
@@ -299,7 +363,7 @@ def _resolve_v1_evidence_provenance(
     scoped = _establish_artifact_scope(
         artifact,
         world_id=world_id,
-        campaign_id=campaign_id,
+        scope=scope,
         admissibility=admissibility,
     )
     if scoped is not True:
@@ -355,7 +419,7 @@ def _resolve_v2_evidence_provenance(
     evidence_ref_id: str,
     sources: SourceRepository,
     world_id: str,
-    campaign_id: str | None,
+    scope: CampaignScope,
     admissibility: Admissibility,
 ) -> ValidatedProvenance | ProvenanceRejection | EvidenceScopeVerdict | None:
     artifact = sources.get_artifact(record.source_artifact_id)
@@ -367,7 +431,7 @@ def _resolve_v2_evidence_provenance(
     scoped = _establish_artifact_scope(
         artifact,
         world_id=world_id,
-        campaign_id=campaign_id,
+        scope=scope,
         admissibility=admissibility,
     )
     if scoped is not True:
@@ -418,6 +482,7 @@ def resolve_evidence_provenance(
     world_id: str,
     campaign_id: str | None,
     admissibility: Admissibility,
+    scope_mode: ScopeMode | ScopeModeV2 | None = None,
 ) -> ValidatedProvenance | ProvenanceRejection | EvidenceScopeVerdict | None:
     """Validate the complete evidence → artifact → revision provenance chain.
 
@@ -429,18 +494,21 @@ def resolve_evidence_provenance(
         scope (silent filter — no lifecycle/domain inspection for diagnostics);
       * ``EvidenceScopeVerdict.SCOPE_UNKNOWN`` when scope cannot be established
         (missing artifact/record) — never expose those identifiers publicly.
+
+    ``scope_mode=None`` preserves the legacy inference from ``campaign_id``.
     """
     record = snapshot.evidence.get(evidence_ref_id)
     if record is None:
         return EvidenceScopeVerdict.SCOPE_UNKNOWN
 
+    scope = CampaignScope.resolve(scope_mode=scope_mode, campaign_id=campaign_id)
     if isinstance(record, GraphEvidenceRecordV2):
         return _resolve_v2_evidence_provenance(
             record,
             evidence_ref_id=evidence_ref_id,
             sources=sources,
             world_id=world_id,
-            campaign_id=campaign_id,
+            scope=scope,
             admissibility=admissibility,
         )
     return _resolve_v1_evidence_provenance(
@@ -448,7 +516,7 @@ def resolve_evidence_provenance(
         evidence_ref_id=evidence_ref_id,
         sources=sources,
         world_id=world_id,
-        campaign_id=campaign_id,
+        scope=scope,
         admissibility=admissibility,
     )
 
@@ -478,7 +546,7 @@ def _classify_evidence_ids(
     snapshot: ParsedGraphSnapshot,
     sources: SourceRepository,
     world_id: str,
-    campaign_id: str | None,
+    scope: CampaignScope,
     admissibility: Admissibility,
 ) -> tuple[bool, ObjectScopeExclusion]:
     """Return whether every evidence ID is in-scope+valid, plus exclusion info."""
@@ -492,8 +560,9 @@ def _classify_evidence_ids(
             snapshot=snapshot,
             sources=sources,
             world_id=world_id,
-            campaign_id=campaign_id,
+            campaign_id=scope.campaign_id,
             admissibility=admissibility,
+            scope_mode=scope.mode,
         )
         if isinstance(resolved, ValidatedProvenance):
             continue
@@ -525,7 +594,7 @@ def _project_v1_objects(
     *,
     sources: SourceRepository,
     world_id: str,
-    campaign_id: str | None,
+    scope: CampaignScope,
     admissibility: Admissibility,
 ) -> tuple[dict[str, GraphObjectView], dict[str, ObjectScopeExclusion]]:
     """Coarse-object policy for ``dm_union_graph_v1``."""
@@ -537,7 +606,7 @@ def _project_v1_objects(
             snapshot=snapshot,
             sources=sources,
             world_id=world_id,
-            campaign_id=campaign_id,
+            scope=scope,
             admissibility=admissibility,
         )
         if not all_valid or not obj.evidence_ref_ids:
@@ -555,7 +624,7 @@ def _project_v2_objects(
     *,
     sources: SourceRepository,
     world_id: str,
-    campaign_id: str | None,
+    scope: CampaignScope,
     admissibility: Admissibility,
 ) -> tuple[
     dict[str, GraphObjectView],
@@ -584,7 +653,7 @@ def _project_v2_objects(
             snapshot=snapshot,
             sources=sources,
             world_id=world_id,
-            campaign_id=campaign_id,
+            scope=scope,
             admissibility=admissibility,
         )
         if not all_valid or not core_ids:
@@ -601,7 +670,7 @@ def _project_v2_objects(
                 snapshot=snapshot,
                 sources=sources,
                 world_id=world_id,
-                campaign_id=campaign_id,
+                scope=scope,
                 admissibility=admissibility,
             )
             if alias_ok and assertion.evidence_ref_ids:
@@ -623,7 +692,7 @@ def _project_v2_objects(
                 snapshot=snapshot,
                 sources=sources,
                 world_id=world_id,
-                campaign_id=campaign_id,
+                scope=scope,
                 admissibility=admissibility,
             )
             if summary_ok and summary.evidence_ref_ids:
@@ -686,24 +755,30 @@ def assertion_metadata_in_scope(
     *,
     campaign_id: str | None,
     admissibility: Admissibility,
+    scope_mode: ScopeMode | ScopeModeV2 | None = None,
 ) -> bool:
     """Whether one v4 assertion's own scope admits it for this read.
 
     Two independent gates, both fail-closed:
 
     * **Campaign.** ``campaign_scope is None`` is world-universal knowledge and
-      always passes. Otherwise it must equal the caller's ``campaign_id``; a
-      world-scoped read (``campaign_id is None``) never sees campaign-scoped
-      assertions, and no read ever sees another campaign's assertions.
+      always passes. Under ``CAMPAIGN`` the assertion's scope must equal the
+      caller's ``campaign_id``; under ``WORLD`` (``campaign_id is None``)
+      campaign-scoped assertions never pass; under ``WORLD_CROSS_CAMPAIGN``
+      every campaign scope in the world passes. No read ever sees another
+      *world's* assertions.
     * **Visibility.** A player-admissible read requires
       ``Visibility.PLAYER``; GM reads see both.
 
     ``None`` metadata means the assertion predates v4 (v1-v3 views), where
     scope lives on the evidence chain alone — those reads are unaffected.
+
+    ``scope_mode=None`` preserves the legacy inference from ``campaign_id``.
     """
     if metadata is None:
         return True
-    if metadata.campaign_scope is not None and metadata.campaign_scope != campaign_id:
+    scope = CampaignScope.resolve(scope_mode=scope_mode, campaign_id=campaign_id)
+    if not scope.admits_campaign(metadata.campaign_scope):
         return False
     return not (
         admissibility is Admissibility.PLAYER
@@ -717,7 +792,7 @@ def _admit_v4_assertion(
     snapshot: ParsedGraphSnapshot,
     sources: SourceRepository,
     world_id: str,
-    campaign_id: str | None,
+    scope: CampaignScope,
     admissibility: Admissibility,
 ) -> tuple[bool, ObjectScopeExclusion]:
     """Assertion-scope gate first, then the existing evidence provenance chain.
@@ -726,7 +801,10 @@ def _admit_v4_assertion(
     audience filtering never emit identifiers a caller is not entitled to.
     """
     if not assertion_metadata_in_scope(
-        metadata, campaign_id=campaign_id, admissibility=admissibility
+        metadata,
+        campaign_id=scope.campaign_id,
+        admissibility=admissibility,
+        scope_mode=scope.mode,
     ):
         return False, ObjectScopeExclusion(out_of_scope=True)
     if not metadata.evidence_ref_ids:
@@ -736,7 +814,7 @@ def _admit_v4_assertion(
         snapshot=snapshot,
         sources=sources,
         world_id=world_id,
-        campaign_id=campaign_id,
+        scope=scope,
         admissibility=admissibility,
     )
 
@@ -746,7 +824,7 @@ def _project_v4_objects(
     *,
     sources: SourceRepository,
     world_id: str,
-    campaign_id: str | None,
+    scope: CampaignScope,
     admissibility: Admissibility,
 ) -> tuple[
     dict[str, GraphObjectView],
@@ -771,7 +849,7 @@ def _project_v4_objects(
             snapshot=snapshot,
             sources=sources,
             world_id=world_id,
-            campaign_id=campaign_id,
+            scope=scope,
             admissibility=admissibility,
         )
         if not existence_ok:
@@ -787,7 +865,7 @@ def _project_v4_objects(
                 snapshot=snapshot,
                 sources=sources,
                 world_id=world_id,
-                campaign_id=campaign_id,
+                scope=scope,
                 admissibility=admissibility,
             )
             if alias_ok:
@@ -805,7 +883,7 @@ def _project_v4_objects(
                 snapshot=snapshot,
                 sources=sources,
                 world_id=world_id,
-                campaign_id=campaign_id,
+                scope=scope,
                 admissibility=admissibility,
             )
             if summary_ok:
@@ -821,7 +899,7 @@ def _project_v4_objects(
                 snapshot=snapshot,
                 sources=sources,
                 world_id=world_id,
-                campaign_id=campaign_id,
+                scope=scope,
                 admissibility=admissibility,
             )
             if property_ok:
@@ -856,7 +934,7 @@ def _project_v4_objects(
                 snapshot=snapshot,
                 sources=sources,
                 world_id=world_id,
-                campaign_id=campaign_id,
+                scope=scope,
                 admissibility=admissibility,
             )
             if aspect_ok:
@@ -893,6 +971,7 @@ def project_scoped_snapshot(
     world_id: str,
     campaign_id: str | None,
     admissibility: Admissibility,
+    scope_mode: ScopeMode | ScopeModeV2 | None = None,
 ) -> ScopedGraphProjection:
     """Return a scoped snapshot and exclusion diagnostics.
 
@@ -905,6 +984,7 @@ def project_scoped_snapshot(
     callers that need targeted diagnostics. They must not be copied wholesale
     into public ``Coverage`` on every turn.
     """
+    scope = CampaignScope.resolve(scope_mode=scope_mode, campaign_id=campaign_id)
     assertion_exclusions: dict[str, ObjectScopeExclusion] = {}
     omitted_alias_index: dict[str, list[str]] = {}
     if snapshot.graph_schema in (GRAPH_SCHEMA_V4, GRAPH_SCHEMA_V5, GRAPH_SCHEMA_V6):
@@ -917,7 +997,7 @@ def project_scoped_snapshot(
             snapshot,
             sources=sources,
             world_id=world_id,
-            campaign_id=campaign_id,
+            scope=scope,
             admissibility=admissibility,
         )
     elif snapshot.graph_schema in (GRAPH_SCHEMA_V2, GRAPH_SCHEMA_V3):
@@ -930,7 +1010,7 @@ def project_scoped_snapshot(
             snapshot,
             sources=sources,
             world_id=world_id,
-            campaign_id=campaign_id,
+            scope=scope,
             admissibility=admissibility,
         )
     else:
@@ -938,7 +1018,7 @@ def project_scoped_snapshot(
             snapshot,
             sources=sources,
             world_id=world_id,
-            campaign_id=campaign_id,
+            scope=scope,
             admissibility=admissibility,
         )
 
@@ -952,8 +1032,9 @@ def project_scoped_snapshot(
         # metadata (v1-v3) leaves this a no-op.
         if not assertion_metadata_in_scope(
             rel.assertion_metadata,
-            campaign_id=campaign_id,
+            campaign_id=scope.campaign_id,
             admissibility=admissibility,
+            scope_mode=scope.mode,
         ):
             relationship_exclusions[rel_id] = ObjectScopeExclusion(out_of_scope=True)
             continue
@@ -962,7 +1043,7 @@ def project_scoped_snapshot(
             snapshot=snapshot,
             sources=sources,
             world_id=world_id,
-            campaign_id=campaign_id,
+            scope=scope,
             admissibility=admissibility,
         )
         if not all_valid or not rel.evidence_ref_ids:
