@@ -29,6 +29,17 @@ from ..domain.errors import HeadNotFoundError, RevisionNotFoundError, ScopeResol
 from .graph_scope import ScopedGraphProjection, project_scoped_snapshot
 from .graph_snapshot import GraphSnapshotReader, ParsedGraphSnapshot
 from .repositories import SourceRepository, WorldGraphRepository
+from .world_graph_observability import (
+    NOOP_READ_OBSERVER,
+    PhaseRecorder,
+    RequestObservationFields,
+    SystemMonotonicReadClock,
+    WorldGraphReadClock,
+    WorldGraphReadObservation,
+    WorldGraphReadObserver,
+    classify_read_failure,
+    emit_read_observation,
+)
 
 
 class ProjectionClock(Protocol):
@@ -71,11 +82,17 @@ class WorldGraphProjectionService:
         sources: SourceRepository,
         graph_reader: GraphSnapshotReader,
         clock: ProjectionClock | None = None,
+        read_observer: WorldGraphReadObserver | None = None,
+        read_clock: WorldGraphReadClock | None = None,
     ) -> None:
         self._world_graph = world_graph
         self._sources = sources
         self._graph_reader = graph_reader
         self._clock = clock or _SystemProjectionClock()
+        self._read_observer = (
+            read_observer if read_observer is not None else NOOP_READ_OBSERVER
+        )
+        self._read_clock = read_clock or SystemMonotonicReadClock()
 
     def project(self, request: WorldGraphProjectionRequestV2) -> WorldGraphProjectionResult:
         """Resolve, parse, scope, and identify one coherent graph revision.
@@ -84,9 +101,30 @@ class WorldGraphProjectionService:
         selected revision. Explicit pins read that immutable revision while
         still reporting the current head. Missing or cross-world state fails
         closed with the existing typed DungeonMind read errors.
+
+        Emits exactly one terminal ``project`` observation per invocation
+        (success or error) through the optional read observer; observation
+        never changes projection semantics.
         """
 
-        head = self._world_graph.get_head(request.world_id)
+        recorder = PhaseRecorder(self._read_clock)
+        try:
+            result, parsed = self._project_observed(request, recorder)
+        except Exception as exc:
+            self._emit(
+                self._error_observation(recorder, request, exc),
+            )
+            raise
+        self._emit(self._success_observation(recorder, request, result, parsed))
+        return result
+
+    def _project_observed(
+        self,
+        request: WorldGraphProjectionRequestV2,
+        recorder: PhaseRecorder,
+    ) -> tuple[WorldGraphProjectionResult, ParsedGraphSnapshot]:
+        with recorder.phase("head_lookup"):
+            head = self._world_graph.get_head(request.world_id)
         if head is None:
             raise HeadNotFoundError(f"no graph head for world {request.world_id!r}")
         if head.world_id != request.world_id:
@@ -101,7 +139,8 @@ class WorldGraphProjectionService:
 
         head_revision_id = head.head_revision_id
         revision_id = request.revision_pin or head_revision_id
-        stored = self._world_graph.get_revision(request.world_id, revision_id)
+        with recorder.phase("revision_load"):
+            stored = self._world_graph.get_revision(request.world_id, revision_id)
         if stored is None:
             raise RevisionNotFoundError(
                 f"revision {revision_id!r} not found for world {request.world_id!r}"
@@ -127,10 +166,11 @@ class WorldGraphProjectionService:
                 },
             )
 
-        parsed = self._graph_reader.parse(
-            graph_schema=stored.revision.graph_schema,
-            graph_payload=stored.graph_payload,
-        )
+        with recorder.phase("parse"):
+            parsed = self._graph_reader.parse(
+                graph_schema=stored.revision.graph_schema,
+                graph_payload=stored.graph_payload,
+            )
         if parsed.world_id != request.world_id:
             raise ScopeResolutionError(
                 "stored graph payload belongs to a different world",
@@ -142,14 +182,15 @@ class WorldGraphProjectionService:
                 },
             )
 
-        scoped = project_scoped_snapshot(
-            parsed,
-            sources=self._sources,
-            world_id=request.world_id,
-            campaign_id=request.campaign_id,
-            admissibility=request.admissibility,
-            scope_mode=request.scope_mode,
-        )
+        with recorder.phase("scope_projection"):
+            scoped = project_scoped_snapshot(
+                parsed,
+                sources=self._sources,
+                world_id=request.world_id,
+                campaign_id=request.campaign_id,
+                admissibility=request.admissibility,
+                scope_mode=request.scope_mode,
+            )
         snapshot = ProjectionSnapshotV2(
             world_id=request.world_id,
             campaign_id=request.campaign_id,
@@ -161,7 +202,73 @@ class WorldGraphProjectionService:
             is_head=revision_id == head_revision_id,
             projected_at=self._clock.now(),
         )
-        return WorldGraphProjectionResult(snapshot=snapshot, scoped_graph=scoped)
+        return WorldGraphProjectionResult(snapshot=snapshot, scoped_graph=scoped), parsed
+
+    def _emit(self, observation: WorldGraphReadObservation) -> None:
+        emit_read_observation(self._read_observer, observation)
+
+    @staticmethod
+    def _request_fields(
+        request: WorldGraphProjectionRequestV2,
+    ) -> RequestObservationFields:
+        return {
+            "pinned_read": request.revision_pin is not None,
+            "scope_mode": str(request.scope_mode),
+            "admissibility": str(request.admissibility),
+        }
+
+    def _error_observation(
+        self,
+        recorder: PhaseRecorder,
+        request: WorldGraphProjectionRequestV2,
+        exc: Exception,
+    ) -> WorldGraphReadObservation:
+        return WorldGraphReadObservation(
+            operation="project",
+            outcome="error",
+            duration_seconds=recorder.total_seconds(),
+            phase_durations=recorder.phases,
+            failure_code=classify_read_failure(exc),
+            **self._request_fields(request),
+        )
+
+    def _success_observation(
+        self,
+        recorder: PhaseRecorder,
+        request: WorldGraphProjectionRequestV2,
+        result: WorldGraphProjectionResult,
+        parsed: ParsedGraphSnapshot,
+    ) -> WorldGraphReadObservation:
+        admitted = result.scoped_graph.snapshot
+        scoped = result.scoped_graph
+        scope_unknown = sum(
+            1
+            for exclusion in (
+                *scoped.object_exclusions.values(),
+                *scoped.relationship_exclusions.values(),
+                *scoped.assertion_exclusions.values(),
+            )
+            if exclusion.scope_unknown
+        )
+        return WorldGraphReadObservation(
+            operation="project",
+            outcome="success",
+            duration_seconds=recorder.total_seconds(),
+            phase_durations=recorder.phases,
+            graph_schema=parsed.graph_schema,
+            parsed_object_count=len(parsed.objects),
+            parsed_relationship_count=len(parsed.relationships),
+            parsed_evidence_count=len(parsed.evidence),
+            admitted_object_count=len(admitted.objects),
+            admitted_relationship_count=len(admitted.relationships),
+            admitted_evidence_count=len(admitted.evidence),
+            excluded_object_count=len(scoped.object_exclusions),
+            excluded_relationship_count=len(scoped.relationship_exclusions),
+            excluded_assertion_count=len(scoped.assertion_exclusions),
+            provenance_rejected_count=len(scoped.rejections),
+            scope_unknown_exclusion_count=scope_unknown,
+            **self._request_fields(request),
+        )
 
 
 __all__ = [

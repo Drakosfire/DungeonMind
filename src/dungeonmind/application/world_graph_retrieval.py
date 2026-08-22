@@ -60,6 +60,20 @@ from .graph_snapshot import (
     resolve_mentions_from_snapshot,
 )
 from .repositories import SourceRepository
+from .world_graph_observability import (
+    NOOP_READ_OBSERVER,
+    CoverageObservationFields,
+    GraphObservationFields,
+    PhaseRecorder,
+    RequestObservationFields,
+    SystemMonotonicReadClock,
+    WorldGraphReadClock,
+    WorldGraphReadObservation,
+    WorldGraphReadObserver,
+    WorldGraphReadOperation,
+    classify_read_failure,
+    emit_read_observation,
+)
 from .world_graph_projection import (
     WorldGraphProjectionResult,
     WorldGraphProjectionService,
@@ -610,9 +624,78 @@ class WorldGraphRetrievalService:
         *,
         projection: WorldGraphProjectionService,
         sources: SourceRepository,
+        read_observer: WorldGraphReadObserver | None = None,
+        read_clock: WorldGraphReadClock | None = None,
     ) -> None:
         self._projection = projection
         self._sources = sources
+        self._read_observer = (
+            read_observer if read_observer is not None else NOOP_READ_OBSERVER
+        )
+        self._read_clock = read_clock or SystemMonotonicReadClock()
+
+    def _emit(self, observation: WorldGraphReadObservation) -> None:
+        emit_read_observation(self._read_observer, observation)
+
+    @staticmethod
+    def _request_fields(
+        request: WorldGraphProjectionRequestV2,
+    ) -> RequestObservationFields:
+        return {
+            "pinned_read": request.revision_pin is not None,
+            "scope_mode": str(request.scope_mode),
+            "admissibility": str(request.admissibility),
+        }
+
+    @staticmethod
+    def _graph_fields(result: WorldGraphProjectionResult) -> GraphObservationFields:
+        """Admitted-graph and exclusion counts known at the retrieval layer."""
+        admitted = result.graph
+        scoped = result.scoped_graph
+        scope_unknown = sum(
+            1
+            for exclusion in (
+                *scoped.object_exclusions.values(),
+                *scoped.relationship_exclusions.values(),
+                *scoped.assertion_exclusions.values(),
+            )
+            if exclusion.scope_unknown
+        )
+        return {
+            "graph_schema": admitted.graph_schema,
+            "admitted_object_count": len(admitted.objects),
+            "admitted_relationship_count": len(admitted.relationships),
+            "admitted_evidence_count": len(admitted.evidence),
+            "excluded_object_count": len(scoped.object_exclusions),
+            "excluded_relationship_count": len(scoped.relationship_exclusions),
+            "excluded_assertion_count": len(scoped.assertion_exclusions),
+            "provenance_rejected_count": len(scoped.rejections),
+            "scope_unknown_exclusion_count": scope_unknown,
+        }
+
+    @staticmethod
+    def _coverage_fields(coverage: RetrievalCoverage) -> CoverageObservationFields:
+        return {
+            "truncated_fields": coverage.truncated_fields,
+            "coverage_gap_count": len(coverage.gap_codes),
+            "coverage_missing_count": len(coverage.missing_ids),
+        }
+
+    def _error_observation(
+        self,
+        recorder: PhaseRecorder,
+        request: WorldGraphProjectionRequestV2,
+        operation: WorldGraphReadOperation,
+        exc: Exception,
+    ) -> WorldGraphReadObservation:
+        return WorldGraphReadObservation(
+            operation=operation,
+            outcome="error",
+            duration_seconds=recorder.total_seconds(),
+            phase_durations=recorder.phases,
+            failure_code=classify_read_failure(exc),
+            **self._request_fields(request),
+        )
 
     def get_object(
         self,
@@ -622,58 +705,91 @@ class WorldGraphRetrievalService:
         bounds: RetrievalBounds = _DEFAULT_BOUNDS,
     ) -> ObjectLookupResult:
         """Exact stable-ID object lookup. A miss is explicit; never a search."""
-        if not object_id.strip():
-            raise ValueError("object_id must be non-blank")
-        result = self._projection.project(request)
-        obj = result.graph.objects.get(object_id)
-        if obj is None:
-            gap_codes: tuple[str, ...] = ()
-            missing_ids: tuple[str, ...] = ()
-            exclusion = result.scoped_graph.object_exclusions.get(object_id)
-            if exclusion is not None:
-                codes, missing = public_coverage_gaps_for_exclusion(exclusion)
-                gap_codes = tuple(codes)
-                missing_ids = tuple(missing)
-            return ObjectLookupResult(
+        recorder = PhaseRecorder(self._read_clock)
+        try:
+            if not object_id.strip():
+                raise ValueError("object_id must be non-blank")
+            with recorder.phase("projection"):
+                result = self._projection.project(request)
+            obj = result.graph.objects.get(object_id)
+            if obj is None:
+                gap_codes: tuple[str, ...] = ()
+                missing_ids: tuple[str, ...] = ()
+                exclusion = result.scoped_graph.object_exclusions.get(object_id)
+                if exclusion is not None:
+                    codes, missing = public_coverage_gaps_for_exclusion(exclusion)
+                    gap_codes = tuple(codes)
+                    missing_ids = tuple(missing)
+                op_result = ObjectLookupResult(
+                    snapshot=result.snapshot,
+                    found=False,
+                    object=None,
+                    coverage=RetrievalCoverage(
+                        gap_codes=gap_codes,
+                        missing_ids=missing_ids,
+                    ),
+                )
+                self._emit(self._object_observation(recorder, request, result, op_result))
+                return op_result
+            with recorder.phase("object_selection"):
+                relationships, relationship_truncated = self._cap(
+                    self._relationships_touching(result, {object_id}),
+                    bounds.max_relationships,
+                )
+                assertions, assertion_truncated = self._cap(
+                    _assertion_rows_for_object(obj),
+                    bounds.max_assertions,
+                )
+            with recorder.phase("anchor_derivation"):
+                anchors, anchor_truncated, anchor_gaps = self._anchors_for(
+                    result,
+                    object_ids={object_id},
+                    relationship_ids={rel.relationship_id for rel in relationships},
+                    assertion_ids={row.assertion_id for row in assertions},
+                    max_anchors=bounds.max_anchors,
+                )
+            op_result = ObjectLookupResult(
                 snapshot=result.snapshot,
-                found=False,
-                object=None,
+                found=True,
+                object=obj,
+                relationships=relationships,
+                property_assertions=assertions,
+                anchors=anchors,
                 coverage=RetrievalCoverage(
-                    gap_codes=gap_codes,
-                    missing_ids=missing_ids,
+                    truncated_fields=self._truncated_fields(
+                        relationships=relationship_truncated,
+                        assertions=assertion_truncated,
+                        anchors=anchor_truncated,
+                    ),
+                    gap_codes=anchor_gaps[0],
+                    missing_ids=anchor_gaps[1],
                 ),
             )
-        relationships, relationship_truncated = self._cap(
-            self._relationships_touching(result, {object_id}),
-            bounds.max_relationships,
-        )
-        assertions, assertion_truncated = self._cap(
-            _assertion_rows_for_object(obj),
-            bounds.max_assertions,
-        )
-        anchors, anchor_truncated, anchor_gaps = self._anchors_for(
-            result,
-            object_ids={object_id},
-            relationship_ids={rel.relationship_id for rel in relationships},
-            assertion_ids={row.assertion_id for row in assertions},
-            max_anchors=bounds.max_anchors,
-        )
-        return ObjectLookupResult(
-            snapshot=result.snapshot,
-            found=True,
-            object=obj,
-            relationships=relationships,
-            property_assertions=assertions,
-            anchors=anchors,
-            coverage=RetrievalCoverage(
-                truncated_fields=self._truncated_fields(
-                    relationships=relationship_truncated,
-                    assertions=assertion_truncated,
-                    anchors=anchor_truncated,
-                ),
-                gap_codes=anchor_gaps[0],
-                missing_ids=anchor_gaps[1],
-            ),
+        except Exception as exc:
+            self._emit(self._error_observation(recorder, request, "get_object", exc))
+            raise
+        self._emit(self._object_observation(recorder, request, result, op_result))
+        return op_result
+
+    def _object_observation(
+        self,
+        recorder: PhaseRecorder,
+        request: WorldGraphProjectionRequestV2,
+        result: WorldGraphProjectionResult,
+        op_result: ObjectLookupResult,
+    ) -> WorldGraphReadObservation:
+        return WorldGraphReadObservation(
+            operation="get_object",
+            outcome="success" if op_result.found else "miss",
+            duration_seconds=recorder.total_seconds(),
+            phase_durations=recorder.phases,
+            result_object_count=1 if op_result.found else 0,
+            result_relationship_count=len(op_result.relationships),
+            result_assertion_count=len(op_result.property_assertions),
+            result_anchor_count=len(op_result.anchors),
+            **self._request_fields(request),
+            **self._graph_fields(result),
+            **self._coverage_fields(op_result.coverage),
         )
 
     def search(
@@ -694,100 +810,139 @@ class WorldGraphRetrievalService:
         query that phrase-matches an omitted or ambiguous alias never recovers
         the blocked object as a candidate. An empty query selects seeds only.
         """
-        seeds = _normalize_seeds(seed_object_ids, required=False)
-        result = self._projection.project(request)
-        graph = result.graph
+        recorder = PhaseRecorder(self._read_clock)
+        try:
+            seeds = _normalize_seeds(seed_object_ids, required=False)
+            with recorder.phase("projection"):
+                result = self._projection.project(request)
+            graph = result.graph
+            with recorder.phase("referent_and_lexical_scoring"):
+                referents = tuple(
+                    resolve_mentions_from_snapshot(
+                        graph,
+                        message=query_text,
+                        selected_object_ids=seeds,
+                    )
+                )
 
-        referents = tuple(
-            resolve_mentions_from_snapshot(
-                graph,
-                message=query_text,
-                selected_object_ids=seeds,
+                query_cf = query_text.strip().casefold()
+                tokens = _tokenize(query_text)
+                scores: dict[str, int] = {}
+                reasons: dict[str, list[str]] = {}
+                for object_id, obj in graph.objects.items():
+                    score, object_reasons = _score_object(obj, query_cf=query_cf, tokens=tokens)
+                    if score:
+                        scores[object_id] = score
+                        reasons.setdefault(object_id, []).extend(object_reasons)
+                _extend_scores_with_relationships(
+                    graph.objects, graph.relationships, query_cf, tokens, scores, reasons
+                )
+
+                present_seeds = [seed for seed in seeds if seed in graph.objects]
+                missing_seeds = tuple(
+                    sorted({seed for seed in seeds if seed not in graph.objects})
+                )
+                for seed in present_seeds:
+                    scores[seed] = max(scores.get(seed, 0), _SCORE_EXACT_SEED)
+                    reasons.setdefault(seed, []).append("exact_seed")
+
+                blocked = objects_blocked_by_omitted_aliases(
+                    query_text, result.scoped_graph.omitted_alias_index
+                ) | objects_blocked_by_ambiguous_aliases(query_text, graph.alias_index)
+                for object_id in blocked:
+                    if object_id not in present_seeds:
+                        scores.pop(object_id, None)
+
+                ranked_ids = sorted(scores, key=lambda oid: (-scores[oid], oid))
+                # Explicit admitted seeds survive result bounding; non-seed matches
+                # consume the remaining budget.
+                seed_set = set(present_seeds)
+                ranked_seeds = [oid for oid in ranked_ids if oid in seed_set]
+                ranked_others = [oid for oid in ranked_ids if oid not in seed_set]
+                remaining = max(bounds.max_objects - len(ranked_seeds), 0)
+                capped_others, objects_truncated = self._cap(ranked_others, remaining)
+                selected_ids = ranked_seeds + list(capped_others)
+            selected_set = set(selected_ids)
+
+            relationships, relationship_truncated = self._cap(
+                self._relationships_touching(result, selected_set),
+                bounds.max_relationships,
             )
-        )
-
-        query_cf = query_text.strip().casefold()
-        tokens = _tokenize(query_text)
-        scores: dict[str, int] = {}
-        reasons: dict[str, list[str]] = {}
-        for object_id, obj in graph.objects.items():
-            score, object_reasons = _score_object(obj, query_cf=query_cf, tokens=tokens)
-            if score:
-                scores[object_id] = score
-                reasons.setdefault(object_id, []).extend(object_reasons)
-        _extend_scores_with_relationships(
-            graph.objects, graph.relationships, query_cf, tokens, scores, reasons
-        )
-
-        present_seeds = [seed for seed in seeds if seed in graph.objects]
-        missing_seeds = tuple(sorted({seed for seed in seeds if seed not in graph.objects}))
-        for seed in present_seeds:
-            scores[seed] = max(scores.get(seed, 0), _SCORE_EXACT_SEED)
-            reasons.setdefault(seed, []).append("exact_seed")
-
-        blocked = objects_blocked_by_omitted_aliases(
-            query_text, result.scoped_graph.omitted_alias_index
-        ) | objects_blocked_by_ambiguous_aliases(query_text, graph.alias_index)
-        for object_id in blocked:
-            if object_id not in present_seeds:
-                scores.pop(object_id, None)
-
-        ranked_ids = sorted(scores, key=lambda oid: (-scores[oid], oid))
-        # Explicit admitted seeds survive result bounding; non-seed matches
-        # consume the remaining budget.
-        seed_set = set(present_seeds)
-        ranked_seeds = [oid for oid in ranked_ids if oid in seed_set]
-        ranked_others = [oid for oid in ranked_ids if oid not in seed_set]
-        remaining = max(bounds.max_objects - len(ranked_seeds), 0)
-        capped_others, objects_truncated = self._cap(ranked_others, remaining)
-        selected_ids = ranked_seeds + list(capped_others)
-        selected_set = set(selected_ids)
-
-        relationships, relationship_truncated = self._cap(
-            self._relationships_touching(result, selected_set),
-            bounds.max_relationships,
-        )
-        assertion_rows = [
-            row
-            for object_id in selected_ids
-            for row in _assertion_rows_for_object(graph.objects[object_id])
-        ]
-        assertions, assertion_truncated = self._cap(
-            sorted(assertion_rows, key=lambda row: row.assertion_id),
-            bounds.max_assertions,
-        )
-        anchors, anchor_truncated, anchor_gaps = self._anchors_for(
-            result,
-            object_ids=selected_set,
-            relationship_ids={rel.relationship_id for rel in relationships},
-            assertion_ids={row.assertion_id for row in assertions},
-            max_anchors=bounds.max_anchors,
-        )
-        return GraphSearchResult(
-            snapshot=result.snapshot,
-            referents=referents,
-            matched_object_ids=tuple(selected_ids),
-            match_reasons={
-                object_id: tuple(sorted(set(reasons[object_id])))
+            assertion_rows = [
+                row
                 for object_id in selected_ids
-                if object_id in reasons
-            },
-            objects=tuple(graph.objects[object_id] for object_id in selected_ids),
-            relationships=relationships,
-            property_assertions=assertions,
-            anchors=anchors,
-            coverage=RetrievalCoverage(
-                requested_seed_object_ids=tuple(seeds),
-                missing_seed_object_ids=missing_seeds,
-                truncated_fields=self._truncated_fields(
-                    objects=objects_truncated,
-                    relationships=relationship_truncated,
-                    assertions=assertion_truncated,
-                    anchors=anchor_truncated,
+                for row in _assertion_rows_for_object(graph.objects[object_id])
+            ]
+            assertions, assertion_truncated = self._cap(
+                sorted(assertion_rows, key=lambda row: row.assertion_id),
+                bounds.max_assertions,
+            )
+            with recorder.phase("anchor_derivation"):
+                anchors, anchor_truncated, anchor_gaps = self._anchors_for(
+                    result,
+                    object_ids=selected_set,
+                    relationship_ids={rel.relationship_id for rel in relationships},
+                    assertion_ids={row.assertion_id for row in assertions},
+                    max_anchors=bounds.max_anchors,
+                )
+            op_result = GraphSearchResult(
+                snapshot=result.snapshot,
+                referents=referents,
+                matched_object_ids=tuple(selected_ids),
+                match_reasons={
+                    object_id: tuple(sorted(set(reasons[object_id])))
+                    for object_id in selected_ids
+                    if object_id in reasons
+                },
+                objects=tuple(graph.objects[object_id] for object_id in selected_ids),
+                relationships=relationships,
+                property_assertions=assertions,
+                anchors=anchors,
+                coverage=RetrievalCoverage(
+                    requested_seed_object_ids=tuple(seeds),
+                    missing_seed_object_ids=missing_seeds,
+                    truncated_fields=self._truncated_fields(
+                        objects=objects_truncated,
+                        relationships=relationship_truncated,
+                        assertions=assertion_truncated,
+                        anchors=anchor_truncated,
+                    ),
+                    gap_codes=anchor_gaps[0],
+                    missing_ids=anchor_gaps[1],
                 ),
-                gap_codes=anchor_gaps[0],
-                missing_ids=anchor_gaps[1],
+            )
+        except Exception as exc:
+            self._emit(self._error_observation(recorder, request, "search", exc))
+            raise
+        self._emit(self._search_observation(recorder, request, result, op_result))
+        return op_result
+
+    def _search_observation(
+        self,
+        recorder: PhaseRecorder,
+        request: WorldGraphProjectionRequestV2,
+        result: WorldGraphProjectionResult,
+        op_result: GraphSearchResult,
+    ) -> WorldGraphReadObservation:
+        coverage = op_result.coverage
+        return WorldGraphReadObservation(
+            operation="search",
+            outcome="success" if op_result.matched_object_ids else "miss",
+            duration_seconds=recorder.total_seconds(),
+            phase_durations=recorder.phases,
+            result_object_count=len(op_result.matched_object_ids),
+            result_relationship_count=len(op_result.relationships),
+            result_assertion_count=len(op_result.property_assertions),
+            result_anchor_count=len(op_result.anchors),
+            requested_seed_count=len(coverage.requested_seed_object_ids),
+            present_seed_count=(
+                len(coverage.requested_seed_object_ids)
+                - len(coverage.missing_seed_object_ids)
             ),
+            missing_seed_count=len(coverage.missing_seed_object_ids),
+            **self._request_fields(request),
+            **self._graph_fields(result),
+            **self._coverage_fields(coverage),
         )
 
     def get_neighborhood(
@@ -807,100 +962,141 @@ class WorldGraphRetrievalService:
         relationships the projection excluded because they are absent from
         the admitted snapshot.
         """
-        if depth not in (1, 2):
-            raise ValueError("neighborhood depth must be 1 or 2")
-        seeds = _normalize_seeds(seed_object_ids, required=True)
-        result = self._projection.project(request)
-        graph = result.graph
+        recorder = PhaseRecorder(self._read_clock)
+        try:
+            if depth not in (1, 2):
+                raise ValueError("neighborhood depth must be 1 or 2")
+            seeds = _normalize_seeds(seed_object_ids, required=True)
+            with recorder.phase("projection"):
+                result = self._projection.project(request)
+            graph = result.graph
 
-        present_seeds = [seed for seed in seeds if seed in graph.objects]
-        missing_seeds = tuple(sorted({seed for seed in seeds if seed not in graph.objects}))
+            with recorder.phase("traversal"):
+                present_seeds = [seed for seed in seeds if seed in graph.objects]
+                missing_seeds = tuple(
+                    sorted({seed for seed in seeds if seed not in graph.objects})
+                )
 
-        adjacency: dict[str, list[GraphRelationshipView]] = {}
-        for rel in graph.relationships.values():
-            adjacency.setdefault(rel.subject_object_id, []).append(rel)
-            adjacency.setdefault(rel.object_object_id, []).append(rel)
+                adjacency: dict[str, list[GraphRelationshipView]] = {}
+                for rel in graph.relationships.values():
+                    adjacency.setdefault(rel.subject_object_id, []).append(rel)
+                    adjacency.setdefault(rel.object_object_id, []).append(rel)
 
-        depths: dict[str, int] = {seed: 0 for seed in present_seeds}
-        visited_edge_ids: set[str] = set()
-        frontier = list(present_seeds)
-        for level in range(1, depth + 1):
-            next_frontier: list[str] = []
-            for object_id in sorted(frontier):
-                for rel in sorted(
-                    adjacency.get(object_id, []), key=lambda item: item.relationship_id
-                ):
-                    visited_edge_ids.add(rel.relationship_id)
-                    other_id = (
-                        rel.object_object_id
-                        if rel.subject_object_id == object_id
-                        else rel.subject_object_id
-                    )
-                    if other_id not in depths:
-                        depths[other_id] = level
-                        next_frontier.append(other_id)
-            frontier = next_frontier
+                depths: dict[str, int] = {seed: 0 for seed in present_seeds}
+                visited_edge_ids: set[str] = set()
+                frontier = list(present_seeds)
+                for level in range(1, depth + 1):
+                    next_frontier: list[str] = []
+                    for object_id in sorted(frontier):
+                        for rel in sorted(
+                            adjacency.get(object_id, []), key=lambda item: item.relationship_id
+                        ):
+                            visited_edge_ids.add(rel.relationship_id)
+                            other_id = (
+                                rel.object_object_id
+                                if rel.subject_object_id == object_id
+                                else rel.subject_object_id
+                            )
+                            if other_id not in depths:
+                                depths[other_id] = level
+                                next_frontier.append(other_id)
+                    frontier = next_frontier
 
-        others_ordered = sorted(
-            (oid for oid in depths if oid not in set(present_seeds)),
-            key=lambda oid: (depths[oid], oid),
-        )
-        # Explicit admitted seeds survive result bounding; expansion results
-        # consume the remaining budget.
-        remaining = max(bounds.max_objects - len(present_seeds), 0)
-        capped_others, objects_truncated = self._cap(others_ordered, remaining)
-        selected_ids = present_seeds + list(capped_others)
-        selected_set = set(selected_ids)
+                others_ordered = sorted(
+                    (oid for oid in depths if oid not in set(present_seeds)),
+                    key=lambda oid: (depths[oid], oid),
+                )
+                # Explicit admitted seeds survive result bounding; expansion results
+                # consume the remaining budget.
+                remaining = max(bounds.max_objects - len(present_seeds), 0)
+                capped_others, objects_truncated = self._cap(others_ordered, remaining)
+                selected_ids = present_seeds + list(capped_others)
+            selected_set = set(selected_ids)
 
-        candidate_relationships = sorted(
-            (
-                rel
-                for rel in graph.relationships.values()
-                if rel.relationship_id in visited_edge_ids
-                and rel.subject_object_id in selected_set
-                and rel.object_object_id in selected_set
-            ),
-            key=lambda item: item.relationship_id,
-        )
-        relationships, relationship_truncated = self._cap(
-            candidate_relationships, bounds.max_relationships
-        )
-        assertion_rows = [
-            row
-            for object_id in selected_ids
-            for row in _assertion_rows_for_object(graph.objects[object_id])
-        ]
-        assertions, assertion_truncated = self._cap(
-            sorted(assertion_rows, key=lambda row: row.assertion_id),
-            bounds.max_assertions,
-        )
-        anchors, anchor_truncated, anchor_gaps = self._anchors_for(
-            result,
-            object_ids=selected_set,
-            relationship_ids={rel.relationship_id for rel in relationships},
-            assertion_ids={row.assertion_id for row in assertions},
-            max_anchors=bounds.max_anchors,
-        )
-        return NeighborhoodResult(
-            snapshot=result.snapshot,
-            seed_object_ids=tuple(present_seeds),
-            object_depths={oid: depths[oid] for oid in selected_ids},
-            objects=tuple(graph.objects[object_id] for object_id in selected_ids),
-            relationships=relationships,
-            property_assertions=assertions,
-            anchors=anchors,
-            coverage=RetrievalCoverage(
-                requested_seed_object_ids=tuple(seeds),
-                missing_seed_object_ids=missing_seeds,
-                truncated_fields=self._truncated_fields(
-                    objects=objects_truncated,
-                    relationships=relationship_truncated,
-                    assertions=assertion_truncated,
-                    anchors=anchor_truncated,
+            candidate_relationships = sorted(
+                (
+                    rel
+                    for rel in graph.relationships.values()
+                    if rel.relationship_id in visited_edge_ids
+                    and rel.subject_object_id in selected_set
+                    and rel.object_object_id in selected_set
                 ),
-                gap_codes=anchor_gaps[0],
-                missing_ids=anchor_gaps[1],
-            ),
+                key=lambda item: item.relationship_id,
+            )
+            relationships, relationship_truncated = self._cap(
+                candidate_relationships, bounds.max_relationships
+            )
+            assertion_rows = [
+                row
+                for object_id in selected_ids
+                for row in _assertion_rows_for_object(graph.objects[object_id])
+            ]
+            assertions, assertion_truncated = self._cap(
+                sorted(assertion_rows, key=lambda row: row.assertion_id),
+                bounds.max_assertions,
+            )
+            with recorder.phase("anchor_derivation"):
+                anchors, anchor_truncated, anchor_gaps = self._anchors_for(
+                    result,
+                    object_ids=selected_set,
+                    relationship_ids={rel.relationship_id for rel in relationships},
+                    assertion_ids={row.assertion_id for row in assertions},
+                    max_anchors=bounds.max_anchors,
+                )
+            op_result = NeighborhoodResult(
+                snapshot=result.snapshot,
+                seed_object_ids=tuple(present_seeds),
+                object_depths={oid: depths[oid] for oid in selected_ids},
+                objects=tuple(graph.objects[object_id] for object_id in selected_ids),
+                relationships=relationships,
+                property_assertions=assertions,
+                anchors=anchors,
+                coverage=RetrievalCoverage(
+                    requested_seed_object_ids=tuple(seeds),
+                    missing_seed_object_ids=missing_seeds,
+                    truncated_fields=self._truncated_fields(
+                        objects=objects_truncated,
+                        relationships=relationship_truncated,
+                        assertions=assertion_truncated,
+                        anchors=anchor_truncated,
+                    ),
+                    gap_codes=anchor_gaps[0],
+                    missing_ids=anchor_gaps[1],
+                ),
+            )
+        except Exception as exc:
+            self._emit(self._error_observation(recorder, request, "get_neighborhood", exc))
+            raise
+        self._emit(
+            self._neighborhood_observation(recorder, request, result, op_result, depth)
+        )
+        return op_result
+
+    def _neighborhood_observation(
+        self,
+        recorder: PhaseRecorder,
+        request: WorldGraphProjectionRequestV2,
+        result: WorldGraphProjectionResult,
+        op_result: NeighborhoodResult,
+        depth: int,
+    ) -> WorldGraphReadObservation:
+        coverage = op_result.coverage
+        return WorldGraphReadObservation(
+            operation="get_neighborhood",
+            outcome="success" if op_result.seed_object_ids else "miss",
+            duration_seconds=recorder.total_seconds(),
+            phase_durations=recorder.phases,
+            result_object_count=len(op_result.objects),
+            result_relationship_count=len(op_result.relationships),
+            result_assertion_count=len(op_result.property_assertions),
+            result_anchor_count=len(op_result.anchors),
+            requested_seed_count=len(coverage.requested_seed_object_ids),
+            present_seed_count=len(op_result.seed_object_ids),
+            missing_seed_count=len(coverage.missing_seed_object_ids),
+            neighborhood_depth=depth,
+            **self._request_fields(request),
+            **self._graph_fields(result),
+            **self._coverage_fields(coverage),
         )
 
     def get_evidence(
@@ -917,65 +1113,108 @@ class WorldGraphRetrievalService:
         provenance produces explicit safe coverage; out-of-scope or
         scope-unknown provenance never echoes identifiers.
         """
-        if not 1 <= max_anchors <= _ANCHORS_LIMIT:
-            raise ValueError(f"max_anchors must be within 1..{_ANCHORS_LIMIT}")
-        result = self._projection.project(request)
-        graph = result.graph
+        recorder = PhaseRecorder(self._read_clock)
+        try:
+            if not 1 <= max_anchors <= _ANCHORS_LIMIT:
+                raise ValueError(f"max_anchors must be within 1..{_ANCHORS_LIMIT}")
+            with recorder.phase("projection"):
+                result = self._projection.project(request)
+            graph = result.graph
 
-        obj: GraphObjectView | None = None
-        rel: GraphRelationshipView | None = None
-        assertion: AdmittedAssertionValue | None = None
-        evidence_ref_ids: tuple[str, ...]
-        if target.kind == "object":
-            obj = graph.objects.get(target.target_id)
-            if obj is None:
-                return self._evidence_miss(result, target)
-            evidence_ref_ids = tuple(obj.evidence_ref_ids)
-        elif target.kind == "relationship":
-            rel = graph.relationships.get(target.target_id)
-            if rel is None:
-                return self._evidence_miss(result, target)
-            evidence_ref_ids = tuple(rel.evidence_ref_ids)
-        else:
-            assertion = _index_admitted_assertions(result).get(target.target_id)
-            if assertion is None:
-                return self._evidence_miss(result, target)
-            evidence_ref_ids = assertion.evidence_ref_ids
-
-        chains = self._resolve_evidence_chains(result, evidence_ref_ids)
-        supporters: dict[str, _SupporterSets] = {}
-        for evidence_ref_id in evidence_ref_ids:
-            supporter_sets = _SupporterSets()
-            if target.kind == "assertion":
-                supporter_sets.assertion_ids.add(target.target_id)
+            obj: GraphObjectView | None = None
+            rel: GraphRelationshipView | None = None
+            assertion: AdmittedAssertionValue | None = None
+            evidence_ref_ids: tuple[str, ...]
+            if target.kind == "object":
+                obj = graph.objects.get(target.target_id)
+                if obj is None:
+                    op_result = self._evidence_miss(result, target)
+                    self._emit(
+                        self._evidence_observation(recorder, request, result, op_result)
+                    )
+                    return op_result
+                evidence_ref_ids = tuple(obj.evidence_ref_ids)
             elif target.kind == "relationship":
-                supporter_sets.relationship_ids.add(target.target_id)
+                rel = graph.relationships.get(target.target_id)
+                if rel is None:
+                    op_result = self._evidence_miss(result, target)
+                    self._emit(
+                        self._evidence_observation(recorder, request, result, op_result)
+                    )
+                    return op_result
+                evidence_ref_ids = tuple(rel.evidence_ref_ids)
             else:
-                supporter_sets.object_ids.add(target.target_id)
-            supporters[evidence_ref_id] = supporter_sets
-        anchors, anchor_truncated = self._anchors_from_chains(
-            result,
-            chains,
-            supporters=supporters,
-            max_anchors=max_anchors,
-        )
-        return EvidenceRetrievalResult(
-            snapshot=result.snapshot,
-            found=True,
-            target=target,
-            object=obj,
-            relationship=rel,
-            assertion=assertion,
-            evidence=tuple(
-                chains.validated[evidence_ref_id].evidence
-                for evidence_ref_id in sorted(chains.validated)
-            ),
-            anchors=anchors,
-            coverage=RetrievalCoverage(
-                truncated_fields=self._truncated_fields(anchors=anchor_truncated),
-                gap_codes=chains.gap_codes,
-                missing_ids=chains.missing_ids,
-            ),
+                assertion = _index_admitted_assertions(result).get(target.target_id)
+                if assertion is None:
+                    op_result = self._evidence_miss(result, target)
+                    self._emit(
+                        self._evidence_observation(recorder, request, result, op_result)
+                    )
+                    return op_result
+                evidence_ref_ids = assertion.evidence_ref_ids
+
+            with recorder.phase("evidence_revalidation"):
+                chains = self._resolve_evidence_chains(result, evidence_ref_ids)
+            with recorder.phase("anchor_derivation"):
+                supporters: dict[str, _SupporterSets] = {}
+                for evidence_ref_id in evidence_ref_ids:
+                    supporter_sets = _SupporterSets()
+                    if target.kind == "assertion":
+                        supporter_sets.assertion_ids.add(target.target_id)
+                    elif target.kind == "relationship":
+                        supporter_sets.relationship_ids.add(target.target_id)
+                    else:
+                        supporter_sets.object_ids.add(target.target_id)
+                    supporters[evidence_ref_id] = supporter_sets
+                anchors, anchor_truncated = self._anchors_from_chains(
+                    result,
+                    chains,
+                    supporters=supporters,
+                    max_anchors=max_anchors,
+                )
+            op_result = EvidenceRetrievalResult(
+                snapshot=result.snapshot,
+                found=True,
+                target=target,
+                object=obj,
+                relationship=rel,
+                assertion=assertion,
+                evidence=tuple(
+                    chains.validated[evidence_ref_id].evidence
+                    for evidence_ref_id in sorted(chains.validated)
+                ),
+                anchors=anchors,
+                coverage=RetrievalCoverage(
+                    truncated_fields=self._truncated_fields(anchors=anchor_truncated),
+                    gap_codes=chains.gap_codes,
+                    missing_ids=chains.missing_ids,
+                ),
+            )
+        except Exception as exc:
+            self._emit(self._error_observation(recorder, request, "get_evidence", exc))
+            raise
+        self._emit(self._evidence_observation(recorder, request, result, op_result))
+        return op_result
+
+    def _evidence_observation(
+        self,
+        recorder: PhaseRecorder,
+        request: WorldGraphProjectionRequestV2,
+        result: WorldGraphProjectionResult,
+        op_result: EvidenceRetrievalResult,
+    ) -> WorldGraphReadObservation:
+        return WorldGraphReadObservation(
+            operation="get_evidence",
+            outcome="success" if op_result.found else "miss",
+            duration_seconds=recorder.total_seconds(),
+            phase_durations=recorder.phases,
+            result_object_count=1 if op_result.object is not None else 0,
+            result_relationship_count=1 if op_result.relationship is not None else 0,
+            result_assertion_count=1 if op_result.assertion is not None else 0,
+            result_anchor_count=len(op_result.anchors),
+            **self._request_fields(request),
+            **self._graph_fields(result),
+            **self._coverage_fields(op_result.coverage),
         )
 
     def resolve_source_anchor(
@@ -993,31 +1232,53 @@ class WorldGraphRetrievalService:
         campaign, focus, admissibility, evidence/source identity, or locator
         identity does not resolve here.
         """
-        if not anchor_id.strip():
-            raise ValueError("anchor_id must be non-blank")
-        result = self._projection.project(request)
-        assertion_index = _index_admitted_assertions(result)
-        anchors, _truncated, _gaps = self._anchors_for(
-            result,
-            object_ids=set(result.graph.objects),
-            relationship_ids=set(result.graph.relationships),
-            assertion_ids=set(assertion_index),
-            max_anchors=None,
-        )
-        for anchor in anchors:
-            if anchor.anchor_id == anchor_id:
-                return SourceAnchorResolution(
-                    snapshot=result.snapshot,
-                    found=True,
-                    anchor_id=anchor_id,
-                    anchor=anchor,
+        recorder = PhaseRecorder(self._read_clock)
+        try:
+            if not anchor_id.strip():
+                raise ValueError("anchor_id must be non-blank")
+            with recorder.phase("projection"):
+                result = self._projection.project(request)
+            with recorder.phase("anchor_derivation"):
+                assertion_index = _index_admitted_assertions(result)
+                anchors, _truncated, _gaps = self._anchors_for(
+                    result,
+                    object_ids=set(result.graph.objects),
+                    relationship_ids=set(result.graph.relationships),
+                    assertion_ids=set(assertion_index),
+                    max_anchors=None,
                 )
-        return SourceAnchorResolution(
-            snapshot=result.snapshot,
-            found=False,
-            anchor_id=anchor_id,
-            anchor=None,
+                op_result = SourceAnchorResolution(
+                    snapshot=result.snapshot,
+                    found=False,
+                    anchor_id=anchor_id,
+                    anchor=None,
+                )
+                for anchor in anchors:
+                    if anchor.anchor_id == anchor_id:
+                        op_result = SourceAnchorResolution(
+                            snapshot=result.snapshot,
+                            found=True,
+                            anchor_id=anchor_id,
+                            anchor=anchor,
+                        )
+                        break
+        except Exception as exc:
+            self._emit(
+                self._error_observation(recorder, request, "resolve_source_anchor", exc)
+            )
+            raise
+        self._emit(
+            WorldGraphReadObservation(
+                operation="resolve_source_anchor",
+                outcome="success" if op_result.found else "miss",
+                duration_seconds=recorder.total_seconds(),
+                phase_durations=recorder.phases,
+                result_anchor_count=1 if op_result.found else 0,
+                **self._request_fields(request),
+                **self._graph_fields(result),
+            )
         )
+        return op_result
 
     def _evidence_miss(
         self,

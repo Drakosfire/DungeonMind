@@ -47,6 +47,17 @@ from .review_publication import (
     FinalizedReviewPublication,
     publish_finalized_review,
 )
+from .world_graph_observability import (
+    NOOP_READ_OBSERVER,
+    PhaseRecorder,
+    SystemMonotonicReadClock,
+    WorldGraphReadClock,
+    WorldGraphReadObservation,
+    WorldGraphReadObserver,
+    WorldGraphReadPhaseDuration,
+    classify_read_failure,
+    emit_read_observation,
+)
 from .world_graph_projection import (
     ProjectionClock,
     WorldGraphProjectionResult,
@@ -68,6 +79,7 @@ from .world_graph_retrieval import (
 )
 
 __all__ = [
+    "NOOP_READ_OBSERVER",
     "AdmittedAssertionValue",
     "ContributionRepository",
     "ContributionReviewRepository",
@@ -90,6 +102,7 @@ __all__ = [
     "NeighborhoodResult",
     "ObjectLookupResult",
     "ParsedGraphSnapshot",
+    "PhaseRecorder",
     "ProjectionClock",
     "QueryEmbeddingProvider",
     "RetrievalBounds",
@@ -100,13 +113,20 @@ __all__ = [
     "SourceAnchorMetadata",
     "SourceAnchorResolution",
     "SourceRepository",
+    "SystemMonotonicReadClock",
     "UnionGraphV1SnapshotReader",
     "WorldGraphProjectionResult",
     "WorldGraphProjectionService",
+    "WorldGraphReadClock",
+    "WorldGraphReadObservation",
+    "WorldGraphReadObserver",
+    "WorldGraphReadPhaseDuration",
     "WorldGraphRepository",
     "WorldGraphRetrievalService",
     "adopt_existing_world",
+    "classify_read_failure",
     "derive_source_anchor_id",
+    "emit_read_observation",
     "evaluate_fictional_time_query",
     "finalize_contribution_review",
     "finalize_contribution_review_v2",

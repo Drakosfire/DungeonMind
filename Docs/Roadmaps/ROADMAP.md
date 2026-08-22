@@ -3,9 +3,9 @@
 **Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b / B.2c / B.2d /
 B.2e / B.2f-0 / B.2f-a / B.2f-b / B.2f-c / B.2f-d landed. R.1 (direct World
 Graph projection service, PR #38) landed; R.2 (direct World Graph retrieval
-primitives) is in the current implementation branch. **R.2a (World Graph read
-observability + cutover benchmark baseline) is the first-priority successor
-immediately after R.2 and before any Buddy production-read cutover.**
+primitives, PR #40) landed. **R.2a (World Graph read observability + cutover
+benchmark baseline) is in the current implementation branch and must land
+before any Buddy production-read cutover.**
 Product-surface adoption remains a separate successor. External RulesIngestion
 PR C and product-surface adoption of `mind_turn_v1` remain independent
 successors. Ownership per ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0007,
@@ -33,8 +33,8 @@ B.2f-b expected-parent CAS publication ✅
 B.2f-c durable publication identity + uncertain-outcome recovery ✅
 B.2f-d service transport + external consumer contract ✅
 R.1   direct World Graph projection service (PR #38) ✅
-R.2   direct World Graph retrieval primitives ← current review lane
-R.2a  World Graph read observability + cutover benchmark baseline ← first priority after R.2
+R.2   direct World Graph retrieval primitives (PR #40) ✅
+R.2a  World Graph read observability + cutover benchmark baseline ← current review lane
 R.3   Buddy graph hydration removal from production reads (Buddy repo)
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
@@ -459,8 +459,9 @@ Buddy-side graph stack.
   only; admissibility is an independent axis, so PLAYER reads under the
   lens still fail closed on GM-only content). No Buddy DTOs, no write path, no
   semantic search.
-- **R.2 — direct World Graph retrieval primitives** (this repo, in review) —
-  `WorldGraphRetrievalService` composes the R.1 v2 projection exactly once
+- **R.2 — direct World Graph retrieval primitives** — PR #40 ✅ (merged at
+  `fd0b7605`). `WorldGraphRetrievalService` composes the R.1 v2 projection
+  exactly once
   per operation and owns the five graph-semantic capabilities needed to
   retire Buddy kernel reads: exact object lookup, deterministic graph-only
   search/referent resolution, bounded depth-1/depth-2 neighborhood expansion
@@ -513,10 +514,11 @@ Buddy-side graph stack.
 
 Canonical handoffs:
 [`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-projection.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-projection.md)
-(R.1) and
+(R.1),
 [`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md)
-(R.2). R.2a handoff is intentionally not yet authored; it is the immediate
-post-R.2 dispatch target.
+(R.2), and
+[`Docs/Handoffs/HANDOFF-cutover-world-graph-read-observability-benchmark.md`](../Handoffs/HANDOFF-cutover-world-graph-read-observability-benchmark.md)
+(R.2a, this lane).
 
 ## Named future lanes (no dates claimed)
 
