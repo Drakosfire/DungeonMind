@@ -11,7 +11,7 @@
 
 ## §1 Outcome
 
-A caller with a `WorldGraphRepository`, `SourceRepository`, and correctly configured `GraphSnapshotReader` can submit the existing `WorldGraphProjectionRequest` and receive a `ProjectionSnapshot` plus `ScopedGraphProjection` for one exact DungeonMind revision. Unpinned reads resolve the current head; historical pins remain exact and report the current head separately. Missing, mismatched, or cross-world state fails closed using the existing DungeonMind error vocabulary. The service performs no writes, no semantic search, no agent turn, and constructs no DungeonMindBuddy graph type.
+A caller with a `WorldGraphRepository`, `SourceRepository`, and correctly configured `GraphSnapshotReader` can submit the new v2 `WorldGraphProjectionRequestV2` and receive a `ProjectionSnapshotV2` plus `ScopedGraphProjection` for one exact DungeonMind revision. Unpinned reads resolve the current head; historical pins remain exact and report the current head separately. Missing, mismatched, or cross-world state fails closed using the existing DungeonMind error vocabulary. The service performs no writes, no semantic search, no agent turn, and constructs no DungeonMindBuddy graph type.
 
 ## §2 Authority and anchors
 
@@ -20,7 +20,7 @@ Read these first, in order:
 1. `README.md` — DungeonMind owns durable knowledge, revision-aware graph projections, semantic retrieval, and evidence admission; DungeonMindBuddy is the workshop/consumer, not the graph authority.
 2. `Docs/Architecture/ARCHITECTURE.md` and `Docs/Architecture/AUTHORITY.md` — core ownership and transport-neutral application-layer rules.
 3. `CONTRIBUTING.md` — layering, fail-closed contracts, profile boundary, test/toolchain rules, and cross-repository PR discipline.
-4. `src/dungeonmind/contracts/projection.py` — existing projection request/snapshot contract; do not create a competing durable wire contract.
+4. `src/dungeonmind/contracts/projection.py` — the frozen v1 projection request/snapshot wire shape; do not modify its vocabulary. `src/dungeonmind/contracts/projection_v2.py` — the v2 pair this seam speaks; v2 adds only the cross-campaign scope vocabulary.
 5. `src/dungeonmind/application/repositories.py` — exact head/revision and source repository ports.
 6. `src/dungeonmind/application/graph_snapshot.py` — versioned v1-v6 parsing and graph view types.
 7. `src/dungeonmind/application/graph_scope.py` — existing campaign/admissibility/provenance admission authority.
@@ -35,10 +35,12 @@ Read these first, in order:
 - Preserve exact selected revision and current head identity in `ProjectionSnapshot`.
 - Parse through an injected `GraphSnapshotReader`; do not silently choose a semantic-profile registry.
 - Apply the existing `project_scoped_snapshot` campaign/admissibility/provenance policy.
-- Honor `scope_mode` in that policy, including the additive
-  `ScopeMode.WORLD_CROSS_CAMPAIGN` lens (world-owned plus every campaign scope
-  in one exact revision). The original `ScopeMode.WORLD` remains world-owned
-  only; it is not redefined.
+- Honor `scope_mode` in that policy through the new v2 projection contracts
+  (`dm_projection_request_v2` / `dm_projection_snapshot_v2`), whose
+  `ScopeModeV2` adds the additive `WORLD_CROSS_CAMPAIGN` lens (world-owned
+  plus every campaign scope in one exact revision). The v1 contracts are
+  frozen: their two-value scope vocabulary is unchanged and never accepts
+  `world_cross_campaign`.
 - Return the scoped graph plus projection identity without introducing a second graph representation.
 - Fail closed on missing head, missing revision, repository identity mismatch, or payload world mismatch.
 - Export the new application seam from `dungeonmind.application`.
@@ -61,7 +63,7 @@ Read these first, in order:
 1. DungeonMind durable state is the graph authority; this service is a read projection only.
 2. One read is coherent against one exact immutable revision.
 3. Absence of an explicit revision pin resolves to the head observed for this request and that resolved revision is reported.
-4. Campaign/admissibility/provenance filtering uses the existing `graph_scope` authority; this slice must not fork policy. `scope_mode` is part of that policy: `campaign` means requested campaign plus world-owned knowledge, `world` keeps its original world-owned-only meaning, and the additive `world_cross_campaign` mode is the GM cross-campaign lens over one exact revision. An explicit mode that contradicts `campaign_id` fails closed.
+4. Campaign/admissibility/provenance filtering uses the existing `graph_scope` authority; this slice must not fork policy. `scope_mode` is part of that policy and is versioned: the v1 projection contracts are frozen with the original two-value vocabulary (`campaign`, `world`), while the v2 contracts (`dm_projection_request_v2` / `dm_projection_snapshot_v2`) add the additive `world_cross_campaign` mode — the cross-campaign lens over one exact revision. Scope mode and admissibility are independent axes: the mode widens campaign scope only, encodes no upstream authorization decision, and a PLAYER read under it still fails closed on GM-only content. An explicit mode that contradicts `campaign_id` fails closed.
 5. Profile-pinned v3+ graph parsing remains fail-closed. The service requires an injected reader instead of inventing a default profile registry.
 6. Application code imports only contracts/domain/application-layer peers; no infrastructure, FastAPI, database driver, Hermes, or Buddy import.
 7. No graph or source mutation is permitted.

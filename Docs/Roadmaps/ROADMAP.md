@@ -447,9 +447,11 @@ directly, then deleting the Buddy-side graph stack.
   `WorldGraphProjectionService` resolves one exact revision (pin or current
   head), parses through an injected `GraphSnapshotReader`, and applies the
   existing campaign/admissibility/provenance projection — including the
-  additive `world_cross_campaign` scope mode (the GM cross-campaign lens:
-  world-owned plus every campaign scope in one exact revision; the original
-  `world` mode remains world-owned only). No Buddy DTOs, no write path, no
+  additive `world_cross_campaign` scope mode in the new v2 projection
+  contracts (cross-campaign lens: world-owned plus every campaign scope
+  in one exact revision; the frozen v1 `world` mode remains world-owned
+  only; admissibility is an independent axis, so PLAYER reads under the
+  lens still fail closed on GM-only content). No Buddy DTOs, no write path, no
   semantic search.
 - **R.2 — direct World Graph retrieval primitives** (this repo, named
   successor) — object lookup, search/referent resolution, one-hop
@@ -458,8 +460,8 @@ directly, then deleting the Buddy-side graph stack.
 - **R.3 — Buddy graph hydration removal** (DungeonMindBuddy repo, named
   successor) — replace `world_graph_projection` / `world_graph_retrieval`
   kernel calls with DungeonMind native reads; remove private Buddy revision
-  translation and the frozen-store read dependency. Buddy `world` scope maps
-  to `world_cross_campaign`; Buddy `campaign` scope maps to `campaign`.
+  translation and the frozen-store read dependency. Buddy `world` scope maps to the v2
+  `world_cross_campaign` mode; Buddy `campaign` scope maps to v2 `campaign`.
 
 Canonical handoff:
 [`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-projection.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-projection.md).

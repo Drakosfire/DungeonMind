@@ -7,11 +7,11 @@ Turn, semantic retrieval, or a product-specific adapter.
 The service deliberately composes existing authorities rather than defining a
 second graph model:
 
-``WorldGraphProjectionRequest``
+``WorldGraphProjectionRequestV2``
 → exact head / revision resolution through ``WorldGraphRepository``
 → versioned graph parsing through ``GraphSnapshotReader``
 → campaign / admissibility / provenance projection through ``graph_scope``
-→ ``ProjectionSnapshot`` + ``ScopedGraphProjection``
+→ ``ProjectionSnapshotV2`` + ``ScopedGraphProjection``
 
 ``focus`` and ``query_text`` remain request context for successor retrieval and
 salience layers; this foundational service does not invent focus filtering or
@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
 
-from ..contracts.projection import ProjectionSnapshot, WorldGraphProjectionRequest
+from ..contracts.projection_v2 import ProjectionSnapshotV2, WorldGraphProjectionRequestV2
 from ..domain.errors import HeadNotFoundError, RevisionNotFoundError, ScopeResolutionError
 from .graph_scope import ScopedGraphProjection, project_scoped_snapshot
 from .graph_snapshot import GraphSnapshotReader, ParsedGraphSnapshot
@@ -46,7 +46,7 @@ class _SystemProjectionClock:
 class WorldGraphProjectionResult:
     """One exact resolved revision plus its safely scoped graph view."""
 
-    snapshot: ProjectionSnapshot
+    snapshot: ProjectionSnapshotV2
     scoped_graph: ScopedGraphProjection
 
     @property
@@ -77,7 +77,7 @@ class WorldGraphProjectionService:
         self._graph_reader = graph_reader
         self._clock = clock or _SystemProjectionClock()
 
-    def project(self, request: WorldGraphProjectionRequest) -> WorldGraphProjectionResult:
+    def project(self, request: WorldGraphProjectionRequestV2) -> WorldGraphProjectionResult:
         """Resolve, parse, scope, and identify one coherent graph revision.
 
         Unpinned reads resolve the current head exactly once and report the
@@ -150,7 +150,7 @@ class WorldGraphProjectionService:
             admissibility=request.admissibility,
             scope_mode=request.scope_mode,
         )
-        snapshot = ProjectionSnapshot(
+        snapshot = ProjectionSnapshotV2(
             world_id=request.world_id,
             campaign_id=request.campaign_id,
             focus=request.focus,

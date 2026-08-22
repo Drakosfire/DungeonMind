@@ -46,6 +46,7 @@ from ..contracts.evidence import (
 )
 from ..contracts.knowledge_assertion import KnowledgeAssertionMetadataV1
 from ..contracts.projection import Admissibility, ScopeMode
+from ..contracts.projection_v2 import ScopeModeV2
 from ..contracts.vocabulary import Visibility
 from ..domain.errors import ScopeResolutionError
 from .graph_snapshot import (
@@ -93,7 +94,12 @@ class CampaignScope:
     * ``CAMPAIGN`` — the requested campaign plus world-owned knowledge;
     * ``WORLD`` — world-owned knowledge only (the original v1 meaning);
     * ``WORLD_CROSS_CAMPAIGN`` — world-owned knowledge plus every campaign
-      scope in the world (the additive cross-campaign GM lens).
+      scope in the world (the additive cross-campaign lens; v2 vocabulary
+      only — the v1 projection contract is frozen without it).
+
+    Admissibility is an independent axis from scope mode: a PLAYER read
+    under the cross-campaign mode still fails closed on GM-only content.
+    The mode itself encodes no upstream authorization decision.
 
     ``scope_mode=None`` at the public helpers preserves the pre-cross-campaign
     inference (``campaign_id=None`` → ``WORLD``; otherwise ``CAMPAIGN``) so
@@ -101,25 +107,25 @@ class CampaignScope:
     contradicts ``campaign_id`` fails closed.
     """
 
-    mode: ScopeMode
+    mode: ScopeMode | ScopeModeV2
     campaign_id: str | None
 
     @classmethod
     def resolve(
         cls,
         *,
-        scope_mode: ScopeMode | None,
+        scope_mode: ScopeMode | ScopeModeV2 | None,
         campaign_id: str | None,
     ) -> CampaignScope:
         if scope_mode is None:
             scope_mode = ScopeMode.WORLD if campaign_id is None else ScopeMode.CAMPAIGN
-        if scope_mode is ScopeMode.CAMPAIGN and not campaign_id:
+        if scope_mode == ScopeModeV2.CAMPAIGN and not campaign_id:
             raise ScopeResolutionError(
                 "campaign scope_mode requires campaign_id",
                 details={"reason": "scope_campaign_mismatch"},
             )
         if (
-            scope_mode in (ScopeMode.WORLD, ScopeMode.WORLD_CROSS_CAMPAIGN)
+            scope_mode in (ScopeMode.WORLD, ScopeModeV2.WORLD, ScopeModeV2.WORLD_CROSS_CAMPAIGN)
             and campaign_id is not None
         ):
             raise ScopeResolutionError(
@@ -130,7 +136,7 @@ class CampaignScope:
 
     def admits_campaign(self, owner_campaign_id: str | None) -> bool:
         """Whether knowledge owned by ``owner_campaign_id`` is in this scope."""
-        if self.mode is ScopeMode.WORLD_CROSS_CAMPAIGN:
+        if self.mode == ScopeModeV2.WORLD_CROSS_CAMPAIGN:
             return True
         if self.campaign_id is None:
             return owner_campaign_id is None
@@ -268,7 +274,7 @@ def source_artifact_in_scope(
     world_id: str,
     campaign_id: str | None,
     admissibility: Admissibility,
-    scope_mode: ScopeMode | None = None,
+    scope_mode: ScopeMode | ScopeModeV2 | None = None,
 ) -> bool:
     """Return whether a source artifact is visible for this turn's scope.
 
@@ -283,7 +289,10 @@ def source_artifact_in_scope(
     ``EvidenceScopeVerdict.SCOPE_UNKNOWN``.
 
     ``scope_mode=None`` preserves the legacy inference from ``campaign_id``;
-    pass ``ScopeMode.WORLD_CROSS_CAMPAIGN`` for the cross-campaign GM lens.
+    pass the v2 ``ScopeModeV2.WORLD_CROSS_CAMPAIGN`` for the cross-campaign
+    lens. Scope mode and admissibility are independent axes: the mode
+    widens campaign scope only, and a PLAYER read under it still fails
+    closed on GM-only content.
     """
     if artifact.world_id != world_id:
         return False
@@ -473,7 +482,7 @@ def resolve_evidence_provenance(
     world_id: str,
     campaign_id: str | None,
     admissibility: Admissibility,
-    scope_mode: ScopeMode | None = None,
+    scope_mode: ScopeMode | ScopeModeV2 | None = None,
 ) -> ValidatedProvenance | ProvenanceRejection | EvidenceScopeVerdict | None:
     """Validate the complete evidence → artifact → revision provenance chain.
 
@@ -746,7 +755,7 @@ def assertion_metadata_in_scope(
     *,
     campaign_id: str | None,
     admissibility: Admissibility,
-    scope_mode: ScopeMode | None = None,
+    scope_mode: ScopeMode | ScopeModeV2 | None = None,
 ) -> bool:
     """Whether one v4 assertion's own scope admits it for this read.
 
@@ -962,7 +971,7 @@ def project_scoped_snapshot(
     world_id: str,
     campaign_id: str | None,
     admissibility: Admissibility,
-    scope_mode: ScopeMode | None = None,
+    scope_mode: ScopeMode | ScopeModeV2 | None = None,
 ) -> ScopedGraphProjection:
     """Return a scoped snapshot and exclusion diagnostics.
 

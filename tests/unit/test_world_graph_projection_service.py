@@ -34,6 +34,10 @@ from dungeonmind.contracts.projection import (
     ScopeMode,
     WorldGraphProjectionRequest,
 )
+from dungeonmind.contracts.projection_v2 import (
+    ScopeModeV2,
+    WorldGraphProjectionRequestV2,
+)
 from dungeonmind.contracts.vocabulary import Visibility
 from dungeonmind.domain.errors import (
     HeadNotFoundError,
@@ -97,12 +101,12 @@ def _service(world_graph) -> WorldGraphProjectionService:
     )
 
 
-def _world_request(*, revision_pin: str | None = None) -> WorldGraphProjectionRequest:
-    return WorldGraphProjectionRequest(
+def _world_request(*, revision_pin: str | None = None) -> WorldGraphProjectionRequestV2:
+    return WorldGraphProjectionRequestV2(
         world_id=WORLD_ID,
         admissibility=Admissibility.GM,
         revision_pin=revision_pin,
-        scope_mode=ScopeMode.WORLD,
+        scope_mode=ScopeModeV2.WORLD,
     )
 
 
@@ -143,14 +147,14 @@ def test_exact_historical_pin_is_repinable_while_current_head_is_reported():
 def test_projection_preserves_authorized_campaign_focus_and_admissibility_identity():
     world_graph = InMemoryWorldGraphRepository()
     published = _publish(world_graph)
-    request = WorldGraphProjectionRequest(
+    request = WorldGraphProjectionRequestV2(
         world_id=WORLD_ID,
         campaign_id="campaign:test",
         focus=ProjectionFocus(kind=FocusKind.SESSION, session_id="session:test"),
         admissibility=Admissibility.PLAYER,
         revision_pin=published.revision_id,
         query_text="context carried for successor retrieval",
-        scope_mode=ScopeMode.CAMPAIGN,
+        scope_mode=ScopeModeV2.CAMPAIGN,
     )
 
     result = _service(world_graph).project(request)
@@ -158,7 +162,7 @@ def test_projection_preserves_authorized_campaign_focus_and_admissibility_identi
     assert result.snapshot.campaign_id == request.campaign_id
     assert result.snapshot.focus == request.focus
     assert result.snapshot.admissibility is Admissibility.PLAYER
-    assert result.snapshot.scope_mode is ScopeMode.CAMPAIGN
+    assert result.snapshot.scope_mode is ScopeModeV2.CAMPAIGN
 
 
 def test_missing_world_head_fails_closed():
@@ -416,8 +420,8 @@ def _v6_request(
     campaign_id: str | None = None,
     admissibility: Admissibility = Admissibility.GM,
     revision_pin: str | None = None,
-) -> WorldGraphProjectionRequest:
-    return WorldGraphProjectionRequest(
+) -> WorldGraphProjectionRequestV2:
+    return WorldGraphProjectionRequestV2(
         world_id=WORLD_ID,
         campaign_id=campaign_id,
         admissibility=admissibility,
@@ -436,7 +440,7 @@ def test_v6_revision_resolves_and_projects_through_versioned_reader():
     published = _publish_v6(world_graph)
 
     result = _v6_service(world_graph).project(
-        _v6_request(scope_mode=ScopeMode.CAMPAIGN, campaign_id=CAMPAIGN_A)
+        _v6_request(scope_mode=ScopeModeV2.CAMPAIGN, campaign_id=CAMPAIGN_A)
     )
 
     assert result.snapshot.revision_id == published.revision_id
@@ -451,7 +455,7 @@ def test_campaign_scope_admits_requested_campaign_plus_world_owned_only():
     _publish_v6(world_graph)
 
     result = _v6_service(world_graph).project(
-        _v6_request(scope_mode=ScopeMode.CAMPAIGN, campaign_id=CAMPAIGN_A)
+        _v6_request(scope_mode=ScopeModeV2.CAMPAIGN, campaign_id=CAMPAIGN_A)
     )
 
     assert _projected_object_ids(result) == {
@@ -459,7 +463,7 @@ def test_campaign_scope_admits_requested_campaign_plus_world_owned_only():
         "obj:alpha-keep",
         "obj:alpha-secret",
     }
-    assert result.snapshot.scope_mode is ScopeMode.CAMPAIGN
+    assert result.snapshot.scope_mode is ScopeModeV2.CAMPAIGN
     assert result.snapshot.campaign_id == CAMPAIGN_A
 
 
@@ -468,7 +472,7 @@ def test_world_scope_remains_world_owned_only():
     world_graph = InMemoryWorldGraphRepository()
     _publish_v6(world_graph)
 
-    result = _v6_service(world_graph).project(_v6_request(scope_mode=ScopeMode.WORLD))
+    result = _v6_service(world_graph).project(_v6_request(scope_mode=ScopeModeV2.WORLD))
 
     assert _projected_object_ids(result) == {"obj:world-tavern"}
 
@@ -478,7 +482,7 @@ def test_world_cross_campaign_lens_admits_all_campaigns_in_one_exact_revision():
     published = _publish_v6(world_graph)
 
     result = _v6_service(world_graph).project(
-        _v6_request(scope_mode=ScopeMode.WORLD_CROSS_CAMPAIGN)
+        _v6_request(scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN)
     )
 
     assert _projected_object_ids(result) == {
@@ -489,8 +493,9 @@ def test_world_cross_campaign_lens_admits_all_campaigns_in_one_exact_revision():
     }
     # One exact revision read: the cross-campaign lens is not a fan-out merge.
     assert result.snapshot.revision_id == published.revision_id
-    assert result.snapshot.scope_mode is ScopeMode.WORLD_CROSS_CAMPAIGN
+    assert result.snapshot.scope_mode is ScopeModeV2.WORLD_CROSS_CAMPAIGN
     assert result.snapshot.campaign_id is None
+    assert result.snapshot.schema_version == "dm_projection_snapshot_v2"
 
 
 def test_world_cross_campaign_player_admissibility_still_fails_closed():
@@ -499,13 +504,13 @@ def test_world_cross_campaign_player_admissibility_still_fails_closed():
 
     player = _v6_service(world_graph).project(
         _v6_request(
-            scope_mode=ScopeMode.WORLD_CROSS_CAMPAIGN,
+            scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN,
             admissibility=Admissibility.PLAYER,
         )
     )
     gm = _v6_service(world_graph).project(
         _v6_request(
-            scope_mode=ScopeMode.WORLD_CROSS_CAMPAIGN,
+            scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN,
             admissibility=Admissibility.GM,
         )
     )
@@ -521,7 +526,7 @@ def test_world_cross_campaign_player_admissibility_still_fails_closed():
 def test_world_cross_campaign_requires_no_campaign_id():
     with pytest.raises(ValidationError, match="campaign_id"):
         _v6_request(
-            scope_mode=ScopeMode.WORLD_CROSS_CAMPAIGN,
+            scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN,
             campaign_id=CAMPAIGN_A,
         )
 
@@ -530,8 +535,33 @@ def test_cross_campaign_scope_contradiction_fails_closed_at_projection():
     """An explicit mode that contradicts campaign_id fails closed, never guesses."""
     with pytest.raises(ScopeResolutionError):
         CampaignScope.resolve(
-            scope_mode=ScopeMode.WORLD_CROSS_CAMPAIGN,
+            scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN,
             campaign_id=CAMPAIGN_A,
         )
     with pytest.raises(ScopeResolutionError):
-        CampaignScope.resolve(scope_mode=ScopeMode.CAMPAIGN, campaign_id=None)
+        CampaignScope.resolve(scope_mode=ScopeModeV2.CAMPAIGN, campaign_id=None)
+
+
+def test_v1_contract_vocabulary_is_frozen_without_cross_campaign():
+    """v1 is frozen: a v1 reader must reject what only v2 accepts."""
+    assert [mode.value for mode in ScopeMode] == ["campaign", "world"]
+    with pytest.raises(ValidationError):
+        WorldGraphProjectionRequest.model_validate(
+            {
+                "world_id": WORLD_ID,
+                "admissibility": "gm",
+                "scope_mode": "world_cross_campaign",
+            }
+        )
+
+
+def test_v2_contract_accepts_the_cross_campaign_vocabulary():
+    request = WorldGraphProjectionRequestV2.model_validate(
+        {
+            "world_id": WORLD_ID,
+            "admissibility": "gm",
+            "scope_mode": "world_cross_campaign",
+        }
+    )
+    assert request.scope_mode is ScopeModeV2.WORLD_CROSS_CAMPAIGN
+    assert request.schema_version == "dm_projection_request_v2"
