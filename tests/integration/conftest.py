@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 import sys
@@ -9,6 +10,12 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+
+# PostgreSQL adapters require the optional ``postgres`` extra. When it is not
+# installed (core CI job, minimal local venvs), skip collecting this directory
+# instead of failing at import time.
+if importlib.util.find_spec("psycopg") is None:
+    collect_ignore_glob = ["*"]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

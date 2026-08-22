@@ -221,7 +221,13 @@ def finalize_contribution_review_v2(
         _validation_error("review_parent_revision_drift")
 
     state = _build_review_state(verified_submission)
-    return review_repository.finalize(state)
+    finalized = review_repository.finalize(state)
+    if not isinstance(finalized, ContributionReviewStateV2):
+        raise ContributionReviewValidationError(
+            "finalized contribution review is not a v2 review",
+            details={"reason": "review_schema_mismatch"},
+        )
+    return finalized
 
 
 def load_contribution_review_v2(

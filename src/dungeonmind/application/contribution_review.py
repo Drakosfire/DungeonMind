@@ -234,7 +234,13 @@ def finalize_contribution_review(
         _validation_error("review_parent_revision_drift")
 
     state = _build_review_state(verified_submission)
-    return review_repository.finalize(state)
+    finalized = review_repository.finalize(state)
+    if not isinstance(finalized, ContributionReviewState):
+        raise ContributionReviewValidationError(
+            "finalized contribution review is not a v1 review",
+            details={"reason": "review_schema_mismatch"},
+        )
+    return finalized
 
 
 def load_contribution_review(
@@ -244,4 +250,12 @@ def load_contribution_review(
     review_repository: ContributionReviewRepository,
 ) -> ContributionReviewState | None:
     """Load one exact reconstructed finalized review state."""
-    return review_repository.get(world_id, review_id)
+    state = review_repository.get(world_id, review_id)
+    if state is None:
+        return None
+    if not isinstance(state, ContributionReviewState):
+        raise ContributionReviewValidationError(
+            "stored contribution review is not a v1 review",
+            details={"reason": "review_schema_mismatch"},
+        )
+    return state
