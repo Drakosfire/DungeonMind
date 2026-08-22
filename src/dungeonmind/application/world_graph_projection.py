@@ -148,6 +148,7 @@ class WorldGraphProjectionService:
             world_id=request.world_id,
             campaign_id=request.campaign_id,
             admissibility=request.admissibility,
+            scope_mode=request.scope_mode,
         )
         snapshot = ProjectionSnapshot(
             world_id=request.world_id,

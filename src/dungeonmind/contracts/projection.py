@@ -58,8 +58,24 @@ class ProjectionFocus(DungeonMindModel):
 
 
 class ScopeMode(StrEnum):
+    """Campaign-scope policy for one read.
+
+    * ``CAMPAIGN`` — the requested campaign plus world-owned knowledge;
+      requires ``campaign_id``.
+    * ``WORLD`` — world-owned knowledge only; campaign-owned sources and
+      campaign-scoped assertions are excluded. Requires ``campaign_id=None``.
+      This is the original v1 meaning and is deliberately unchanged.
+    * ``WORLD_CROSS_CAMPAIGN`` — additive cross-campaign GM lens: world-owned
+      knowledge plus every campaign scope in the world, in one coherent exact
+      revision. Requires ``campaign_id=None``. Added after v1 so the existing
+      ``WORLD`` semantics are not silently redefined; consumers needing the
+      Buddy-style "all campaigns in this world" lens must ask for it
+      explicitly.
+    """
+
     CAMPAIGN = "campaign"
     WORLD = "world"
+    WORLD_CROSS_CAMPAIGN = "world_cross_campaign"
 
 
 def _validate_campaign_and_focus_scope(
@@ -70,6 +86,8 @@ def _validate_campaign_and_focus_scope(
 ) -> None:
     if scope_mode is ScopeMode.WORLD and campaign_id is not None:
         raise ValueError("world scope_mode requires campaign_id to be None")
+    if scope_mode is ScopeMode.WORLD_CROSS_CAMPAIGN and campaign_id is not None:
+        raise ValueError("world_cross_campaign scope_mode requires campaign_id to be None")
     if scope_mode is ScopeMode.CAMPAIGN and not campaign_id:
         raise ValueError("campaign scope_mode requires campaign_id")
     if focus.kind is FocusKind.SESSION:

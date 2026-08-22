@@ -27,7 +27,10 @@ B.2f-0 accepted-review materialization characterization ✅
 B.2f-a finalized-review graph payload materializer ✅
 B.2f-b expected-parent CAS publication ✅
 B.2f-c durable publication identity + uncertain-outcome recovery ✅
-B.2f-d service transport + external consumer contract ← current branch
+B.2f-d service transport + external consumer contract ✅
+R.1   direct World Graph projection service (PR #38) ← current review lane
+R.2   direct World Graph retrieval primitives (named successor, this repo)
+R.3   Buddy graph hydration removal from production reads (Buddy repo)
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
 D     embedding model bakeoff
@@ -432,6 +435,34 @@ Decision record:
 [`Docs/Decisions/ADR-0012-b2f-d-finalized-review-publication-service-transport.md`](../Decisions/ADR-0012-b2f-d-finalized-review-publication-service-transport.md).
 Runbook:
 [`Docs/Runbooks/RUNBOOK-b2f-d-finalized-review-publication-service.md`](../Runbooks/RUNBOOK-b2f-d-finalized-review-publication-service.md).
+
+## Buddy graph retirement cutover (R lane)
+
+DungeonMindBuddy currently hydrates and reads through its own legacy graph
+kernel even though DungeonMind is the graph authority. The R lane retires that
+kernel by exposing DungeonMind's exact, admissibility-scoped graph reads
+directly, then deleting the Buddy-side graph stack.
+
+- **R.1 — direct World Graph projection service** — PR #38 (in review).
+  `WorldGraphProjectionService` resolves one exact revision (pin or current
+  head), parses through an injected `GraphSnapshotReader`, and applies the
+  existing campaign/admissibility/provenance projection — including the
+  additive `world_cross_campaign` scope mode (the GM cross-campaign lens:
+  world-owned plus every campaign scope in one exact revision; the original
+  `world` mode remains world-owned only). No Buddy DTOs, no write path, no
+  semantic search.
+- **R.2 — direct World Graph retrieval primitives** (this repo, named
+  successor) — object lookup, search/referent resolution, one-hop
+  neighborhood, and evidence/source-anchor admission over the R.1 scoped
+  projection.
+- **R.3 — Buddy graph hydration removal** (DungeonMindBuddy repo, named
+  successor) — replace `world_graph_projection` / `world_graph_retrieval`
+  kernel calls with DungeonMind native reads; remove private Buddy revision
+  translation and the frozen-store read dependency. Buddy `world` scope maps
+  to `world_cross_campaign`; Buddy `campaign` scope maps to `campaign`.
+
+Canonical handoff:
+[`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-projection.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-projection.md).
 
 ## Named future lanes (no dates claimed)
 

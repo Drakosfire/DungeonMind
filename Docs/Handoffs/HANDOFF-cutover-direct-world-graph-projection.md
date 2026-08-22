@@ -35,6 +35,10 @@ Read these first, in order:
 - Preserve exact selected revision and current head identity in `ProjectionSnapshot`.
 - Parse through an injected `GraphSnapshotReader`; do not silently choose a semantic-profile registry.
 - Apply the existing `project_scoped_snapshot` campaign/admissibility/provenance policy.
+- Honor `scope_mode` in that policy, including the additive
+  `ScopeMode.WORLD_CROSS_CAMPAIGN` lens (world-owned plus every campaign scope
+  in one exact revision). The original `ScopeMode.WORLD` remains world-owned
+  only; it is not redefined.
 - Return the scoped graph plus projection identity without introducing a second graph representation.
 - Fail closed on missing head, missing revision, repository identity mismatch, or payload world mismatch.
 - Export the new application seam from `dungeonmind.application`.
@@ -57,7 +61,7 @@ Read these first, in order:
 1. DungeonMind durable state is the graph authority; this service is a read projection only.
 2. One read is coherent against one exact immutable revision.
 3. Absence of an explicit revision pin resolves to the head observed for this request and that resolved revision is reported.
-4. Campaign/admissibility/provenance filtering uses the existing `graph_scope` authority; this slice must not fork policy.
+4. Campaign/admissibility/provenance filtering uses the existing `graph_scope` authority; this slice must not fork policy. `scope_mode` is part of that policy: `campaign` means requested campaign plus world-owned knowledge, `world` keeps its original world-owned-only meaning, and the additive `world_cross_campaign` mode is the GM cross-campaign lens over one exact revision. An explicit mode that contradicts `campaign_id` fails closed.
 5. Profile-pinned v3+ graph parsing remains fail-closed. The service requires an injected reader instead of inventing a default profile registry.
 6. Application code imports only contracts/domain/application-layer peers; no infrastructure, FastAPI, database driver, Hermes, or Buddy import.
 7. No graph or source mutation is permitted.
@@ -99,6 +103,16 @@ Behavioral gates:
 - A historical pin returns that exact immutable revision while separately reporting the newer head and `is_head=false`.
 - Missing head/revision and cross-world repository/payload corruption fail closed.
 - The result exposes `ScopedGraphProjection`; no Buddy store, contribution replay, or local graph publication occurs.
+- Campaign scope admits the requested campaign plus world-owned knowledge and excludes other campaigns.
+- `world` scope remains world-owned only (unchanged v1 semantics).
+- `world_cross_campaign` admits world-owned plus multiple campaign scopes in one exact revision, with admissibility still fail-closed.
+- The v6 authority path is proven through the versioned union snapshot reader configured with the bundled D&D v3 semantic profile.
+
+Merge-contract note: `uv run pyright` on the original base failed on six inherited
+contribution-review union errors, and the core job also stopped at a latent SIM300
+and at integration-collection imports without the `postgres` extra. Those inherited
+failures are repaired by the baseline-hygiene PR #39; this branch is rebased onto it
+so every required gate above runs for real rather than carrying a red-gate exception.
 
 ## §7 Stop conditions
 
