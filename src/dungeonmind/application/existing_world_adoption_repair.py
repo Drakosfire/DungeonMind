@@ -313,11 +313,108 @@ def authenticate_repair_command(
     return bundle
 
 
+def intent_from_v4_repair(
+    receipt: ExistingWorldAdoptionReceiptV4,
+) -> ExistingWorldAdoptionSourceClassificationRepairIntentV1:
+    """Reconstruct the only legal intent implied by a stored V4 repair record."""
+    repairs = [
+        ExistingWorldAdoptionSourceArtifactClassificationRepairIntentV1(
+            source_artifact_id=correction.source_artifact_id,
+            set_visibility_to_gm="visibility" in correction.changed_fields,
+            clear_campaign_id="campaign_id" in correction.changed_fields,
+        )
+        for correction in receipt.source_classification_repair.corrections
+    ]
+    return ExistingWorldAdoptionSourceClassificationRepairIntentV1(
+        world_id=receipt.world_id,
+        adoption_id=receipt.adoption_id,
+        repairs=repairs,
+    )
+
+
+def authenticate_v4_repair_against_sealed_bundle(
+    receipt: ExistingWorldAdoptionReceiptV4,
+    bundle: ExistingWorldAdoptionBundleV2,
+) -> dict[str, SourceArtifactV2]:
+    """Prove V4 recorded corrections are exactly sealed originals plus allowed fields.
+
+    For every repaired artifact:
+
+    - sealed fingerprint equals the recorded original fingerprint
+    - the sealed-derived target fingerprint equals the recorded effective
+      fingerprint
+    - only the exact recorded allowed fields change
+    - every other field remains the sealed original
+
+    Returns sealed-derived target artifacts keyed by id.
+    """
+    if bundle.world_id != receipt.world_id or bundle.adoption_id != receipt.adoption_id:
+        _integrity("v4_repair_bundle_identity_mismatch")
+    manifest = derive_membership_manifest(bundle)
+    if manifest != receipt.membership_manifest:
+        _integrity("v4_repair_manifest_mismatch")
+    m0 = sealed_membership_sha256(bundle)
+    if m0 != receipt.membership_sha256:
+        _integrity("v4_repair_historical_membership_mismatch")
+    intent = intent_from_v4_repair(receipt)
+    validate_repair_intent(intent, bundle)
+    corrections, targets, _effective, m1 = _corrections_and_targets(bundle, intent)
+    if m1 != receipt.effective_membership_sha256:
+        _integrity("v4_repair_effective_membership_mismatch")
+    repair = receipt.source_classification_repair
+    if m1 != repair.effective_membership_sha256:
+        _integrity("v4_repair_record_effective_mismatch")
+    stored = {
+        item.source_artifact_id: record_fingerprint(item) for item in repair.corrections
+    }
+    derived = {item.source_artifact_id: record_fingerprint(item) for item in corrections}
+    if stored != derived:
+        _integrity("v4_repair_correction_fingerprint_mismatch")
+    sealed_by_id = {
+        item.source_artifact_id: item for item in bundle.source_artifacts
+    }
+    target_by_id = {item.source_artifact_id: item for item in targets}
+    for correction in repair.corrections:
+        sealed = sealed_by_id[correction.source_artifact_id]
+        target = target_by_id[correction.source_artifact_id]
+        if record_fingerprint(sealed) != correction.original_record_fingerprint:
+            _integrity(
+                "v4_repair_original_fingerprint_mismatch",
+                source_artifact_id=correction.source_artifact_id,
+            )
+        if record_fingerprint(target) != correction.effective_record_fingerprint:
+            _integrity(
+                "v4_repair_effective_fingerprint_mismatch",
+                source_artifact_id=correction.source_artifact_id,
+            )
+    return target_by_id
+
+
+def expected_adopted_source_artifacts(
+    bundle: ExistingWorldAdoptionBundleV2,
+    targets: dict[str, SourceArtifactV2],
+) -> dict[str, SourceArtifactV2]:
+    return {
+        artifact.source_artifact_id: targets.get(
+            artifact.source_artifact_id, artifact
+        )
+        for artifact in bundle.source_artifacts
+    }
+
+
 def v4_is_exact_replay(
     stored: ExistingWorldAdoptionReceiptV4,
     command: ExistingWorldAdoptionSourceClassificationRepairCommandV1,
 ) -> bool:
     repair = stored.source_classification_repair
+    stored_corrections = {
+        item.source_artifact_id: record_fingerprint(item)
+        for item in repair.corrections
+    }
+    command_corrections = {
+        item.source_artifact_id: record_fingerprint(item)
+        for item in command.corrections
+    }
     return (
         stored.world_id == command.world_id
         and stored.adoption_id == command.adoption_id
@@ -327,6 +424,7 @@ def v4_is_exact_replay(
         and stored.membership_manifest == command.membership_manifest
         and repair.repair_id == command.repair_id
         and repair.effective_membership_sha256 == command.effective_membership_sha256
+        and stored_corrections == command_corrections
     )
 
 
@@ -536,6 +634,7 @@ def prepare_source_classification_repair(
     """Run in-boundary proofs. Return stored V4 on exact replay, else a plan."""
     bundle = authenticate_repair_command(command)
     if isinstance(stored, ExistingWorldAdoptionReceiptV4):
+        authenticate_v4_repair_against_sealed_bundle(stored, bundle)
         if v4_is_exact_replay(stored, command):
             return stored
         raise PersistenceIntegrityError(
@@ -630,7 +729,14 @@ def _recovered_v4_matches(
         return False
     if getattr(recovered, "schema_version", None) != EXISTING_WORLD_ADOPTION_RECEIPT_V4_SCHEMA:
         return False
-    return v4_is_exact_replay(recovered, command)
+    if not v4_is_exact_replay(recovered, command):
+        return False
+    try:
+        bundle = parse_sealed_bundle_v2(bytes(command.sealed_bundle_bytes))
+        authenticate_v4_repair_against_sealed_bundle(recovered, bundle)
+    except PersistenceIntegrityError:
+        return False
+    return True
 
 
 def repair_existing_world_adoption_source_classification(

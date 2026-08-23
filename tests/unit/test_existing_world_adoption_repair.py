@@ -29,6 +29,11 @@ from dungeonmind.contracts.existing_world_adoption_repair import (
     ExistingWorldAdoptionSourceArtifactClassificationRepairIntentV1,
     ExistingWorldAdoptionSourceClassificationRepairIntentV1,
 )
+from dungeonmind.contracts.identity import (
+    IdentityDecisionKind,
+    IdentityDecisionRecordV2,
+    IdentityDecisionStatus,
+)
 from dungeonmind.contracts.vocabulary import Visibility
 from dungeonmind.domain.errors import (
     ExistingWorldAdoptionOutcomeUnknownError,
@@ -60,11 +65,20 @@ from tests.unit.test_existing_world_adoption import (
     CAMPAIGN_ID,
     NOW,
     WORLD_ID,
+    _artifact,
+    _revision,
+    _v2_contribution,
     graph_reader,
     make_stores,
     make_v2_bundle,
     v2_bundle_bytes,
 )
+
+DESCENDANT_ARTIFACT_ID = "src:descendant"
+DESCENDANT_REVISION_ID = "srcrev:descendant"
+DESCENDANT_ON_ADOPTED_REVISION_ID = "srcrev:post-adoption-on-a"
+DESCENDANT_CONTRIBUTION_ID = "contrib:descendant"
+DESCENDANT_IDENTITY_ID = "iddec:descendant"
 
 REPAIRED_AT = datetime(2026, 8, 23, 18, 0, tzinfo=UTC)
 
@@ -172,6 +186,64 @@ def _repair(raw, intent, adoptions, *, apply: bool = True, repaired_at=REPAIRED_
         graph_reader=graph_reader(),
         apply=apply,
     )
+
+
+def _correspondence(graph, sources, contributions, identity, adoptions):
+    return ExistingWorldCorrespondenceService(
+        adoption_repository=adoptions,
+        world_graph_repository=graph,
+        contribution_repository=contributions,
+        identity_repository=identity,
+        source_repository=sources,
+        graph_reader=graph_reader(),
+    )
+
+
+def _append_post_adoption_descendants(sources, contributions, identity) -> None:
+    descendant = _artifact(DESCENDANT_ARTIFACT_ID, DESCENDANT_REVISION_ID)
+    sources.put_artifact(descendant)
+    sources.put_revision(
+        _revision(DESCENDANT_REVISION_ID, DESCENDANT_ARTIFACT_ID, "c" * 64)
+    )
+    sources.put_revision(
+        _revision(DESCENDANT_ON_ADOPTED_REVISION_ID, ART_A, "d" * 64)
+    )
+    contributions.append(
+        _v2_contribution(
+            DESCENDANT_CONTRIBUTION_ID,
+            DESCENDANT_ARTIFACT_ID,
+            DESCENDANT_REVISION_ID,
+        )
+    )
+    identity.append(
+        IdentityDecisionRecordV2(
+            decision_id=DESCENDANT_IDENTITY_ID,
+            world_id=WORLD_ID,
+            decision_kind=IdentityDecisionKind.ALIAS_ADD,
+            subject_object_ids=["obj:college"],
+            alias="PostAdoption",
+            status=IdentityDecisionStatus.ACTIVE,
+            created_at=NOW,
+            merge_side_effects=None,
+        )
+    )
+
+
+def _tamper_v4_effective_fingerprint(adoptions, world_id: str = WORLD_ID) -> None:
+    stored = adoptions._receipts_by_world[world_id]
+    assert isinstance(stored, ExistingWorldAdoptionReceiptV4)
+    repair = stored.source_classification_repair
+    first, *rest = repair.corrections
+    tampered = first.model_copy(update={"effective_record_fingerprint": "f" * 64})
+    rewritten = stored.model_copy(
+        update={
+            "source_classification_repair": repair.model_copy(
+                update={"corrections": [tampered, *rest]}
+            )
+        }
+    )
+    adoptions._receipts_by_world[world_id] = rewritten
+    adoptions._receipts_by_adoption[rewritten.adoption_id] = rewritten
 
 
 def test_v3_round_trip_unchanged() -> None:
@@ -528,17 +600,97 @@ def test_v4_correspondence_uses_effective_checkpoint() -> None:
     )
     _inject_allowed_corruption(sources, contributions, identity, adoptions, bundle)
     repaired = _repair(raw, _intent(bundle), adoptions)
-    service = ExistingWorldCorrespondenceService(
-        adoption_repository=adoptions,
-        world_graph_repository=graph,
-        contribution_repository=contributions,
-        identity_repository=identity,
-        source_repository=sources,
-        graph_reader=graph_reader(),
-    )
-    result = service.check(raw, world_id=WORLD_ID)
+    result = _correspondence(
+        graph, sources, contributions, identity, adoptions
+    ).check(raw, world_id=WORLD_ID)
     assert result.classification == "CORRESPONDING"
     assert repaired.membership_sha256 == sealed_membership_sha256(bundle)
+
+
+def test_tampered_v4_correction_is_not_authority() -> None:
+    bundle, raw, graph, sources, contributions, identity, adoptions, _v3 = (
+        _adopt_repairable()
+    )
+    _inject_allowed_corruption(sources, contributions, identity, adoptions, bundle)
+    _repair(raw, _intent(bundle), adoptions)
+    _tamper_v4_effective_fingerprint(adoptions)
+    service = _correspondence(graph, sources, contributions, identity, adoptions)
+    with pytest.raises(PersistenceIntegrityError) as correspondence_info:
+        service.check(raw, world_id=WORLD_ID)
+    assert correspondence_info.value.details.get("reason") in {
+        "v4_repair_correction_fingerprint_mismatch",
+        "v4_repair_effective_fingerprint_mismatch",
+    }
+    with pytest.raises(PersistenceIntegrityError) as replay_info:
+        _repair(raw, _intent(bundle), adoptions)
+    assert replay_info.value.details.get("reason") in {
+        "v4_repair_correction_fingerprint_mismatch",
+        "v4_repair_effective_fingerprint_mismatch",
+    }
+
+
+def test_v4_correspondence_ignores_post_adoption_descendants() -> None:
+    bundle, raw, graph, sources, contributions, identity, adoptions, _v3 = (
+        _adopt_repairable()
+    )
+    _inject_allowed_corruption(sources, contributions, identity, adoptions, bundle)
+    repaired = _repair(raw, _intent(bundle), adoptions)
+    m1 = repaired.effective_membership_sha256
+    _append_post_adoption_descendants(sources, contributions, identity)
+    result = _correspondence(
+        graph, sources, contributions, identity, adoptions
+    ).check(raw, world_id=WORLD_ID)
+    assert result.classification == "CORRESPONDING"
+    assert sources.get_artifact(DESCENDANT_ARTIFACT_ID) is not None
+    assert sources.get_revision(DESCENDANT_REVISION_ID) is not None
+    assert sources.get_revision(DESCENDANT_ON_ADOPTED_REVISION_ID) is not None
+    assert contributions.get(WORLD_ID, DESCENDANT_CONTRIBUTION_ID) is not None
+    assert identity.get(WORLD_ID, DESCENDANT_IDENTITY_ID) is not None
+    manifest = repaired.membership_manifest
+    assert DESCENDANT_ARTIFACT_ID not in manifest.source_artifact_ids
+    assert DESCENDANT_REVISION_ID not in manifest.source_revision_ids
+    assert DESCENDANT_ON_ADOPTED_REVISION_ID not in manifest.source_revision_ids
+    assert DESCENDANT_CONTRIBUTION_ID not in manifest.contribution_ids
+    assert DESCENDANT_IDENTITY_ID not in manifest.identity_decision_ids
+    current_m1 = existing_world_adoption_membership_sha256(
+        source_artifacts=[
+            sources._artifacts[item_id] for item_id in manifest.source_artifact_ids
+        ],
+        source_revisions=[
+            sources._revisions[item_id] for item_id in manifest.source_revision_ids
+        ],
+        contributions=[
+            contributions._items[(WORLD_ID, item_id)]
+            for item_id in manifest.contribution_ids
+        ],
+        identity_decisions=[
+            identity._items[(WORLD_ID, item_id)]
+            for item_id in manifest.identity_decision_ids
+        ],
+    )
+    assert current_m1 == m1
+    assert (
+        _world_membership(sources, contributions, identity, WORLD_ID) != m1
+    )
+
+
+def test_v3_correspondence_still_treats_descendants_as_extras() -> None:
+    _bundle, raw, graph, sources, contributions, identity, adoptions, receipt = (
+        _adopt_repairable()
+    )
+    assert isinstance(receipt, ExistingWorldAdoptionReceiptV3)
+    assert not isinstance(receipt, ExistingWorldAdoptionReceiptV4)
+    _append_post_adoption_descendants(sources, contributions, identity)
+    result = _correspondence(
+        graph, sources, contributions, identity, adoptions
+    ).check(raw, world_id=WORLD_ID)
+    assert result.classification == "MISMATCH"
+    checks = {check.check: check for check in result.checks}
+    assert DESCENDANT_ARTIFACT_ID in (checks["source_history"].detail or "")
+    assert DESCENDANT_CONTRIBUTION_ID in (
+        checks["contribution_history"].detail or ""
+    )
+    assert DESCENDANT_IDENTITY_ID in (checks["identity_history"].detail or "")
 
 
 def test_eldyrwild_fixture_manifest_and_deterministic_m0_m1() -> None:

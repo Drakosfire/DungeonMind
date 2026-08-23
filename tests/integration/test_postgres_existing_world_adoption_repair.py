@@ -27,6 +27,10 @@ from dungeonmind.infrastructure.postgres import (
     PostgresExistingWorldAdoptionRepository,
 )
 from dungeonmind.infrastructure.postgres.serialization import model_fingerprint
+from tests.integration.test_postgres_existing_world_adoption import (
+    _counts,
+    _graph_revision_ids,
+)
 from tests.unit.test_existing_world_adoption import (
     NOW,
     WORLD_ID,
@@ -194,6 +198,46 @@ def test_postgres_repair_precommit_failure_rolls_back(migrated_database: str, pg
     stored = pg.existing_world_adoptions.get_for_world(WORLD_ID)
     assert isinstance(stored, ExistingWorldAdoptionReceiptV3)
     assert not isinstance(stored, ExistingWorldAdoptionReceiptV4)
+
+
+@pytest.mark.integration
+def test_postgres_repair_receipt_stage_failure_rolls_back(
+    migrated_database: str, pg
+) -> None:
+    bundle, raw, v3 = _adopt_repairable(pg)
+    observed = _inject_allowed_corruption(pg, bundle)
+    counts_before = _counts(pg)
+    graph_ids_before = _graph_revision_ids(pg, WORLD_ID)
+    head_before = pg.world_graph.get_head(WORLD_ID)
+    stored_before = pg.existing_world_adoptions.get_for_world(WORLD_ID)
+    assert isinstance(stored_before, ExistingWorldAdoptionReceiptV3)
+    fingerprint_before = model_fingerprint(stored_before)
+    first_id = bundle.source_artifacts[0].source_artifact_id
+    second_id = bundle.source_artifacts[1].source_artifact_id
+
+    def hook(stage: str) -> None:
+        if stage == "receipt":
+            raise RuntimeError("injected receipt abort")
+
+    repository = PostgresExistingWorldAdoptionRepository(
+        PostgresDatabase(migrated_database),
+        failure_hook=hook,
+    )
+    with pytest.raises(ExistingWorldAdoptionOutcomeUnknownError):
+        _repair(pg, raw, bundle, repository=repository)
+    stored = pg.existing_world_adoptions.get_for_world(WORLD_ID)
+    assert isinstance(stored, ExistingWorldAdoptionReceiptV3)
+    assert not isinstance(stored, ExistingWorldAdoptionReceiptV4)
+    assert stored.schema_version == v3.schema_version
+    assert stored.membership_sha256 == observed
+    assert model_fingerprint(stored) == fingerprint_before
+    assert _counts(pg) == counts_before
+    assert _graph_revision_ids(pg, WORLD_ID) == graph_ids_before
+    assert pg.world_graph.get_head(WORLD_ID) == head_before
+    first = pg.sources.get_artifact(first_id)
+    second = pg.sources.get_artifact(second_id)
+    assert first is not None and first.visibility is Visibility.GM
+    assert second is not None and second.campaign_id is None
 
 
 @pytest.mark.integration
