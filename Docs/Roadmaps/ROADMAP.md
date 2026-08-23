@@ -484,14 +484,25 @@ Buddy-side graph stack.
   the 100/1k/5k/10k reference ladder; an informational CI benchmark-smoke
   artifact with no performance gate. Characterization findings (recorded,
   not optimized): full projection per operation is the structural read-cost
-  floor (any read ≥ whole-graph projection; `get_object`@10k = 6.97s vs
-  projection 6.74s); lexical search (+3.2s over projection at 10k) and
-  deliberately-late anchor derivation (+2.8s) are the confirmed superlinear
-  adders; peak traced memory is linear at ~32 KiB per admitted object
-  (318 MiB at 10k, anchor resolution +50 MiB). Candidate optimization lanes
-  (projection memoization keyed by content-addressed revision/scope/
-  admissibility/profile, incremental parse, anchor supporter indexing) are
-  named for successors, not this PR. Original lane scope: make the
+  floor (at 10k the raw projection median is ~97% of the independently
+  measured `get_object` median, 6.74s vs 6.97s, strongly indicating
+  projection as the dominant cost); lexical search (+3.2s over projection
+  at 10k) and deliberately-late anchor derivation (+2.8s) show significant
+  graph-size-dependent secondary costs, growing approximately in proportion
+  to graph size over the measured ladder (four points per case do not
+  establish a complexity class); peak traced memory is linear at ~32 KiB
+  per admitted object (318 MiB at 10k, anchor resolution +50 MiB).
+  Candidate optimization lanes are named for successors, not this PR, and
+  must respect where live authority state enters: **parsed immutable
+  revision reuse** is a straightforward safe candidate (a parsed revision
+  is a pure function of content-addressed bytes), but **scoped projection
+  reuse is not safe by revision/scope key alone** — provenance admission
+  consults live `SourceRepository` state (artifact visibility, campaign
+  membership, lifecycle status, source revision validity), so scoped
+  projection caching requires a source/provenance state version or digest
+  in the key, a bounded coherent read context, or an explicit invalidation
+  equivalent. Other named lanes: incremental parse; anchor supporter
+  indexing. Original lane scope: make the
   DungeonMind graph authority seam intentionally observable before Buddy
   switches production reads. DungeonMind owns the semantic observation model;
   hosts/adapters own export. Add a dependency-light/no-op-default observer port
@@ -516,7 +527,9 @@ Buddy-side graph stack.
   R.2a exit: DungeonMind can explain where graph-read time is spent and expose
   stable, privacy-safe operational signals without binding core to a telemetry
   vendor; a checked-in benchmark baseline records distributions/scaling for
-  the native read path; the R.3 cutover has a named parity/performance witness
+  the native read path (durable summary:
+  `Docs/Benchmarks/BASELINE-world-graph-reads-r2a.md`); the R.3 cutover has a
+  named parity/performance witness
   shape ready to compare Buddy-hydrated and direct-DungeonMind reads.
 - **R.3 — Buddy graph hydration removal** (DungeonMindBuddy repo, named
   successor after R.2a) — `CUTOVER: remove Buddy graph hydration from
