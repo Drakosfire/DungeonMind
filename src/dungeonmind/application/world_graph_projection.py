@@ -162,7 +162,7 @@ class WorldGraphProjectionService:
                 self._error_observation(recorder, request, exc, facts),
             )
             raise
-        self._emit(self._success_observation(recorder, request, result, parsed))
+        self._emit(self._success_observation(recorder, request, result, parsed, facts))
         return result
 
     def _project_observed(
@@ -299,7 +299,16 @@ class WorldGraphProjectionService:
         request: WorldGraphProjectionRequestV2,
         result: WorldGraphProjectionResult,
         parsed: ParsedGraphSnapshot,
+        facts: _ProjectionObservationFacts,
     ) -> WorldGraphReadObservation:
+        # Reuse the counts computed when scope projection completed; a second
+        # graph-sized exclusion scan here would change the cost profile this
+        # seam exists to characterize.
+        scoped_counts = facts.scoped_counts
+        if scoped_counts is None:
+            # Unreachable on the success path (scope projection completed);
+            # observation construction must never break the read.
+            scoped_counts = _scoped_count_fields(result.scoped_graph)
         return WorldGraphReadObservation(
             operation="project",
             outcome="success",
@@ -309,7 +318,7 @@ class WorldGraphProjectionService:
             parsed_relationship_count=len(parsed.relationships),
             parsed_evidence_count=len(parsed.evidence),
             **self._request_fields(request),
-            **_scoped_count_fields(result.scoped_graph),
+            **scoped_counts,
         )
 
 

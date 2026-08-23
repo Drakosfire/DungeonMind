@@ -90,9 +90,13 @@ finer than two significant figures into these numbers.
 3. **Peak traced memory is linear in admitted graph size** at ~32 KiB per
    admitted object (3.2 → 32.4 → 160 → 318 MiB), with anchor resolution
    carrying an additional ~50 MiB at 10k for supporter rederivation.
-4. **PLAYER-scope reads cost less than GM reads at the same size** (1k:
-   347ms vs 516ms projection) because admissibility excludes GM-only content
-   before retrieval phases run.
+4. **PLAYER-campaign reads measured lower than GM cross-campaign reads at
+   1k** (347ms vs 516ms projection) — but the two cases vary scope mode
+   (`campaign` vs `world_cross_campaign`) *and* admissibility (`player` vs
+   `gm`) together, so this ladder cannot attribute the difference to either
+   axis. Isolating the admissibility effect would require a same-scope pair
+   varying only admissibility; that is a successor experiment, not a finding
+   of this baseline.
 
 ## What this baseline is for
 
