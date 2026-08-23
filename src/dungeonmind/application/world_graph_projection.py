@@ -20,7 +20,7 @@ lexical/semantic query behavior. It also performs no durable writes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Protocol
 
@@ -31,6 +31,7 @@ from .graph_snapshot import GraphSnapshotReader, ParsedGraphSnapshot
 from .repositories import SourceRepository, WorldGraphRepository
 from .world_graph_observability import (
     NOOP_READ_OBSERVER,
+    GraphObservationFields,
     PhaseRecorder,
     RequestObservationFields,
     SystemMonotonicReadClock,
@@ -65,6 +66,48 @@ class WorldGraphProjectionResult:
         """Convenience access to the admitted graph snapshot."""
 
         return self.scoped_graph.snapshot
+
+
+def _scoped_count_fields(scoped: ScopedGraphProjection) -> GraphObservationFields:
+    """Admitted/excluded counts for one completed scope projection."""
+
+    admitted = scoped.snapshot
+    scope_unknown = sum(
+        1
+        for exclusion in (
+            *scoped.object_exclusions.values(),
+            *scoped.relationship_exclusions.values(),
+            *scoped.assertion_exclusions.values(),
+        )
+        if exclusion.scope_unknown
+    )
+    return {
+        "graph_schema": admitted.graph_schema,
+        "admitted_object_count": len(admitted.objects),
+        "admitted_relationship_count": len(admitted.relationships),
+        "admitted_evidence_count": len(admitted.evidence),
+        "excluded_object_count": len(scoped.object_exclusions),
+        "excluded_relationship_count": len(scoped.relationship_exclusions),
+        "excluded_assertion_count": len(scoped.assertion_exclusions),
+        "provenance_rejected_count": len(scoped.rejections),
+        "scope_unknown_exclusion_count": scope_unknown,
+    }
+
+
+@dataclass
+class _ProjectionObservationFacts:
+    """Graph facts that become known progressively during one projection.
+
+    Populated as phases complete so a late failure still reports everything
+    already determined; the error path reads this holder. Counts and bounded
+    schema strings only — never identity or content.
+    """
+
+    graph_schema: str | None = None
+    parsed_object_count: int | None = None
+    parsed_relationship_count: int | None = None
+    parsed_evidence_count: int | None = None
+    scoped_counts: GraphObservationFields | None = None
 
 
 class WorldGraphProjectionService:
@@ -104,15 +147,19 @@ class WorldGraphProjectionService:
 
         Emits exactly one terminal ``project`` observation per invocation
         (success or error) through the optional read observer; observation
-        never changes projection semantics.
+        never changes projection semantics. On a late failure the error
+        observation still carries every graph fact that was already
+        determined (parsed counts after parse, admitted counts after scope
+        projection); fields are absent only when the failure preceded them.
         """
 
         recorder = PhaseRecorder(self._read_clock)
+        facts = _ProjectionObservationFacts()
         try:
-            result, parsed = self._project_observed(request, recorder)
+            result, parsed = self._project_observed(request, recorder, facts)
         except Exception as exc:
             self._emit(
-                self._error_observation(recorder, request, exc),
+                self._error_observation(recorder, request, exc, facts),
             )
             raise
         self._emit(self._success_observation(recorder, request, result, parsed))
@@ -122,6 +169,7 @@ class WorldGraphProjectionService:
         self,
         request: WorldGraphProjectionRequestV2,
         recorder: PhaseRecorder,
+        facts: _ProjectionObservationFacts,
     ) -> tuple[WorldGraphProjectionResult, ParsedGraphSnapshot]:
         with recorder.phase("head_lookup"):
             head = self._world_graph.get_head(request.world_id)
@@ -171,6 +219,10 @@ class WorldGraphProjectionService:
                 graph_schema=stored.revision.graph_schema,
                 graph_payload=stored.graph_payload,
             )
+        facts.graph_schema = parsed.graph_schema
+        facts.parsed_object_count = len(parsed.objects)
+        facts.parsed_relationship_count = len(parsed.relationships)
+        facts.parsed_evidence_count = len(parsed.evidence)
         if parsed.world_id != request.world_id:
             raise ScopeResolutionError(
                 "stored graph payload belongs to a different world",
@@ -191,6 +243,7 @@ class WorldGraphProjectionService:
                 admissibility=request.admissibility,
                 scope_mode=request.scope_mode,
             )
+        facts.scoped_counts = _scoped_count_fields(scoped)
         snapshot = ProjectionSnapshotV2(
             world_id=request.world_id,
             campaign_id=request.campaign_id,
@@ -222,15 +275,23 @@ class WorldGraphProjectionService:
         recorder: PhaseRecorder,
         request: WorldGraphProjectionRequestV2,
         exc: Exception,
+        facts: _ProjectionObservationFacts,
     ) -> WorldGraphReadObservation:
-        return WorldGraphReadObservation(
+        observation = WorldGraphReadObservation(
             operation="project",
             outcome="error",
             duration_seconds=recorder.total_seconds(),
             phase_durations=recorder.phases,
             failure_code=classify_read_failure(exc),
+            graph_schema=facts.graph_schema,
+            parsed_object_count=facts.parsed_object_count,
+            parsed_relationship_count=facts.parsed_relationship_count,
+            parsed_evidence_count=facts.parsed_evidence_count,
             **self._request_fields(request),
         )
+        if facts.scoped_counts is not None:
+            observation = replace(observation, **facts.scoped_counts)
+        return observation
 
     def _success_observation(
         self,
@@ -239,35 +300,16 @@ class WorldGraphProjectionService:
         result: WorldGraphProjectionResult,
         parsed: ParsedGraphSnapshot,
     ) -> WorldGraphReadObservation:
-        admitted = result.scoped_graph.snapshot
-        scoped = result.scoped_graph
-        scope_unknown = sum(
-            1
-            for exclusion in (
-                *scoped.object_exclusions.values(),
-                *scoped.relationship_exclusions.values(),
-                *scoped.assertion_exclusions.values(),
-            )
-            if exclusion.scope_unknown
-        )
         return WorldGraphReadObservation(
             operation="project",
             outcome="success",
             duration_seconds=recorder.total_seconds(),
             phase_durations=recorder.phases,
-            graph_schema=parsed.graph_schema,
             parsed_object_count=len(parsed.objects),
             parsed_relationship_count=len(parsed.relationships),
             parsed_evidence_count=len(parsed.evidence),
-            admitted_object_count=len(admitted.objects),
-            admitted_relationship_count=len(admitted.relationships),
-            admitted_evidence_count=len(admitted.evidence),
-            excluded_object_count=len(scoped.object_exclusions),
-            excluded_relationship_count=len(scoped.relationship_exclusions),
-            excluded_assertion_count=len(scoped.assertion_exclusions),
-            provenance_rejected_count=len(scoped.rejections),
-            scope_unknown_exclusion_count=scope_unknown,
             **self._request_fields(request),
+            **_scoped_count_fields(result.scoped_graph),
         )
 
 

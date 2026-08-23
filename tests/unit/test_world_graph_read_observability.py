@@ -130,6 +130,49 @@ class _CountingProjectionService(WorldGraphProjectionService):
         return super().project(request)
 
 
+class _ExplodingSources:
+    """Source repository wrapper that fails closed once armed.
+
+    Provenance admission and revalidation both consult ``get_artifact`` /
+    ``get_revision``; arming the stub makes whichever phase runs next fail
+    without touching identity-bearing values.
+    """
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.armed = False
+
+    def get_artifact(self, *args, **kwargs):
+        if self.armed:
+            raise DungeonMindError("source authority unavailable")
+        return self._inner.get_artifact(*args, **kwargs)
+
+    def get_revision(self, *args, **kwargs):
+        if self.armed:
+            raise DungeonMindError("source authority unavailable")
+        return self._inner.get_revision(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class _ArmingProjectionService(WorldGraphProjectionService):
+    """Projection service that arms the sources stub after a successful read.
+
+    Simulates a source-authority failure that strikes only after the nested
+    projection has completed, i.e. mid-retrieval in a later phase.
+    """
+
+    def __init__(self, armed_sources: _ExplodingSources, **kwargs):
+        super().__init__(sources=armed_sources, **kwargs)
+        self._armed_sources = armed_sources
+
+    def project(self, request):
+        result = super().project(request)
+        self._armed_sources.armed = True
+        return result
+
+
 def _services(
     world_graph: InMemoryWorldGraphRepository,
     *,
@@ -354,6 +397,52 @@ def test_project_error_observations_classify_without_exception_text():
         )
     assert observer2.observations[0].failure_code == "revision_not_found"
     _assert_no_forbidden_tokens(observer2.observations[0])
+
+
+def test_project_late_error_retains_parsed_counts():
+    """Parse succeeded but scope projection failed: parsed facts are known.
+
+    The error observation must retain graph_schema and the parsed counts
+    (they existed before the failure) while admitted/excluded counts stay
+    absent (scope projection never completed).
+    """
+
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    observer = _RecordingObserver()
+    sources = _ExplodingSources(_seed_sources())
+    sources.armed = True  # provenance admission fails inside scope projection
+    projection = WorldGraphProjectionService(
+        world_graph=world_graph,
+        sources=sources,
+        graph_reader=VersionedUnionGraphSnapshotReader(
+            profile_registry=StaticSemanticProfileRegistry([_v6_descriptor()])
+        ),
+        clock=_FixedClock(),
+        read_observer=observer,
+    )
+
+    with pytest.raises(DungeonMindError):
+        projection.project(_request(scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN))
+
+    assert len(observer.observations) == 1
+    obs = observer.observations[0]
+    assert obs.operation == "project"
+    assert obs.outcome == "error"
+    assert obs.failure_code == "graph_read_failed"
+    assert [p.phase for p in obs.phase_durations] == [
+        "head_lookup",
+        "revision_load",
+        "parse",
+        "scope_projection",
+    ]
+    assert obs.graph_schema is not None
+    assert obs.parsed_object_count == 6
+    assert obs.parsed_relationship_count is not None
+    assert obs.parsed_evidence_count is not None
+    assert obs.admitted_object_count is None
+    assert obs.excluded_object_count is None
+    _assert_no_forbidden_tokens(obs)
 
 
 def test_project_player_campaign_counts_without_identity():
@@ -594,6 +683,60 @@ def test_resolve_source_anchor_observation_success_and_miss():
     outer = observer.observations[-1]
     assert outer.outcome == "miss"
     assert outer.result_anchor_count == 0
+    _assert_no_forbidden_tokens(outer)
+
+
+def test_retrieval_late_error_retains_admitted_graph_counts():
+    """Projection succeeded but a later retrieval phase failed.
+
+    The outer error observation must retain the admitted graph and exclusion
+    counts the nested projection already determined, while the nested project
+    observation remains a normal success.
+    """
+
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    observer = _RecordingObserver()
+    sources = _ExplodingSources(_seed_sources())
+    projection = _ArmingProjectionService(
+        armed_sources=sources,
+        world_graph=world_graph,
+        graph_reader=VersionedUnionGraphSnapshotReader(
+            profile_registry=StaticSemanticProfileRegistry([_v6_descriptor()])
+        ),
+        clock=_FixedClock(),
+        read_observer=observer,
+    )
+    retrieval = WorldGraphRetrievalService(
+        projection=projection, sources=sources, read_observer=observer
+    )
+
+    with pytest.raises(DungeonMindError):
+        retrieval.get_object(
+            _request(scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN),
+            object_id="obj:world-tavern",
+        )
+
+    assert [obs.operation for obs in observer.observations] == ["project", "get_object"]
+    project_obs, outer = observer.observations
+    assert project_obs.outcome == "success"
+    assert outer.outcome == "error"
+    assert outer.failure_code == "graph_read_failed"
+    assert [p.phase for p in outer.phase_durations] == [
+        "projection",
+        "object_selection",
+        "anchor_derivation",
+    ]
+    assert outer.graph_schema == project_obs.graph_schema
+    assert outer.admitted_object_count == project_obs.admitted_object_count
+    assert outer.admitted_relationship_count == project_obs.admitted_relationship_count
+    assert outer.admitted_evidence_count == project_obs.admitted_evidence_count
+    assert outer.excluded_object_count == project_obs.excluded_object_count
+    assert outer.excluded_relationship_count == project_obs.excluded_relationship_count
+    assert outer.excluded_assertion_count == project_obs.excluded_assertion_count
+    assert outer.provenance_rejected_count == project_obs.provenance_rejected_count
+    assert outer.scope_unknown_exclusion_count == project_obs.scope_unknown_exclusion_count
+    assert outer.result_object_count is None  # the lookup never completed
     _assert_no_forbidden_tokens(outer)
 
 

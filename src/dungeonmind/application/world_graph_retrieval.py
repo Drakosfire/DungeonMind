@@ -687,14 +687,21 @@ class WorldGraphRetrievalService:
         request: WorldGraphProjectionRequestV2,
         operation: WorldGraphReadOperation,
         exc: Exception,
+        projection: WorldGraphProjectionResult | None = None,
     ) -> WorldGraphReadObservation:
+        # When the nested projection succeeded, its admitted-graph facts are
+        # already known and remain part of the operation's terminal fact even
+        # though a later retrieval phase failed.
+        fields: dict[str, Any] = {**self._request_fields(request)}
+        if projection is not None:
+            fields.update(self._graph_fields(projection))
         return WorldGraphReadObservation(
             operation=operation,
             outcome="error",
             duration_seconds=recorder.total_seconds(),
             phase_durations=recorder.phases,
             failure_code=classify_read_failure(exc),
-            **self._request_fields(request),
+            **fields,
         )
 
     def get_object(
@@ -706,11 +713,13 @@ class WorldGraphRetrievalService:
     ) -> ObjectLookupResult:
         """Exact stable-ID object lookup. A miss is explicit; never a search."""
         recorder = PhaseRecorder(self._read_clock)
+        projected: WorldGraphProjectionResult | None = None
         try:
             if not object_id.strip():
                 raise ValueError("object_id must be non-blank")
             with recorder.phase("projection"):
                 result = self._projection.project(request)
+            projected = result
             obj = result.graph.objects.get(object_id)
             if obj is None:
                 gap_codes: tuple[str, ...] = ()
@@ -766,7 +775,7 @@ class WorldGraphRetrievalService:
                 ),
             )
         except Exception as exc:
-            self._emit(self._error_observation(recorder, request, "get_object", exc))
+            self._emit(self._error_observation(recorder, request, "get_object", exc, projected))
             raise
         self._emit(self._object_observation(recorder, request, result, op_result))
         return op_result
@@ -811,10 +820,12 @@ class WorldGraphRetrievalService:
         the blocked object as a candidate. An empty query selects seeds only.
         """
         recorder = PhaseRecorder(self._read_clock)
+        projected: WorldGraphProjectionResult | None = None
         try:
             seeds = _normalize_seeds(seed_object_ids, required=False)
             with recorder.phase("projection"):
                 result = self._projection.project(request)
+            projected = result
             graph = result.graph
             with recorder.phase("referent_and_lexical_scoring"):
                 referents = tuple(
@@ -912,7 +923,7 @@ class WorldGraphRetrievalService:
                 ),
             )
         except Exception as exc:
-            self._emit(self._error_observation(recorder, request, "search", exc))
+            self._emit(self._error_observation(recorder, request, "search", exc, projected))
             raise
         self._emit(self._search_observation(recorder, request, result, op_result))
         return op_result
@@ -963,12 +974,14 @@ class WorldGraphRetrievalService:
         the admitted snapshot.
         """
         recorder = PhaseRecorder(self._read_clock)
+        projected: WorldGraphProjectionResult | None = None
         try:
             if depth not in (1, 2):
                 raise ValueError("neighborhood depth must be 1 or 2")
             seeds = _normalize_seeds(seed_object_ids, required=True)
             with recorder.phase("projection"):
                 result = self._projection.project(request)
+            projected = result
             graph = result.graph
 
             with recorder.phase("traversal"):
@@ -1065,7 +1078,9 @@ class WorldGraphRetrievalService:
                 ),
             )
         except Exception as exc:
-            self._emit(self._error_observation(recorder, request, "get_neighborhood", exc))
+            self._emit(
+                self._error_observation(recorder, request, "get_neighborhood", exc, projected)
+            )
             raise
         self._emit(
             self._neighborhood_observation(recorder, request, result, op_result, depth)
@@ -1114,11 +1129,13 @@ class WorldGraphRetrievalService:
         scope-unknown provenance never echoes identifiers.
         """
         recorder = PhaseRecorder(self._read_clock)
+        projected: WorldGraphProjectionResult | None = None
         try:
             if not 1 <= max_anchors <= _ANCHORS_LIMIT:
                 raise ValueError(f"max_anchors must be within 1..{_ANCHORS_LIMIT}")
             with recorder.phase("projection"):
                 result = self._projection.project(request)
+            projected = result
             graph = result.graph
 
             obj: GraphObjectView | None = None
@@ -1191,7 +1208,7 @@ class WorldGraphRetrievalService:
                 ),
             )
         except Exception as exc:
-            self._emit(self._error_observation(recorder, request, "get_evidence", exc))
+            self._emit(self._error_observation(recorder, request, "get_evidence", exc, projected))
             raise
         self._emit(self._evidence_observation(recorder, request, result, op_result))
         return op_result
@@ -1233,11 +1250,13 @@ class WorldGraphRetrievalService:
         identity does not resolve here.
         """
         recorder = PhaseRecorder(self._read_clock)
+        projected: WorldGraphProjectionResult | None = None
         try:
             if not anchor_id.strip():
                 raise ValueError("anchor_id must be non-blank")
             with recorder.phase("projection"):
                 result = self._projection.project(request)
+            projected = result
             with recorder.phase("anchor_derivation"):
                 assertion_index = _index_admitted_assertions(result)
                 anchors, _truncated, _gaps = self._anchors_for(
@@ -1264,7 +1283,9 @@ class WorldGraphRetrievalService:
                         break
         except Exception as exc:
             self._emit(
-                self._error_observation(recorder, request, "resolve_source_anchor", exc)
+                self._error_observation(
+                    recorder, request, "resolve_source_anchor", exc, projected
+                )
             )
             raise
         self._emit(
