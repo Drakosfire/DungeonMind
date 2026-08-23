@@ -12,17 +12,28 @@ from ...application.existing_world_adoption import (
     bind_existing_world_adoption_command,
     terminal_existing_world_adoption_receipt,
 )
+from ...application.existing_world_adoption_repair import (
+    LoadedAdoptedMembership,
+    membership_from_loaded,
+    prepare_source_classification_repair,
+)
 from ...application.repositories import (
     DurableExistingWorldAdoptionCommand,
     DurableExistingWorldAdoptionReceipt,
 )
+from ...contracts.evidence import SourceArtifactV2
 from ...contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
     EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
     EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_V4_SCHEMA,
     ExistingWorldAdoptionReceiptV1,
     ExistingWorldAdoptionReceiptV2,
     ExistingWorldAdoptionReceiptV3,
+    ExistingWorldAdoptionReceiptV4,
+)
+from ...contracts.existing_world_adoption_repair import (
+    ExistingWorldAdoptionSourceClassificationRepairCommandV1,
 )
 from ...contracts.graph import PublishRevisionCommand
 from ...domain.errors import IdempotencyConflictError, PersistenceIntegrityError
@@ -33,10 +44,22 @@ from .graph import (
     _reconstruct_stored_revision,
 )
 from .records import (
+    _ARTIFACT_SELECT as _SOURCE_ARTIFACT_SELECT,
+)
+from .records import (
+    _CONTRIBUTION_SELECT,
+    _IDENTITY_SELECT,
     _append_contribution_in_transaction,
     _append_identity_in_transaction,
     _put_artifact_in_transaction,
     _put_revision_in_transaction,
+    _return_artifact,
+    _return_contribution,
+    _return_identity,
+    _return_revision,
+)
+from .records import (
+    _REVISION_SELECT as _SOURCE_REVISION_SELECT,
 )
 from .serialization import dump_payload, model_fingerprint, reconstruct
 
@@ -128,8 +151,82 @@ def _exists(conn: Connection[Any], query: str, params: tuple[Any, ...]) -> bool:
 def _v2_adoption_facts(receipt: DurableExistingWorldAdoptionReceipt) -> dict[str, Any]:
     """The adoption facts shared by v2/v3 receipts (representation excluded)."""
     return receipt.model_dump(
-        mode="json", exclude={"schema_version", "membership_sha256"}
+        mode="json",
+        exclude={
+            "schema_version",
+            "membership_sha256",
+            "effective_membership_sha256",
+            "membership_manifest",
+            "source_classification_repair",
+        },
     )
+
+
+def _update_source_artifact_in_transaction(
+    conn: Connection[Any],
+    artifact: SourceArtifactV2,
+) -> SourceArtifactV2:
+    """Typed in-transaction SourceArtifactV2 update owned by the adoption UoW."""
+    fingerprint = model_fingerprint(artifact)
+    source_domain = (
+        artifact.source_domain.value if artifact.source_domain is not None else None
+    )
+    visibility = artifact.visibility.value if artifact.visibility is not None else None
+    conn.execute(
+        sql.SQL(
+            """
+            UPDATE {}.source_artifacts
+            SET campaign_id = %s,
+                session_id = %s,
+                source_domain = %s,
+                status = %s,
+                visibility = %s,
+                current_revision_id = %s,
+                created_at = %s,
+                schema_version = %s,
+                record_fingerprint = %s,
+                payload = %s
+            WHERE source_artifact_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (
+            artifact.campaign_id,
+            artifact.session_id,
+            source_domain,
+            artifact.status.value,
+            visibility,
+            artifact.current_revision_id,
+            artifact.created_at,
+            artifact.schema_version,
+            fingerprint,
+            jsonb(dump_payload(artifact)),
+            artifact.source_artifact_id,
+        ),
+    )
+    row = conn.execute(
+        sql.SQL(
+            f"""
+            SELECT {_SOURCE_ARTIFACT_SELECT}
+            FROM {{}}.source_artifacts
+            WHERE source_artifact_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (artifact.source_artifact_id,),
+    ).fetchone()
+    if row is None:
+        raise PersistenceIntegrityError(
+            f"source artifact {artifact.source_artifact_id!r} missing after repair update"
+        )
+    restored = _return_artifact(row)
+    if not isinstance(restored, SourceArtifactV2):
+        raise PersistenceIntegrityError(
+            "existing-world adoption repair restored a non-v2 source artifact"
+        )
+    if model_fingerprint(restored) != fingerprint:
+        raise PersistenceIntegrityError(
+            "existing-world adoption repair artifact fingerprint mismatch after update"
+        )
+    return restored
 
 
 class PostgresExistingWorldAdoptionRepository:
@@ -154,6 +251,8 @@ class PostgresExistingWorldAdoptionRepository:
             )
         elif schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA:
             receipt_type = ExistingWorldAdoptionReceiptV2
+        elif schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V4_SCHEMA:
+            receipt_type = ExistingWorldAdoptionReceiptV4
         elif schema_version == EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA:
             receipt_type = ExistingWorldAdoptionReceiptV3
         else:
@@ -346,6 +445,15 @@ class PostgresExistingWorldAdoptionRepository:
                     details={"reason": "adoption_receipt_missing", "world_id": world_id},
                 )
             current = self._load_verified(conn, row)
+            if isinstance(current, ExistingWorldAdoptionReceiptV4):
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt promotion requires a v2 receipt",
+                    details={
+                        "reason": "adoption_receipt_promotion_unsupported_schema",
+                        "world_id": world_id,
+                        "receipt_schema": current.schema_version,
+                    },
+                )
             if isinstance(current, ExistingWorldAdoptionReceiptV3):
                 if model_fingerprint(current) == model_fingerprint(promoted):
                     return current.model_copy(deep=True)
@@ -417,6 +525,217 @@ class PostgresExistingWorldAdoptionRepository:
                 )
             restored = self._load_verified(conn, updated)
             if not isinstance(restored, ExistingWorldAdoptionReceiptV3):
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt failed reconstruction"
+                )
+            return restored
+
+    def _load_adopted_membership(
+        self,
+        conn: Connection[Any],
+        command: ExistingWorldAdoptionSourceClassificationRepairCommandV1,
+    ) -> LoadedAdoptedMembership:
+        manifest = command.membership_manifest
+        artifact_rows = conn.execute(
+            sql.SQL(
+                f"""
+                SELECT {_SOURCE_ARTIFACT_SELECT}
+                FROM {{}}.source_artifacts
+                WHERE source_artifact_id = ANY(%s)
+                """
+            ).format(sql.Identifier(SCHEMA)),
+            (list(manifest.source_artifact_ids),),
+        ).fetchall()
+        if len(artifact_rows) != len(manifest.source_artifact_ids):
+            raise PersistenceIntegrityError(
+                "existing-world adoption repair adopted artifact missing",
+                details={"reason": "adoption_repair_artifact_missing"},
+            )
+        artifacts = {}
+        for row in artifact_rows:
+            artifact = _return_artifact(row)
+            if artifact.world_id != command.world_id:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption repair artifact world mismatch",
+                    details={
+                        "reason": "adoption_repair_artifact_world_mismatch",
+                        "artifact_id": artifact.source_artifact_id,
+                    },
+                )
+            artifacts[artifact.source_artifact_id] = artifact
+
+        revision_rows = conn.execute(
+            sql.SQL(
+                f"""
+                SELECT {_SOURCE_REVISION_SELECT}
+                FROM {{}}.source_revisions
+                WHERE source_revision_id = ANY(%s)
+                """
+            ).format(sql.Identifier(SCHEMA)),
+            (list(manifest.source_revision_ids),),
+        ).fetchall()
+        if len(revision_rows) != len(manifest.source_revision_ids):
+            raise PersistenceIntegrityError(
+                "existing-world adoption repair adopted revision missing",
+                details={"reason": "adoption_repair_revision_missing"},
+            )
+        revisions = {
+            revision.source_revision_id: revision
+            for revision in (_return_revision(row) for row in revision_rows)
+        }
+
+        contribution_rows = conn.execute(
+            sql.SQL(
+                f"""
+                SELECT {_CONTRIBUTION_SELECT}
+                FROM {{}}.graph_contributions
+                WHERE world_id = %s AND contribution_id = ANY(%s)
+                """
+            ).format(sql.Identifier(SCHEMA)),
+            (command.world_id, list(manifest.contribution_ids)),
+        ).fetchall()
+        if len(contribution_rows) != len(manifest.contribution_ids):
+            raise PersistenceIntegrityError(
+                "existing-world adoption repair adopted contribution missing",
+                details={"reason": "adoption_repair_contribution_missing"},
+            )
+        contributions = {
+            item.contribution_id: item
+            for item in (_return_contribution(row) for row in contribution_rows)
+        }
+
+        identity_rows = conn.execute(
+            sql.SQL(
+                f"""
+                SELECT {_IDENTITY_SELECT}
+                FROM {{}}.identity_decisions
+                WHERE world_id = %s AND decision_id = ANY(%s)
+                """
+            ).format(sql.Identifier(SCHEMA)),
+            (command.world_id, list(manifest.identity_decision_ids)),
+        ).fetchall()
+        if len(identity_rows) != len(manifest.identity_decision_ids):
+            raise PersistenceIntegrityError(
+                "existing-world adoption repair adopted identity decision missing",
+                details={"reason": "adoption_repair_identity_missing"},
+            )
+        identity_decisions = {
+            item.decision_id: item
+            for item in (_return_identity(row) for row in identity_rows)
+        }
+        return LoadedAdoptedMembership(
+            artifacts=artifacts,
+            revisions=revisions,
+            contributions=contributions,
+            identity_decisions=identity_decisions,
+        )
+
+    def repair_source_classification(
+        self,
+        command: ExistingWorldAdoptionSourceClassificationRepairCommandV1,
+        *,
+        dry_run: bool = False,
+    ) -> ExistingWorldAdoptionReceiptV4:
+        """Atomically repair adopted source classification, or prove it with no writes."""
+        world_id = command.world_id
+        with self._database.transaction() as conn:
+            lock_world(conn, world_id, created_at=command.repaired_at)
+            conn.execute(
+                sql.SQL(
+                    """
+                    LOCK TABLE {}.source_artifacts,
+                                {}.source_revisions,
+                                {}.graph_contributions,
+                                {}.identity_decisions
+                    IN SHARE ROW EXCLUSIVE MODE
+                    """
+                ).format(
+                    sql.Identifier(SCHEMA),
+                    sql.Identifier(SCHEMA),
+                    sql.Identifier(SCHEMA),
+                    sql.Identifier(SCHEMA),
+                )
+            )
+            row = _adoption_row(conn, world_id=world_id)
+            if row is None:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption repair found no receipt",
+                    details={"reason": "adoption_receipt_missing", "world_id": world_id},
+                )
+            verified = self._load_verified(conn, row)
+            loaded = self._load_adopted_membership(conn, command)
+            revision_row = conn.execute(
+                sql.SQL(
+                    f"""
+                    SELECT {_REVISION_SELECT}
+                    FROM {{}}.graph_revisions
+                    WHERE world_id = %s AND revision_id = %s
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (verified.world_id, verified.published_revision_id),
+            ).fetchone()
+            if revision_row is None:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt references a missing revision"
+                )
+            stored_revision = _reconstruct_stored_revision(revision_row)
+            prepared = prepare_source_classification_repair(
+                command=command,
+                stored=verified,
+                loaded=loaded,
+                published_graph_payload=stored_revision.graph_payload,
+            )
+            if isinstance(prepared, ExistingWorldAdoptionReceiptV4):
+                return prepared.model_copy(deep=True)
+            if dry_run:
+                return prepared.v4_receipt.model_copy(deep=True)
+            for target in prepared.artifacts_to_write:
+                _update_source_artifact_in_transaction(conn, target)
+            if self._failure_hook is not None:
+                self._failure_hook("repaired_artifacts")
+            observed_m1 = membership_from_loaded(
+                self._load_adopted_membership(conn, command),
+                command.membership_manifest,
+            )
+            if observed_m1 != command.effective_membership_sha256:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption repair effective membership mismatch",
+                    details={
+                        "reason": "adoption_repair_effective_mismatch",
+                        "world_id": world_id,
+                        "expected_membership_sha256": (
+                            command.effective_membership_sha256
+                        ),
+                        "observed_membership_sha256": observed_m1,
+                    },
+                )
+            promoted = prepared.v4_receipt
+            conn.execute(
+                sql.SQL(
+                    """
+                    UPDATE {}.existing_world_adoptions
+                    SET schema_version = %s,
+                        record_fingerprint = %s,
+                        payload = %s
+                    WHERE world_id = %s
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (
+                    promoted.schema_version,
+                    model_fingerprint(promoted),
+                    jsonb(dump_payload(promoted)),
+                    world_id,
+                ),
+            )
+            if self._failure_hook is not None:
+                self._failure_hook("receipt")
+            updated = _adoption_row(conn, world_id=world_id)
+            if updated is None:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt missing after repair"
+                )
+            restored = self._load_verified(conn, updated)
+            if not isinstance(restored, ExistingWorldAdoptionReceiptV4):
                 raise PersistenceIntegrityError(
                     "existing-world adoption receipt failed reconstruction"
                 )

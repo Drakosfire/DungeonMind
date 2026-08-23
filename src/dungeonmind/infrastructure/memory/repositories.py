@@ -20,6 +20,11 @@ from ...application.existing_world_adoption import (
     require_v2_contribution_correction_closure,
     terminal_existing_world_adoption_receipt,
 )
+from ...application.existing_world_adoption_repair import (
+    LoadedAdoptedMembership,
+    membership_from_loaded,
+    prepare_source_classification_repair,
+)
 from ...application.repositories import (
     DurableContributionReviewState,
     DurableExistingWorldAdoptionCommand,
@@ -46,9 +51,14 @@ from ...contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
     EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
     EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_V4_SCHEMA,
     ExistingWorldAdoptionReceiptV1,
     ExistingWorldAdoptionReceiptV2,
     ExistingWorldAdoptionReceiptV3,
+    ExistingWorldAdoptionReceiptV4,
+)
+from ...contracts.existing_world_adoption_repair import (
+    ExistingWorldAdoptionSourceClassificationRepairCommandV1,
 )
 from ...contracts.graph import (
     PublishRevisionCommand,
@@ -110,7 +120,14 @@ def _fingerprint(model: object) -> str:
 def _v2_adoption_facts(model: object) -> dict[str, Any]:
     """The adoption facts shared by v2/v3 receipts (representation excluded)."""
     return model.model_dump(  # type: ignore[attr-defined]
-        mode="json", exclude={"schema_version", "membership_sha256"}
+        mode="json",
+        exclude={
+            "schema_version",
+            "membership_sha256",
+            "effective_membership_sha256",
+            "membership_manifest",
+            "source_classification_repair",
+        },
     )
 
 
@@ -1638,6 +1655,8 @@ class InMemoryExistingWorldAdoptionRepository:
             )
         elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA:
             receipt_type = ExistingWorldAdoptionReceiptV2
+        elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V4_SCHEMA:
+            receipt_type = ExistingWorldAdoptionReceiptV4
         elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA:
             receipt_type = ExistingWorldAdoptionReceiptV3
         else:
@@ -1869,6 +1888,15 @@ class InMemoryExistingWorldAdoptionRepository:
                     details={"reason": "adoption_receipt_missing", "world_id": world_id},
                 )
             verified = self._reconstruct_unlocked(current)
+            if isinstance(verified, ExistingWorldAdoptionReceiptV4):
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt promotion requires a v2 receipt",
+                    details={
+                        "reason": "adoption_receipt_promotion_unsupported_schema",
+                        "world_id": world_id,
+                        "receipt_schema": verified.schema_version,
+                    },
+                )
             if isinstance(verified, ExistingWorldAdoptionReceiptV3):
                 if _fingerprint(verified) == _fingerprint(promoted):
                     return _copy(verified)
@@ -1925,6 +1953,157 @@ class InMemoryExistingWorldAdoptionRepository:
                     "existing-world adoption receipt failed reconstruction"
                 )
             return restored
+
+    def _load_adopted_membership(
+        self,
+        command: ExistingWorldAdoptionSourceClassificationRepairCommandV1,
+    ) -> LoadedAdoptedMembership:
+        manifest = command.membership_manifest
+        artifacts: dict[str, Any] = {}
+        for artifact_id in manifest.source_artifact_ids:
+            artifact = self._sources._artifacts.get(artifact_id)
+            if artifact is None:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption repair adopted artifact missing",
+                    details={
+                        "reason": "adoption_repair_artifact_missing",
+                        "artifact_id": artifact_id,
+                    },
+                )
+            if artifact.world_id != command.world_id:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption repair artifact world mismatch",
+                    details={
+                        "reason": "adoption_repair_artifact_world_mismatch",
+                        "artifact_id": artifact_id,
+                    },
+                )
+            artifacts[artifact_id] = artifact
+        revisions: dict[str, Any] = {}
+        for revision_id in manifest.source_revision_ids:
+            revision = self._sources._revisions.get(revision_id)
+            if revision is None:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption repair adopted revision missing",
+                    details={
+                        "reason": "adoption_repair_revision_missing",
+                        "revision_id": revision_id,
+                    },
+                )
+            revisions[revision_id] = revision
+        contributions: dict[str, Any] = {}
+        for contribution_id in manifest.contribution_ids:
+            item = self._contributions._items.get((command.world_id, contribution_id))
+            if item is None:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption repair adopted contribution missing",
+                    details={
+                        "reason": "adoption_repair_contribution_missing",
+                        "contribution_id": contribution_id,
+                    },
+                )
+            contributions[contribution_id] = item
+        identity_decisions: dict[str, Any] = {}
+        for decision_id in manifest.identity_decision_ids:
+            item = self._identity._items.get((command.world_id, decision_id))
+            if item is None:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption repair adopted identity decision missing",
+                    details={
+                        "reason": "adoption_repair_identity_missing",
+                        "decision_id": decision_id,
+                    },
+                )
+            identity_decisions[decision_id] = item
+        return LoadedAdoptedMembership(
+            artifacts=artifacts,
+            revisions=revisions,
+            contributions=contributions,
+            identity_decisions=identity_decisions,
+        )
+
+    def repair_source_classification(
+        self,
+        command: ExistingWorldAdoptionSourceClassificationRepairCommandV1,
+        *,
+        dry_run: bool = False,
+    ) -> ExistingWorldAdoptionReceiptV4:
+        """Atomically repair the source classification of one already-adopted world.
+
+        One writer-excluding boundary: the per-world graph lock, then every
+        membership family lock — sources, contributions, identity, always in
+        that order — held across the receipt re-verification, the pre-mutation
+        proofs, the mutation, and the receipt swap. ``dry_run=True`` performs
+        the same proofs and returns the would-be V4 receipt with zero writes.
+        """
+        world_id = command.world_id
+        with (
+            self._graph._lock_for(world_id),
+            self._sources._lock,
+            self._contributions._lock,
+            self._identity._lock,
+        ):
+            current = self._receipts_by_world.get(world_id)
+            if current is None:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption repair found no receipt",
+                    details={"reason": "adoption_receipt_missing", "world_id": world_id},
+                )
+            verified = self._reconstruct_unlocked(current)
+            stored_revision = self._graph._revisions.get(
+                (verified.world_id, verified.published_revision_id)
+            )
+            if stored_revision is None:
+                raise PersistenceIntegrityError(
+                    "existing-world adoption receipt references a missing revision"
+                )
+            loaded = self._load_adopted_membership(command)
+            prepared = prepare_source_classification_repair(
+                command=command,
+                stored=verified,
+                loaded=loaded,
+                published_graph_payload=stored_revision.graph_payload,
+            )
+            if isinstance(prepared, ExistingWorldAdoptionReceiptV4):
+                return _copy(prepared)
+            if dry_run:
+                return prepared.v4_receipt.model_copy(deep=True)
+            snapshot = self._snapshot_world(world_id)
+            try:
+                for target in prepared.artifacts_to_write:
+                    self._sources._artifacts[target.source_artifact_id] = _copy(target)
+                if self._failure_hook is not None:
+                    self._failure_hook("repaired_artifacts")
+                observed_m1 = membership_from_loaded(
+                    self._load_adopted_membership(command),
+                    command.membership_manifest,
+                )
+                if observed_m1 != command.effective_membership_sha256:
+                    raise PersistenceIntegrityError(
+                        "existing-world adoption repair effective membership mismatch",
+                        details={
+                            "reason": "adoption_repair_effective_mismatch",
+                            "world_id": world_id,
+                            "expected_membership_sha256": (
+                                command.effective_membership_sha256
+                            ),
+                            "observed_membership_sha256": observed_m1,
+                        },
+                    )
+                stored = _copy(prepared.v4_receipt)
+                self._receipts_by_world[world_id] = stored
+                self._receipts_by_adoption[stored.adoption_id] = stored
+                if self._failure_hook is not None:
+                    self._failure_hook("receipt")
+                restored = self._reconstruct_unlocked(stored)
+                if not isinstance(restored, ExistingWorldAdoptionReceiptV4):
+                    raise PersistenceIntegrityError(
+                        "existing-world adoption receipt failed reconstruction"
+                    )
+                return restored
+            except BaseException:
+                self._restore_world(world_id, snapshot)
+                raise
 
     def adopt(
         self, command: DurableExistingWorldAdoptionCommand
