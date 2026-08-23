@@ -3,9 +3,9 @@
 **Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b / B.2c / B.2d /
 B.2e / B.2f-0 / B.2f-a / B.2f-b / B.2f-c / B.2f-d landed. R.1 (direct World
 Graph projection service, PR #38) landed; R.2 (direct World Graph retrieval
-primitives) is in the current implementation branch. **R.2a (World Graph read
-observability + cutover benchmark baseline) is the first-priority successor
-immediately after R.2 and before any Buddy production-read cutover.**
+primitives, PR #40) landed. **R.2a (World Graph read observability + cutover
+benchmark baseline) is in review as PR #41 and must land before any Buddy
+production-read cutover.**
 Product-surface adoption remains a separate successor. External RulesIngestion
 PR C and product-surface adoption of `mind_turn_v1` remain independent
 successors. Ownership per ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0007,
@@ -33,8 +33,8 @@ B.2f-b expected-parent CAS publication ✅
 B.2f-c durable publication identity + uncertain-outcome recovery ✅
 B.2f-d service transport + external consumer contract ✅
 R.1   direct World Graph projection service (PR #38) ✅
-R.2   direct World Graph retrieval primitives ← current review lane
-R.2a  World Graph read observability + cutover benchmark baseline ← first priority after R.2
+R.2   direct World Graph retrieval primitives (PR #40) ✅
+R.2a  World Graph read observability + cutover benchmark baseline (PR #41, in review)
 R.3   Buddy graph hydration removal from production reads (Buddy repo)
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
@@ -459,8 +459,9 @@ Buddy-side graph stack.
   only; admissibility is an independent axis, so PLAYER reads under the
   lens still fail closed on GM-only content). No Buddy DTOs, no write path, no
   semantic search.
-- **R.2 — direct World Graph retrieval primitives** (this repo, in review) —
-  `WorldGraphRetrievalService` composes the R.1 v2 projection exactly once
+- **R.2 — direct World Graph retrieval primitives** — PR #40 ✅ (merged at
+  `fd0b7605`). `WorldGraphRetrievalService` composes the R.1 v2 projection
+  exactly once
   per operation and owns the five graph-semantic capabilities needed to
   retire Buddy kernel reads: exact object lookup, deterministic graph-only
   search/referent resolution, bounded depth-1/depth-2 neighborhood expansion
@@ -471,7 +472,37 @@ Buddy-side graph stack.
   store, semantic index, LLM, or file-search fallback. Anchor identity binds
   the complete v2 scope/revision/provenance context; no source body is opened.
 - **R.2a — World Graph read observability + cutover benchmark baseline**
-  (**first priority immediately after R.2; must precede R.3**) — make the
+  (**first priority immediately after R.2; must precede R.3**) — PR #41 (in
+  review). Delivered: the application-owned, vendor-neutral
+  `WorldGraphReadObserver` seam (closed vocabularies, structural content
+  safety, fail-open dispatch, no-op default) spanning R.1 projection
+  (`head_lookup` / `revision_load` / `parse` / `scope_projection`) and all
+  R.2 retrieval operations (operation-specific phases; exactly one nested
+  project event plus one outer operation event per call); the deterministic
+  synthetic-v6 + D&D v3 pyperf harness (dev-only) with digest preflight as
+  a correctness gate; checked-in latency and traced-memory baselines over
+  the 100/1k/5k/10k reference ladder; an informational CI benchmark-smoke
+  artifact with no performance gate. Characterization findings (recorded,
+  not optimized): full projection per operation is the structural read-cost
+  floor (at 10k the raw projection median is ~97% of the independently
+  measured `get_object` median, 6.74s vs 6.97s, strongly indicating
+  projection as the dominant cost); lexical search (+3.2s over projection
+  at 10k) and deliberately-late anchor derivation (+2.8s) show significant
+  graph-size-dependent secondary costs, growing approximately in proportion
+  to graph size over the measured ladder (four points per case do not
+  establish a complexity class); peak traced memory is linear at ~32 KiB
+  per admitted object (318 MiB at 10k, anchor resolution +50 MiB).
+  Candidate optimization lanes are named for successors, not this PR, and
+  must respect where live authority state enters: **parsed immutable
+  revision reuse** is a straightforward safe candidate (a parsed revision
+  is a pure function of content-addressed bytes), but **scoped projection
+  reuse is not safe by revision/scope key alone** — provenance admission
+  consults live `SourceRepository` state (artifact visibility, campaign
+  membership, lifecycle status, source revision validity), so scoped
+  projection caching requires a source/provenance state version or digest
+  in the key, a bounded coherent read context, or an explicit invalidation
+  equivalent. Other named lanes: incremental parse; anchor supporter
+  indexing. Original lane scope: make the
   DungeonMind graph authority seam intentionally observable before Buddy
   switches production reads. DungeonMind owns the semantic observation model;
   hosts/adapters own export. Add a dependency-light/no-op-default observer port
@@ -496,7 +527,9 @@ Buddy-side graph stack.
   R.2a exit: DungeonMind can explain where graph-read time is spent and expose
   stable, privacy-safe operational signals without binding core to a telemetry
   vendor; a checked-in benchmark baseline records distributions/scaling for
-  the native read path; the R.3 cutover has a named parity/performance witness
+  the native read path (durable summary:
+  `Docs/Benchmarks/BASELINE-world-graph-reads-r2a.md`); the R.3 cutover has a
+  named parity/performance witness
   shape ready to compare Buddy-hydrated and direct-DungeonMind reads.
 - **R.3 — Buddy graph hydration removal** (DungeonMindBuddy repo, named
   successor after R.2a) — `CUTOVER: remove Buddy graph hydration from
@@ -513,10 +546,11 @@ Buddy-side graph stack.
 
 Canonical handoffs:
 [`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-projection.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-projection.md)
-(R.1) and
+(R.1),
 [`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md)
-(R.2). R.2a handoff is intentionally not yet authored; it is the immediate
-post-R.2 dispatch target.
+(R.2), and
+[`Docs/Handoffs/HANDOFF-cutover-world-graph-read-observability-benchmark.md`](../Handoffs/HANDOFF-cutover-world-graph-read-observability-benchmark.md)
+(R.2a, this lane).
 
 ## Named future lanes (no dates claimed)
 

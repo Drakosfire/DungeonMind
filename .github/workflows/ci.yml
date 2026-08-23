@@ -35,6 +35,34 @@ jobs:
       - name: Unit tests
         run: uv run pytest -m "not integration"
 
+  benchmark-smoke:
+    # Informational R.2a benchmark smoke: proves the harness executes and the
+    # deterministic digest preflight passes. No latency/memory thresholds.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies (locked)
+        run: uv sync --locked
+
+      - name: Benchmark smoke (tiny graph, fast mode)
+        run: uv run python benchmarks/world_graph_reads.py --sizes 100 --fast -o benchmark-smoke.json
+
+      - name: Upload benchmark smoke artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-graph-read-benchmark-smoke
+          path: benchmark-smoke.json
+          retention-days: 14
+
   integration:
     runs-on: ubuntu-latest
     services:
