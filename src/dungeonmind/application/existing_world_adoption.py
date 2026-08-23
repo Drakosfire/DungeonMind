@@ -28,6 +28,7 @@ from ..contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
     EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
     EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA,
+    EXISTING_WORLD_ADOPTION_RECEIPT_V4_SCHEMA,
     ExistingWorldAdoptionBundleV1,
     ExistingWorldAdoptionBundleV2,
     ExistingWorldAdoptionCommandV1,
@@ -35,6 +36,7 @@ from ..contracts.existing_world_adoption import (
     ExistingWorldAdoptionReceiptV1,
     ExistingWorldAdoptionReceiptV2,
     ExistingWorldAdoptionReceiptV3,
+    ExistingWorldAdoptionReceiptV4,
     existing_world_adoption_bundle_canonical_bytes,
     existing_world_adoption_bundle_v2_canonical_bytes,
     sha256_bytes,
@@ -83,6 +85,8 @@ def _reload_receipt(
         receipt_type: type[DurableExistingWorldAdoptionReceipt] = ExistingWorldAdoptionReceiptV1
     elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA:
         receipt_type = ExistingWorldAdoptionReceiptV2
+    elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V4_SCHEMA:
+        receipt_type = ExistingWorldAdoptionReceiptV4
     elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA:
         receipt_type = ExistingWorldAdoptionReceiptV3
     else:

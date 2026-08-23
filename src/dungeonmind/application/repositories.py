@@ -253,6 +253,8 @@ class ExistingWorldAdoptionRepository(Protocol):
     def repair_source_classification(
         self,
         command: ExistingWorldAdoptionSourceClassificationRepairCommandV1,
+        *,
+        dry_run: bool = False,
     ) -> ExistingWorldAdoptionReceiptV4:
         """Atomically repair the source classification of one already-adopted world.
 
@@ -310,6 +312,10 @@ class ExistingWorldAdoptionRepository(Protocol):
         sealed bundle and intent, return it with zero writes. If V4 exists but
         repair identity/target differs, fail with idempotency/integrity
         conflict. No second repair is authorized.
+
+        ``dry_run=True`` performs every pre-mutation proof inside the same
+        writer-excluding boundary and returns the would-be V4 receipt with
+        zero writes.
         """
         ...
 

@@ -29,9 +29,15 @@ EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA = "dm_existing_world_adoption_receipt_v1"
 EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA = "dm_existing_world_adoption_receipt_v2"
 EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA = "dm_existing_world_adoption_receipt_v3"
 EXISTING_WORLD_ADOPTION_RECEIPT_V4_SCHEMA = "dm_existing_world_adoption_receipt_v4"
-EXISTING_WORLD_ADOPTION_MEMBERSHIP_MANIFEST_SCHEMA = "dm_existing_world_adoption_membership_manifest_v1"
-EXISTING_WORLD_ADOPTION_SOURCE_CLASSIFICATION_REPAIR_SCHEMA = "dm_existing_world_adoption_source_classification_repair_v1"
-EXISTING_WORLD_ADOPTION_SOURCE_ARTIFACT_CLASSIFICATION_CORRECTION_SCHEMA = "dm_existing_world_adoption_source_artifact_classification_correction_v1"
+EXISTING_WORLD_ADOPTION_MEMBERSHIP_MANIFEST_SCHEMA = (
+    "dm_existing_world_adoption_membership_manifest_v1"
+)
+EXISTING_WORLD_ADOPTION_SOURCE_CLASSIFICATION_REPAIR_SCHEMA = (
+    "dm_existing_world_adoption_source_classification_repair_v1"
+)
+EXISTING_WORLD_ADOPTION_SOURCE_ARTIFACT_CLASSIFICATION_CORRECTION_SCHEMA = (
+    "dm_existing_world_adoption_source_artifact_classification_correction_v1"
+)
 EXISTING_WORLD_ADOPTION_PROVENANCE_SCHEMA = "dm_existing_world_adoption_source_provenance_v1"
 EXISTING_WORLD_ADOPTION_AUTHORITY_REF_SCHEMA = "dm_existing_world_adoption_authority_ref_v1"
 
@@ -517,20 +523,19 @@ class ExistingWorldAdoptionReceiptV4(ExistingWorldAdoptionReceiptV3):
 
     @model_validator(mode="after")
     def _repair_digest_consistency(self) -> Self:
-        if (
-            self.source_classification_repair.effective_membership_sha256
-            != self.effective_membership_sha256
-        ):
+        repair = self.source_classification_repair
+        if repair.effective_membership_sha256 != self.effective_membership_sha256:
             raise ValueError(
-                "repair record effective_membership_sha256 must equal receipt effective_membership_sha256"
+                "repair record effective_membership_sha256 must equal receipt "
+                "effective_membership_sha256"
             )
-        if (
-            self.source_classification_repair.observed_pre_repair_membership_sha256
-            != self.membership_sha256
-        ):
-            raise ValueError(
-                "repair record observed_pre_repair_membership_sha256 must equal receipt membership_sha256"
-            )
+        manifest_ids = set(self.membership_manifest.source_artifact_ids)
+        for correction in repair.corrections:
+            if correction.source_artifact_id not in manifest_ids:
+                raise ValueError(
+                    "repair correction source_artifact_id must belong to the "
+                    "membership manifest"
+                )
         return self
 
 

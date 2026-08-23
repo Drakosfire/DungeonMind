@@ -168,6 +168,24 @@ extracted with citations in
    connectivity and required table visibility, not review existence, head
    equality, graph payloads, or publishability.
 
+## 3.6 Existing-world adoption repair authority (R.2b / ADR-0021)
+
+1. **The exact sealed adoption bundle** is historical authority for what was
+   adopted. Out-of-band row mutations and rewritten V3 membership digests
+   are incident evidence, not a new definition of the original adoption.
+2. **V3 `membership_sha256` is M0.** It is derived from the sealed bundle's
+   four adopted history families and is never minted from current rows.
+   After a governed repair, V4 restores that historical digest.
+3. **V4 `effective_membership_sha256` is M1.** It is the sanctioned
+   adopted-member checkpoint after one explicit source-classification
+   repair. Correspondence hashes manifest-selected rows against M1; later
+   descendants outside the manifest are not adopted members.
+4. **The repair record is the only license for classification drift.**
+   Allowed transitions are `visibility` None→GM and named session-less
+   worldbuilding `campaign_id` campaign-owned→None. Any third source state
+   is corruption.
+5. **ADR-0021** records this boundary on equal footing with ADR-0019.
+
 ## 4. Known drift found at founding (do not re-import)
 
 Founding recon (same report, §G) documented places where Buddy's

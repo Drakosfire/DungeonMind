@@ -4,9 +4,10 @@
 B.2e / B.2f-0 / B.2f-a / B.2f-b / B.2f-c / B.2f-d landed. R.1 (direct World
 Graph projection service, PR #38) landed; R.2 (direct World Graph retrieval
 primitives, PR #40) landed. **R.2a (World Graph read observability + cutover
-benchmark baseline) is in review as PR #41 and must land before any Buddy
-production-read cutover.**
-Product-surface adoption remains a separate successor. External RulesIngestion
+benchmark baseline, PR #41) landed at
+`b3f419b08676eaca763c8a75c374be6e96ee624e`.** **R.2b (governed adopted-source
+classification repair) is the current DungeonMind lane and must land before
+Buddy R.3 resumes.** Product-surface adoption remains a separate successor. External RulesIngestion
 PR C and product-surface adoption of `mind_turn_v1` remain independent
 successors. Ownership per ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0007,
 ADR-0008, ADR-0009, ADR-0010, ADR-0011, and ADR-0012.
@@ -34,8 +35,10 @@ B.2f-c durable publication identity + uncertain-outcome recovery ✅
 B.2f-d service transport + external consumer contract ✅
 R.1   direct World Graph projection service (PR #38) ✅
 R.2   direct World Graph retrieval primitives (PR #40) ✅
-R.2a  World Graph read observability + cutover benchmark baseline (PR #41, in review)
-R.3   Buddy graph hydration removal from production reads (Buddy repo)
+R.2a  World Graph read observability + cutover benchmark baseline (PR #41) ✅
+R.2b  governed adopted-source classification repair (this PR; blocks R.3)
+R.3   Buddy graph hydration removal from production reads (Buddy repo; paused)
+R.3a  direct-read optimization (later; only after R.3 semantic cutover is viable)
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
 D     embedding model bakeoff
@@ -472,8 +475,8 @@ Buddy-side graph stack.
   store, semantic index, LLM, or file-search fallback. Anchor identity binds
   the complete v2 scope/revision/provenance context; no source body is opened.
 - **R.2a — World Graph read observability + cutover benchmark baseline**
-  (**first priority immediately after R.2; must precede R.3**) — PR #41 (in
-  review). Delivered: the application-owned, vendor-neutral
+  (**landed;** PR #41 merge
+  `b3f419b08676eaca763c8a75c374be6e96ee624e`) — Delivered: the application-owned, vendor-neutral
   `WorldGraphReadObserver` seam (closed vocabularies, structural content
   safety, fail-open dispatch, no-op default) spanning R.1 projection
   (`head_lookup` / `revision_load` / `parse` / `scope_projection`) and all
@@ -531,8 +534,16 @@ Buddy-side graph stack.
   `Docs/Benchmarks/BASELINE-world-graph-reads-r2a.md`); the R.3 cutover has a
   named parity/performance witness
   shape ready to compare Buddy-hydrated and direct-DungeonMind reads.
+- **R.2b — Governed adopted-source classification repair**
+  (**surgical prerequisite discovered by Buddy R.3; must precede any R.3
+  resume**) — one atomic DungeonMind adoption-aggregate operation that
+  preserves sealed V3 membership M0, records an explicit V4 repair, and
+  installs effective membership M1. Do not re-adopt. Do not rewrite V3 in
+  place. Do not add a generic SourceArtifact mutation API. Live Eldyrwild
+  apply is a later operator action after this PR merges. ADR-0021.
 - **R.3 — Buddy graph hydration removal** (DungeonMindBuddy repo, named
-  successor after R.2a) — `CUTOVER: remove Buddy graph hydration from
+  successor after R.2b; **paused** at PR #629 until R.2b lands and Buddy is
+  repinned) — `CUTOVER: remove Buddy graph hydration from
   production reads`: pin the landed DungeonMind R.2/R.2a dependency; adapt
   Buddy `campaign` → v2 `campaign` and Buddy `world` → v2
   `world_cross_campaign`; replace `world_graph_projection` /
@@ -550,13 +561,17 @@ Canonical handoffs:
 [`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md)
 (R.2), and
 [`Docs/Handoffs/HANDOFF-cutover-world-graph-read-observability-benchmark.md`](../Handoffs/HANDOFF-cutover-world-graph-read-observability-benchmark.md)
-(R.2a, this lane).
+(R.2a), and
+[`Docs/Handoffs/HANDOFF-cutover-adoption-source-classification-repair.md`](../Handoffs/HANDOFF-cutover-adoption-source-classification-repair.md)
+(R.2b, this lane).
 
 ## Named future lanes (no dates claimed)
 
 These lanes are named so successors can be dispatched deliberately. None is
 scheduled, and none may be smuggled into an unrelated PR.
 
+- **R.3a — direct-read optimization** — only after Buddy R.3 semantic
+  cutover is again viable. Not this PR.
 - **B.2f-d — service transport and external consumer contract** —
   expose the already-proven terminal publication/recovery seam to an external
   caller. Transport must not add a pending lifecycle, second confirmation,

@@ -49,9 +49,10 @@ receipt-referenced state is resolved before any classification):
    but ``STALE`` is legal only when the durable adopted membership still
    exactly matches the receipt's membership checkpoint: a V3 receipt's
    ``membership_sha256`` is recomputed from the resolved current membership
-   and a mismatch raises (deletion, same-cardinality substitution, and
-   same-id coherent rewrite cannot hide behind a stale snapshot); a pre-V3
-   receipt has no checkpoint, so a diverged identity fails closed with
+   (all current world rows) and a mismatch raises; a V4 receipt recomputes
+   ``effective_membership_sha256`` from the exact membership-manifest IDs
+   so later descendants cannot hide or break the sanctioned checkpoint; a
+   pre-V3 receipt has no checkpoint, so a diverged identity fails closed with
    ``adoption_membership_checkpoint_required`` until steward-supervised
    promotion installs one;
 5. only for an identity-matched snapshot — whose bytes are exactly the
@@ -78,7 +79,9 @@ from pydantic import BaseModel, ValidationError
 
 from ..contracts.evidence import SourceArtifactRecord, SourceRevision
 from ..contracts.existing_world_adoption import (
+    ExistingWorldAdoptionMembershipManifestV1,
     ExistingWorldAdoptionReceiptV3,
+    ExistingWorldAdoptionReceiptV4,
     ExistingWorldAdoptionSourceProvenanceV1,
     sha256_bytes,
 )
@@ -89,6 +92,7 @@ from ..contracts.existing_world_correspondence import (
     ExistingWorldCorrespondenceResultV1,
 )
 from ..contracts.graph import StoredGraphRevision
+from ..contracts.vocabulary import Visibility
 from ..domain.canonical import canonical_json, canonical_sha256
 from ..domain.errors import PersistenceIntegrityError
 from ..domain.existing_world_membership import (
@@ -116,6 +120,59 @@ def _integrity(reason: str, **details: Any) -> NoReturn:
         "existing-world correspondence failed persistence-integrity validation",
         details={"reason": reason, **details},
     ) from None
+
+
+def _apply_recorded_source_corrections(
+    artifact: SourceArtifactRecord,
+    receipt: DurableExistingWorldAdoptionReceipt,
+) -> SourceArtifactRecord:
+    if not isinstance(receipt, ExistingWorldAdoptionReceiptV4):
+        return artifact
+    by_id = {
+        item.source_artifact_id: item
+        for item in receipt.source_classification_repair.corrections
+    }
+    correction = by_id.get(artifact.source_artifact_id)
+    if correction is None:
+        return artifact
+    updates: dict[str, Any] = {}
+    if "visibility" in correction.changed_fields:
+        updates["visibility"] = (
+            Visibility(correction.effective_visibility)
+            if correction.effective_visibility is not None
+            else None
+        )
+    if "campaign_id" in correction.changed_fields:
+        updates["campaign_id"] = correction.effective_campaign_id
+    return artifact.model_copy(update=updates)
+
+
+def _membership_for_manifest(
+    history: _ResolvedHistory,
+    manifest: ExistingWorldAdoptionMembershipManifestV1,
+) -> str:
+    try:
+        artifacts = [
+            history.artifacts[item_id] for item_id in manifest.source_artifact_ids
+        ]
+        revisions = [
+            history.revisions[item_id] for item_id in manifest.source_revision_ids
+        ]
+        contributions = [
+            history.contributions[item_id] for item_id in manifest.contribution_ids
+        ]
+        identity_decisions = [
+            history.identity_decisions[item_id]
+            for item_id in manifest.identity_decision_ids
+        ]
+    except KeyError:
+        _integrity("adopted_membership_manifest_member_missing")
+    return existing_world_adoption_membership_sha256(
+        source_artifacts=artifacts,
+        source_revisions=revisions,
+        contributions=contributions,
+        identity_decisions=identity_decisions,
+    )
 
 
 def _record_digest(model: BaseModel) -> str:
@@ -251,6 +308,11 @@ class ExistingWorldCorrespondenceService:
                 checks=checks,
             )
 
+        self._require_identity_matched_membership(
+            bundle,
+            receipt=receipt,
+            history=history,
+        )
         self._resolve_claimed_history(bundle, history=history)
         bundle_snapshot = self._graph_reader.parse(
             graph_schema=bundle.graph_schema,
@@ -400,6 +462,19 @@ class ExistingWorldCorrespondenceService:
         no checkpoint, so the diverged-identity path fails closed until
         steward-supervised promotion installs one.
         """
+        if isinstance(receipt, ExistingWorldAdoptionReceiptV4):
+            current_membership_sha256 = _membership_for_manifest(
+                history, receipt.membership_manifest
+            )
+            if current_membership_sha256 != receipt.effective_membership_sha256:
+                _integrity(
+                    "adopted_membership_checkpoint_mismatch",
+                    world_id=world_id,
+                    adoption_id=receipt.adoption_id,
+                    expected_membership_sha256=receipt.effective_membership_sha256,
+                    current_membership_sha256=current_membership_sha256,
+                )
+            return
         if isinstance(receipt, ExistingWorldAdoptionReceiptV3):
             current_membership_sha256 = existing_world_adoption_membership_sha256(
                 source_artifacts=history.artifacts.values(),
@@ -422,6 +497,40 @@ class ExistingWorldCorrespondenceService:
             adoption_id=receipt.adoption_id,
             receipt_schema=receipt.schema_version,
         )
+
+    def _require_identity_matched_membership(
+        self,
+        bundle: ExistingWorldAdoptionBundle,
+        *,
+        receipt: DurableExistingWorldAdoptionReceipt,
+        history: _ResolvedHistory,
+    ) -> None:
+        """Identity-matched snapshot must still prove historical M0; V4 also M1."""
+        if not isinstance(receipt, ExistingWorldAdoptionReceiptV4):
+            return
+        historical = existing_world_adoption_membership_sha256(
+            source_artifacts=bundle.source_artifacts,
+            source_revisions=bundle.source_revisions,
+            contributions=bundle.contributions,
+            identity_decisions=bundle.identity_decisions,
+        )
+        if historical != receipt.membership_sha256:
+            _integrity(
+                "adopted_membership_historical_mismatch",
+                world_id=receipt.world_id,
+                adoption_id=receipt.adoption_id,
+                expected_membership_sha256=receipt.membership_sha256,
+                current_membership_sha256=historical,
+            )
+        current = _membership_for_manifest(history, receipt.membership_manifest)
+        if current != receipt.effective_membership_sha256:
+            _integrity(
+                "adopted_membership_checkpoint_mismatch",
+                world_id=receipt.world_id,
+                adoption_id=receipt.adoption_id,
+                expected_membership_sha256=receipt.effective_membership_sha256,
+                current_membership_sha256=current,
+            )
 
     def _resolve_adopted_history(
         self,
@@ -611,7 +720,7 @@ class ExistingWorldCorrespondenceService:
             artifact.source_artifact_id
             for artifact in bundle.source_artifacts
             if _record_digest(history.artifacts[artifact.source_artifact_id])
-            != _record_digest(artifact)
+            != _record_digest(_apply_recorded_source_corrections(artifact, receipt))
         )
         drifted_revisions = sorted(
             revision.source_revision_id
