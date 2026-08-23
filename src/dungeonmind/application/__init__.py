@@ -12,6 +12,9 @@ from .contribution_review_v2 import (
     load_contribution_review_v2,
 )
 from .existing_world_adoption import adopt_existing_world
+from .existing_world_adoption_repair import (
+    repair_existing_world_adoption_source_classification,
+)
 from .existing_world_correspondence import ExistingWorldCorrespondenceService
 from .fictional_time import evaluate_fictional_time_query
 from .fictional_time_query_service import query_fictional_time_shadow_at_revision
@@ -136,4 +139,5 @@ __all__ = [
     "materialize_finalized_review_v6",
     "publish_finalized_review",
     "query_fictional_time_shadow_at_revision",
+    "repair_existing_world_adoption_source_classification",
 ]

@@ -28,6 +28,10 @@ EXISTING_WORLD_ADOPTION_COMMAND_V2_SCHEMA = "dm_existing_world_adoption_command_
 EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA = "dm_existing_world_adoption_receipt_v1"
 EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA = "dm_existing_world_adoption_receipt_v2"
 EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA = "dm_existing_world_adoption_receipt_v3"
+EXISTING_WORLD_ADOPTION_RECEIPT_V4_SCHEMA = "dm_existing_world_adoption_receipt_v4"
+EXISTING_WORLD_ADOPTION_MEMBERSHIP_MANIFEST_SCHEMA = "dm_existing_world_adoption_membership_manifest_v1"
+EXISTING_WORLD_ADOPTION_SOURCE_CLASSIFICATION_REPAIR_SCHEMA = "dm_existing_world_adoption_source_classification_repair_v1"
+EXISTING_WORLD_ADOPTION_SOURCE_ARTIFACT_CLASSIFICATION_CORRECTION_SCHEMA = "dm_existing_world_adoption_source_artifact_classification_correction_v1"
 EXISTING_WORLD_ADOPTION_PROVENANCE_SCHEMA = "dm_existing_world_adoption_source_provenance_v1"
 EXISTING_WORLD_ADOPTION_AUTHORITY_REF_SCHEMA = "dm_existing_world_adoption_authority_ref_v1"
 
@@ -350,6 +354,184 @@ class ExistingWorldAdoptionReceiptV3(ExistingWorldAdoptionReceiptV2):
     @classmethod
     def _membership_digest(cls, value: str) -> str:
         return _require_digest(value, field_name="membership_sha256")
+
+
+class ExistingWorldAdoptionMembershipManifestV1(DungeonMindModel):
+    """Exact adopted-member manifest for one existing-world adoption.
+
+    Contains sorted, unique exact IDs for the four adoption-time families:
+    source artifacts, source revisions, contributions, and identity decisions.
+    The manifest is derived only from the exact sealed bundle; it is not graph
+    authority and does not make later records part of the adoption.
+    """
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    schema_version: Literal["dm_existing_world_adoption_membership_manifest_v1"] = (
+        EXISTING_WORLD_ADOPTION_MEMBERSHIP_MANIFEST_SCHEMA
+    )
+    source_artifact_ids: list[str]
+    source_revision_ids: list[str]
+    contribution_ids: list[str]
+    identity_decision_ids: list[str]
+
+    @field_validator(
+        "source_artifact_ids",
+        "source_revision_ids",
+        "contribution_ids",
+        "identity_decision_ids",
+    )
+    @classmethod
+    def _sorted_unique_nonblank(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("manifest ID list must be non-empty")
+        for item in value:
+            _require_nonblank(item, field_name="manifest ID")
+        if len(value) != len(set(value)):
+            raise ValueError("manifest ID list must be unique")
+        if value != sorted(value):
+            raise ValueError("manifest ID list must be sorted")
+        return value
+
+
+class ExistingWorldAdoptionSourceArtifactClassificationCorrectionV1(DungeonMindModel):
+    """One exact source-artifact classification correction."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    schema_version: Literal[
+        "dm_existing_world_adoption_source_artifact_classification_correction_v1"
+    ] = EXISTING_WORLD_ADOPTION_SOURCE_ARTIFACT_CLASSIFICATION_CORRECTION_SCHEMA
+    source_artifact_id: str
+    original_record_fingerprint: str
+    effective_record_fingerprint: str
+    changed_fields: list[Literal["visibility", "campaign_id"]]
+    original_visibility: str | None
+    effective_visibility: str | None
+    original_campaign_id: str | None
+    effective_campaign_id: str | None
+
+    @field_validator("source_artifact_id")
+    @classmethod
+    def _nonblank(cls, value: str) -> str:
+        return _require_nonblank(value, field_name="source_artifact_id")
+
+    @field_validator("original_record_fingerprint", "effective_record_fingerprint")
+    @classmethod
+    def _digest(cls, value: str) -> str:
+        return _require_digest(value, field_name="record_fingerprint")
+
+    @field_validator("changed_fields")
+    @classmethod
+    def _closed_changed_fields(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("changed_fields must be non-empty")
+        allowed = {"visibility", "campaign_id"}
+        for field in value:
+            if field not in allowed:
+                raise ValueError(f"changed_fields contains unsupported field {field!r}")
+        if len(value) != len(set(value)):
+            raise ValueError("changed_fields must be unique")
+        return value
+
+
+class ExistingWorldAdoptionSourceClassificationRepairV1(DungeonMindModel):
+    """One explicit source-classification repair record."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    schema_version: Literal[
+        "dm_existing_world_adoption_source_classification_repair_v1"
+    ] = EXISTING_WORLD_ADOPTION_SOURCE_CLASSIFICATION_REPAIR_SCHEMA
+    repair_id: str
+    reason_code: Literal["fix_forward_preexisting_source_classification_mutation"] = (
+        "fix_forward_preexisting_source_classification_mutation"
+    )
+    repaired_at: datetime
+    observed_pre_repair_membership_sha256: str
+    effective_membership_sha256: str
+    corrections: list[ExistingWorldAdoptionSourceArtifactClassificationCorrectionV1]
+
+    @field_validator("repair_id")
+    @classmethod
+    def _nonblank(cls, value: str) -> str:
+        return _require_nonblank(value, field_name="repair_id")
+
+    @field_validator("repaired_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        return _require_timezone_aware(value, field_name="repaired_at")
+
+    @field_validator("observed_pre_repair_membership_sha256", "effective_membership_sha256")
+    @classmethod
+    def _digest(cls, value: str) -> str:
+        return _require_digest(value, field_name="membership digest")
+
+    @field_validator("corrections")
+    @classmethod
+    def _unique_corrections(
+        cls, value: list[ExistingWorldAdoptionSourceArtifactClassificationCorrectionV1]
+    ) -> list[ExistingWorldAdoptionSourceArtifactClassificationCorrectionV1]:
+        if not value:
+            raise ValueError("corrections must be non-empty")
+        seen: set[str] = set()
+        for correction in value:
+            if correction.source_artifact_id in seen:
+                raise ValueError(
+                    f"duplicate correction for source_artifact_id {correction.source_artifact_id!r}"
+                )
+            seen.add(correction.source_artifact_id)
+        return value
+
+
+class ExistingWorldAdoptionReceiptV4(ExistingWorldAdoptionReceiptV3):
+    """Terminal historical correspondence for one repaired existing-world adoption.
+
+    V4 retains every prior adoption fact and adds explicit repair authority:
+
+    - ``membership_sha256`` = original adoption-time checkpoint M0 (historical
+      truth; never rewritten from current rows)
+    - ``effective_membership_sha256`` = current sanctioned checkpoint M1
+      (recomputed from the exact adopted member set after the authorized repair)
+    - ``membership_manifest`` = exact adopted-member IDs from the sealed bundle
+    - ``source_classification_repair`` = one explicit repair record
+
+    The distinction between M0 and M1 is the center of the V4 contract: a digest
+    can prove payload equality but cannot select which current rows belong to
+    the original adoption once the world has descendants. The manifest makes
+    the repair checkpoint independently verifiable without asking frozen Buddy
+    what was adopted.
+    """
+
+    schema_version: Literal["dm_existing_world_adoption_receipt_v4"] = (
+        EXISTING_WORLD_ADOPTION_RECEIPT_V4_SCHEMA
+    )
+    effective_membership_sha256: str
+    membership_manifest: ExistingWorldAdoptionMembershipManifestV1
+    source_classification_repair: ExistingWorldAdoptionSourceClassificationRepairV1
+
+    @field_validator("effective_membership_sha256")
+    @classmethod
+    def _effective_membership_digest(cls, value: str) -> str:
+        return _require_digest(value, field_name="effective_membership_sha256")
+
+    @model_validator(mode="after")
+    def _repair_digest_consistency(self) -> Self:
+        if (
+            self.source_classification_repair.effective_membership_sha256
+            != self.effective_membership_sha256
+        ):
+            raise ValueError(
+                "repair record effective_membership_sha256 must equal receipt effective_membership_sha256"
+            )
+        if (
+            self.source_classification_repair.observed_pre_repair_membership_sha256
+            != self.membership_sha256
+        ):
+            raise ValueError(
+                "repair record observed_pre_repair_membership_sha256 must equal receipt membership_sha256"
+            )
+        return self
 
 
 def _canonicalize_adoption_bundle_payload(payload: dict[str, Any]) -> bytes:

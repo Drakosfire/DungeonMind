@@ -33,6 +33,10 @@ from ..contracts.existing_world_adoption import (
     ExistingWorldAdoptionReceiptV1,
     ExistingWorldAdoptionReceiptV2,
     ExistingWorldAdoptionReceiptV3,
+    ExistingWorldAdoptionReceiptV4,
+)
+from ..contracts.existing_world_adoption_repair import (
+    ExistingWorldAdoptionSourceClassificationRepairCommandV1,
 )
 from ..contracts.graph import (
     PublishRevisionCommand,
@@ -68,6 +72,7 @@ DurableExistingWorldAdoptionReceipt: TypeAlias = (
     ExistingWorldAdoptionReceiptV1
     | ExistingWorldAdoptionReceiptV2
     | ExistingWorldAdoptionReceiptV3
+    | ExistingWorldAdoptionReceiptV4
 )
 
 
@@ -242,6 +247,69 @@ class ExistingWorldAdoptionRepository(Protocol):
         caller's own pre-boundary check is a fast-fail optimization only; this
         in-boundary re-proof is the authoritative equality check, so a writer
         committing in the gap cannot leave a stale checkpoint installed.
+        """
+        ...
+
+    def repair_source_classification(
+        self,
+        command: ExistingWorldAdoptionSourceClassificationRepairCommandV1,
+    ) -> ExistingWorldAdoptionReceiptV4:
+        """Atomically repair the source classification of one already-adopted world.
+
+        Under one serialization boundary that excludes concurrent history
+        writers (PostgreSQL: the world row lock plus ``SHARE ROW EXCLUSIVE``
+        table locks on the four membership families), the adapter:
+
+        1. re-reads and fingerprint-verifies the stored adoption receipt;
+        2. requires V3 corrupted-fix-forward state or exact V4 replay — no V1/V2;
+        3. requires all non-membership V3 adoption facts to match the sealed
+           bundle and referenced D_A exactly;
+        4. requires the exact adopted graph revision still exists and matches
+           receipt schema/payload digest;
+        5. loads the exact adopted-member rows using the sealed manifest IDs,
+           not "all current world rows" and not Buddy files;
+        6. requires every adopted source revision, contribution, and identity
+           decision to be fingerprint-equal to its sealed bundle record;
+        7. for each adopted source artifact:
+           - if not named by the repair intent: current must equal sealed original;
+           - if named: current must equal either sealed original or the exact
+             derived target artifact;
+           - any third state is corruption and aborts;
+        8. computes the currently observed adopted-member digest;
+        9. for a V3 fix-forward, requires stored ``membership_sha256`` to equal
+           that observed current digest. This proves the out-of-band receipt
+           rewrite is at least internally bound to the currently observed
+           adopted rows; otherwise the incident is more complex than this
+           repair and must stop;
+        10. requires no requested correction targets a non-adopted artifact.
+
+        Only after all pre-mutation proofs succeed:
+
+        - for each target artifact already equal to the exact effective model:
+          no-op;
+        - for each target artifact still equal to the sealed original: update
+          exactly its full relational identity columns, payload, and record
+          fingerprint to the derived target model;
+        - do not call a generic mutable SourceArtifact API;
+        - do not mutate source revisions, contributions, identity decisions,
+          evidence refs, graph revisions, or graph head.
+
+        Then recompute the exact adopted-member effective digest M1 inside the
+        same transaction and replace the corrupted V3 receipt with V4:
+
+        - ``V4.membership_sha256`` = M0 from exact sealed bundle
+        - ``V4.effective_membership_sha256`` = M1 from exact target adopted
+          membership
+        - ``V4.membership_manifest`` = exact IDs from sealed bundle
+        - ``V4.source_classification_repair`` = exact repair record
+
+        Every v1/v2/v3 adoption fact other than the versioned representation
+        must be preserved.
+
+        If the stored receipt is already the exact V4 repair for the same
+        sealed bundle and intent, return it with zero writes. If V4 exists but
+        repair identity/target differs, fail with idempotency/integrity
+        conflict. No second repair is authorized.
         """
         ...
 
