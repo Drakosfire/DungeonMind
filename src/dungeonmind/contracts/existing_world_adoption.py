@@ -365,8 +365,10 @@ class ExistingWorldAdoptionReceiptV3(ExistingWorldAdoptionReceiptV2):
 class ExistingWorldAdoptionMembershipManifestV1(DungeonMindModel):
     """Exact adopted-member manifest for one existing-world adoption.
 
-    Contains sorted, unique exact IDs for the four adoption-time families:
-    source artifacts, source revisions, contributions, and identity decisions.
+    Contains sorted, unique, non-blank exact IDs for the four adoption-time
+    families: source artifacts, source revisions, contributions, and identity
+    decisions. A family may be empty when the sealed bundle had no members in
+    that family. Present IDs must still be sorted, unique, and non-blank.
     The manifest is derived only from the exact sealed bundle; it is not graph
     authority and does not make later records part of the adoption.
     """
@@ -389,8 +391,6 @@ class ExistingWorldAdoptionMembershipManifestV1(DungeonMindModel):
     )
     @classmethod
     def _sorted_unique_nonblank(cls, value: list[str]) -> list[str]:
-        if not value:
-            raise ValueError("manifest ID list must be non-empty")
         for item in value:
             _require_nonblank(item, field_name="manifest ID")
         if len(value) != len(set(value)):

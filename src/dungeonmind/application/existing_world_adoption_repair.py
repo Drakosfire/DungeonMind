@@ -343,6 +343,8 @@ def authenticate_v4_repair_against_sealed_bundle(
     - sealed fingerprint equals the recorded original fingerprint
     - the sealed-derived target fingerprint equals the recorded effective
       fingerprint
+    - the recorded ``repair_id`` equals ``compute_repair_id(bundle_sha256,
+      reconstructed intent)``
     - only the exact recorded allowed fields change
     - every other field remains the sealed original
 
@@ -358,10 +360,12 @@ def authenticate_v4_repair_against_sealed_bundle(
         _integrity("v4_repair_historical_membership_mismatch")
     intent = intent_from_v4_repair(receipt)
     validate_repair_intent(intent, bundle)
+    repair = receipt.source_classification_repair
+    if repair.repair_id != compute_repair_id(receipt.bundle_sha256, intent):
+        _integrity("v4_repair_id_mismatch")
     corrections, targets, _effective, m1 = _corrections_and_targets(bundle, intent)
     if m1 != receipt.effective_membership_sha256:
         _integrity("v4_repair_effective_membership_mismatch")
-    repair = receipt.source_classification_repair
     if m1 != repair.effective_membership_sha256:
         _integrity("v4_repair_record_effective_mismatch")
     stored = {

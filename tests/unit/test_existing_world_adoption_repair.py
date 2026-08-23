@@ -20,6 +20,7 @@ from dungeonmind.application.existing_world_correspondence import (
 from dungeonmind.contracts.evidence import SourceDomain, SourceStatus
 from dungeonmind.contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA,
+    ExistingWorldAdoptionMembershipManifestV1,
     ExistingWorldAdoptionReceiptV3,
     ExistingWorldAdoptionReceiptV4,
     ExistingWorldAdoptionSourceArtifactClassificationCorrectionV1,
@@ -239,6 +240,21 @@ def _tamper_v4_effective_fingerprint(adoptions, world_id: str = WORLD_ID) -> Non
         update={
             "source_classification_repair": repair.model_copy(
                 update={"corrections": [tampered, *rest]}
+            )
+        }
+    )
+    adoptions._receipts_by_world[world_id] = rewritten
+    adoptions._receipts_by_adoption[rewritten.adoption_id] = rewritten
+
+
+def _tamper_v4_repair_id(adoptions, world_id: str = WORLD_ID) -> None:
+    stored = adoptions._receipts_by_world[world_id]
+    assert isinstance(stored, ExistingWorldAdoptionReceiptV4)
+    repair = stored.source_classification_repair
+    rewritten = stored.model_copy(
+        update={
+            "source_classification_repair": repair.model_copy(
+                update={"repair_id": "f" * 64}
             )
         }
     )
@@ -627,6 +643,63 @@ def test_tampered_v4_correction_is_not_authority() -> None:
         "v4_repair_correction_fingerprint_mismatch",
         "v4_repair_effective_fingerprint_mismatch",
     }
+
+
+def test_tampered_v4_repair_id_is_not_authority() -> None:
+    bundle, raw, graph, sources, contributions, identity, adoptions, _v3 = (
+        _adopt_repairable()
+    )
+    _inject_allowed_corruption(sources, contributions, identity, adoptions, bundle)
+    _repair(raw, _intent(bundle), adoptions)
+    _tamper_v4_repair_id(adoptions)
+    service = _correspondence(graph, sources, contributions, identity, adoptions)
+    with pytest.raises(PersistenceIntegrityError) as correspondence_info:
+        service.check(raw, world_id=WORLD_ID)
+    assert correspondence_info.value.details.get("reason") == "v4_repair_id_mismatch"
+    with pytest.raises(PersistenceIntegrityError) as replay_info:
+        _repair(raw, _intent(bundle), adoptions)
+    assert replay_info.value.details.get("reason") == "v4_repair_id_mismatch"
+
+
+def test_membership_manifest_allows_empty_family() -> None:
+    manifest = ExistingWorldAdoptionMembershipManifestV1(
+        source_artifact_ids=["src:a"],
+        source_revision_ids=["srcrev:a"],
+        contribution_ids=["contrib:a"],
+        identity_decision_ids=[],
+    )
+    assert manifest.identity_decision_ids == []
+    assert (
+        ExistingWorldAdoptionMembershipManifestV1.model_validate(
+            manifest.model_dump(mode="json")
+        )
+        == manifest
+    )
+
+
+def test_repair_accepts_empty_identity_family() -> None:
+    bundle = _repairable_bundle().model_copy(update={"identity_decisions": []})
+    raw = v2_bundle_bytes(bundle)
+    graph, sources, contributions, identity, adoptions = make_stores()
+    receipt = adopt_existing_world(
+        raw,
+        adopted_at=NOW,
+        adoption_repository=adoptions,
+        graph_reader=graph_reader(),
+    )
+    assert isinstance(receipt, ExistingWorldAdoptionReceiptV3)
+    assert receipt.identity_decision_count == 0
+    manifest = derive_membership_manifest(bundle)
+    assert manifest.identity_decision_ids == []
+    _inject_allowed_corruption(sources, contributions, identity, adoptions, bundle)
+    repaired = _repair(raw, _intent(bundle), adoptions)
+    assert repaired.identity_decision_count == 0
+    assert repaired.membership_manifest.identity_decision_ids == []
+    assert repaired.membership_manifest == manifest
+    result = _correspondence(
+        graph, sources, contributions, identity, adoptions
+    ).check(raw, world_id=WORLD_ID)
+    assert result.classification == "CORRESPONDING"
 
 
 def test_v4_correspondence_ignores_post_adoption_descendants() -> None:
