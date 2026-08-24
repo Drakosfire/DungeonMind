@@ -68,6 +68,9 @@ from .graph_snapshot import (
     contains_exact_phrase,
 )
 from .repositories import SourceRepository
+from .source_provenance_snapshot import SourceProvenanceSnapshot
+
+SourceLookup = SourceRepository | SourceProvenanceSnapshot
 
 # Public gap code for corruption whose scope cannot be established, or when
 # detailed identity must not appear in MindTurnResponse.coverage.
@@ -163,6 +166,9 @@ class ValidatedProvenance:
     record: GraphEvidenceRecord | GraphEvidenceRecordV2
     evidence: EvidenceRef | EvidenceRefV2
     artifact: SourceArtifactRecord
+
+
+EvidenceResolution = ValidatedProvenance | ProvenanceRejection | EvidenceScopeVerdict | None
 
 
 @dataclass(frozen=True)
@@ -343,7 +349,7 @@ def _resolve_v1_evidence_provenance(
     record: GraphEvidenceRecord,
     *,
     evidence_ref_id: str,
-    sources: SourceRepository,
+    sources: SourceLookup,
     world_id: str,
     scope: CampaignScope,
     admissibility: Admissibility,
@@ -417,7 +423,7 @@ def _resolve_v2_evidence_provenance(
     record: GraphEvidenceRecordV2,
     *,
     evidence_ref_id: str,
-    sources: SourceRepository,
+    sources: SourceLookup,
     world_id: str,
     scope: CampaignScope,
     admissibility: Admissibility,
@@ -478,12 +484,13 @@ def resolve_evidence_provenance(
     evidence_ref_id: str,
     *,
     snapshot: ParsedGraphSnapshot,
-    sources: SourceRepository,
+    sources: SourceLookup,
     world_id: str,
     campaign_id: str | None,
     admissibility: Admissibility,
     scope_mode: ScopeMode | ScopeModeV2 | None = None,
-) -> ValidatedProvenance | ProvenanceRejection | EvidenceScopeVerdict | None:
+    evidence_cache: dict[str, EvidenceResolution] | None = None,
+) -> EvidenceResolution:
     """Validate the complete evidence → artifact → revision provenance chain.
 
     Returns:
@@ -496,14 +503,21 @@ def resolve_evidence_provenance(
         (missing artifact/record) — never expose those identifiers publicly.
 
     ``scope_mode=None`` preserves the legacy inference from ``campaign_id``.
+    ``evidence_cache`` memoizes this exact chain for one coherent read; ``None``
+    is a stored result (out of scope) so membership is tested with ``in``.
     """
+    if evidence_cache is not None and evidence_ref_id in evidence_cache:
+        return evidence_cache[evidence_ref_id]
     record = snapshot.evidence.get(evidence_ref_id)
     if record is None:
-        return EvidenceScopeVerdict.SCOPE_UNKNOWN
+        resolved: EvidenceResolution = EvidenceScopeVerdict.SCOPE_UNKNOWN
+        if evidence_cache is not None:
+            evidence_cache[evidence_ref_id] = resolved
+        return resolved
 
     scope = CampaignScope.resolve(scope_mode=scope_mode, campaign_id=campaign_id)
     if isinstance(record, GraphEvidenceRecordV2):
-        return _resolve_v2_evidence_provenance(
+        resolved = _resolve_v2_evidence_provenance(
             record,
             evidence_ref_id=evidence_ref_id,
             sources=sources,
@@ -511,14 +525,18 @@ def resolve_evidence_provenance(
             scope=scope,
             admissibility=admissibility,
         )
-    return _resolve_v1_evidence_provenance(
-        record,
-        evidence_ref_id=evidence_ref_id,
-        sources=sources,
-        world_id=world_id,
-        scope=scope,
-        admissibility=admissibility,
-    )
+    else:
+        resolved = _resolve_v1_evidence_provenance(
+            record,
+            evidence_ref_id=evidence_ref_id,
+            sources=sources,
+            world_id=world_id,
+            scope=scope,
+            admissibility=admissibility,
+        )
+    if evidence_cache is not None:
+        evidence_cache[evidence_ref_id] = resolved
+    return resolved
 
 
 def public_coverage_gaps_for_exclusion(
@@ -544,10 +562,11 @@ def _classify_evidence_ids(
     evidence_ref_ids: list[str],
     *,
     snapshot: ParsedGraphSnapshot,
-    sources: SourceRepository,
+    sources: SourceLookup,
     world_id: str,
     scope: CampaignScope,
     admissibility: Admissibility,
+    evidence_cache: dict[str, EvidenceResolution] | None = None,
 ) -> tuple[bool, ObjectScopeExclusion]:
     """Return whether every evidence ID is in-scope+valid, plus exclusion info."""
     rejections: list[ProvenanceRejection] = []
@@ -563,6 +582,7 @@ def _classify_evidence_ids(
             campaign_id=scope.campaign_id,
             admissibility=admissibility,
             scope_mode=scope.mode,
+            evidence_cache=evidence_cache,
         )
         if isinstance(resolved, ValidatedProvenance):
             continue
@@ -592,10 +612,11 @@ def _classify_evidence_ids(
 def _project_v1_objects(
     snapshot: ParsedGraphSnapshot,
     *,
-    sources: SourceRepository,
+    sources: SourceLookup,
     world_id: str,
     scope: CampaignScope,
     admissibility: Admissibility,
+    evidence_cache: dict[str, EvidenceResolution] | None = None,
 ) -> tuple[dict[str, GraphObjectView], dict[str, ObjectScopeExclusion]]:
     """Coarse-object policy for ``dm_union_graph_v1``."""
     object_exclusions: dict[str, ObjectScopeExclusion] = {}
@@ -608,6 +629,7 @@ def _project_v1_objects(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
+            evidence_cache=evidence_cache,
         )
         if not all_valid or not obj.evidence_ref_ids:
             if not obj.evidence_ref_ids:
@@ -615,17 +637,18 @@ def _project_v1_objects(
             else:
                 object_exclusions[object_id] = exclusion
             continue
-        objects[object_id] = obj
+        objects[object_id] = obj.model_copy(deep=True)
     return objects, object_exclusions
 
 
 def _project_v2_objects(
     snapshot: ParsedGraphSnapshot,
     *,
-    sources: SourceRepository,
+    sources: SourceLookup,
     world_id: str,
     scope: CampaignScope,
     admissibility: Admissibility,
+    evidence_cache: dict[str, EvidenceResolution] | None = None,
 ) -> tuple[
     dict[str, GraphObjectView],
     dict[str, ObjectScopeExclusion],
@@ -655,6 +678,7 @@ def _project_v2_objects(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
+            evidence_cache=evidence_cache,
         )
         if not all_valid or not core_ids:
             if not core_ids:
@@ -672,6 +696,7 @@ def _project_v2_objects(
                 world_id=world_id,
                 scope=scope,
                 admissibility=admissibility,
+                evidence_cache=evidence_cache,
             )
             if alias_ok and assertion.evidence_ref_ids:
                 admitted_aliases.append(assertion)
@@ -694,6 +719,7 @@ def _project_v2_objects(
                 world_id=world_id,
                 scope=scope,
                 admissibility=admissibility,
+                evidence_cache=evidence_cache,
             )
             if summary_ok and summary.evidence_ref_ids:
                 admitted_summary = summary
@@ -790,10 +816,11 @@ def _admit_v4_assertion(
     metadata: KnowledgeAssertionMetadataV1,
     *,
     snapshot: ParsedGraphSnapshot,
-    sources: SourceRepository,
+    sources: SourceLookup,
     world_id: str,
     scope: CampaignScope,
     admissibility: Admissibility,
+    evidence_cache: dict[str, EvidenceResolution] | None = None,
 ) -> tuple[bool, ObjectScopeExclusion]:
     """Assertion-scope gate first, then the existing evidence provenance chain.
 
@@ -816,16 +843,18 @@ def _admit_v4_assertion(
         world_id=world_id,
         scope=scope,
         admissibility=admissibility,
+        evidence_cache=evidence_cache,
     )
 
 
 def _project_v4_objects(
     snapshot: ParsedGraphSnapshot,
     *,
-    sources: SourceRepository,
+    sources: SourceLookup,
     world_id: str,
     scope: CampaignScope,
     admissibility: Admissibility,
+    evidence_cache: dict[str, EvidenceResolution] | None = None,
 ) -> tuple[
     dict[str, GraphObjectView],
     dict[str, ObjectScopeExclusion],
@@ -851,6 +880,7 @@ def _project_v4_objects(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
+            evidence_cache=evidence_cache,
         )
         if not existence_ok:
             object_exclusions[object_id] = existence_exclusion
@@ -867,6 +897,7 @@ def _project_v4_objects(
                 world_id=world_id,
                 scope=scope,
                 admissibility=admissibility,
+                evidence_cache=evidence_cache,
             )
             if alias_ok:
                 admitted_aliases.append(alias)
@@ -885,6 +916,7 @@ def _project_v4_objects(
                 world_id=world_id,
                 scope=scope,
                 admissibility=admissibility,
+                evidence_cache=evidence_cache,
             )
             if summary_ok:
                 admitted_summary = summary
@@ -901,6 +933,7 @@ def _project_v4_objects(
                 world_id=world_id,
                 scope=scope,
                 admissibility=admissibility,
+                evidence_cache=evidence_cache,
             )
             if property_ok:
                 admitted_properties.append(prop)
@@ -936,6 +969,7 @@ def _project_v4_objects(
                 world_id=world_id,
                 scope=scope,
                 admissibility=admissibility,
+                evidence_cache=evidence_cache,
             )
             if aspect_ok:
                 admitted_aspects.append(aspect)
@@ -967,11 +1001,12 @@ def _project_v4_objects(
 def project_scoped_snapshot(
     snapshot: ParsedGraphSnapshot,
     *,
-    sources: SourceRepository,
+    sources: SourceLookup,
     world_id: str,
     campaign_id: str | None,
     admissibility: Admissibility,
     scope_mode: ScopeMode | ScopeModeV2 | None = None,
+    evidence_cache: dict[str, EvidenceResolution] | None = None,
 ) -> ScopedGraphProjection:
     """Return a scoped snapshot and exclusion diagnostics.
 
@@ -999,6 +1034,7 @@ def project_scoped_snapshot(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
+            evidence_cache=evidence_cache,
         )
     elif snapshot.graph_schema in (GRAPH_SCHEMA_V2, GRAPH_SCHEMA_V3):
         (
@@ -1012,6 +1048,7 @@ def project_scoped_snapshot(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
+            evidence_cache=evidence_cache,
         )
     else:
         objects, object_exclusions = _project_v1_objects(
@@ -1020,6 +1057,7 @@ def project_scoped_snapshot(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
+            evidence_cache=evidence_cache,
         )
 
     relationship_exclusions: dict[str, ObjectScopeExclusion] = {}
@@ -1045,6 +1083,7 @@ def project_scoped_snapshot(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
+            evidence_cache=evidence_cache,
         )
         if not all_valid or not rel.evidence_ref_ids:
             if not rel.evidence_ref_ids:
@@ -1057,7 +1096,7 @@ def project_scoped_snapshot(
         if not _referenced_aspects_admitted(rel, objects):
             relationship_exclusions[rel_id] = ObjectScopeExclusion(out_of_scope=True)
             continue
-        relationships[rel_id] = rel
+        relationships[rel_id] = rel.model_copy(deep=True)
 
     retained_evidence_ids = {
         evidence_ref_id
@@ -1069,7 +1108,7 @@ def project_scoped_snapshot(
         for evidence_ref_id in rel.evidence_ref_ids
     }
     evidence = {
-        evidence_ref_id: record
+        evidence_ref_id: record.model_copy(deep=True)
         for evidence_ref_id, record in snapshot.evidence.items()
         if evidence_ref_id in retained_evidence_ids
     }

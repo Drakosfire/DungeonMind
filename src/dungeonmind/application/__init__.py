@@ -26,6 +26,7 @@ from .graph_snapshot import (
     UnionGraphV1SnapshotReader,
 )
 from .mind_turn import FixedClock, MindTurnService
+from .parsed_revision_cache import ParsedImmutableRevisionCache
 from .query_embedding import QueryEmbeddingProvider
 from .repositories import (
     ContributionRepository,
@@ -50,6 +51,7 @@ from .review_publication import (
     FinalizedReviewPublication,
     publish_finalized_review,
 )
+from .source_provenance_snapshot import SourceProvenanceSnapshot
 from .world_graph_observability import (
     NOOP_READ_OBSERVER,
     PhaseRecorder,
@@ -66,6 +68,7 @@ from .world_graph_projection import (
     WorldGraphProjectionResult,
     WorldGraphProjectionService,
 )
+from .world_graph_read_context import WorldGraphReadContext
 from .world_graph_retrieval import (
     AdmittedAssertionValue,
     EvidenceRetrievalResult,
@@ -105,6 +108,7 @@ __all__ = [
     "NeighborhoodResult",
     "ObjectLookupResult",
     "ParsedGraphSnapshot",
+    "ParsedImmutableRevisionCache",
     "PhaseRecorder",
     "ProjectionClock",
     "QueryEmbeddingProvider",
@@ -115,12 +119,14 @@ __all__ = [
     "SemanticSearchPort",
     "SourceAnchorMetadata",
     "SourceAnchorResolution",
+    "SourceProvenanceSnapshot",
     "SourceRepository",
     "SystemMonotonicReadClock",
     "UnionGraphV1SnapshotReader",
     "WorldGraphProjectionResult",
     "WorldGraphProjectionService",
     "WorldGraphReadClock",
+    "WorldGraphReadContext",
     "WorldGraphReadObservation",
     "WorldGraphReadObserver",
     "WorldGraphReadPhaseDuration",

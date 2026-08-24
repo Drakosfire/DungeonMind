@@ -105,6 +105,8 @@ finer than two significant figures into these numbers.
 - A regression reference for future read-path changes: rerun the same
   commands on the same machine class and compare per-case medians and
   digests (digests must match exactly; semantic drift is a correctness
-  failure, not benchmark noise).
+  failure, not benchmark noise). R.3a is the first successor to do that:
+  [`BASELINE-world-graph-reads-r3a.md`](BASELINE-world-graph-reads-r3a.md)
+  (digests must still match this R.2a record).
 - Input to eventual SLO definition — SLOs are a successor decision, and
   this document deliberately does not set them.

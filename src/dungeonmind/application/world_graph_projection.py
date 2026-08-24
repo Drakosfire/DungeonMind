@@ -26,9 +26,15 @@ from typing import Protocol
 
 from ..contracts.projection_v2 import ProjectionSnapshotV2, WorldGraphProjectionRequestV2
 from ..domain.errors import HeadNotFoundError, RevisionNotFoundError, ScopeResolutionError
-from .graph_scope import ScopedGraphProjection, project_scoped_snapshot
+from .graph_scope import EvidenceResolution, ScopedGraphProjection, project_scoped_snapshot
 from .graph_snapshot import GraphSnapshotReader, ParsedGraphSnapshot
+from .parsed_revision_cache import (
+    DEFAULT_PARSED_REVISION_CACHE_MAX_ENTRIES,
+    ParsedImmutableRevisionCache,
+    graph_reader_parse_compatibility_id,
+)
 from .repositories import SourceRepository, WorldGraphRepository
+from .source_provenance_snapshot import provenance_refs_from_parsed_graph
 from .world_graph_observability import (
     NOOP_READ_OBSERVER,
     GraphObservationFields,
@@ -41,6 +47,7 @@ from .world_graph_observability import (
     classify_read_failure,
     emit_read_observation,
 )
+from .world_graph_read_context import WorldGraphReadContext
 
 
 class ProjectionClock(Protocol):
@@ -66,6 +73,10 @@ class WorldGraphProjectionResult:
         """Convenience access to the admitted graph snapshot."""
 
         return self.scoped_graph.snapshot
+
+    @classmethod
+    def from_read_context(cls, context: WorldGraphReadContext) -> WorldGraphProjectionResult:
+        return cls(snapshot=context.identity, scoped_graph=context.scoped_graph)
 
 
 def _scoped_count_fields(scoped: ScopedGraphProjection) -> GraphObservationFields:
@@ -108,6 +119,9 @@ class _ProjectionObservationFacts:
     parsed_relationship_count: int | None = None
     parsed_evidence_count: int | None = None
     scoped_counts: GraphObservationFields | None = None
+    parsed_revision_cache_hit: bool | None = None
+    source_artifact_count: int | None = None
+    source_revision_count: int | None = None
 
 
 class WorldGraphProjectionService:
@@ -127,6 +141,8 @@ class WorldGraphProjectionService:
         clock: ProjectionClock | None = None,
         read_observer: WorldGraphReadObserver | None = None,
         read_clock: WorldGraphReadClock | None = None,
+        parsed_revision_cache: ParsedImmutableRevisionCache | None = None,
+        parsed_revision_cache_max_entries: int = DEFAULT_PARSED_REVISION_CACHE_MAX_ENTRIES,
     ) -> None:
         self._world_graph = world_graph
         self._sources = sources
@@ -136,6 +152,32 @@ class WorldGraphProjectionService:
             read_observer if read_observer is not None else NOOP_READ_OBSERVER
         )
         self._read_clock = read_clock or SystemMonotonicReadClock()
+        self._parsed_revisions = parsed_revision_cache or ParsedImmutableRevisionCache(
+            max_entries=parsed_revision_cache_max_entries
+        )
+
+    @property
+    def parsed_revision_cache(self) -> ParsedImmutableRevisionCache:
+        return self._parsed_revisions
+
+    def open_read_context(
+        self, request: WorldGraphProjectionRequestV2
+    ) -> WorldGraphReadContext:
+        """Establish one coherent native read: revision, parse, source snapshot, scope.
+
+        Public ``project`` remains the compatibility wrapper over this seam.
+        """
+
+        recorder = PhaseRecorder(self._read_clock)
+        facts = _ProjectionObservationFacts()
+        try:
+            context = self._open_observed(request, recorder, facts)
+        except Exception as exc:
+            self._emit(self._error_observation(recorder, request, exc, facts))
+            raise
+        result = WorldGraphProjectionResult.from_read_context(context)
+        self._emit(self._success_observation(recorder, request, result, context.parsed, facts))
+        return context
 
     def project(self, request: WorldGraphProjectionRequestV2) -> WorldGraphProjectionResult:
         """Resolve, parse, scope, and identify one coherent graph revision.
@@ -153,24 +195,14 @@ class WorldGraphProjectionService:
         projection); fields are absent only when the failure preceded them.
         """
 
-        recorder = PhaseRecorder(self._read_clock)
-        facts = _ProjectionObservationFacts()
-        try:
-            result, parsed = self._project_observed(request, recorder, facts)
-        except Exception as exc:
-            self._emit(
-                self._error_observation(recorder, request, exc, facts),
-            )
-            raise
-        self._emit(self._success_observation(recorder, request, result, parsed, facts))
-        return result
+        return WorldGraphProjectionResult.from_read_context(self.open_read_context(request))
 
-    def _project_observed(
+    def _open_observed(
         self,
         request: WorldGraphProjectionRequestV2,
         recorder: PhaseRecorder,
         facts: _ProjectionObservationFacts,
-    ) -> tuple[WorldGraphProjectionResult, ParsedGraphSnapshot]:
+    ) -> WorldGraphReadContext:
         with recorder.phase("head_lookup"):
             head = self._world_graph.get_head(request.world_id)
         if head is None:
@@ -215,10 +247,16 @@ class WorldGraphProjectionService:
             )
 
         with recorder.phase("parse"):
-            parsed = self._graph_reader.parse(
-                graph_schema=stored.revision.graph_schema,
-                graph_payload=stored.graph_payload,
+            parsed, cache_hit = self._parsed_revisions.get_or_load(
+                request.world_id,
+                revision_id,
+                lambda: self._graph_reader.parse(
+                    graph_schema=stored.revision.graph_schema,
+                    graph_payload=stored.graph_payload,
+                ),
+                compatibility_id=graph_reader_parse_compatibility_id(self._graph_reader),
             )
+        facts.parsed_revision_cache_hit = cache_hit
         facts.graph_schema = parsed.graph_schema
         facts.parsed_object_count = len(parsed.objects)
         facts.parsed_relationship_count = len(parsed.relationships)
@@ -234,14 +272,25 @@ class WorldGraphProjectionService:
                 },
             )
 
+        artifact_ids, revision_ids = provenance_refs_from_parsed_graph(parsed)
+        with recorder.phase("source_snapshot_load"):
+            source_snapshot = self._sources.get_provenance_snapshot(
+                artifact_ids=artifact_ids,
+                revision_ids=revision_ids,
+            )
+        facts.source_artifact_count = source_snapshot.artifact_count
+        facts.source_revision_count = source_snapshot.revision_count
+
+        evidence_memo: dict[str, EvidenceResolution] = {}
         with recorder.phase("scope_projection"):
             scoped = project_scoped_snapshot(
                 parsed,
-                sources=self._sources,
+                sources=source_snapshot,
                 world_id=request.world_id,
                 campaign_id=request.campaign_id,
                 admissibility=request.admissibility,
                 scope_mode=request.scope_mode,
+                evidence_cache=evidence_memo,
             )
         facts.scoped_counts = _scoped_count_fields(scoped)
         snapshot = ProjectionSnapshotV2(
@@ -255,7 +304,14 @@ class WorldGraphProjectionService:
             is_head=revision_id == head_revision_id,
             projected_at=self._clock.now(),
         )
-        return WorldGraphProjectionResult(snapshot=snapshot, scoped_graph=scoped), parsed
+        return WorldGraphReadContext(
+            identity=snapshot,
+            parsed=parsed,
+            scoped_graph=scoped,
+            source_snapshot=source_snapshot,
+            parsed_revision_cache_hit=cache_hit,
+            _evidence_memo=evidence_memo,
+        )
 
     def _emit(self, observation: WorldGraphReadObservation) -> None:
         emit_read_observation(self._read_observer, observation)
@@ -287,6 +343,9 @@ class WorldGraphProjectionService:
             parsed_object_count=facts.parsed_object_count,
             parsed_relationship_count=facts.parsed_relationship_count,
             parsed_evidence_count=facts.parsed_evidence_count,
+            parsed_revision_cache_hit=facts.parsed_revision_cache_hit,
+            source_artifact_count=facts.source_artifact_count,
+            source_revision_count=facts.source_revision_count,
             **self._request_fields(request),
         )
         if facts.scoped_counts is not None:
@@ -317,6 +376,9 @@ class WorldGraphProjectionService:
             parsed_object_count=len(parsed.objects),
             parsed_relationship_count=len(parsed.relationships),
             parsed_evidence_count=len(parsed.evidence),
+            parsed_revision_cache_hit=facts.parsed_revision_cache_hit,
+            source_artifact_count=facts.source_artifact_count,
+            source_revision_count=facts.source_revision_count,
             **self._request_fields(request),
             **scoped_counts,
         )
@@ -326,4 +388,5 @@ __all__ = [
     "ProjectionClock",
     "WorldGraphProjectionResult",
     "WorldGraphProjectionService",
+    "WorldGraphReadContext",
 ]

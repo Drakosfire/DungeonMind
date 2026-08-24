@@ -1,7 +1,7 @@
 # DungeonMind — Independent Library Roadmap
 
 **Status:** current forward roadmap  
-**Updated:** 2026-08-23  
+**Updated:** 2026-08-24  
 **Current library head at sync:** `519b2c96fc42d22f3113cc9ca0d48bc70b6780e5`  
 **First real consumer proof:** DungeonMindBuddy #631 merged at `ffc39ab394ea55b00dc8b2a0fd41be0448635600`
 
@@ -72,27 +72,25 @@ The final supported-contract witness recorded 0 unresolved blocking semantic dif
 
 ## Current lane
 
-### R.3a — Native World Graph read optimization — DOING
+### R.3a — Native World Graph read optimization — THIS PR
 
 **Owner:** DungeonMind  
 **Goal:** make the accepted native read seam fast enough for direct production consumption without changing its meaning.
 
-Measured real-world pressure:
+This PR implements the named order: one `WorldGraphReadContext`, coherent
+`SourceProvenanceSnapshot`, per-context evidence memo, and service-local
+parsed-revision reuse. Public R.1/R.2 contracts are unchanged. There is no
+scoped cross-request cache and no search/anchor index.
 
-```text
-hydrated compatibility projection  ≈ 1.7 s
-direct DungeonMind projection      ≈ 20.7 s
-```
+Live Eldyrwild campaign-GM projection (same V4 identity as the R.3 direct
+witness): **20,739 ms → 115 ms warm (180×)** on the Cycle 2 head (isolation
+copies + profile-bound cache). Every R.2a synthetic digest at 100 / 1k /
+5k / 10k still matches. Durable record:
+[`Docs/Benchmarks/BASELINE-world-graph-reads-r3a.md`](../Benchmarks/BASELINE-world-graph-reads-r3a.md).
+Handoff:
+[`Docs/Handoffs/HANDOFF-cutover-direct-read-optimization.md`](../Handoffs/HANDOFF-cutover-direct-read-optimization.md).
 
-Optimization order:
-
-1. coherent source/provenance batch/snapshot for one read;
-2. memoize evidence-chain resolution inside the read context;
-3. reuse parsed immutable graph revisions safely;
-4. let retrieval reuse the established context;
-5. remeasure before adding indexes or broader caches.
-
-Safety constraint:
+Safety constraint (still binding):
 
 > A scoped/admissible projection may not be cached across requests by graph revision/scope alone. Source/provenance state participates in admission and may change while the graph revision remains fixed.
 
@@ -102,7 +100,9 @@ R.3a regression oracle:
 R.3 supported-contract direct result == R.3a optimized direct result
 ```
 
-R.3a does not flip a DungeonMindBuddy rollout flag and does not delete Buddy code.
+Disposition: `R3A_OPTIMIZED`, `SWITCH_NOT_READY`. R.3a does not flip a
+DungeonMindBuddy rollout flag and does not delete Buddy code. The next
+proof is a small Buddy pin + rerun of the merged R.3 witness.
 
 ## Next library lanes
 
@@ -198,7 +198,7 @@ Do not build cross-profile taxonomy/reasoning before a real consumer requires it
 
 ### L.5 — Retrieval/index maturation — EVIDENCE-GATED
 
-R.2a showed lexical search and anchor derivation have graph-size-dependent secondary cost. R.3a should first remove repeated projection/provenance work.
+R.2a showed lexical search and anchor derivation have graph-size-dependent secondary cost. R.3a removed repeated projection/provenance work; live Eldyrwild projection is no longer dominated by per-evidence source round-trips. Synthetic search still pays graph-size lexical work on top of projection.
 
 Only if remeasurement shows a remaining product problem should DungeonMind add:
 
@@ -224,12 +224,14 @@ This lane is not an excuse to add a platform service before embedded/library use
 
 ## External integration milestones — tracked, but not library roadmap owners
 
-DungeonMindBuddy still has external cutover work after R.3a:
+DungeonMindBuddy still has external cutover work after this R.3a PR:
 
 ```text
 pin optimized DungeonMind
+→ reuse long-lived native read services
 → rerun R.3 semantic/performance witness
-→ explicitly enable native direct reads
+→ record SWITCH_READY or SWITCH_NOT_READY
+→ only then explicitly enable native direct reads
 → retire hydrated Buddy read bridge
 → delete legacy Buddy graph runtime
 ```

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from typing import Protocol
 
 from ..contracts.semantic_profile import SemanticProfileDescriptor, SemanticProfileRef
@@ -118,3 +119,30 @@ def resolve_and_verify_profile(
             },
         )
     return descriptor
+
+
+def profile_registry_compatibility_id(registry: SemanticProfileRegistry) -> str:
+    """Stable identity of which pinned profiles a registry can verify.
+
+    Parsed-revision reuse is only valid across readers whose registries would
+    make the same admit/reject decision for a pinned semantic profile.
+    """
+
+    explicit = getattr(registry, "compatibility_id", None)
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    by_key = getattr(registry, "_by_key", None)
+    if isinstance(by_key, Mapping):
+        return canonical_sha256(
+            [
+                {
+                    "profile_id": profile_id,
+                    "profile_revision": profile_revision,
+                    "descriptor_sha256": descriptor_sha256(descriptor),
+                }
+                for (profile_id, profile_revision), descriptor in sorted(
+                    by_key.items(), key=lambda item: item[0]
+                )
+            ]
+        )
+    return f"{type(registry).__module__}.{type(registry).__qualname__}:{id(registry)}"

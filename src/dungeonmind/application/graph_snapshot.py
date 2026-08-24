@@ -32,6 +32,7 @@ from ..contracts.semantic_profile import (
 from ..domain.errors import PersistenceIntegrityError
 from .semantic_profiles import (
     SemanticProfileRegistry,
+    profile_registry_compatibility_id,
     resolve_and_verify_profile,
     validate_qualified_term,
 )
@@ -889,6 +890,8 @@ class UnionGraphV3SnapshotReader:
 class _EmptySemanticProfileRegistry:
     """Default registry: admits nothing (v3 fails closed)."""
 
+    _by_key: dict[tuple[str, str], SemanticProfileDescriptor] = {}
+
     def get(
         self, profile_id: str, profile_revision: str
     ) -> SemanticProfileDescriptor | None:
@@ -918,6 +921,15 @@ class VersionedUnionGraphSnapshotReader:
         self._v4 = UnionGraphV4SnapshotReader(registry)
         self._v5 = UnionGraphV5SnapshotReader(registry)
         self._v6 = UnionGraphV6SnapshotReader(registry)
+
+    @property
+    def parse_compatibility_id(self) -> str:
+        """Bind parsed-revision reuse to this reader plus profile registry."""
+
+        return (
+            "VersionedUnionGraphSnapshotReader:"
+            + profile_registry_compatibility_id(self._profile_registry)
+        )
 
     def parse(
         self,

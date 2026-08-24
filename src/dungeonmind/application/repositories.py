@@ -11,7 +11,7 @@ Failure model (from ``domain.errors``):
 - reads of unknown ids return ``None`` (transport maps to 404 where relevant)
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import Protocol, TypeAlias
 
@@ -59,6 +59,7 @@ from ..contracts.semantic import (
 )
 from ..domain.canonical import canonical_json
 from ..domain.errors import IdempotencyConflictError
+from .source_provenance_snapshot import SourceProvenanceSnapshot
 
 DurableGraphContribution: TypeAlias = GraphContribution | GraphContributionV2
 DurableIdentityDecision: TypeAlias = IdentityDecisionRecord | IdentityDecisionRecordV2
@@ -350,6 +351,21 @@ class SourceRepository(Protocol):
     def get_revision(self, source_revision_id: str) -> SourceRevision | None: ...
 
     def list_revisions(self, source_artifact_id: str) -> list[SourceRevision]: ...
+
+    def get_provenance_snapshot(
+        self,
+        *,
+        artifact_ids: Sequence[str],
+        revision_ids: Sequence[str],
+    ) -> SourceProvenanceSnapshot:
+        """Load the requested artifact and revision records coherently.
+
+        Returns application-contract records only. Missing ids stay missing
+        (``None`` on later lookup) so R.3 fail-closed provenance is preserved.
+        Adapters must not query source bodies. The snapshot is immutable for
+        the caller; it is not a scoped-projection cache.
+        """
+        ...
 
 
 class RetrievalSessionRepository(Protocol):

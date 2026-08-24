@@ -97,6 +97,7 @@ WorldGraphReadPhase = Literal[
     "head_lookup",
     "revision_load",
     "parse",
+    "source_snapshot_load",
     "scope_projection",
     "projection",
     "object_selection",
@@ -180,6 +181,9 @@ class WorldGraphReadObservation:
     neighborhood_depth: int | None = None
     coverage_gap_count: int | None = None
     coverage_missing_count: int | None = None
+    parsed_revision_cache_hit: bool | None = None
+    source_artifact_count: int | None = None
+    source_revision_count: int | None = None
 
     def __post_init__(self) -> None:
         if self.duration_seconds < 0:
