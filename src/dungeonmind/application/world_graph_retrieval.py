@@ -4,9 +4,13 @@ This module is the DungeonMind-native graph-semantic retrieval seam. Every
 operation composes the landed v2 projection authority exactly once:
 
 ``WorldGraphProjectionRequestV2`` + operation inputs
-→ ``WorldGraphProjectionService.project`` (one exact scoped revision)
+→ ``WorldGraphProjectionService.open_read_context`` (one coherent read)
 → deterministic graph-only primitives over the admitted projection
 → immutable per-operation results carrying the exact ``ProjectionSnapshotV2``
+
+Public ``project`` remains a compatibility wrapper over that context-producing
+seam. Retrieval reuses memoized evidence-chain resolution from the same
+context instead of recomputing projection facts.
 
 Five capabilities are owned here so product surfaces can retire their legacy
 kernel reads:
@@ -50,7 +54,6 @@ from .graph_scope import (
     objects_blocked_by_ambiguous_aliases,
     objects_blocked_by_omitted_aliases,
     public_coverage_gaps_for_exclusion,
-    resolve_evidence_provenance,
 )
 from .graph_snapshot import (
     GraphEvidenceLedgerRecord,
@@ -78,6 +81,7 @@ from .world_graph_projection import (
     WorldGraphProjectionResult,
     WorldGraphProjectionService,
 )
+from .world_graph_read_context import WorldGraphReadContext
 
 SOURCE_ANCHOR_SCHEMA = "dm_source_anchor_v1"
 SOURCE_ANCHOR_ID_PREFIX = "dm-source-anchor:v1:"
@@ -634,6 +638,14 @@ class WorldGraphRetrievalService:
         )
         self._read_clock = read_clock or SystemMonotonicReadClock()
 
+    def _establish(
+        self, request: WorldGraphProjectionRequestV2
+    ) -> tuple[WorldGraphProjectionResult, WorldGraphReadContext]:
+        """Open one coherent read context and the compatibility projection result."""
+
+        context = self._projection.open_read_context(request)
+        return WorldGraphProjectionResult.from_read_context(context), context
+
     def _emit(self, observation: WorldGraphReadObservation) -> None:
         emit_read_observation(self._read_observer, observation)
 
@@ -718,7 +730,7 @@ class WorldGraphRetrievalService:
             if not object_id.strip():
                 raise ValueError("object_id must be non-blank")
             with recorder.phase("projection"):
-                result = self._projection.project(request)
+                result, context = self._establish(request)
             projected = result
             obj = result.graph.objects.get(object_id)
             if obj is None:
@@ -752,6 +764,7 @@ class WorldGraphRetrievalService:
             with recorder.phase("anchor_derivation"):
                 anchors, anchor_truncated, anchor_gaps = self._anchors_for(
                     result,
+                    context=context,
                     object_ids={object_id},
                     relationship_ids={rel.relationship_id for rel in relationships},
                     assertion_ids={row.assertion_id for row in assertions},
@@ -824,7 +837,7 @@ class WorldGraphRetrievalService:
         try:
             seeds = _normalize_seeds(seed_object_ids, required=False)
             with recorder.phase("projection"):
-                result = self._projection.project(request)
+                result, context = self._establish(request)
             projected = result
             graph = result.graph
             with recorder.phase("referent_and_lexical_scoring"):
@@ -891,6 +904,7 @@ class WorldGraphRetrievalService:
             with recorder.phase("anchor_derivation"):
                 anchors, anchor_truncated, anchor_gaps = self._anchors_for(
                     result,
+                    context=context,
                     object_ids=selected_set,
                     relationship_ids={rel.relationship_id for rel in relationships},
                     assertion_ids={row.assertion_id for row in assertions},
@@ -980,7 +994,7 @@ class WorldGraphRetrievalService:
                 raise ValueError("neighborhood depth must be 1 or 2")
             seeds = _normalize_seeds(seed_object_ids, required=True)
             with recorder.phase("projection"):
-                result = self._projection.project(request)
+                result, context = self._establish(request)
             projected = result
             graph = result.graph
 
@@ -1051,6 +1065,7 @@ class WorldGraphRetrievalService:
             with recorder.phase("anchor_derivation"):
                 anchors, anchor_truncated, anchor_gaps = self._anchors_for(
                     result,
+                    context=context,
                     object_ids=selected_set,
                     relationship_ids={rel.relationship_id for rel in relationships},
                     assertion_ids={row.assertion_id for row in assertions},
@@ -1134,7 +1149,7 @@ class WorldGraphRetrievalService:
             if not 1 <= max_anchors <= _ANCHORS_LIMIT:
                 raise ValueError(f"max_anchors must be within 1..{_ANCHORS_LIMIT}")
             with recorder.phase("projection"):
-                result = self._projection.project(request)
+                result, context = self._establish(request)
             projected = result
             graph = result.graph
 
@@ -1171,7 +1186,9 @@ class WorldGraphRetrievalService:
                 evidence_ref_ids = assertion.evidence_ref_ids
 
             with recorder.phase("evidence_revalidation"):
-                chains = self._resolve_evidence_chains(result, evidence_ref_ids)
+                chains = self._resolve_evidence_chains(
+                    result, evidence_ref_ids, context=context
+                )
             with recorder.phase("anchor_derivation"):
                 supporters: dict[str, _SupporterSets] = {}
                 for evidence_ref_id in evidence_ref_ids:
@@ -1255,12 +1272,13 @@ class WorldGraphRetrievalService:
             if not anchor_id.strip():
                 raise ValueError("anchor_id must be non-blank")
             with recorder.phase("projection"):
-                result = self._projection.project(request)
+                result, context = self._establish(request)
             projected = result
             with recorder.phase("anchor_derivation"):
                 assertion_index = _index_admitted_assertions(result)
                 anchors, _truncated, _gaps = self._anchors_for(
                     result,
+                    context=context,
                     object_ids=set(result.graph.objects),
                     relationship_ids=set(result.graph.relationships),
                     assertion_ids=set(assertion_index),
@@ -1331,23 +1349,16 @@ class WorldGraphRetrievalService:
         self,
         result: WorldGraphProjectionResult,
         evidence_ref_ids: Iterable[str],
+        *,
+        context: WorldGraphReadContext,
     ) -> _ResolvedEvidenceChains:
         """Revalidate every evidence chain against the exact resolved context."""
-        snapshot = result.snapshot
         validated: dict[str, ValidatedProvenance] = {}
         gap_codes: set[str] = set()
         missing_ids: set[str] = set()
         unnamed_gap = False
         for evidence_ref_id in sorted(set(evidence_ref_ids)):
-            resolved = resolve_evidence_provenance(
-                evidence_ref_id,
-                snapshot=result.graph,
-                sources=self._sources,
-                world_id=snapshot.world_id,
-                campaign_id=snapshot.campaign_id,
-                admissibility=snapshot.admissibility,
-                scope_mode=snapshot.scope_mode,
-            )
+            resolved = context.resolve_evidence(evidence_ref_id)
             if isinstance(resolved, ValidatedProvenance):
                 validated[evidence_ref_id] = resolved
             elif isinstance(resolved, ProvenanceRejection):
@@ -1368,6 +1379,7 @@ class WorldGraphRetrievalService:
         self,
         result: WorldGraphProjectionResult,
         *,
+        context: WorldGraphReadContext,
         object_ids: set[str],
         relationship_ids: set[str],
         assertion_ids: set[str],
@@ -1402,7 +1414,7 @@ class WorldGraphRetrievalService:
                         assertion_id
                     )
 
-        chains = self._resolve_evidence_chains(result, supporters.keys())
+        chains = self._resolve_evidence_chains(result, supporters.keys(), context=context)
         anchors, truncated = self._anchors_from_chains(
             result,
             chains,

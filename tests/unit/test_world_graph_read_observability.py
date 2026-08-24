@@ -125,22 +125,27 @@ class _CountingProjectionService(WorldGraphProjectionService):
         super().__init__(**kwargs)
         self.project_calls = 0
 
-    def project(self, request):
+    def open_read_context(self, request):
         self.project_calls += 1
-        return super().project(request)
+        return super().open_read_context(request)
 
 
 class _ExplodingSources:
     """Source repository wrapper that fails closed once armed.
 
-    Provenance admission and revalidation both consult ``get_artifact`` /
-    ``get_revision``; arming the stub makes whichever phase runs next fail
-    without touching identity-bearing values.
+    Provenance admission loads a coherent snapshot first; arming the stub
+    makes snapshot load (or individual lookups) fail without touching
+    identity-bearing values.
     """
 
     def __init__(self, inner):
         self._inner = inner
         self.armed = False
+
+    def get_provenance_snapshot(self, *args, **kwargs):
+        if self.armed:
+            raise DungeonMindError("source authority unavailable")
+        return self._inner.get_provenance_snapshot(*args, **kwargs)
 
     def get_artifact(self, *args, **kwargs):
         if self.armed:
@@ -167,8 +172,8 @@ class _ArmingProjectionService(WorldGraphProjectionService):
         super().__init__(sources=armed_sources, **kwargs)
         self._armed_sources = armed_sources
 
-    def project(self, request):
-        result = super().project(request)
+    def open_read_context(self, request):
+        result = super().open_read_context(request)
         self._armed_sources.armed = True
         return result
 
@@ -332,6 +337,7 @@ def test_project_success_observation_counts_and_phases():
         "head_lookup",
         "revision_load",
         "parse",
+        "source_snapshot_load",
         "scope_projection",
     ]
     assert all(p.duration_seconds >= 0 for p in obs.phase_durations)
@@ -349,6 +355,9 @@ def test_project_success_observation_counts_and_phases():
     assert obs.pinned_read is False
     assert obs.scope_mode == "world_cross_campaign"
     assert obs.admissibility == "gm"
+    assert obs.parsed_revision_cache_hit is False
+    assert obs.source_artifact_count == 3
+    assert obs.source_revision_count == 3
     _assert_no_forbidden_tokens(obs)
 
 
@@ -434,7 +443,7 @@ def test_project_late_error_retains_parsed_counts():
         "head_lookup",
         "revision_load",
         "parse",
-        "scope_projection",
+        "source_snapshot_load",
     ]
     assert obs.graph_schema is not None
     assert obs.parsed_object_count == 6
@@ -697,22 +706,20 @@ def test_retrieval_late_error_retains_admitted_graph_counts():
     world_graph = InMemoryWorldGraphRepository()
     _publish(world_graph)
     observer = _RecordingObserver()
-    sources = _ExplodingSources(_seed_sources())
-    projection = _ArmingProjectionService(
-        armed_sources=sources,
-        world_graph=world_graph,
-        graph_reader=VersionedUnionGraphSnapshotReader(
-            profile_registry=StaticSemanticProfileRegistry([_v6_descriptor()])
-        ),
-        clock=_FixedClock(),
+    retrieval, _ = _services(world_graph, observer=observer)
+
+    class _ExplodingAnchors(WorldGraphRetrievalService):
+        def _anchors_for(self, *args, **kwargs):
+            raise DungeonMindError("anchor derivation exploded")
+
+    exploding = _ExplodingAnchors(
+        projection=retrieval._projection,
+        sources=retrieval._sources,
         read_observer=observer,
-    )
-    retrieval = WorldGraphRetrievalService(
-        projection=projection, sources=sources, read_observer=observer
     )
 
     with pytest.raises(DungeonMindError):
-        retrieval.get_object(
+        exploding.get_object(
             _request(scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN),
             object_id="obj:world-tavern",
         )

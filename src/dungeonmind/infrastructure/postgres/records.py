@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from psycopg import sql
+from psycopg import IsolationLevel, sql
 from pydantic import ValidationError
 
 from ...application.existing_world_adoption import require_v2_contribution_correction_closure
 from ...application.repositories import DurableGraphContribution, DurableIdentityDecision
+from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
 from ...contracts.contribution import (
     GRAPH_CONTRIBUTION_SCHEMA,
     GRAPH_CONTRIBUTION_V2_SCHEMA,
@@ -1087,6 +1089,54 @@ class PostgresSourceRepository:
                 (source_artifact_id,),
             ).fetchall()
         return [_return_revision(row) for row in rows]
+
+    def get_provenance_snapshot(
+        self,
+        *,
+        artifact_ids: Sequence[str],
+        revision_ids: Sequence[str],
+    ) -> SourceProvenanceSnapshot:
+        requested_artifacts = frozenset(artifact_ids)
+        requested_revisions = frozenset(revision_ids)
+        artifacts: dict[str, SourceArtifactRecord] = {}
+        revisions: dict[str, SourceRevision] = {}
+        with self._database.connect() as conn:
+            conn.isolation_level = IsolationLevel.REPEATABLE_READ
+            with conn.transaction():
+                if requested_artifacts:
+                    artifact_rows = conn.execute(
+                        sql.SQL(
+                            f"""
+                            SELECT {_ARTIFACT_SELECT}
+                            FROM {{}}.source_artifacts
+                            WHERE source_artifact_id = ANY(%s)
+                            """
+                        ).format(sql.Identifier(SCHEMA)),
+                        (list(requested_artifacts),),
+                    ).fetchall()
+                    artifacts = {
+                        row["source_artifact_id"]: _return_artifact(row) for row in artifact_rows
+                    }
+                if requested_revisions:
+                    revision_rows = conn.execute(
+                        sql.SQL(
+                            f"""
+                            SELECT {_REVISION_SELECT}
+                            FROM {{}}.source_revisions
+                            WHERE source_revision_id = ANY(%s)
+                            """
+                        ).format(sql.Identifier(SCHEMA)),
+                        (list(requested_revisions),),
+                    ).fetchall()
+                    revisions = {
+                        row["source_revision_id"]: _return_revision(row) for row in revision_rows
+                    }
+        return SourceProvenanceSnapshot.from_loaded(
+            requested_artifact_ids=requested_artifacts,
+            requested_revision_ids=requested_revisions,
+            artifacts=artifacts,
+            revisions=revisions,
+        )
 
 
 class PostgresRetrievalSessionRepository:

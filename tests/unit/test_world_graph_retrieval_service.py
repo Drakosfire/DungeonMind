@@ -60,9 +60,9 @@ class _CountingProjectionService(WorldGraphProjectionService):
         super().__init__(**kwargs)
         self.project_calls = 0
 
-    def project(self, request):
+    def open_read_context(self, request):
         self.project_calls += 1
-        return super().project(request)
+        return super().open_read_context(request)
 
 
 def _v6_descriptor():

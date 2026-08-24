@@ -11,7 +11,7 @@ the PostgreSQL adapter is what makes the ports real.
 import copy
 import math
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import Any, TypeVar
 
@@ -33,6 +33,7 @@ from ...application.repositories import (
     DurableIdentityDecision,
     normalize_semantic_document_batch,
 )
+from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
 from ...contracts.contribution import (
     ContributionStatus,
     GraphContribution,
@@ -976,6 +977,32 @@ class InMemorySourceRepository:
         items = [r for r in self._revisions.values() if r.source_artifact_id == source_artifact_id]
         items.sort(key=lambda r: r.source_revision_id)
         return [_copy(r) for r in items]
+
+    def get_provenance_snapshot(
+        self,
+        *,
+        artifact_ids: Sequence[str],
+        revision_ids: Sequence[str],
+    ) -> SourceProvenanceSnapshot:
+        requested_artifacts = frozenset(artifact_ids)
+        requested_revisions = frozenset(revision_ids)
+        with self._lock:
+            artifacts = {
+                artifact_id: _copy(self._artifacts[artifact_id])
+                for artifact_id in requested_artifacts
+                if artifact_id in self._artifacts
+            }
+            revisions = {
+                revision_id: _copy(self._revisions[revision_id])
+                for revision_id in requested_revisions
+                if revision_id in self._revisions
+            }
+        return SourceProvenanceSnapshot.from_loaded(
+            requested_artifact_ids=requested_artifacts,
+            requested_revision_ids=requested_revisions,
+            artifacts=artifacts,
+            revisions=revisions,
+        )
 
 
 class InMemoryRetrievalSessionRepository:

@@ -6,8 +6,11 @@ Graph projection service, PR #38) landed; R.2 (direct World Graph retrieval
 primitives, PR #40) landed. **R.2a (World Graph read observability + cutover
 benchmark baseline, PR #41) landed at
 `b3f419b08676eaca763c8a75c374be6e96ee624e`.** **R.2b (governed adopted-source
-classification repair) is the current DungeonMind lane and must land before
-Buddy R.3 resumes.** Product-surface adoption remains a separate successor. External RulesIngestion
+classification repair) landed.** Buddy **R.3** (direct DungeonMind production
+reads, PR #631 merge `ffc39ab394ea55b00dc8b2a0fd41be0448635600`) landed
+with the production gate still default-off. **R.3a (native World Graph
+read-context optimization) is the current DungeonMind lane.** Product-surface
+adoption remains a separate successor. External RulesIngestion
 PR C and product-surface adoption of `mind_turn_v1` remain independent
 successors. Ownership per ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0007,
 ADR-0008, ADR-0009, ADR-0010, ADR-0011, and ADR-0012.
@@ -36,9 +39,10 @@ B.2f-d service transport + external consumer contract ✅
 R.1   direct World Graph projection service (PR #38) ✅
 R.2   direct World Graph retrieval primitives (PR #40) ✅
 R.2a  World Graph read observability + cutover benchmark baseline (PR #41) ✅
-R.2b  governed adopted-source classification repair (this PR; blocks R.3)
-R.3   Buddy graph hydration removal from production reads (Buddy repo; paused)
-R.3a  direct-read optimization (later; only after R.3 semantic cutover is viable)
+R.2b  governed adopted-source classification repair ✅
+R.3   Buddy graph hydration removal from production reads (Buddy PR #631) ✅
+      (production direct-read gate remains default-off)
+R.3a  native World Graph read-context optimization (this PR)
 B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
 C     RulesIngestion pgvector benchmark backend
 D     embedding model bakeoff
@@ -534,44 +538,46 @@ Buddy-side graph stack.
   `Docs/Benchmarks/BASELINE-world-graph-reads-r2a.md`); the R.3 cutover has a
   named parity/performance witness
   shape ready to compare Buddy-hydrated and direct-DungeonMind reads.
-- **R.2b — Governed adopted-source classification repair**
-  (**surgical prerequisite discovered by Buddy R.3; must precede any R.3
-  resume**) — one atomic DungeonMind adoption-aggregate operation that
+- **R.2b — Governed adopted-source classification repair** ✅ —
+  one atomic DungeonMind adoption-aggregate operation that
   preserves sealed V3 membership M0, records an explicit V4 repair, and
   installs effective membership M1. Do not re-adopt. Do not rewrite V3 in
-  place. Do not add a generic SourceArtifact mutation API. Live Eldyrwild
-  apply is a later operator action after this PR merges. ADR-0021.
-- **R.3 — Buddy graph hydration removal** (DungeonMindBuddy repo, named
-  successor after R.2b; **paused** at PR #629 until R.2b lands and Buddy is
-  repinned) — `CUTOVER: remove Buddy graph hydration from
-  production reads`: pin the landed DungeonMind R.2/R.2a dependency; adapt
-  Buddy `campaign` → v2 `campaign` and Buddy `world` → v2
-  `world_cross_campaign`; replace `world_graph_projection` /
-  `world_graph_retrieval` kernel calls with DungeonMind native reads; during
-  cutover, compare normalized semantic parity and performance/operational
-  signals between the Buddy-hydrated and direct-DungeonMind paths before
-  deleting the old read path; move/retain the legitimate product-owned
-  source-body opener outside `graph_memory` after DungeonMind validates the
-  anchor; delete private Buddy revision translation and the frozen-store
-  dependency from production read paths. Not write-path retirement.
+  place. Do not add a generic SourceArtifact mutation API. ADR-0021.
+- **R.3 — Buddy graph hydration removal** ✅ (DungeonMindBuddy PR #631
+  merge `ffc39ab394ea55b00dc8b2a0fd41be0448635600`) — production reads
+  consume DungeonMind native projection/retrieval behind a thin DTO adapter
+  when the still-default-off direct-read gate is opted in for witnesses.
+  Not write-path retirement. The R.3 direct Eldyrwild projection median
+  (~20.7s) is the regression oracle for R.3a, not Buddy kernel equality.
+- **R.3a — native World Graph read-context optimization** (this PR) —
+  reusable `WorldGraphReadContext`, immutable revision parse reuse, and
+  one coherent batched source-provenance snapshot. Public R.1/R.2 contracts
+  unchanged. No scoped cross-request cache, no search/anchor indexes, no
+  production-gate flip. Durable record:
+  [`Docs/Benchmarks/BASELINE-world-graph-reads-r3a.md`](../Benchmarks/BASELINE-world-graph-reads-r3a.md).
 
 Canonical handoffs:
 [`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-projection.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-projection.md)
 (R.1),
 [`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md)
-(R.2), and
+(R.2),
 [`Docs/Handoffs/HANDOFF-cutover-world-graph-read-observability-benchmark.md`](../Handoffs/HANDOFF-cutover-world-graph-read-observability-benchmark.md)
-(R.2a), and
+(R.2a),
 [`Docs/Handoffs/HANDOFF-cutover-adoption-source-classification-repair.md`](../Handoffs/HANDOFF-cutover-adoption-source-classification-repair.md)
-(R.2b, this lane).
+(R.2b), and
+[`Docs/Handoffs/HANDOFF-cutover-direct-read-optimization.md`](../Handoffs/HANDOFF-cutover-direct-read-optimization.md)
+(R.3a, this lane).
 
 ## Named future lanes (no dates claimed)
 
 These lanes are named so successors can be dispatched deliberately. None is
 scheduled, and none may be smuggled into an unrelated PR.
 
-- **R.3a — direct-read optimization** — only after Buddy R.3 semantic
-  cutover is again viable. Not this PR.
+- **Buddy R.3a pin + witness** — small DungeonMindBuddy PR: pin the
+  optimized DungeonMind version, reuse long-lived native read services,
+  rerun the merged R.3 witness, record `SWITCH_READY` or
+  `SWITCH_NOT_READY`. Does not flip the production gate merely because
+  R.3a optimization exists.
 - **B.2f-d — service transport and external consumer contract** —
   expose the already-proven terminal publication/recovery seam to an external
   caller. Transport must not add a pending lifecycle, second confirmation,
