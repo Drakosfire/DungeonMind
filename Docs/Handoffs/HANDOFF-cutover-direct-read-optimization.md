@@ -1,7 +1,7 @@
 # HANDOFF — R.3a: native World Graph read-context optimization
 
 **Created:** 2026-08-23
-**Status:** IN REVIEW (PR #45 Cycle 2; production gate unchanged)
+**Status:** IN REVIEW (PR #45 Cycle 3; production gate unchanged)
 **Repository / branch:** `Drakosfire/DungeonMind` /
 `cutover/direct-read-optimization`
 **PR:** https://github.com/Drakosfire/DungeonMind/pull/45
@@ -82,7 +82,8 @@ flip `DUNGEONMIND_WORLD_GRAPH_DIRECT_READ`.
   visibility change visible on the next context), N+1 removal, scope and
   admissibility axes, unknown admissibility fail-closed, in-memory snapshot
   coherence, **PostgreSQL REPEATABLE_READ snapshot non-tear**, returned-result
-  mutation isolation, incompatible-profile cache miss, retrieval
+  mutation isolation, public provenance-mapping value-mutation isolation,
+  incompatible-profile cache miss, retrieval
   hit/miss/search/neighborhood/evidence/anchor.
 - Synthetic R.2a ladder digest compare + live Eldyrwild witness.
 - This handoff, ROADMAP pointer, and
@@ -172,8 +173,10 @@ snapshot; gate untouched.
 - Base SHA: `1b03bfc5f277fc1971461340d6d567a7cfef3d0f` (current `main` after #44)
 - Cycle 1 review: GitHub issue comment `5395883255` on exact head
   `920474db1f224935417b6d8832688d04d270ddc0`
-- Cycle 2: this branch tip after the review fixes (commit SHA is the PR head
-  that lands these changes)
+- Cycle 2: GitHub review `5008678443` on exact head
+  `e3d7cdd3afde29b1ba95c99ef0aaf9145841b040`
+- Cycle 3: this branch tip after public provenance-mapping isolation
+  (commit SHA is the PR head that lands these changes)
 - Downstream consumer to pin later: `DungeonMindBuddy` `main`
   `ffc39ab394ea55b00dc8b2a0fd41be0448635600`
 
@@ -204,8 +207,10 @@ snapshot; gate untouched.
   bypass parse-time profile verification.
 - **Returned snapshots are isolated copies.** Mutating a caller's object,
   relationship, evidence, or provenance record cannot poison the cached
-  revision or a later read. Provenance accessors return copies; stored maps
-  are `MappingProxyType`.
+  revision or a later read. Provenance backing maps are private; public
+  `artifacts` / `revisions` mappings and accessors return copies. Mutating a
+  model obtained through the public mapping cannot change `fingerprint` or
+  later `get_artifact` / `get_revision` / evidence resolution.
 - **Retrieval must consume the same context.** Re-hitting live sources after
   projection would break source-coherence and the N+1 proof.
 - **`WorldGraphProjectionResult` gained no fields.** R.2a digests walk
@@ -221,7 +226,7 @@ the batch+reuse win.
 ### Verification
 
 - Unit tests listed in §6: green (`uv run pytest`; full `-m "not integration"`
-  1348 passed).
+  1350 passed, including public provenance-mapping value-mutation isolation).
 - PostgreSQL coherence:
   `tests/integration/test_postgres_provenance_snapshot_coherence.py` green.
 - `uv run ruff check .`: clean (full repo, including

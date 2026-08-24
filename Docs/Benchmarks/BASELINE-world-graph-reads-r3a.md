@@ -22,6 +22,9 @@ not against Buddy's hydrated kernel.
 - **Cycle 2 review:** cache/profile identity, snapshot isolation, PostgreSQL
   coherence proof, full-repo Ruff, exact handoff metadata. Semantic digests
   and the live V4 witness were re-run on that head.
+- **Cycle 3 review:** public `SourceProvenanceSnapshot.artifacts` /
+  `.revisions` mappings expose isolated copies so value mutation cannot
+  change fingerprint or later read behavior. Live 180× witness stays frozen.
 
 **Disposition recorded here:** `R3A_OPTIMIZED`. Switch disposition:
 `SWITCH_NOT_READY`. The production direct-read gate remains default-off.

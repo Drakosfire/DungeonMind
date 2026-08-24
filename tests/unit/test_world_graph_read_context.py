@@ -6,11 +6,19 @@ import threading
 
 import pytest
 
+from dungeonmind.application.graph_scope import (
+    ValidatedProvenance,
+    resolve_evidence_provenance,
+)
 from dungeonmind.application.graph_snapshot import (
     GRAPH_SCHEMA_V1,
     VersionedUnionGraphSnapshotReader,
 )
 from dungeonmind.application.parsed_revision_cache import ParsedImmutableRevisionCache
+from dungeonmind.application.source_provenance_snapshot import (
+    SourceProvenanceSnapshot,
+    source_provenance_fingerprint,
+)
 from dungeonmind.application.world_graph_projection import WorldGraphProjectionService
 from dungeonmind.application.world_graph_retrieval import (
     EvidenceTarget,
@@ -18,6 +26,7 @@ from dungeonmind.application.world_graph_retrieval import (
 )
 from dungeonmind.contracts.evidence import (
     SourceArtifact,
+    SourceArtifactV2,
     SourceDomain,
     SourceRevision,
     SourceStatus,
@@ -380,6 +389,139 @@ def test_source_provenance_snapshot_mutation_cannot_contaminate_snapshot_or_late
     assert later_revision.locator == "fixture://src:world-lore"
     with pytest.raises(TypeError):
         first.source_snapshot.artifacts["src:world-lore"] = artifact  # type: ignore[index]
+
+
+def _provenance_fixture_artifact() -> SourceArtifactV2:
+    return SourceArtifactV2(
+        source_artifact_id="src:world-lore",
+        source_domain_key="buddy.worldbuilding",
+        source_domain=SourceDomain.WORLDBUILDING,
+        world_id=WORLD_ID,
+        campaign_id=None,
+        session_id=None,
+        uri=None,
+        current_revision_id="srcrev:world-lore-v1",
+        authority=None,
+        visibility=Visibility.PLAYER,
+        artifact_kind=None,
+        document_class=None,
+        review_state=None,
+        source_visibility_state=None,
+        workspace_document_ref=None,
+        lineage={"keep": "original"},
+        status=SourceStatus.ACTIVE,
+        created_at=NOW,
+        updated_at=NOW,
+    )
+
+
+def _provenance_fixture_revision() -> SourceRevision:
+    return SourceRevision(
+        source_revision_id="srcrev:world-lore-v1",
+        source_artifact_id="src:world-lore",
+        content_sha256="dd" * 32,
+        body_storage="external",
+        locator="fixture://src:world-lore",
+        created_at=NOW,
+    )
+
+
+def test_provenance_mapping_value_mutation_cannot_change_fingerprint():
+    artifact = _provenance_fixture_artifact()
+    revision = _provenance_fixture_revision()
+    snapshot = SourceProvenanceSnapshot.from_loaded(
+        requested_artifact_ids=frozenset({artifact.source_artifact_id}),
+        requested_revision_ids=frozenset({revision.source_revision_id}),
+        artifacts={artifact.source_artifact_id: artifact},
+        revisions={revision.source_revision_id: revision},
+    )
+    original_fingerprint = snapshot.fingerprint
+    expected_fingerprint = source_provenance_fingerprint(
+        artifacts={artifact.source_artifact_id: artifact},
+        revisions={revision.source_revision_id: revision},
+        missing_artifact_ids=frozenset(),
+        missing_revision_ids=frozenset(),
+    )
+    assert original_fingerprint == expected_fingerprint
+
+    mapped_artifact = snapshot.artifacts[artifact.source_artifact_id]
+    mapped_revision = snapshot.revisions[revision.source_revision_id]
+    assert isinstance(mapped_artifact, SourceArtifactV2)
+    mapped_artifact.visibility = Visibility.GM
+    mapped_artifact.lineage["poison"] = True
+    mapped_revision.locator = "poisoned-locator"
+
+    assert snapshot.fingerprint == original_fingerprint
+    later_mapped = snapshot.artifacts[artifact.source_artifact_id]
+    assert isinstance(later_mapped, SourceArtifactV2)
+    assert later_mapped.visibility is Visibility.PLAYER
+    assert later_mapped.lineage == {"keep": "original"}
+    assert snapshot.revisions[revision.source_revision_id].locator == (
+        "fixture://src:world-lore"
+    )
+    loaded_artifact = snapshot.get_artifact(artifact.source_artifact_id)
+    loaded_revision = snapshot.get_revision(revision.source_revision_id)
+    assert isinstance(loaded_artifact, SourceArtifactV2)
+    assert loaded_revision is not None
+    assert loaded_artifact.visibility is Visibility.PLAYER
+    assert loaded_artifact.lineage == {"keep": "original"}
+    assert loaded_revision.locator == "fixture://src:world-lore"
+    assert (
+        source_provenance_fingerprint(
+            artifacts={artifact.source_artifact_id: loaded_artifact},
+            revisions={revision.source_revision_id: loaded_revision},
+            missing_artifact_ids=frozenset(),
+            missing_revision_ids=frozenset(),
+        )
+        == original_fingerprint
+    )
+
+
+def test_source_provenance_snapshot_public_mapping_value_mutation_cannot_change_later_read():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    projection = _projection(world_graph, _seed_sources())
+    player = _request(
+        scope_mode=ScopeModeV2.WORLD,
+        admissibility=Admissibility.PLAYER,
+    )
+
+    first = projection.open_read_context(player)
+    assert "obj:world-tavern" in first.graph.objects
+    original_fingerprint = first.source_snapshot.fingerprint
+
+    first.source_snapshot.artifacts["src:world-lore"].visibility = Visibility.GM
+    first.source_snapshot.revisions["srcrev:world-lore-v1"].locator = "poisoned-locator"
+
+    assert first.source_snapshot.fingerprint == original_fingerprint
+    same_artifact = first.source_snapshot.get_artifact("src:world-lore")
+    same_revision = first.source_snapshot.get_revision("srcrev:world-lore-v1")
+    assert same_artifact is not None
+    assert same_revision is not None
+    assert same_artifact.visibility is Visibility.PLAYER
+    assert same_revision.locator == "fixture://src:world-lore"
+
+    reresolved = resolve_evidence_provenance(
+        "ev:world",
+        snapshot=first.parsed,
+        sources=first.source_snapshot,
+        world_id=first.identity.world_id,
+        campaign_id=first.identity.campaign_id,
+        admissibility=first.identity.admissibility,
+        scope_mode=first.identity.scope_mode,
+    )
+    assert isinstance(reresolved, ValidatedProvenance)
+    assert reresolved.artifact.visibility is Visibility.PLAYER
+
+    second = projection.open_read_context(player)
+    assert second.source_snapshot.fingerprint == original_fingerprint
+    assert "obj:world-tavern" in second.graph.objects
+    later_artifact = second.source_snapshot.get_artifact("src:world-lore")
+    later_revision = second.source_snapshot.get_revision("srcrev:world-lore-v1")
+    assert later_artifact is not None
+    assert later_revision is not None
+    assert later_artifact.visibility is Visibility.PLAYER
+    assert later_revision.locator == "fixture://src:world-lore"
 
 
 def test_source_change_is_visible_without_graph_publication():
