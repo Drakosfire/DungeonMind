@@ -7,7 +7,8 @@ records one-at-a-time is the N+1 that dominates real DungeonMind reads.
 This module is the transport-neutral snapshot those reads consume:
 
 * application-contract records only (never SQL rows or driver objects);
-* immutable for the duration of one coherent read;
+* immutable for the duration of one coherent read — stored maps are
+  read-only and accessors return isolated copies;
 * missing artifacts/revisions stay missing (fail closed exactly as R.3);
 * only the artifact/revision IDs referenced by the selected graph revision
   are requested — source bodies are never loaded.
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from ..contracts.evidence import SourceArtifactRecord, SourceRevision
 from ..domain.canonical import canonical_sha256
@@ -70,9 +72,8 @@ def source_provenance_fingerprint(
 class SourceProvenanceSnapshot:
     """Immutable application-contract view of requested source identity.
 
-    ``get_artifact`` / ``get_revision`` return the records copied into this
-    snapshot, or ``None`` when the requested id was missing. Callers must not
-    mutate returned models; the snapshot is the coherent view for one read.
+    ``get_artifact`` / ``get_revision`` return isolated copies. Mutating a
+    returned model cannot change this snapshot or any later read.
     """
 
     requested_artifact_ids: frozenset[str]
@@ -92,14 +93,22 @@ class SourceProvenanceSnapshot:
     ) -> SourceProvenanceSnapshot:
         missing_artifacts = requested_artifact_ids - frozenset(artifacts)
         missing_revisions = requested_revision_ids - frozenset(revisions)
+        isolated_artifacts = {
+            artifact_id: artifact.model_copy(deep=True)
+            for artifact_id, artifact in artifacts.items()
+        }
+        isolated_revisions = {
+            revision_id: revision.model_copy(deep=True)
+            for revision_id, revision in revisions.items()
+        }
         return cls(
             requested_artifact_ids=requested_artifact_ids,
             requested_revision_ids=requested_revision_ids,
-            artifacts=dict(artifacts),
-            revisions=dict(revisions),
+            artifacts=MappingProxyType(isolated_artifacts),
+            revisions=MappingProxyType(isolated_revisions),
             fingerprint=source_provenance_fingerprint(
-                artifacts=artifacts,
-                revisions=revisions,
+                artifacts=isolated_artifacts,
+                revisions=isolated_revisions,
                 missing_artifact_ids=missing_artifacts,
                 missing_revision_ids=missing_revisions,
             ),
@@ -122,10 +131,16 @@ class SourceProvenanceSnapshot:
         return len(self.requested_revision_ids) - len(self.revisions)
 
     def get_artifact(self, source_artifact_id: str) -> SourceArtifactRecord | None:
-        return self.artifacts.get(source_artifact_id)
+        artifact = self.artifacts.get(source_artifact_id)
+        if artifact is None:
+            return None
+        return artifact.model_copy(deep=True)
 
     def get_revision(self, source_revision_id: str) -> SourceRevision | None:
-        return self.revisions.get(source_revision_id)
+        revision = self.revisions.get(source_revision_id)
+        if revision is None:
+            return None
+        return revision.model_copy(deep=True)
 
 
 __all__ = [

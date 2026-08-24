@@ -1,11 +1,12 @@
 # HANDOFF — R.3a: native World Graph read-context optimization
 
 **Created:** 2026-08-23
-**Status:** LANDED (implementation complete in this branch; production gate
-unchanged)
+**Status:** IN REVIEW (PR #45 Cycle 2; production gate unchanged)
 **Repository / branch:** `Drakosfire/DungeonMind` /
 `cutover/direct-read-optimization`
-**Base:** DungeonMind `main` `e6db571584d55a9d903e120ae70adb4e01a702a9`
+**PR:** https://github.com/Drakosfire/DungeonMind/pull/45
+**Base:** DungeonMind `main` `1b03bfc5f277fc1971461340d6d567a7cfef3d0f`
+(merged #44)
 **Predecessor:** R.2a observability baseline; Buddy R.3 merged supported-contract
 witness (`DungeonMindBuddy` `ffc39ab394ea55b00dc8b2a0fd41be0448635600`, PR #631)
 **One-line mission:** Make native DungeonMind World Graph reads fast via one
@@ -20,11 +21,13 @@ production direct-read gate.
 A caller of `WorldGraphProjectionService` / `WorldGraphRetrievalService` still
 receives the same public R.1/R.2 result contracts. Internally, every public
 read establishes one `WorldGraphReadContext`: exact revision, parsed immutable
-graph (service-local LRU reuse keyed by `(world_id, revision_id)`), one
-coherent `SourceProvenanceSnapshot`, scoped projection, and a per-context
-evidence memo. Live Eldyrwild direct projection falls from ~20.7s to ~89ms
-(233×) by removing per-evidence PostgreSQL source gets. R.2a synthetic
-semantic digests match exactly. The production gate stays default-off.
+graph (service-local LRU reuse keyed by
+`(parse_compatibility_id, world_id, revision_id)`), one coherent
+`SourceProvenanceSnapshot`, scoped projection, and a per-context evidence memo.
+Live Eldyrwild direct projection falls from ~20.7s to ~115ms warm (180×) by
+removing per-evidence PostgreSQL source gets. Isolation copies make cache-hit
+`parse` phase ~18ms; `parse_calls` stay 0. R.2a synthetic semantic digests
+match exactly (34/34). The production gate stays default-off.
 
 Disposition recorded by the live harness:
 
@@ -65,8 +68,10 @@ flip `DUNGEONMIND_WORLD_GRAPH_DIRECT_READ`.
   observation.
 - `SourceProvenanceSnapshot` + `SourceRepository.get_provenance_snapshot`
   (in-memory lock-coherent copy; Postgres `REPEATABLE_READ` batch).
-- Service-local `ParsedImmutableRevisionCache` (default 8, keyed by exact
-  `(world_id, revision_id)`, parse outside the lock, failures not cached).
+- Service-local `ParsedImmutableRevisionCache` (default 8, keyed by
+  `(parse_compatibility_id, world_id, revision_id)`, parse outside the lock,
+  failures not cached, returned snapshots isolated from cache storage).
+  Incompatible reader/profile registries cannot reuse each other's parses.
 - Per-context evidence memo; retrieval reuses the same context (no live
   source re-hit after snapshot).
 - Observability: new phase `source_snapshot_load`; optional
@@ -76,7 +81,9 @@ flip `DUNGEONMIND_WORLD_GRAPH_DIRECT_READ`.
   bounded LRU, **mandatory source freshness** (graph revision stable, source
   visibility change visible on the next context), N+1 removal, scope and
   admissibility axes, unknown admissibility fail-closed, in-memory snapshot
-  coherence, retrieval hit/miss/search/neighborhood/evidence/anchor.
+  coherence, **PostgreSQL REPEATABLE_READ snapshot non-tear**, returned-result
+  mutation isolation, incompatible-profile cache miss, retrieval
+  hit/miss/search/neighborhood/evidence/anchor.
 - Synthetic R.2a ladder digest compare + live Eldyrwild witness.
 - This handoff, ROADMAP pointer, and
   `Docs/Benchmarks/BASELINE-world-graph-reads-r3a.md`.
@@ -92,14 +99,14 @@ flip `DUNGEONMIND_WORLD_GRAPH_DIRECT_READ`.
 - Buddy concepts, Buddy kernel equality, or changing public R.1/R.2
   contracts / `WorldGraphProjectionResult` fields (R.2a digests walk
   dataclass fields).
-- Deep-copying snapshot records on every `get_artifact` / evidence row.
 
 ## §4 Invariants that bind this slice
 
 - Optimized R.3a result must be semantically indistinguishable from the
   merged R.3 *direct* result, not the old Buddy kernel.
 - Parsed immutable graph snapshots are safe to reuse for one
-  `(world_id, revision_id)` bound to one `GraphSnapshotReader`.
+  `(parse_compatibility_id, world_id, revision_id)`. A parse produced under
+  one reader/profile registry must not be served to an incompatible reader.
 - Source/provenance state is live. A V4 source-classification repair can
   change visibility while the graph revision stays put. The next
   `open_read_context` must observe current source state.
@@ -132,12 +139,8 @@ uv run pytest tests/unit/test_world_graph_read_context.py \
   tests/unit/test_graph_scope_provenance.py \
   tests/unit/test_graph_scope_v6.py \
   tests/unit/test_source_evidence_v2.py
-uv run ruff check src/dungeonmind/application \
-  src/dungeonmind/infrastructure/memory \
-  src/dungeonmind/infrastructure/postgres/records.py \
-  tests/unit/test_world_graph_read_context.py \
-  tests/unit/test_world_graph_read_observability.py \
-  tests/unit/test_world_graph_retrieval_service.py
+uv run pytest tests/integration/test_postgres_provenance_snapshot_coherence.py -m integration
+uv run ruff check .
 uv run python benchmarks/world_graph_reads.py --sizes 100 --fast -o /tmp/r3a-100.json
 # Live (postgres extra + cutover DSN):
 uv run python benchmarks/world_graph_live_postgres.py --runs 3
@@ -165,35 +168,44 @@ snapshot; gate untouched.
 
 - Repo: `Drakosfire/DungeonMind`
 - Branch: `cutover/direct-read-optimization`
-- Base SHA: `e6db571584d55a9d903e120ae70adb4e01a702a9`
-- Implementation: uncommitted on this branch at handback time (commit when
-  asked)
+- PR: https://github.com/Drakosfire/DungeonMind/pull/45
+- Base SHA: `1b03bfc5f277fc1971461340d6d567a7cfef3d0f` (current `main` after #44)
+- Cycle 1 review: GitHub issue comment `5395883255` on exact head
+  `920474db1f224935417b6d8832688d04d270ddc0`
+- Cycle 2: this branch tip after the review fixes (commit SHA is the PR head
+  that lands these changes)
 - Downstream consumer to pin later: `DungeonMindBuddy` `main`
   `ffc39ab394ea55b00dc8b2a0fd41be0448635600`
 
 ### Architecture fitness
 
-| Axis | Before (R.3 direct / R.2a) | After (R.3a) |
+| Axis | Before (R.3 direct / R.2a) | After (R.3a Cycle 2) |
 |---|---|---|
-| Live Eldyrwild campaign-GM projection | 20,739 ms median; `scope_projection` 20.1s | 89.2 ms warm / 115.9 ms cold |
+| Live Eldyrwild campaign-GM projection | 20,739 ms median; `scope_projection` 20.1s | 115.0 ms warm / 140.1 ms cold (180×) |
 | Live source calls per read | N+1 `get_artifact`/`get_revision` | `get_provenance_snapshot` = 1; per-get = 0 |
-| Live parse | 12 ms every read | 10.8 ms cold; ~0 on `(world_id, revision_id)` hit |
-| Synthetic 10k `project_head` | 6.74 s | 2.32 s (digest match) |
-| Peak traced memory @100 | ~3.2 MiB | ~1.19 MiB |
+| Live parse | 12 ms every read | 47.9 ms cold; cache hit `parse_calls` = 0 (isolation copy ~18ms in parse phase) |
+| Synthetic 10k `project_head` | 6.74 s | Cycle 1: 2.32 s; Cycle 2: **34/34 R.2a digests MATCH** |
+| Peak traced memory @100 | ~3.2 MiB | Cycle 1: ~1.19 MiB (not re-laddered in Cycle 2) |
 | Public R.1/R.2 contracts | unchanged | unchanged |
 | New types | — | `WorldGraphReadContext`, `SourceProvenanceSnapshot`, `ParsedImmutableRevisionCache` |
 | New port method | — | `SourceRepository.get_provenance_snapshot` |
+| Cache identity | — | `(parse_compatibility_id, world_id, revision_id)` |
 | Scoped cross-request cache | none | **none** (forbidden) |
 | Search/anchor indexes | none | **none** (forbidden) |
 
 ### Decisions
 
 - **Reusable parsed revision, not reusable scoped projection.** Parsed bytes
-  are a pure function of `(world_id, revision_id)`. Scoped admission consults
-  live source state, so it is rebuilt per context from a fresh snapshot.
-- **Snapshot lookup without per-get deepcopy.** Copy once at snapshot
-  build; evidence resolution reads the snapshot records. This was a large
-  in-memory win and is required for the N+1 proof.
+  are a pure function of `(parse_compatibility_id, world_id, revision_id)`.
+  Scoped admission consults live source state, so it is rebuilt per context
+  from a fresh snapshot.
+- **Cache identity includes reader/profile compatibility.** Sharing one cache
+  object across incompatible `GraphSnapshotReader` / profile registries cannot
+  bypass parse-time profile verification.
+- **Returned snapshots are isolated copies.** Mutating a caller's object,
+  relationship, evidence, or provenance record cannot poison the cached
+  revision or a later read. Provenance accessors return copies; stored maps
+  are `MappingProxyType`.
 - **Retrieval must consume the same context.** Re-hitting live sources after
   projection would break source-coherence and the N+1 proof.
 - **`WorldGraphProjectionResult` gained no fields.** R.2a digests walk
@@ -208,13 +220,17 @@ the batch+reuse win.
 
 ### Verification
 
-- Unit tests listed in §6: green (`uv run pytest`).
-- `uv run ruff check` on changed files: clean.
-- `pyright` on application modules: 0 errors.
-- Synthetic R.2a ladder: **all case digests MATCH** at 100 / 1k / 5k / 10k.
-- Live Eldyrwild: identity preflight ok; warm projection **89.2 ms vs
-  20,739 ms (233×)**; N+1 removed; parse reuse isolated across D_B / D_A /
-  return-to-head.
+- Unit tests listed in §6: green (`uv run pytest`; full `-m "not integration"`
+  1348 passed).
+- PostgreSQL coherence:
+  `tests/integration/test_postgres_provenance_snapshot_coherence.py` green.
+- `uv run ruff check .`: clean (full repo, including
+  `benchmarks/world_graph_live_postgres.py`).
+- `uv run pyright`: 0 errors.
+- Synthetic R.2a ladder: **all 34 case digests MATCH** at 100 / 1k / 5k / 10k.
+- Live Eldyrwild Cycle 2: identity preflight ok; warm projection **115.0 ms vs
+  20,739 ms (180×)**; N+1 removed; parse reuse isolated across D_B / D_A /
+  return-to-head; admission counts unchanged (390 / 176 / 130).
 - Durable numbers:
   `Docs/Benchmarks/BASELINE-world-graph-reads-r3a.md`.
 

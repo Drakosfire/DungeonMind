@@ -637,7 +637,7 @@ def _project_v1_objects(
             else:
                 object_exclusions[object_id] = exclusion
             continue
-        objects[object_id] = obj
+        objects[object_id] = obj.model_copy(deep=True)
     return objects, object_exclusions
 
 
@@ -1096,7 +1096,7 @@ def project_scoped_snapshot(
         if not _referenced_aspects_admitted(rel, objects):
             relationship_exclusions[rel_id] = ObjectScopeExclusion(out_of_scope=True)
             continue
-        relationships[rel_id] = rel
+        relationships[rel_id] = rel.model_copy(deep=True)
 
     retained_evidence_ids = {
         evidence_ref_id
@@ -1108,7 +1108,7 @@ def project_scoped_snapshot(
         for evidence_ref_id in rel.evidence_ref_ids
     }
     evidence = {
-        evidence_ref_id: record
+        evidence_ref_id: record.model_copy(deep=True)
         for evidence_ref_id, record in snapshot.evidence.items()
         if evidence_ref_id in retained_evidence_ids
     }

@@ -83,8 +83,9 @@ parsed-revision reuse. Public R.1/R.2 contracts are unchanged. There is no
 scoped cross-request cache and no search/anchor index.
 
 Live Eldyrwild campaign-GM projection (same V4 identity as the R.3 direct
-witness): **20,739 ms → 89 ms warm (233×)**. Every R.2a synthetic digest at
-100 / 1k / 5k / 10k still matches. Durable record:
+witness): **20,739 ms → 115 ms warm (180×)** on the Cycle 2 head (isolation
+copies + profile-bound cache). Every R.2a synthetic digest at 100 / 1k /
+5k / 10k still matches. Durable record:
 [`Docs/Benchmarks/BASELINE-world-graph-reads-r3a.md`](../Benchmarks/BASELINE-world-graph-reads-r3a.md).
 Handoff:
 [`Docs/Handoffs/HANDOFF-cutover-direct-read-optimization.md`](../Handoffs/HANDOFF-cutover-direct-read-optimization.md).

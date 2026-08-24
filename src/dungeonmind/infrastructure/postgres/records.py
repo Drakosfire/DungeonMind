@@ -1117,6 +1117,7 @@ class PostgresSourceRepository:
                     artifacts = {
                         row["source_artifact_id"]: _return_artifact(row) for row in artifact_rows
                     }
+                self._after_provenance_artifact_batch()
                 if requested_revisions:
                     revision_rows = conn.execute(
                         sql.SQL(
@@ -1137,6 +1138,15 @@ class PostgresSourceRepository:
             artifacts=artifacts,
             revisions=revisions,
         )
+
+    def _after_provenance_artifact_batch(self) -> None:
+        """Test seam inside the REPEATABLE_READ snapshot transaction.
+
+        Invoked after the artifact batch select and before the revision batch
+        select. Production callers leave this as a no-op. Integration tests
+        may override it to commit a coordinated source-generation change on
+        another connection and prove the snapshot cannot tear.
+        """
 
 
 class PostgresRetrievalSessionRepository:

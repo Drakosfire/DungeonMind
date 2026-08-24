@@ -18,12 +18,14 @@ import os
 import statistics
 import sys
 import time
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from world_graph_reads import result_digest
 
 from dungeonmind.application.graph_snapshot import VersionedUnionGraphSnapshotReader
 from dungeonmind.application.world_graph_observability import WorldGraphReadObservation
@@ -37,8 +39,6 @@ from dungeonmind.contracts.projection_v2 import ScopeModeV2, WorldGraphProjectio
 from dungeonmind.infrastructure.postgres import PostgresDatabase, PostgresRepositoryBundle
 from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
 from dungeonmind_dnd.application.world_object_vocabulary import load_builtin_v3_descriptor
-
-from world_graph_reads import result_digest
 
 EXPECTED_RECEIPT_SCHEMA = "dm_existing_world_adoption_receipt_v4"
 EXPECTED_M0 = "538195e399158bfb4fafce01f9c5af3c63e2137f70694fdead7a26e5800e0890"
@@ -245,8 +245,8 @@ def main(argv: list[str] | None = None) -> int:
 
     print("identity preflight: ok")
     print(f"  receipt: {receipt.schema_version}")
-    print(f"  D_A / head: match expected V4 Eldyrwild pins")
-    print(f"  M0 / M1: match expected V4 membership digests")
+    print("  D_A / head: match expected V4 Eldyrwild pins")
+    print("  M0 / M1: match expected V4 membership digests")
 
     observer = _CollectingObserver()
     sources = _CountingSources(bundle.sources)
@@ -451,7 +451,10 @@ def main(argv: list[str] | None = None) -> int:
         cache_s = (
             "hit" if cache and all(cache) else ("miss" if cache and not any(cache) else str(cache))
         )
-        snap = summary["source_calls"][-1]["get_provenance_snapshot"] if summary["source_calls"] else "?"
+        if summary["source_calls"]:
+            snap = summary["source_calls"][-1]["get_provenance_snapshot"]
+        else:
+            snap = "?"
         parse = summary["parse_calls"][-1] if summary["parse_calls"] else "?"
         print(
             f"{summary['name']:<42} {summary['median_ms']:>10.1f}  {cache_s:<6} {snap!s:<9} {parse}"
@@ -464,8 +467,8 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(f"warm campaign GM projection median: {warm_projection_ms:.1f} ms")
     print(
-        f"vs R.3 direct {R3_DIRECT_PROJECTION_MEDIAN_MS:.0f} ms → {factor:.2f}× "
-        f"(target ≥ {OPTIMIZATION_FACTOR_TARGET:.0f}×)"
+        f"vs R.3 direct {R3_DIRECT_PROJECTION_MEDIAN_MS:.0f} ms -> {factor:.2f}x "
+        f"(target >= {OPTIMIZATION_FACTOR_TARGET:.0f}x)"
     )
     print(f"disposition: {disposition}")
     print("switch: SWITCH_NOT_READY (gate remains default-off; successor Buddy pin+witness)")

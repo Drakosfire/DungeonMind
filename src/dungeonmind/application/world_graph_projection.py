@@ -31,6 +31,7 @@ from .graph_snapshot import GraphSnapshotReader, ParsedGraphSnapshot
 from .parsed_revision_cache import (
     DEFAULT_PARSED_REVISION_CACHE_MAX_ENTRIES,
     ParsedImmutableRevisionCache,
+    graph_reader_parse_compatibility_id,
 )
 from .repositories import SourceRepository, WorldGraphRepository
 from .source_provenance_snapshot import provenance_refs_from_parsed_graph
@@ -253,6 +254,7 @@ class WorldGraphProjectionService:
                     graph_schema=stored.revision.graph_schema,
                     graph_payload=stored.graph_payload,
                 ),
+                compatibility_id=graph_reader_parse_compatibility_id(self._graph_reader),
             )
         facts.parsed_revision_cache_hit = cache_hit
         facts.graph_schema = parsed.graph_schema

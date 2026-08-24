@@ -10,15 +10,18 @@ R.2a is unchanged. R.3a compares optimized native reads against the landed
 R.2a semantic digests and against the R.3 live Eldyrwild *direct* witness,
 not against Buddy's hydrated kernel.
 
-- **Implementation branch:** `cutover/direct-read-optimization`
-- **Base:** DungeonMind `main` `e6db571584d55a9d903e120ae70adb4e01a702a9`
-  (`519b2c96fc42d22f3113cc9ca0d48bc70b6780e5`)
+- **Implementation branch:** `cutover/direct-read-optimization` (PR #45)
+- **Base:** DungeonMind `main` `1b03bfc5f277fc1971461340d6d567a7cfef3d0f`
+  (merged #44)
 - **Lane:** `r3a` (handoff:
   `Docs/Handoffs/HANDOFF-cutover-direct-read-optimization.md`)
 - **Synthetic harness:** `benchmarks/world_graph_reads.py` (same case names
   as R.2a)
 - **Live harness:** `benchmarks/world_graph_live_postgres.py` (DSN/world via
   CLI; private graph/source identity never written)
+- **Cycle 2 review:** cache/profile identity, snapshot isolation, PostgreSQL
+  coherence proof, full-repo Ruff, exact handoff metadata. Semantic digests
+  and the live V4 witness were re-run on that head.
 
 **Disposition recorded here:** `R3A_OPTIMIZED`. Switch disposition:
 `SWITCH_NOT_READY`. The production direct-read gate remains default-off.
@@ -31,8 +34,10 @@ parse singleton. Each public read now establishes one
 
 1. exact head/revision load (unchanged);
 2. parse of the immutable revision, reused in-process by
-   `(world_id, revision_id)` through a service-local LRU
-   (`ParsedImmutableRevisionCache`, default 8 entries);
+   `(parse_compatibility_id, world_id, revision_id)` through a service-local
+   LRU (`ParsedImmutableRevisionCache`, default 8 entries). Returned snapshots
+   are isolated copies; incompatible reader/profile registries cannot hit
+   each other's cached parses;
 3. one coherent `SourceProvenanceSnapshot` via
    `SourceRepository.get_provenance_snapshot` (Postgres:
    `REPEATABLE_READ` + `ANY(%s)` batch selects);
@@ -50,6 +55,10 @@ Same generator seed `20260822`, same semantic profile
 
 Sampling notes:
 
+- Cycle 2 re-verified **all 34 R.2a semantic digests MATCH** at 100 / 1k /
+  5k / 10k against `benchmarks/baselines/world_graph_reads-r2a-latency.json`.
+  That is the semantic-parity proof. The latency/memory table below remains
+  the Cycle 1 characterization (isolation copies were not re-laddered).
 - Size 100 used pyperf `--fast` (multiple samples; median reported).
 - Sizes 1k / 5k / 10k used `--debug-single-value` (one sample after digest
   preflight). Treat those as order-of-magnitude comparisons, not as
@@ -103,28 +112,29 @@ host:                  same Linux dev machine as R.2a / R.3
 runs:                  3 (median reported)
 admitted (campaign GM): 390 objects / 176 relationships / 130 evidence
 source snapshot:       26 artifacts / 26 revisions, one batch load
+Cycle 2 witness:       isolation copies + profile-bound cache (this PR head)
 ```
 
 R.3 direct campaign-GM projection median was **20,739 ms**, with
 `scope_projection` ≈ 20.1s (99.6%) from per-evidence PostgreSQL source
-gets. R.3a:
+gets. Cycle 1 R.3a (before isolation copies) was 89.2 ms warm. Cycle 2:
 
-| operation | R.3 direct (ms) | R.3a median (ms) | factor |
+| operation | R.3 direct (ms) | R.3a Cycle 2 median (ms) | factor |
 |---|---|---|---|
-| projection (warm campaign GM) | 20,739 | **89.2** | **233×** |
-| projection (cold, first parse) | 20,256 | 115.9 | 175× |
-| exact object | 19,968 | 87.6 | 228× |
-| search | 20,212 | 147.2 | 137× |
-| neighborhood depth-1 | 20,937 | 89.7 | 233× |
-| neighborhood depth-2 | 20,598 | 95.4 | 216× |
-| evidence (object) | 20,547 | 133.5 | 154× |
-| resolve_source_anchor | — | 93.2 | — |
+| projection (warm campaign GM) | 20,739 | **115.0** | **180×** |
+| projection (cold, first parse) | 20,256 | 140.1 | 145× |
+| exact object | 19,968 | 129.0 | 155× |
+| search | 20,212 | 186.8 | 108× |
+| neighborhood depth-1 | 20,937 | 130.7 | 160× |
+| neighborhood depth-2 | 20,598 | 119.5 | 172× |
+| evidence (object) | 20,547 | 120.9 | 170× |
+| resolve_source_anchor | — | 156.3 | — |
 
-Warm campaign-GM phase split (median): `head_lookup` 9.7ms,
-`revision_load` 53.4ms, `parse` 0.01ms (cache hit),
-`source_snapshot_load` 15.2ms, `scope_projection` 6.7ms. That matches the
-R.3 phase attribution: head/revision/parse were already cheap; the 20s was
-N+1 source admission.
+Warm campaign-GM phase split (median): `head_lookup` 7.4ms,
+`revision_load` 48.2ms, `parse` 18.4ms (cache hit; `parse_calls` = 0 — this
+is defensive snapshot isolation, not a re-parse),
+`source_snapshot_load` 15.9ms, `scope_projection` 17.6ms. Head/revision load
+remain the dominant remaining wall; N+1 source admission is gone.
 
 Repository-call proof on every measured operation, including retrieval:
 
@@ -145,9 +155,10 @@ PLAYER campaign lens admitted 0 objects / 0 evidence on this world
 (fail-closed GM visibility, not a leak). World-owned GM lens admitted 1
 object. Those counts are DungeonMind admission facts, unchanged by R.3a.
 
-**≥5× bar:** met. Warm direct projection is 233× vs the R.3 direct median.
-The remaining wall time is revision payload load (~50ms) plus a 15ms
-source snapshot, not evidence-chain round-trips.
+**≥5× bar:** met. Warm direct projection is 180× vs the R.3 direct median.
+The remaining wall time is revision payload load (~50ms), a ~16ms source
+snapshot, and defensive parsed-snapshot isolation on cache hit (~18ms),
+not evidence-chain round-trips.
 
 ## Reproduce
 
