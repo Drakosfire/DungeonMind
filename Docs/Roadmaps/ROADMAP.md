@@ -1,662 +1,269 @@
-# DungeonMind — Roadmap and PR ladder
+# DungeonMind — Independent Library Roadmap
 
-**Status:** PR A / A.1 / B / B.1a / B.1b / B.2a / B.2b / B.2c / B.2d /
-B.2e / B.2f-0 / B.2f-a / B.2f-b / B.2f-c / B.2f-d landed. R.1 (direct World
-Graph projection service, PR #38) landed; R.2 (direct World Graph retrieval
-primitives, PR #40) landed. **R.2a (World Graph read observability + cutover
-benchmark baseline, PR #41) landed at
-`b3f419b08676eaca763c8a75c374be6e96ee624e`.** **R.2b (governed adopted-source
-classification repair) landed.** Buddy **R.3** (direct DungeonMind production
-reads, PR #631 merge `ffc39ab394ea55b00dc8b2a0fd41be0448635600`) landed
-with the production gate still default-off. **R.3a (native World Graph
-read-context optimization) is the current DungeonMind lane.** Product-surface
-adoption remains a separate successor. External RulesIngestion
-PR C and product-surface adoption of `mind_turn_v1` remain independent
-successors. Ownership per ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0007,
-ADR-0008, ADR-0009, ADR-0010, ADR-0011, and ADR-0012.
+**Status:** current forward roadmap  
+**Updated:** 2026-08-24  
+**Current library head at sync:** `519b2c96fc42d22f3113cc9ca0d48bc70b6780e5`  
+**First real consumer proof:** DungeonMindBuddy #631 merged at `ffc39ab394ea55b00dc8b2a0fd41be0448635600`
 
-Each PR is independently reviewable, in its named repository. Cross-repo work
-is never one PR.
+This roadmap is intentionally forward-looking. The founding A/B PR ladder and detailed cutover chronology remain available in Git history, ADRs, reports, and merged PRs; they are no longer the canonical way to understand what DungeonMind should become next.
 
-## Sequence (amended)
+## North star
+
+DungeonMind should be a small, trustworthy, extensible library for durable world knowledge.
+
+A good end state is:
 
 ```text
-A     repository foundation ✅
-A.1   foundational invariant hardening ✅
-B     minimal PostgreSQL/pgvector substrate ✅
-B.1a  thin read-only Mind Turn API host ✅
-B.1b  DungeonMind-owned curated browser consumer proof ✅
-B.2a  assertion-scoped alias/summary read projection ✅
-B.2b  semantic profile boundary + dm_union_graph_v3 ✅
-B.2c  DungeonMindDnD Threat vocabulary + extraction candidates ✅
-B.2d  pinned create-or-connect contribution plan ✅
-B.2e  finalized contribution review adoption ✅
-B.2f-0 accepted-review materialization characterization ✅
-B.2f-a finalized-review graph payload materializer ✅
-B.2f-b expected-parent CAS publication ✅
-B.2f-c durable publication identity + uncertain-outcome recovery ✅
-B.2f-d service transport + external consumer contract ✅
-R.1   direct World Graph projection service (PR #38) ✅
-R.2   direct World Graph retrieval primitives (PR #40) ✅
-R.2a  World Graph read observability + cutover benchmark baseline (PR #41) ✅
-R.2b  governed adopted-source classification repair ✅
-R.3   Buddy graph hydration removal from production reads (Buddy PR #631) ✅
-      (production direct-read gate remains default-off)
-R.3a  native World Graph read-context optimization (this PR)
-B.1c* external product-surface adoption of mind_turn_v1 (e.g. LandingPage) — outside this repo
-C     RulesIngestion pgvector benchmark backend
-D     embedding model bakeoff
-E     DungeonMindServer retrieval seam
-F     production infrastructure hardening (DungeonOverMind)
+client product
+  ├─ UI / documents / work context
+  ├─ agent harness (optional)
+  └─ other product tools
+          │
+          ▼
+     DungeonMind API
+          │
+          ├─ exact revisions
+          ├─ scoped/admissible graph reads
+          ├─ evidence + anchors
+          └─ governed publication
+          │
+          ▼
+       durable stores
 ```
 
-\* B.1c is named only as an external successor. It is not claimed by B.1b/B.2a
-and must land as a separate PR in the owning product repository.
+DungeonMind should not grow product or harness responsibilities merely because its first consumer is agentic.
 
-The demo may use deterministic fixture embeddings or the benchmark baseline.
-It proves the replaceable UI-to-Mind seam before several PRs optimize and
-operationalize retrieval.
+## What is already achieved
 
-## PR A — DungeonMind repository foundation ✅
+### Foundation — DONE
 
-**Repository:** DungeonMind
+- versioned contracts and repository ports;
+- in-memory and PostgreSQL adapters;
+- immutable World Graph revisions and explicit head CAS;
+- source/evidence provenance;
+- derived semantic-index model;
+- semantic-profile identity boundary plus D&D profile package;
+- governed contribution review/materialization/publication;
+- exact replay/recovery semantics.
 
-Delivered: package scaffold (`uv`, Pydantic v2); contract families; domain
-logic; application repository ports; in-memory adapters; curated fixture;
-unit tests; lint+CI; founding docs (architecture, authority, ADRs 0001–0003,
-recon report, handoff template).
+### Real-world authority adoption — DONE
 
-## PR A.1 — Foundational invariant hardening ✅
+Eldyrwild was adopted into DungeonMind/PostgreSQL as a living authority. The original adopted state remains historically sealed; the single accepted V4 source-classification repair preserves M0 and records sanctioned M1 rather than rewriting history.
 
-**Repository:** DungeonMind
+A post-adoption child revision was published through the normal governed path, proving DungeonMind owns living graph authority rather than only imported snapshots.
 
-Exit proof (initial hardening + contract-blocker closure):
+### Native current-client read contract — DONE
 
-- Explicit, fail-closed admissibility/visibility on all request contracts
-  (absence never means GM).
-- Parent/head lineage equality on normal graph publication
-  (`parent == expected == current_head`).
-- Deep-copy immutability for stored graph payloads.
-- Canonical idempotency conflicts for source, semantic, thread, and embedding
-  records.
-- Cross-field validators for evidence, source types, semantic documents,
-  identity decisions, focus, scope, claims, and accepted assertions.
-- Closed admitted-evidence ledger on retrieval sessions and Mind Turn
-  responses (no invented evidence/anchor grounding).
-- Embedding-run monotonic lifecycle with typed transition errors and
-  non-rewriting terminal retries; active-materialization semantics so only
-  COMPLETED non-superseded runs participate in retrieval.
-- Exact semantic-document provenance (`source_revision_id` /
-  `graph_revision_id`) plus materialization-run metadata compatibility.
-- v1 threads: caller-private, cross-surface; immutable
-  world/campaign/caller/tenant binding; retry-safe `turn_id` append.
-- One capability policy authority; permitted tools derived, never caller-supplied;
-  `AgentTurnContext` rejects input/policy graph-scope disagreement.
-- Unambiguous campaign/focus scope (no `campaign_id` on focus; world/campaign
-  modes cannot contradict).
-- Sanitized agent-adapter input (no caller/tenant auth metadata).
-- Static type checking (Pyright) in CI.
+R.1/R.2 expose transport-neutral native projection/retrieval services.
 
-## PR B — PostgreSQL/pgvector development substrate ✅
+DungeonMindBuddy R.3 proved the current-client contract against the real adopted world:
 
-**Repository:** DungeonMind (+ deployment owner only if dev/CI wiring needs it)
+- exact head and historical revision reads;
+- campaign and cross-campaign scope;
+- GM and PLAYER;
+- object lookup;
+- deterministic search/referent resolution;
+- depth-1/depth-2 neighborhood;
+- evidence;
+- source-anchor emit/revalidate;
+- explicit fail-closed behavior.
 
-Delivered:
+The final supported-contract witness recorded 0 unresolved blocking semantic differences and 0 supported-operation errors. Historical Buddy-kernel differences are no longer the acceptance oracle.
 
-- `migrations/` (Alembic) implementing the minimum schema families with
-  relational identity/lifecycle columns + JSONB payloads;
-- pinned dev/CI pgvector image + compose; health check verifies PostgreSQL
-  and the pgvector extension;
-- `infrastructure/postgres/` adapters for the repository ports, behind the
-  `postgres` extra;
-- graph revision/head CAS proven against real PostgreSQL;
-- semantic documents inserted and exactly searched (dense + full-text +
-  exact + fusion + filters);
-- integration tests opt-in locally, required in CI.
+## Current lane
 
-## PR B.1a — Thin read-only Mind Turn API host ✅
+### R.3a — Native World Graph read optimization — THIS PR
 
-**Repository:** DungeonMind
+**Owner:** DungeonMind  
+**Goal:** make the accepted native read seam fast enough for direct production consumption without changing its meaning.
 
-Delivered:
+This PR implements the named order: one `WorldGraphReadContext`, coherent
+`SourceProvenanceSnapshot`, per-context evidence memo, and service-local
+parsed-revision reuse. Public R.1/R.2 contracts are unchanged. There is no
+scoped cross-request cache and no search/anchor index.
+
+Live Eldyrwild campaign-GM projection (same V4 identity as the R.3 direct
+witness): **20,739 ms → 89 ms warm (233×)**. Every R.2a synthetic digest at
+100 / 1k / 5k / 10k still matches. Durable record:
+[`Docs/Benchmarks/BASELINE-world-graph-reads-r3a.md`](../Benchmarks/BASELINE-world-graph-reads-r3a.md).
+Handoff:
+[`Docs/Handoffs/HANDOFF-cutover-direct-read-optimization.md`](../Handoffs/HANDOFF-cutover-direct-read-optimization.md).
+
+Safety constraint (still binding):
+
+> A scoped/admissible projection may not be cached across requests by graph revision/scope alone. Source/provenance state participates in admission and may change while the graph revision remains fixed.
+
+R.3a regression oracle:
 
 ```text
-MindTurnRequest
-→ trusted demo-access authorization
-→ exact graph revision pin
-→ hybrid candidates + deterministic fusion
-→ scoped graph resolution + evidence admission
-→ context assembly + read-only fixture agent
-→ MindTurnResponse + retrieval-session / thread persistence
+R.3 supported-contract direct result == R.3a optimized direct result
 ```
 
-Public endpoints remain exactly `/healthz`, `/readyz`, `/v1/mind-turn`.
-Single-worker demo host; process-local request coordination is not claimed as
-cross-worker exactly-once execution.
+Disposition: `R3A_OPTIMIZED`, `SWITCH_NOT_READY`. R.3a does not flip a
+DungeonMindBuddy rollout flag and does not delete Buddy code. The next
+proof is a small Buddy pin + rerun of the merged R.3 witness.
 
-## PR B.1b — Curated browser surface consumer proof ✅
+## Next library lanes
 
-**Repository:** DungeonMind only
+### L.1 — Architecture fitness and simplification — READY after R.3a characterization
 
-Outcome:
+Purpose: determine what complexity the independent library has actually earned.
+
+For each subsystem record:
+
+- named consumer;
+- library ownership rationale;
+- correctness value;
+- runtime/conceptual/maintenance cost;
+- extension evidence.
+
+Classify:
+
+- essential complexity;
+- productive abstraction;
+- unproven abstraction;
+- accidental complexity;
+- historical residue.
+
+Highest-priority scrutiny:
+
+- founding-era MindTurn orchestration;
+- retrieval-session/thread ownership;
+- context assembly and budgeting;
+- claim ledger / answer validation;
+- `agents/` adapter machinery;
+- semantic-document/embedding machinery relative to current consumers;
+- duplicate generations of contracts/services retained only because of the founding sequence.
+
+Allowed outcomes include deletion, collapse, migration to a client, or explicit retention.
+
+The purpose is not to make the codebase small by taste. It is to make complexity answerable to evidence.
+
+### L.2 — Independent client ergonomics proof — READY after stable optimized read seam
+
+Build the smallest non-Buddy consumer that can naturally:
 
 ```text
-stdlib static example (examples/curated_mind_turn_surface)
-→ second-origin browser
-→ existing Mind Turn API (mind_turn_v1)
-→ readiness, grounded answer, projections, abstention, exact replay,
-  sanitized failure
+select world
+→ read head
+→ search
+→ get object
+→ neighborhood
+→ evidence
+→ anchor revalidation
 ```
 
-Framework-free HTML/CSS/JS acceptance consumer. Proves cross-origin CORS
-against the existing single configured origin. Does **not** move product UI
-ownership into DungeonMind, add endpoints, expand contracts, open sources,
-or adopt Hermes.
+Prefer a tiny CLI/example/library consumer over another product.
 
-Canonical handoff:
-[`Docs/Handoffs/HANDOFF-b1b-curated-browser-surface.md`](../Handoffs/HANDOFF-b1b-curated-browser-surface.md).
-Runbook:
-[`Docs/Runbooks/RUNBOOK-b1b-curated-browser-surface.md`](../Runbooks/RUNBOOK-b1b-curated-browser-surface.md).
+Measure:
 
-## PR B.2a — Assertion-scoped alias and summary read projection ✅
+- DungeonMind concepts the client must understand;
+- configuration needed;
+- imports/dependencies required;
+- whether internal contracts leak;
+- whether an exact operation can be expressed without product-specific knowledge.
 
-**Repository:** DungeonMind only
+Success means DungeonMind feels like a library, not "Buddy extracted into another repo."
 
-Outcome:
+### L.3 — Public library contract consolidation — READY after L.1/L.2 evidence
+
+Use the architecture-fitness and second-client evidence to decide what is intentionally public and stable.
+
+Potential work:
+
+- tighten exported application entry points;
+- document stable error vocabulary;
+- make optional transports clearly subordinate to application services;
+- deprecate or quarantine founding/demo APIs that are not part of the long-term library;
+- reduce duplicate contract generations only where historical revision support allows it.
+
+Do not perform broad API cleanup before the evidence identifies which surfaces matter.
+
+### L.4 — Extensibility proof through semantic profiles — DEFERRED until concrete pressure
+
+The generic/profile split is structurally clean and has a synthetic non-D&D canary, but real multi-system value is not yet proven.
+
+When a concrete second profile/use case appears, measure:
+
+- generic-kernel files changed;
+- generic contracts changed;
+- profile-only files changed;
+- migrations required;
+- retrieval/publication behavior changed.
+
+A successful profile extension should mostly remain profile-side.
+
+Do not build cross-profile taxonomy/reasoning before a real consumer requires it.
+
+### L.5 — Retrieval/index maturation — EVIDENCE-GATED
+
+R.2a showed lexical search and anchor derivation have graph-size-dependent secondary cost. R.3a removed repeated projection/provenance work; live Eldyrwild projection is no longer dominated by per-evidence source round-trips. Synthetic search still pays graph-size lexical work on top of projection.
+
+Only if remeasurement shows a remaining product problem should DungeonMind add:
+
+- search indexes;
+- anchor-supporter indexes;
+- incremental parsing/materialization;
+- broader cache layers.
+
+Every new index is derived state, never knowledge authority.
+
+### L.6 — Packaging and operational maturity — READY when library surface settles
+
+Possible work:
+
+- clean package/extras story;
+- release/versioning policy for public contracts;
+- compatibility/deprecation policy;
+- migration/runbook hardening;
+- production observability/SLO decisions based on measured use;
+- deployment guidance while preserving operator ownership of infrastructure lifecycle.
+
+This lane is not an excuse to add a platform service before embedded/library use proves insufficient.
+
+## External integration milestones — tracked, but not library roadmap owners
+
+DungeonMindBuddy still has external cutover work after this R.3a PR:
 
 ```text
-dm_union_graph_v2 revision
-→ core object evidence remains coarse
-→ each alias / summary admitted independently from its evidence
-→ player and GM receive different safe field projections
-→ same exact revision; v1 coarse behavior unchanged
+pin optimized DungeonMind
+→ reuse long-lived native read services
+→ rerun R.3 semantic/performance witness
+→ record SWITCH_READY or SWITCH_NOT_READY
+→ only then explicitly enable native direct reads
+→ retire hydrated Buddy read bridge
+→ delete legacy Buddy graph runtime
 ```
 
-Adds a second stored graph schema. Does **not** introduce a generic assertion
-framework, assertion authoring, migrations, public contract changes, source
-opening, Hermes, or product-surface adoption. Relationships remain coarse.
+Those are important proof points for DungeonMind, but the implementation belongs to DungeonMindBuddy. DungeonMind should not absorb Buddy rollout flags, UI behavior, product source opening, or agent harness logic to make that integration easier.
 
-Canonical handoff:
-[`Docs/Handoffs/HANDOFF-b2a-assertion-scoped-alias-summary.md`](../Handoffs/HANDOFF-b2a-assertion-scoped-alias-summary.md).
+## Explicit non-goals
 
-## PR B.2b — Semantic profile boundary and dm_union_graph_v3 ✅
+Until evidence changes the decision, DungeonMind does not roadmap:
 
-**Repository:** DungeonMind only
+- an agent harness;
+- Hermes/Pi/model-provider integration;
+- product prompt/context orchestration;
+- UI surfaces;
+- product-local document state;
+- generic source-body storage/opening;
+- distributed cache infrastructure;
+- semantic/vector search as authority;
+- generic multi-game interpretation;
+- compatibility with retired Buddy-kernel semantics;
+- a second graph per campaign.
 
-Outcome:
+## Optimization principle
 
-```text
-dm_union_graph_v3
-→ exact semantic-profile ref
-→ qualified opaque semantic terms
-→ generic registry/config
-→ DungeonMindDnD sibling package
-→ non-D&D canary
-```
+Optimization means reducing total system cost while preserving valuable capability.
 
-Adds a third stored graph schema whose payload pins one exact semantic
-profile (`profile_id` + `profile_revision` + `descriptor_sha256`) and whose
-node kinds and relationship predicates are qualified `namespace:local`
-terms admitted by the pinned descriptor. Resolution flows through a generic
-registry port fed by local operator config
-(`DUNGEONMIND_SEMANTIC_PROFILE_REGISTRY_PATH`); the default registry is
-empty, so v3 fails closed with no silent D&D default. The D&D 5e descriptor
-ships as package data in a data-only sibling package
-(`src/dungeonmind_dnd/`, same repository and wheel, one-way dependency
-enforced by test). The proof fixture pins the synthetic non-D&D
-`test.narrative` profile: the canary proves kernel/profile decoupling, not
-multi-system product support.
+DungeonMind optimization therefore includes:
 
-Does **not** introduce D&D mechanics or taxonomy in the kernel, a generic
-ontology interpreter, executable plugins, public contract changes,
-migrations, graph writes, source opening, Hermes, multi-system support, or
-product-surface adoption. V1/v2 remain immutable and unqualified; their
-fixture vocabulary is not canonical taxonomy. GM/player/canon/session
-remains kernel policy, not claimed as universal TTRPG ontology.
+- runtime cost;
+- memory and database cost;
+- conceptual cost;
+- maintenance cost;
+- client integration cost;
+- boundary leakage.
 
-Canonical handoff:
-[`Docs/Handoffs/HANDOFF-b2b-semantic-profile-boundary.md`](../Handoffs/HANDOFF-b2b-semantic-profile-boundary.md).
-Decision record:
-[`Docs/Decisions/ADR-0004-semantic-profile-boundary.md`](../Decisions/ADR-0004-semantic-profile-boundary.md).
-
-## PR B.2c — DungeonMindDnD Threat vocabulary and extraction candidates ✅
-
-**Repository:** DungeonMind only
-
-Outcome:
-
-```text
-dnd5e-profile-v2
-→ threat-v1 vocabulary catalog (4 kinds / 4 predicates + direction)
-→ strict provenance-bearing node/relationship candidate contracts
-→ deterministic domain/range + evidence-ledger validation
-→ deterministic JSON Schema + controlled-vocabulary prompt fragment
-→ synthetic existing-node reference proof (Tripod Null-Calf)
-```
-
-Makes `dungeonmind_dnd` the first executable semantic-profile package
-(ADR-0005): it loads one immutable profile revision and one immutable
-Threat vocabulary catalog from package data, exposes strict versioned
-candidate contracts suitable for structured LLM output or human-authored
-JSON, renders deterministic JSON Schema and a catalog-derived prompt
-fragment, and validates candidate terms, predicate direction/domain/range,
-endpoint resolution, and a closed evidence ledger — while producing no
-stable IDs, merge decisions, graph contributions, or durable writes.
-Threat is modeled only as the contextual `dnd5e:threatens` relationship,
-never as an object kind. The synthetic fixture connects new candidates
-(`cand:tripod-null-calf`, `cand:north-gate-breach`) to an explicit existing
-object reference (`obj:north-gate`) without claiming identity resolution or
-graph read authority.
-
-Does **not** change any file under `src/dungeonmind/`, call an LLM, read a
-graph, resolve identity, plan contributions, publish revisions, model
-mechanics/statblocks, add a generic interpretation layer, or add another
-game system. The kernel remains D&D-blind (namespace admission only); the
-v1 descriptor remains byte-for-byte immutable.
-
-Canonical handoff:
-[`Docs/Handoffs/HANDOFF-b2c-dnd-threat-vocabulary-candidates.md`](../Handoffs/HANDOFF-b2c-dnd-threat-vocabulary-candidates.md).
-Decision record:
-[`Docs/Decisions/ADR-0005-dnd-profile-executable-boundary.md`](../Decisions/ADR-0005-dnd-profile-executable-boundary.md).
-
-## PR B.2d — Pinned Threat create-or-connect contribution plan
-
-**Repository:** DungeonMind only
-
-Outcome:
-
-```text
-validated Threat candidate packet
-+ exact dm_union_graph_v3 StoredGraphRevision
-→ graph integrity / profile pin verification
-→ explicit existing-object verification
-→ exact label/alias create-or-connect proposal
-→ ambiguity / collision / duplicate blockers
-→ candidate-only GraphContribution preview
-→ expected-parent pin (no append, no publish)
-```
-
-Adds a repository-blind, profile-owned planner
-(`plan_threat_candidate_contribution`) that reconciles one B.2c packet
-against one exact stored revision and emits a deterministic
-`DndThreatContributionPlan`. Exact matching may propose identity; it never
-confirms it. Ready plans carry a candidate/GM/asserted contribution preview
-only; blocked plans carry machine-readable blockers and no contribution.
-No kernel source, vocabulary, profile artifact, migration, or repository
-adapter changes.
-
-Canonical handoff:
-[`Docs/Handoffs/HANDOFF-b2d-pinned-threat-contribution-plan.md`](../Handoffs/HANDOFF-b2d-pinned-threat-contribution-plan.md).
-Decision record:
-[`Docs/Decisions/ADR-0006-pinned-profile-contribution-planning.md`](../Decisions/ADR-0006-pinned-profile-contribution-planning.md).
-
-## PR B.2e — Finalized contribution review adoption
-
-**Repository:** DungeonMind only
-
-Outcome:
-
-```text
-ready B.2d plan
-+ complete GM assertion and candidate-identity verdicts
-+ exact confirm_commit capability and confirmation receipt
-→ current-head / exact-parent preflight
-→ atomic superseded candidate contribution
-→ active reviewed successor contribution
-→ finalized review record
-→ exact reload and idempotent replay
-```
-
-B.2e introduces generic review contracts, the repository-blind D&D
-ready-plan adapter, the kernel authority service, and in-memory/PostgreSQL
-review repositories. It does not create graph objects, append global identity
-decisions, construct a publication command, advance the graph head, or add a
-mutable review/API/UI/tool lifecycle.
-
-Canonical handoff:
-[`Docs/Handoffs/HANDOFF-b2e-finalized-contribution-review-adoption.md`](../Handoffs/HANDOFF-b2e-finalized-contribution-review-adoption.md).
-Decision record:
-[`Docs/Decisions/ADR-0007-finalized-contribution-review-adoption.md`](../Decisions/ADR-0007-finalized-contribution-review-adoption.md).
-
-## PR B.2f-a — Finalized-review graph payload materializer
-
-**Repository:** DungeonMind only
-
-Outcome:
-
-```text
-finalized ContributionReviewState
-+ exact pinned StoredGraphRevision
-+ matching GraphSnapshotReader
-→ deterministic dm_union_graph_v3 payload
-→ output reparse and semantic-profile validation
-→ ephemeral result bound to review, parent, and payload digests
-```
-
-B.2f-a promotes the accepted B.2f-0 review-to-effects mapping into a generic,
-side-effect-free kernel application seam. It materializes accepted node fields,
-evidence, and deterministic relationships while preserving untouched parent
-records and rejecting unsupported or colliding effects. It does not construct a
-revision, read or advance a head, publish, persist, append identity decisions,
-or expose transport.
-
-Canonical handoff:
-[`Docs/Handoffs/HANDOFF-b2f-a-finalized-review-graph-materializer.md`](../Handoffs/HANDOFF-b2f-a-finalized-review-graph-materializer.md).
-Decision record:
-[`Docs/Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md`](../Decisions/ADR-0009-b2f-a-finalized-review-graph-materializer.md).
-
-## PR B.2f-b — Finalized-review expected-parent CAS publication
-
-**Repository:** DungeonMind only
-
-Outcome:
-
-```text
-durable finalized review ID
-+ exact current parent
-+ B.2f-a materialization
-→ one PublishRevisionCommand
-→ atomic expected-parent CAS
-→ immutable child revision + advanced head
-→ ephemeral review/revision binding
-```
-
-B.2f-b is the first graph-head mutation for finalized reviews. The application
-seam accepts only `(world_id, review_id)` plus the caller's publication
-timestamp; it loads the exact durable B.2e review, rejects a stale preflight,
-loads the pinned parent, materializes through B.2f-a, maps
-`operation_ids=[review.operation_id]`, and invokes the existing repository CAS
-once. It verifies the returned revision envelope and performs no post-commit
-read, retry, recovery, identity-decision append, review mutation, or transport.
-
-Still false after this PR: durable review-to-revision identity, retry-as-success,
-uncertain-outcome recovery, public write surfaces, global identity-decision
-append, and product-surface adoption.
-
-Canonical handoff:
-[`Docs/Handoffs/HANDOFF-b2f-b-finalized-review-expected-parent-cas-publication.md`](../Handoffs/HANDOFF-b2f-b-finalized-review-expected-parent-cas-publication.md).
-Decision record:
-[`Docs/Decisions/ADR-0010-b2f-b-finalized-review-expected-parent-cas-publication.md`](../Decisions/ADR-0010-b2f-b-finalized-review-expected-parent-cas-publication.md).
-
-## PR B.2f-c — Durable finalized-review publication identity and recovery
-
-**Repository:** DungeonMind only
-
-Outcome:
-
-```text
-durable finalized review ID
-+ exact pinned parent
-+ B.2f-a materialization
-→ deterministic revision identity
-→ one atomic revision + head CAS + publication record
-→ exact durable replay or bounded predecessor adoption
-→ one recovery probe after response loss
-```
-
-B.2f-c promotes the ephemeral B.2f-b binding to a versioned terminal
-`dm_finalized_review_publication_v1` contract. A publication repository
-cross-verifies the command against the finalized review and owns the same
-transaction/lock as graph revision insertion, head advancement, and the normal
-head event. Exact replay returns the original record before reading the parent
-or graph reader, preserves its original timestamp, and remains valid after
-descendants or explicit rollback.
-
-If a publication call raises, the application probes once for the exact
-durable record. A recovered record is success; otherwise an unexpected or
-unavailable outcome becomes a sanitized retry-safe
-`finalized_review_publication_outcome_unknown` error. The only predecessor
-recovery is adoption of the exact deterministic B.2f-b revision, with no head
-mutation or second head event. Same-review concurrency returns one record;
-different reviews still rely on expected-parent CAS.
-
-Still false after this PR: pending or failed publication lifecycle, attempts,
-workers, queues, leases, retry schedulers, arbitrary history inference,
-identity-decision append, review/contribution lifecycle mutation, public
-transport, or product-surface adoption.
-
-Canonical handoff:
-[`Docs/Handoffs/HANDOFF-b2f-c-durable-finalized-review-publication-recovery.md`](../Handoffs/HANDOFF-b2f-c-durable-finalized-review-publication-recovery.md).
-Decision record:
-[`Docs/Decisions/ADR-0011-b2f-c-durable-finalized-review-publication-recovery.md`](../Decisions/ADR-0011-b2f-c-durable-finalized-review-publication-recovery.md).
-
-## PR B.2f-d — Finalized-review publication service transport
-
-**Repository:** DungeonMind only
-
-The separate publication host exposes `/healthz`, `/readyz`, and one
-`POST /v1/finalized-review-publications` route. Callers submit only the strict
-versioned `world_id + review_id` request. A one-world bearer digest authorizes
-the edge, the server owns publication time, and the route delegates unchanged
-to B.2f-c. Fresh success, exact durable replay, and response-loss recovery
-return the same terminal publication record with `Cache-Control: no-store`.
-
-The implementation includes sanitized error mappings, infrastructure-only
-readiness, no CORS/browser write surface, OpenAPI separation, and a
-standard-library-only external client with exact replay verification.
-
-Still false after B.2f-d: review creation/edit/finalization transport, pending
-or failed publication lifecycle, attempts, queues, workers, leases, schedulers,
-automatic retries, GET polling, current-head success inference, identity-ledger
-append, production auth, product adoption, and Threat mechanics/resource
-binding.
-
-Canonical handoff:
-[`Docs/Handoffs/HANDOFF-b2f-d-finalized-review-publication-service-transport.md`](../Handoffs/HANDOFF-b2f-d-finalized-review-publication-service-transport.md).
-Decision record:
-[`Docs/Decisions/ADR-0012-b2f-d-finalized-review-publication-service-transport.md`](../Decisions/ADR-0012-b2f-d-finalized-review-publication-service-transport.md).
-Runbook:
-[`Docs/Runbooks/RUNBOOK-b2f-d-finalized-review-publication-service.md`](../Runbooks/RUNBOOK-b2f-d-finalized-review-publication-service.md).
-
-## Buddy graph retirement cutover (R lane)
-
-DungeonMindBuddy currently hydrates and reads through its own legacy graph
-kernel even though DungeonMind is the graph authority. The R lane retires that
-kernel by exposing DungeonMind's exact, admissibility-scoped graph reads
-directly, measuring that authority seam deliberately, then deleting the
-Buddy-side graph stack.
-
-- **R.1 — direct World Graph projection service** — PR #38 ✅ (merged at
-  `70f2f00a`). `WorldGraphProjectionService` resolves one exact revision (pin
-  or current head), parses through an injected `GraphSnapshotReader`, and
-  applies the existing campaign/admissibility/provenance projection —
-  including the additive `world_cross_campaign` scope mode in the new v2
-  projection contracts (cross-campaign lens: world-owned plus every campaign
-  scope in one exact revision; the frozen v1 `world` mode remains world-owned
-  only; admissibility is an independent axis, so PLAYER reads under the
-  lens still fail closed on GM-only content). No Buddy DTOs, no write path, no
-  semantic search.
-- **R.2 — direct World Graph retrieval primitives** — PR #40 ✅ (merged at
-  `fd0b7605`). `WorldGraphRetrievalService` composes the R.1 v2 projection
-  exactly once
-  per operation and owns the five graph-semantic capabilities needed to
-  retire Buddy kernel reads: exact object lookup, deterministic graph-only
-  search/referent resolution, bounded depth-1/depth-2 neighborhood expansion
-  (depth 2 is required by the current production Hermes expansion contract),
-  evidence retrieval by native object/relationship/assertion identity with
-  per-chain provenance revalidation, and admitted source-anchor derivation
-  with opaque context-bound revalidation. Search is lexical only — no vector
-  store, semantic index, LLM, or file-search fallback. Anchor identity binds
-  the complete v2 scope/revision/provenance context; no source body is opened.
-- **R.2a — World Graph read observability + cutover benchmark baseline**
-  (**landed;** PR #41 merge
-  `b3f419b08676eaca763c8a75c374be6e96ee624e`) — Delivered: the application-owned, vendor-neutral
-  `WorldGraphReadObserver` seam (closed vocabularies, structural content
-  safety, fail-open dispatch, no-op default) spanning R.1 projection
-  (`head_lookup` / `revision_load` / `parse` / `scope_projection`) and all
-  R.2 retrieval operations (operation-specific phases; exactly one nested
-  project event plus one outer operation event per call); the deterministic
-  synthetic-v6 + D&D v3 pyperf harness (dev-only) with digest preflight as
-  a correctness gate; checked-in latency and traced-memory baselines over
-  the 100/1k/5k/10k reference ladder; an informational CI benchmark-smoke
-  artifact with no performance gate. Characterization findings (recorded,
-  not optimized): full projection per operation is the structural read-cost
-  floor (at 10k the raw projection median is ~97% of the independently
-  measured `get_object` median, 6.74s vs 6.97s, strongly indicating
-  projection as the dominant cost); lexical search (+3.2s over projection
-  at 10k) and deliberately-late anchor derivation (+2.8s) show significant
-  graph-size-dependent secondary costs, growing approximately in proportion
-  to graph size over the measured ladder (four points per case do not
-  establish a complexity class); peak traced memory is linear at ~32 KiB
-  per admitted object (318 MiB at 10k, anchor resolution +50 MiB).
-  Candidate optimization lanes are named for successors, not this PR, and
-  must respect where live authority state enters: **parsed immutable
-  revision reuse** is a straightforward safe candidate (a parsed revision
-  is a pure function of content-addressed bytes), but **scoped projection
-  reuse is not safe by revision/scope key alone** — provenance admission
-  consults live `SourceRepository` state (artifact visibility, campaign
-  membership, lifecycle status, source revision validity), so scoped
-  projection caching requires a source/provenance state version or digest
-  in the key, a bounded coherent read context, or an explicit invalidation
-  equivalent. Other named lanes: incremental parse; anchor supporter
-  indexing. Original lane scope: make the
-  DungeonMind graph authority seam intentionally observable before Buddy
-  switches production reads. DungeonMind owns the semantic observation model;
-  hosts/adapters own export. Add a dependency-light/no-op-default observer port
-  spanning R.1 projection and R.2 retrieval operations, with privacy-safe,
-  low-cardinality signals for operation/phase duration, success/failure class,
-  exact-pin vs head reads, scope mode/admissibility, graph/result sizes,
-  truncation, neighborhood depth, provenance rejection/gap counts, and anchor
-  resolution outcomes. Do not emit query text, labels/aliases, graph/source
-  IDs, world/campaign IDs, or revision IDs as metric attributes. Establish
-  latency distributions and scaling behavior before defining SLOs.
-
-  Add a reproducible benchmark corpus over generated v6 graphs at multiple
-  controlled sizes/densities and benchmark projection, exact lookup, search,
-  depth-1/depth-2 neighborhood, evidence, and anchor resolution independently.
-  Prefer a dedicated dev-only benchmark harness (e.g. `pyperf`) over ad-hoc
-  stopwatch loops; record machine/environment metadata and comparable baseline
-  artifacts. CI benchmark reporting should start informational rather than
-  enforce brittle absolute latency thresholds. Explicitly characterize
-  algorithmic scaling, especially full-projection cost and
-  `resolve_source_anchor` behavior as graph/evidence volume grows.
-
-  R.2a exit: DungeonMind can explain where graph-read time is spent and expose
-  stable, privacy-safe operational signals without binding core to a telemetry
-  vendor; a checked-in benchmark baseline records distributions/scaling for
-  the native read path (durable summary:
-  `Docs/Benchmarks/BASELINE-world-graph-reads-r2a.md`); the R.3 cutover has a
-  named parity/performance witness
-  shape ready to compare Buddy-hydrated and direct-DungeonMind reads.
-- **R.2b — Governed adopted-source classification repair** ✅ —
-  one atomic DungeonMind adoption-aggregate operation that
-  preserves sealed V3 membership M0, records an explicit V4 repair, and
-  installs effective membership M1. Do not re-adopt. Do not rewrite V3 in
-  place. Do not add a generic SourceArtifact mutation API. ADR-0021.
-- **R.3 — Buddy graph hydration removal** ✅ (DungeonMindBuddy PR #631
-  merge `ffc39ab394ea55b00dc8b2a0fd41be0448635600`) — production reads
-  consume DungeonMind native projection/retrieval behind a thin DTO adapter
-  when the still-default-off direct-read gate is opted in for witnesses.
-  Not write-path retirement. The R.3 direct Eldyrwild projection median
-  (~20.7s) is the regression oracle for R.3a, not Buddy kernel equality.
-- **R.3a — native World Graph read-context optimization** (this PR) —
-  reusable `WorldGraphReadContext`, immutable revision parse reuse, and
-  one coherent batched source-provenance snapshot. Public R.1/R.2 contracts
-  unchanged. No scoped cross-request cache, no search/anchor indexes, no
-  production-gate flip. Durable record:
-  [`Docs/Benchmarks/BASELINE-world-graph-reads-r3a.md`](../Benchmarks/BASELINE-world-graph-reads-r3a.md).
-
-Canonical handoffs:
-[`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-projection.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-projection.md)
-(R.1),
-[`Docs/Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md`](../Handoffs/HANDOFF-cutover-direct-world-graph-retrieval.md)
-(R.2),
-[`Docs/Handoffs/HANDOFF-cutover-world-graph-read-observability-benchmark.md`](../Handoffs/HANDOFF-cutover-world-graph-read-observability-benchmark.md)
-(R.2a),
-[`Docs/Handoffs/HANDOFF-cutover-adoption-source-classification-repair.md`](../Handoffs/HANDOFF-cutover-adoption-source-classification-repair.md)
-(R.2b), and
-[`Docs/Handoffs/HANDOFF-cutover-direct-read-optimization.md`](../Handoffs/HANDOFF-cutover-direct-read-optimization.md)
-(R.3a, this lane).
-
-## Named future lanes (no dates claimed)
-
-These lanes are named so successors can be dispatched deliberately. None is
-scheduled, and none may be smuggled into an unrelated PR.
-
-- **Buddy R.3a pin + witness** — small DungeonMindBuddy PR: pin the
-  optimized DungeonMind version, reuse long-lived native read services,
-  rerun the merged R.3 witness, record `SWITCH_READY` or
-  `SWITCH_NOT_READY`. Does not flip the production gate merely because
-  R.3a optimization exists.
-- **B.2f-d — service transport and external consumer contract** —
-  expose the already-proven terminal publication/recovery seam to an external
-  caller. Transport must not add a pending lifecycle, second confirmation,
-  identity-ledger append, or product-specific authority.
-- **B.3a — Threat mechanics-resource binding** ✅ — approved Threat graph
-  identity → exact external statblock/mechanics resource ref →
-  revision/digest pin → profile-owned hydration contract (historical
-  `dnd5e-profile-v2` / `threat-v1` path; hostility-gated).
-- **World-object mechanics re-anchor (ADR-0013)** ✅ — additive
-  `dnd5e-profile-v3` / `world-object-v1` with persistent Threat/NPC/PC kinds
-  and hostility-independent exact mechanics attachment (zero/one/many
-  statblock roles). Transport, Buddy bridge, shadow, and Play remain
-  successors.
-- **DungeonMindDnD further concrete semantics** — additional D&D
-  vocabulary slices, owned by the profile package and landed only when
-  demanded by a real consumer.
-- **Buddy → DungeonMind conformance bridge** — adapt exact Buddy
-  world-object/mechanics identity into the re-anchored D&D contract
-  (fixture/test-backed first; not live shadow).
-- **Profile interpretation layer** — anything beyond admit/reject
-  (taxonomy reasoning, cross-profile mapping), only after a concrete
-  second-system pressure proves what abstraction is needed.
-- **Audience-policy generalization** — GM/player/canon assumptions
-  revisited separately if a supported game requires it; kernel policy
-  until then.
-
-## External successor — product-surface adoption (still false)
-
-**Repository:** LandingPage or another product owner (not DungeonMind)
-
-A future product route may consume `mind_turn_v1` the same way the B.1b
-example does. That work is independently useful and must not be smuggled into
-DungeonMind PRs.
-
-## PR C — pgvector retrieval benchmark backend
-
-**Repository:** RulesIngestion (benchmark client) — **Option B** per ADR-0001
-and recon §C: RulesIngestion materializes an exact corpus + benchmark
-projection and invokes DungeonMind's pgvector retriever as an external
-backend. DungeonMind never imports RulesIngestion; RulesIngestion never
-becomes a DungeonMind runtime dependency.
-
-Outcome: existing corpus/projection contracts drive pgvector; exact dense and
-hybrid PostgreSQL conditions run; artifacts reproducible; existing model
-baselines preserved; no production behavior changes.
-
-## PR D — embedding model bakeoff
-
-**Repository:** RulesIngestion (benchmark owner)
-
-Outcome: BGE-M3 (production-code baseline), all-mpnet-base-v2 (cross-corpus
-benchmark baseline), and ≥1 materially smaller CPU-oriented candidate
-(selected from current model-card research — license, dimensions, context,
-instruction format, CPU/quantization support — never from memory) compared on
-one corpus fingerprint, one knob at a time; quality + operational metrics
-recorded; evidence-backed recommendation; **campaign-prose benchmark debt
-named** (rulebook results do not prove narrative retrieval quality). May
-combine with PR C only if the backend is already proven and the diff stays
-reviewable.
-
-## PR E — DungeonMindServer retrieval seam
-
-**Repository:** DungeonMindServer
-
-Outcome: current local behavior preserved; hard-coded model identity replaced
-by validated configuration; embedding-provider and retrieval-store protocols;
-local-NumPy and pgvector adapters behind a feature flag (opt-in / shadow /
-benchmark only — no silent production switch); disabled RulesLawyer
-capability must not load the model; readiness distinguishes model-unavailable
-from database-unavailable; Mongo env-var naming reconciled; privacy-safe
-diagnostics; API contract unchanged. No DungeonMind domain ownership moves
-(charter §10.3). Can start in parallel with B.2b.
-
-## PR F — deployment/IaC integration
-
-**Repository:** DungeonOverMind (deployment orchestrator per ADR-0002)
-
-Outcome: PostgreSQL lifecycle ownership explicit; private networking +
-persistent volume; dedicated `dungeonmind` database and least-privilege role
-(no generic/example credentials); backups + restore expectations documented;
-resource limits + health checks; production/development configuration cannot
-be confused accidentally.
+Prefer measured simplification over speculative flexibility.
