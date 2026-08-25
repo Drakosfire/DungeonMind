@@ -17,6 +17,7 @@ from ..domain.errors import (
     InvalidLifecycleTransitionError,
     PersistenceIntegrityError,
     PersistenceUnavailableError,
+    ReviewedWorldInitializationOutcomeUnknownError,
     RevisionNotFoundError,
     ScopeResolutionError,
     StaleParentRevisionError,
@@ -37,6 +38,7 @@ _STATUS_BY_TYPE: dict[type[BaseException], int] = {
     ContributionMaterializationError: 409,
     FictionalTimeIntegrityError: 409,
     FinalizedReviewPublicationOutcomeUnknownError: 503,
+    ReviewedWorldInitializationOutcomeUnknownError: 503,
     PersistenceUnavailableError: 503,
     PersistenceIntegrityError: 500,
 }
