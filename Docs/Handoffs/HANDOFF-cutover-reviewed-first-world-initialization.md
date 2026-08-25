@@ -1,7 +1,7 @@
 # HANDOFF — D.2C1: reviewed first-world initialization authority
 
 **Created:** 2026-08-25  
-**Status:** ACTIVE  
+**Status:** HANDED BACK (draft PR #46)  
 **Repository / branch:** `Drakosfire/DungeonMind` / `cutover/reviewed-first-world-initialization`  
 **Base:** `c5d3688587b0f5d506e0f7d64f33eb0628bac896` — DungeonMind PR #45 merge  
 **Design authority:** DungeonMindBuddy PR #642, merged as `d80c8688774602972e07593b83e3d8d09d4b0a7b`; accepted design head `0f9e07686dfd157bb35acbd10765bfe3de68166f`; Cycle 2 PASS-equivalent review `5023757627`  
@@ -230,14 +230,84 @@ Stop and report rather than broadening scope if any of these occur:
 - Existing-world adoption cannot reciprocally see the reviewed-init receipt without a broad adoption redesign; split the bounded compatibility prerequisite rather than smuggling it in.
 - Any change is needed to DungeonMind read behavior, Buddy product code, or D.2C2/D.3 to make the provider tests pass.
 
-## §8 Handback requirements
+## §8 Handback
 
-Record all of the following before review completion:
+### Repositories and revisions
 
-- **Repositories and revisions:** repo / branch / base SHA / final head SHA / PR / merge status.
-- **Review cycles:** count every formal review cycle and link the accepting review.
-- **Decisions:** question / evidence / decision / rejected alternatives / consequences / reversal path.
-- **Verification:** exact commands and exact results, including real PostgreSQL evidence.
-- **Atomicity/recovery witness:** exact failure injection and row/head/receipt results.
-- **What remains false:** explicitly state that Buddy is not yet repinned; mounted Buddy first-world still uses the legacy graph runtime until D.2C2; D.3 remains blocked.
-- **Named successor:** DungeonMindBuddy D.2C2 first-world authority migration; after D.2C2 acceptance, D.3 graph-engine deletion.
+- **Repo / branch:** `Drakosfire/DungeonMind` / `cutover/reviewed-first-world-initialization`
+- **Base SHA (dispatch-only):** `a20d88f7ee469e0e8d2eb71e2de1c0293d2672a4`
+- **Implementation HEAD before this handback commit:** `7490fab832e0f3a81597b6ae2cc7907a45af7414`
+- **PR:** [Drakosfire/DungeonMind#46](https://github.com/Drakosfire/DungeonMind/pull/46) — **still draft**; not merged
+- **Alembic head:** `0007_reviewed_world_init` (revises `0006_existing_world_adoptions`)
+
+### Review cycles
+
+Implementation cycle 1. No formal accepting review yet; PR #46 remains draft pending review.
+
+### Decisions
+
+| Question | Evidence | Decision | Rejected alternatives | Consequences | Reversal |
+|---|---|---|---|---|---|
+| Share v6 helpers with review publication? | `review_materialization_v6.py` already owns create-new node/edge + evidence lift; existing v6 publication tests must stay green | Dedicated `materialize_reviewed_world_initialization_v6` copies those conventions; do not refactor the existing materializer | Extract shared helpers from `review_materialization_v6.py` | Small duplication; first-world never observes repositories/head/adoption/caller graph bytes | Delete the dedicated materializer if a later slice proves a shared helper independently useful |
+| Where does `command_sha256` live? | Frozen algebra keys replay on `initialization_id` **and** digest; receipt-first is fingerprint-equal command, not “a receipt exists” | Compute in application bind via `canonical_sha256(model_dump(mode="json"))`; command model omits the field; store digest on the receipt | Put digest on the command contract; treat any receipt as success | `requested_initialized_at` is inside the digest; exact retry must reuse the same timestamp | Add an explicit digest field only by versioned supersession |
+| Alembic revision id length? | `alembic_version.version_num` is `varchar(32)`; `0007_reviewed_world_initializations` is 35 chars and failed to stamp | Use `0007_reviewed_world_init` (24 chars); keep table name `reviewed_world_initializations` | Widen `version_num` | Filename/revision id shorter than the table name | Rename only if a later migration policy requires it |
+| How to prove receipt vs later head? | Need `D_0 → D_1` without inventing a second capability | Publish a legitimate child with `PostgresWorldGraphRepository.publish_revision` on a slightly mutated v6 payload, `parent=D_0` | Import full review-publication fixtures into this slice | Receipt readback still returns `D_0` and does not reset head | D.2C2 may replace this child with a real governed publication if useful |
+| Reciprocal pristine? | Adoption must not treat a reviewed-init world as empty | One extra SELECT on `reviewed_world_initializations` (`family=reviewed_world_initialization`); in-memory optional lookup defaults empty so existing adoption unit tests stay green | Redesign adoption contracts/replay | Init writes zero `existing_world_adoptions` rows; both directions fail closed | Remove the SELECT only if the two authorities are later unified |
+
+No stop condition from §7 was hit. Read behavior is unchanged. `SourceRevisionV2` was not invented. Caller `graph_payload`, `ExistingWorldAdoption` provenance, and fake `EMPTY` parents are absent.
+
+### Verification
+
+Required unit/lint gates (worktree `/home/drakosfire/Projects/DungeonOverMind/DungeonMind-reviewed-first-world-init`):
+
+```text
+uv run pytest tests/unit/test_reviewed_world_initialization.py \
+  tests/unit/test_reviewed_world_initialization_materialization_v6.py \
+  tests/unit/test_import_boundaries.py \
+  tests/unit/test_existing_world_adoption.py
+  → 94 passed in 2.82s
+
+uv run ruff check .
+  → All checks passed!
+
+uv run pyright
+  → 0 errors, 0 warnings, 0 informations
+```
+
+`DUNGEONMIND_DATABASE_URL` was unset in the process environment. Local compose Postgres was already healthy (`dungeonmind-postgres-dev`, `127.0.0.1:54329`). After `uv sync --locked --extra postgres`:
+
+```text
+export DUNGEONMIND_DATABASE_URL=postgresql://dungeonmind:dungeonmind-dev@localhost:54329/dungeonmind
+uv run pytest tests/integration/test_postgres_reviewed_world_initialization.py \
+  tests/integration/test_postgres_existing_world_adoption.py \
+  tests/integration/test_postgres_review_publication.py \
+  tests/integration/test_postgres_review_publication_v6.py -m integration
+  → 68 passed in 41.11s
+```
+
+First integration attempt failed closed: Alembic could not stamp `0007_reviewed_world_initializations` into `varchar(32)`. After shortening the revision id, the live DB remained at `0006_existing_world_adoptions` with no leftover `reviewed_world_initializations` table, then the 68-test run passed.
+
+### Atomicity / recovery witness
+
+PostgreSQL `failure_hook` stages `source_records`, `contributions`, `graph`, and `receipt` each raise before commit. Application maps the abort to `ReviewedWorldInitializationOutcomeUnknownError`. Row counts after each abort:
+
+```text
+heads=0 revisions=0 head_events=0 contributions=0 identity=0
+artifacts=0 init_receipts=0 adoption_receipts=0 revisions_source=0
+```
+
+Lost-response: adapter commits, then raises `PersistenceUnavailableError`. Application recovery `get_for_world` returns the stored receipt. Exact retry returns the same receipt with `init_receipts=1` and `revisions=1`.
+
+Happy path: `∅ → D_0`, `parent_revision_id is None`, head is `D_0`, one init receipt, required sources + one contribution, **zero** `existing_world_adoptions`. Same id + different `command_sha256` raises `IdempotencyConflictError` and must not return the stored receipt. Different `initialization_id` and cross-world reuse of the same id are conflicts with zero mutation. After a legitimate `D_0 → D_1` child, init receipt still names `D_0` and does not move head.
+
+### What remains false
+
+- DungeonMindBuddy is **not** repinned to this provider.
+- Mounted Buddy first-world still uses the legacy graph runtime until **D.2C2**.
+- **D.3** graph-engine deletion remains blocked.
+- No public HTTP/CLI/agent transport for reviewed initialization.
+- No `SourceRevisionV2`. DungeonMind read behavior is unchanged.
+
+### Named successor
+
+**DungeonMindBuddy D.2C2** — mounted first-world authority migration onto this provider. After D.2C2 acceptance, **D.3** graph-engine deletion.
