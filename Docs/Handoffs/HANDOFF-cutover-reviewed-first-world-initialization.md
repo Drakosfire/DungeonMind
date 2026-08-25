@@ -308,7 +308,7 @@ artifacts=0 init_receipts=0 adoption_receipts=0 revisions_source=0
 
 Lost-response: adapter commits, then raises `PersistenceUnavailableError`. Application recovery `get_for_world` returns the stored receipt. Exact retry returns the same receipt with `init_receipts=1` and `revisions=1`.
 
-Happy path: `∅ → D_0`, `parent_revision_id is None`, head is `D_0`, one init receipt, required sources + one contribution, **zero** `existing_world_adoptions`. Same id + different `command_sha256` raises `IdempotencyConflictError` and must not return the stored receipt. Different `initialization_id` and cross-world reuse of the same id are conflicts with zero mutation. After a legitimate `D_0 → D_1` child, init receipt still names `D_0` and does not move head.
+Happy path: `∅ → D_0`, `parent_revision_id is None`, head is `D_0`, one init receipt, required sources + one contribution, **zero** `existing_world_adoptions`. Accepted edges with Buddy-neutral `identity=None` persist on `D_0` and in receipt assertion IDs; artifact-only provenance uses the referenced artifact's `current_revision_id`. Same id + different `command_sha256` raises `IdempotencyConflictError` and must not return the stored receipt. Different `initialization_id` and cross-world reuse of the same id are conflicts with zero mutation. After a legitimate `D_0 → D_1` child, init receipt still names `D_0` and does not move head. Accepted non-`created_new` nodes, unsupported edge identity, and unreferenced extra sources fail through `initialize_reviewed_world` with zero rows.
 
 ### What remains false
 
