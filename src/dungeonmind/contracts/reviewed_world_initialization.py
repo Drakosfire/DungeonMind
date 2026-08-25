@@ -12,7 +12,7 @@ import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, field_validator
 
 from .base import DungeonMindModel
 from .contribution import GraphContributionV2

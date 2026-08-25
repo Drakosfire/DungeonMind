@@ -26,8 +26,8 @@ from ...domain.canonical import canonical_sha256
 from ...domain.errors import IdempotencyConflictError, PersistenceIntegrityError
 from .database import SCHEMA, PostgresDatabase, jsonb, lock_world
 from .graph import (
-    PostgresWorldGraphRepository,
     _REVISION_SELECT,
+    PostgresWorldGraphRepository,
     _reconstruct_stored_revision,
 )
 from .records import (

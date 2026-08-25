@@ -47,13 +47,13 @@ from ..contracts.graph import (
 from ..contracts.identity import IdentityDecisionRecord, IdentityDecisionRecordV2
 from ..contracts.mind_turn import MindTurnRequest, MindTurnResponse
 from ..contracts.retrieval import GraphRetrievalSession
-from ..contracts.reviewed_world_initialization import (
-    ReviewedWorldInitializationCommandV1,
-    ReviewedWorldInitializationReceiptV1,
-)
 from ..contracts.review_publication import (
     FinalizedReviewPublication,
     FinalizedReviewPublicationCommand,
+)
+from ..contracts.reviewed_world_initialization import (
+    ReviewedWorldInitializationCommandV1,
+    ReviewedWorldInitializationReceiptV1,
 )
 from ..contracts.semantic import (
     EmbeddingRun,

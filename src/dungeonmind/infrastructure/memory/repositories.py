@@ -20,13 +20,6 @@ from ...application.existing_world_adoption import (
     require_v2_contribution_correction_closure,
     terminal_existing_world_adoption_receipt,
 )
-from ...application.reviewed_world_initialization import (
-    FirstWorldMaterialization,
-    bind_reviewed_world_initialization_command,
-    replay_conflict_if_present,
-    reviewed_world_initialization_command_sha256,
-    terminal_reviewed_world_initialization_receipt,
-)
 from ...application.existing_world_adoption_repair import (
     LoadedAdoptedMembership,
     membership_from_loaded,
@@ -40,6 +33,13 @@ from ...application.repositories import (
     DurableGraphContribution,
     DurableIdentityDecision,
     normalize_semantic_document_batch,
+)
+from ...application.reviewed_world_initialization import (
+    FirstWorldMaterialization,
+    bind_reviewed_world_initialization_command,
+    replay_conflict_if_present,
+    reviewed_world_initialization_command_sha256,
+    terminal_reviewed_world_initialization_receipt,
 )
 from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
 from ...contracts.contribution import (
@@ -57,10 +57,6 @@ from ...contracts.contribution_review_v2 import (
     contribution_v2_payload_sha256,
 )
 from ...contracts.evidence import SourceArtifactRecord, SourceRevision
-from ...contracts.reviewed_world_initialization import (
-    ReviewedWorldInitializationCommandV1,
-    ReviewedWorldInitializationReceiptV1,
-)
 from ...contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
     EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
@@ -85,6 +81,10 @@ from ...contracts.retrieval import GraphRetrievalSession
 from ...contracts.review_publication import (
     FinalizedReviewPublication,
     FinalizedReviewPublicationCommand,
+)
+from ...contracts.reviewed_world_initialization import (
+    ReviewedWorldInitializationCommandV1,
+    ReviewedWorldInitializationReceiptV1,
 )
 from ...contracts.semantic import (
     CandidateChannel,

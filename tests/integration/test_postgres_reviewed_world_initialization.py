@@ -28,6 +28,8 @@ from dungeonmind.infrastructure.postgres import (
 )
 from tests.unit.test_existing_world_adoption import (
     graph_reader as adoption_graph_reader,
+)
+from tests.unit.test_existing_world_adoption import (
     make_isolated_bundle,
 )
 from tests.unit.test_reviewed_world_initialization_materialization_v6 import (

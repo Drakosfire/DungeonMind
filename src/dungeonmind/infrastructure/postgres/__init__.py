@@ -15,8 +15,8 @@ from .records import (
     PostgresRetrievalSessionRepository,
     PostgresSourceRepository,
 )
-from .reviewed_world_initialization import PostgresReviewedWorldInitializationRepository
 from .review_publication import PostgresFinalizedReviewPublicationRepository
+from .reviewed_world_initialization import PostgresReviewedWorldInitializationRepository
 from .semantic import (
     PostgresEmbeddingRunRepository,
     PostgresSemanticDocumentRepository,

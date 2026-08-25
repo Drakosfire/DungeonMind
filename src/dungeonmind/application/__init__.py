@@ -43,11 +43,6 @@ from .repositories import (
     SourceRepository,
     WorldGraphRepository,
 )
-from .reviewed_world_initialization import (
-    FirstWorldMaterialization,
-    initialize_reviewed_world,
-    materialize_reviewed_world_initialization_v6,
-)
 from .review_materialization import (
     FinalizedReviewGraphMaterialization,
     materialize_finalized_review,
@@ -56,6 +51,11 @@ from .review_materialization_v6 import materialize_finalized_review_v6
 from .review_publication import (
     FinalizedReviewPublication,
     publish_finalized_review,
+)
+from .reviewed_world_initialization import (
+    FirstWorldMaterialization,
+    initialize_reviewed_world,
+    materialize_reviewed_world_initialization_v6,
 )
 from .source_provenance_snapshot import SourceProvenanceSnapshot
 from .world_graph_observability import (
