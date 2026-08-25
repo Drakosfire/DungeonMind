@@ -236,13 +236,13 @@ Stop and report rather than broadening scope if any of these occur:
 
 - **Repo / branch:** `Drakosfire/DungeonMind` / `cutover/reviewed-first-world-initialization`
 - **Base SHA (dispatch-only):** `a20d88f7ee469e0e8d2eb71e2de1c0293d2672a4`
-- **Implementation HEAD before this handback commit:** `7490fab832e0f3a81597b6ae2cc7907a45af7414`
+- **Implementation HEAD:** `b9c3ac6a0da13294d3ebb019f0e76cd75c430cdb`
 - **PR:** [Drakosfire/DungeonMind#46](https://github.com/Drakosfire/DungeonMind/pull/46) — **still draft**; not merged
 - **Alembic head:** `0007_reviewed_world_init` (revises `0006_existing_world_adoptions`)
 
 ### Review cycles
 
-Implementation cycle 1. Formal Review Cycle 1 (`5024424372`) was REQUEST-CHANGES-equivalent against `6b51c6476f9843f199d653fc4ac1356eafe7e8cc`. This head repairs:
+Implementation cycle 1. Formal Review Cycle 1 (`5024424372`) was REQUEST-CHANGES-equivalent against `6b51c6476f9843f199d653fc4ac1356eafe7e8cc`. This head (`b9c3ac6a0da13294d3ebb019f0e76cd75c430cdb`) repairs:
 
 1. first-world evidence must resolve through command-owned source records (artifact derived from the proven revision owner; no invented `artifact:<contribution>`; unreferenced source rows fail closed);
 2. accepted first-world node/edge facts must be `created_new` (accepted non-mutating identity no longer silently drops from `D_0` / receipt IDs).
