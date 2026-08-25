@@ -211,6 +211,33 @@ class ExistingWorldAdoptionOutcomeUnknownError(DungeonMindError):
         )
 
 
+class ReviewedWorldInitializationOutcomeUnknownError(DungeonMindError):
+    """An initialization call may have committed, but exact recovery was unavailable."""
+
+    code = "reviewed_world_initialization_outcome_unknown"
+
+    def __init__(
+        self,
+        *,
+        world_id: str,
+        initialization_id: str,
+        command_sha256: str,
+        expected_published_revision_id: str,
+        reason: str,
+    ) -> None:
+        super().__init__(
+            "reviewed-world initialization outcome is unknown",
+            details={
+                "world_id": world_id,
+                "initialization_id": initialization_id,
+                "command_sha256": command_sha256,
+                "expected_published_revision_id": expected_published_revision_id,
+                "reason": reason,
+                "retry_safe": True,
+            },
+        )
+
+
 class ContributionMaterializationError(DungeonMindError):
     """A finalized review cannot be materialized into a valid graph payload."""
 
