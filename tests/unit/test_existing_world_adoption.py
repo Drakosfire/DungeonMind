@@ -2048,3 +2048,26 @@ def test_promotion_rejects_v1_receipt() -> None:
             ),
         )
     assert exc.value.details["reason"] == "adoption_receipt_promotion_unsupported_schema"
+
+
+def test_adoption_treats_reviewed_initialization_receipt_as_non_pristine() -> None:
+    graph = InMemoryWorldGraphRepository()
+    sources = InMemorySourceRepository()
+    contributions = InMemoryContributionRepository()
+    identity = InMemoryIdentityDecisionRepository()
+    adoptions = InMemoryExistingWorldAdoptionRepository(
+        graph,
+        sources,
+        contributions,
+        identity,
+        reviewed_initialization_lookup=lambda _world_id: True,
+    )
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        adopt_existing_world(
+            bundle_bytes(),
+            adopted_at=NOW,
+            adoption_repository=adoptions,
+            graph_reader=graph_reader(),
+        )
+    assert exc.value.details["reason"] == "non_pristine_target"
+    assert exc.value.details["family"] == "reviewed_world_initialization"

@@ -306,6 +306,10 @@ class PostgresExistingWorldAdoptionRepository:
     def _assert_pristine(self, conn: Connection[Any], world_id: str) -> None:
         checks = (
             (
+                "SELECT 1 FROM {}.reviewed_world_initializations WHERE world_id = %s LIMIT 1",
+                "reviewed_world_initialization",
+            ),
+            (
                 "SELECT 1 FROM {}.world_graph_heads WHERE world_id = %s",
                 "graph_head",
             ),

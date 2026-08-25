@@ -25,6 +25,7 @@ from ...application.existing_world_adoption_repair import (
     membership_from_loaded,
     prepare_source_classification_repair,
 )
+from ...application.graph_snapshot import GRAPH_SCHEMA_V6
 from ...application.repositories import (
     DurableContributionReviewState,
     DurableExistingWorldAdoptionCommand,
@@ -32,6 +33,13 @@ from ...application.repositories import (
     DurableGraphContribution,
     DurableIdentityDecision,
     normalize_semantic_document_batch,
+)
+from ...application.reviewed_world_initialization import (
+    FirstWorldMaterialization,
+    bind_reviewed_world_initialization_command,
+    replay_conflict_if_present,
+    reviewed_world_initialization_command_sha256,
+    terminal_reviewed_world_initialization_receipt,
 )
 from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
 from ...contracts.contribution import (
@@ -46,6 +54,7 @@ from ...contracts.contribution_review import (
 from ...contracts.contribution_review_v2 import (
     ContributionReviewRecordV2,
     ContributionReviewStateV2,
+    contribution_v2_payload_sha256,
 )
 from ...contracts.evidence import SourceArtifactRecord, SourceRevision
 from ...contracts.existing_world_adoption import (
@@ -72,6 +81,10 @@ from ...contracts.retrieval import GraphRetrievalSession
 from ...contracts.review_publication import (
     FinalizedReviewPublication,
     FinalizedReviewPublicationCommand,
+)
+from ...contracts.reviewed_world_initialization import (
+    ReviewedWorldInitializationCommandV1,
+    ReviewedWorldInitializationReceiptV1,
 )
 from ...contracts.semantic import (
     CandidateChannel,
@@ -1662,6 +1675,7 @@ class InMemoryExistingWorldAdoptionRepository:
         identity_repository: InMemoryIdentityDecisionRepository,
         *,
         failure_hook: Callable[[str], None] | None = None,
+        reviewed_initialization_lookup: Callable[[str], bool] | None = None,
     ) -> None:
         self._graph = world_graph_repository
         self._sources = source_repository
@@ -1670,6 +1684,7 @@ class InMemoryExistingWorldAdoptionRepository:
         self._receipts_by_world: dict[str, DurableExistingWorldAdoptionReceipt] = {}
         self._receipts_by_adoption: dict[str, DurableExistingWorldAdoptionReceipt] = {}
         self._failure_hook = failure_hook
+        self._reviewed_initialization_lookup = reviewed_initialization_lookup
 
     @staticmethod
     def _validate_record(
@@ -1772,6 +1787,17 @@ class InMemoryExistingWorldAdoptionRepository:
             self._receipts_by_adoption[restored.adoption_id] = restored
 
     def _assert_pristine(self, world_id: str) -> None:
+        if (
+            self._reviewed_initialization_lookup is not None
+            and self._reviewed_initialization_lookup(world_id)
+        ):
+            raise PersistenceIntegrityError(
+                "existing-world adoption target is not pristine",
+                details={
+                    "reason": "non_pristine_target",
+                    "family": "reviewed_world_initialization",
+                },
+            )
         if self._graph._heads.get(world_id) is not None:
             raise PersistenceIntegrityError(
                 "existing-world adoption target is not pristine",
@@ -2196,6 +2222,312 @@ class InMemoryExistingWorldAdoptionRepository:
                 )
                 self._receipts_by_world[world_id] = receipt
                 self._receipts_by_adoption[bundle.adoption_id] = receipt
+                if self._failure_hook is not None:
+                    self._failure_hook("receipt")
+                return self._reconstruct_unlocked(receipt)
+            except BaseException:
+                self._restore_world(world_id, snapshot)
+                raise
+
+
+class InMemoryReviewedWorldInitializationRepository:
+    """Atomic in-memory reviewed first-world initialization unit of work."""
+
+    def __init__(
+        self,
+        world_graph_repository: InMemoryWorldGraphRepository,
+        source_repository: InMemorySourceRepository,
+        contribution_repository: InMemoryContributionRepository,
+        identity_repository: InMemoryIdentityDecisionRepository | None = None,
+        *,
+        failure_hook: Callable[[str], None] | None = None,
+        adoption_lookup: Callable[[str], bool] | None = None,
+    ) -> None:
+        self._graph = world_graph_repository
+        self._sources = source_repository
+        self._contributions = contribution_repository
+        self._identity = identity_repository
+        self._receipts_by_world: dict[str, ReviewedWorldInitializationReceiptV1] = {}
+        self._receipts_by_initialization: dict[str, ReviewedWorldInitializationReceiptV1] = (
+            {}
+        )
+        self._failure_hook = failure_hook
+        self._adoption_lookup = adoption_lookup
+
+    def _assert_pristine(self, world_id: str) -> None:
+        if self._adoption_lookup is not None and self._adoption_lookup(world_id):
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization target is not pristine",
+                details={"reason": "non_pristine_target", "family": "existing_world_adoption"},
+            )
+        if self._graph._heads.get(world_id) is not None:
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization target is not pristine",
+                details={"reason": "non_pristine_target", "family": "graph_head"},
+            )
+        if any(key[0] == world_id for key in self._graph._revisions):
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization target is not pristine",
+                details={"reason": "non_pristine_target", "family": "graph_revision"},
+            )
+        if any(key[0] == world_id for key in self._contributions._items):
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization target is not pristine",
+                details={"reason": "non_pristine_target", "family": "contribution"},
+            )
+        if self._identity is not None and any(
+            key[0] == world_id for key in self._identity._items
+        ):
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization target is not pristine",
+                details={"reason": "non_pristine_target", "family": "identity_decision"},
+            )
+        if any(artifact.world_id == world_id for artifact in self._sources._artifacts.values()):
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization target is not pristine",
+                details={"reason": "non_pristine_target", "family": "source_artifact"},
+            )
+        if world_id in self._receipts_by_world:
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization target is not pristine",
+                details={
+                    "reason": "non_pristine_target",
+                    "family": "reviewed_world_initialization",
+                },
+            )
+
+    def _snapshot_world(self, world_id: str) -> dict[str, Any]:
+        artifact_ids = {
+            artifact_id
+            for artifact_id, artifact in self._sources._artifacts.items()
+            if artifact.world_id == world_id
+        }
+        return {
+            "artifacts": {
+                artifact_id: _copy(self._sources._artifacts[artifact_id])
+                for artifact_id in artifact_ids
+            },
+            "revisions": {
+                revision_id: _copy(revision)
+                for revision_id, revision in self._sources._revisions.items()
+                if revision.source_artifact_id in artifact_ids
+            },
+            "contributions": {
+                key: _copy(item)
+                for key, item in self._contributions._items.items()
+                if key[0] == world_id
+            },
+            "revisions_graph": {
+                key: copy.deepcopy(stored)
+                for key, stored in self._graph._revisions.items()
+                if key[0] == world_id
+            },
+            "head": copy.deepcopy(self._graph._heads.get(world_id)),
+            "receipt": (
+                _copy(self._receipts_by_world[world_id])
+                if world_id in self._receipts_by_world
+                else None
+            ),
+        }
+
+    def _restore_world(self, world_id: str, snapshot: dict[str, Any]) -> None:
+        current_artifact_ids = {
+            artifact_id
+            for artifact_id, artifact in self._sources._artifacts.items()
+            if artifact.world_id == world_id
+        }
+        owned_artifact_ids = current_artifact_ids | set(snapshot["artifacts"])
+        for artifact_id in current_artifact_ids:
+            self._sources._artifacts.pop(artifact_id, None)
+        self._sources._artifacts.update(snapshot["artifacts"])
+        for revision_id, revision in list(self._sources._revisions.items()):
+            if revision.source_artifact_id in owned_artifact_ids:
+                self._sources._revisions.pop(revision_id, None)
+        self._sources._revisions.update(snapshot["revisions"])
+        for key in [key for key in self._contributions._items if key[0] == world_id]:
+            self._contributions._items.pop(key, None)
+        self._contributions._items.update(snapshot["contributions"])
+        for key in [key for key in self._graph._revisions if key[0] == world_id]:
+            self._graph._revisions.pop(key, None)
+        self._graph._revisions.update(snapshot["revisions_graph"])
+        if snapshot["head"] is None:
+            self._graph._heads.pop(world_id, None)
+        else:
+            self._graph._heads[world_id] = snapshot["head"]
+        previous = self._receipts_by_world.pop(world_id, None)
+        if previous is not None:
+            self._receipts_by_initialization.pop(previous.initialization_id, None)
+        if snapshot["receipt"] is not None:
+            restored = snapshot["receipt"]
+            self._receipts_by_world[world_id] = restored
+            self._receipts_by_initialization[restored.initialization_id] = restored
+
+    def _put_artifact_locked(self, artifact: SourceArtifactRecord) -> None:
+        existing = self._sources._artifacts.get(artifact.source_artifact_id)
+        if existing is not None:
+            if _fingerprint(existing) != _fingerprint(artifact):
+                raise IdempotencyConflictError(
+                    f"source artifact {artifact.source_artifact_id!r} replayed with "
+                    "different payload; mutable lifecycle needs a typed operation"
+                )
+            return
+        self._sources._artifacts[artifact.source_artifact_id] = _copy(artifact)
+
+    def _put_revision_locked(self, revision: SourceRevision) -> None:
+        existing = self._sources._revisions.get(revision.source_revision_id)
+        if existing is not None:
+            if _fingerprint(existing) != _fingerprint(revision):
+                raise IdempotencyConflictError(
+                    f"source revision {revision.source_revision_id!r} replayed with "
+                    "different payload"
+                )
+            return
+        self._sources._revisions[revision.source_revision_id] = _copy(revision)
+
+    def _append_contribution_locked(self, contribution: DurableGraphContribution) -> None:
+        key = (contribution.world_id, contribution.contribution_id)
+        existing = self._contributions._items.get(key)
+        if existing is not None:
+            if _fingerprint(existing) != _fingerprint(contribution):
+                raise IdempotencyConflictError(
+                    f"contribution {contribution.contribution_id!r} replayed with different payload"
+                )
+            return
+        self._contributions._items[key] = _copy(contribution)
+
+    def _reconstruct_unlocked(
+        self, receipt: ReviewedWorldInitializationReceiptV1
+    ) -> ReviewedWorldInitializationReceiptV1:
+        try:
+            verified = ReviewedWorldInitializationReceiptV1.model_validate(
+                receipt.model_dump(mode="json")
+            )
+        except Exception:
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization receipt failed reconstruction"
+            ) from None
+        stored = self._graph._revisions.get((verified.world_id, verified.published_revision_id))
+        if stored is None:
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization receipt references a missing revision"
+            )
+        if (
+            stored.revision.graph_payload_sha256 != verified.published_graph_payload_sha256
+            or stored.revision.graph_schema != verified.published_graph_schema
+            or stored.revision.world_id != verified.world_id
+            or stored.revision.parent_revision_id is not None
+        ):
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization receipt disagrees with its published revision"
+            )
+        return _copy(verified)
+
+    def get(
+        self, world_id: str, initialization_id: str
+    ) -> ReviewedWorldInitializationReceiptV1 | None:
+        with self._graph._lock_for(world_id):
+            receipt = self._receipts_by_world.get(world_id)
+            if receipt is None or receipt.initialization_id != initialization_id:
+                return None
+            return self._reconstruct_unlocked(receipt)
+
+    def get_for_world(self, world_id: str) -> ReviewedWorldInitializationReceiptV1 | None:
+        with self._graph._lock_for(world_id):
+            receipt = self._receipts_by_world.get(world_id)
+            if receipt is None:
+                return None
+            return self._reconstruct_unlocked(receipt)
+
+    def initialize(
+        self,
+        command: ReviewedWorldInitializationCommandV1,
+        *,
+        graph_payload: dict[str, Any],
+        graph_payload_sha256: str,
+        accepted_assertion_ids: Sequence[str],
+    ) -> ReviewedWorldInitializationReceiptV1:
+        validated = bind_reviewed_world_initialization_command(command)
+        command_sha256 = reviewed_world_initialization_command_sha256(validated)
+        world_id = validated.world_id
+        if canonical_sha256(graph_payload) != graph_payload_sha256:
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization graph payload digest disagrees with the command"
+            )
+        with self._graph._lock_for(world_id):
+            existing = self._receipts_by_world.get(world_id)
+            verified_existing = (
+                self._reconstruct_unlocked(existing) if existing is not None else None
+            )
+            matched = replay_conflict_if_present(
+                verified_existing,
+                initialization_id=validated.initialization_id,
+                command_sha256=command_sha256,
+                world_id=world_id,
+                other_world_receipt=lambda: self._receipts_by_initialization.get(
+                    validated.initialization_id
+                ),
+            )
+            if matched is not None:
+                return matched
+            self._assert_pristine(world_id)
+            snapshot = self._snapshot_world(world_id)
+            try:
+                for artifact in validated.source_artifacts:
+                    self._put_artifact_locked(artifact)
+                for revision in validated.source_revisions:
+                    self._put_revision_locked(revision)
+                if self._failure_hook is not None:
+                    self._failure_hook("source_records")
+                self._append_contribution_locked(validated.reviewed_contribution)
+                if self._failure_hook is not None:
+                    self._failure_hook("contributions")
+                graph_command = PublishRevisionCommand(
+                    world_id=world_id,
+                    parent_revision_id=None,
+                    expected_parent_revision_id=None,
+                    operation_ids=[validated.initialization_id],
+                    graph_schema=GRAPH_SCHEMA_V6,
+                    graph_payload=copy.deepcopy(graph_payload),
+                    created_at=validated.requested_initialized_at,
+                )
+                revision = self._graph._publish_revision_locked(graph_command)
+                if revision.graph_payload_sha256 != graph_payload_sha256:
+                    raise PersistenceIntegrityError(
+                        "published initialization payload digest disagrees with the command"
+                    )
+                if revision.parent_revision_id is not None:
+                    raise PersistenceIntegrityError(
+                        "published initialization revision must have a null parent"
+                    )
+                if self._failure_hook is not None:
+                    self._failure_hook("graph")
+                try:
+                    materialization = FirstWorldMaterialization(
+                        world_id=validated.world_id,
+                        initialization_id=validated.initialization_id,
+                        reviewed_contribution_id=(
+                            validated.reviewed_contribution.contribution_id
+                        ),
+                        reviewed_contribution_sha256=contribution_v2_payload_sha256(
+                            validated.reviewed_contribution
+                        ),
+                        graph_schema=GRAPH_SCHEMA_V6,
+                        graph_payload=graph_payload,
+                        graph_payload_sha256=graph_payload_sha256,
+                        accepted_assertion_ids=tuple(accepted_assertion_ids),
+                    )
+                except Exception:
+                    raise PersistenceIntegrityError(
+                        "reviewed-world initialization materialization binding failed"
+                    ) from None
+                receipt = terminal_reviewed_world_initialization_receipt(
+                    validated,
+                    command_sha256=command_sha256,
+                    materialization=materialization,
+                    published_revision_id=revision.revision_id,
+                )
+                self._receipts_by_world[world_id] = receipt
+                self._receipts_by_initialization[validated.initialization_id] = receipt
                 if self._failure_hook is not None:
                     self._failure_hook("receipt")
                 return self._reconstruct_unlocked(receipt)

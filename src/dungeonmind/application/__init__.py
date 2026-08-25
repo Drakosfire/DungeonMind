@@ -37,6 +37,7 @@ from .repositories import (
     IdentityDecisionRepository,
     MindThreadRepository,
     RetrievalSessionRepository,
+    ReviewedWorldInitializationRepository,
     SemanticDocumentRepository,
     SemanticSearchPort,
     SourceRepository,
@@ -50,6 +51,11 @@ from .review_materialization_v6 import materialize_finalized_review_v6
 from .review_publication import (
     FinalizedReviewPublication,
     publish_finalized_review,
+)
+from .reviewed_world_initialization import (
+    FirstWorldMaterialization,
+    initialize_reviewed_world,
+    materialize_reviewed_world_initialization_v6,
 )
 from .source_provenance_snapshot import SourceProvenanceSnapshot
 from .world_graph_observability import (
@@ -97,6 +103,7 @@ __all__ = [
     "FinalizedReviewGraphMaterialization",
     "FinalizedReviewPublication",
     "FinalizedReviewPublicationRepository",
+    "FirstWorldMaterialization",
     "FixedClock",
     "GraphObjectView",
     "GraphRelationshipView",
@@ -115,6 +122,7 @@ __all__ = [
     "RetrievalBounds",
     "RetrievalCoverage",
     "RetrievalSessionRepository",
+    "ReviewedWorldInitializationRepository",
     "SemanticDocumentRepository",
     "SemanticSearchPort",
     "SourceAnchorMetadata",
@@ -139,10 +147,12 @@ __all__ = [
     "evaluate_fictional_time_query",
     "finalize_contribution_review",
     "finalize_contribution_review_v2",
+    "initialize_reviewed_world",
     "load_contribution_review",
     "load_contribution_review_v2",
     "materialize_finalized_review",
     "materialize_finalized_review_v6",
+    "materialize_reviewed_world_initialization_v6",
     "publish_finalized_review",
     "query_fictional_time_shadow_at_revision",
     "repair_existing_world_adoption_source_classification",

@@ -229,6 +229,12 @@ from .review_publication_transport import (
     FINALIZED_REVIEW_PUBLICATION_REQUEST_SCHEMA,
     FinalizedReviewPublicationRequest,
 )
+from .reviewed_world_initialization import (
+    REVIEWED_WORLD_INITIALIZATION_COMMAND_SCHEMA,
+    REVIEWED_WORLD_INITIALIZATION_RECEIPT_SCHEMA,
+    ReviewedWorldInitializationCommandV1,
+    ReviewedWorldInitializationReceiptV1,
+)
 from .semantic import (
     EMBEDDING_RUN_SCHEMA,
     SEMANTIC_DOCUMENT_SCHEMA,
@@ -300,6 +306,8 @@ __all__ = [
     "PROJECTION_SNAPSHOT_SCHEMA",
     "PROJECTION_SNAPSHOT_SCHEMA_V2",
     "RETRIEVAL_SESSION_SCHEMA",
+    "REVIEWED_WORLD_INITIALIZATION_COMMAND_SCHEMA",
+    "REVIEWED_WORLD_INITIALIZATION_RECEIPT_SCHEMA",
     "SEMANTIC_DOCUMENT_SCHEMA",
     "SOURCE_ARTIFACT_SCHEMA",
     "SOURCE_ARTIFACT_V2_SCHEMA",
@@ -410,6 +418,8 @@ __all__ = [
     "ResolvedReferent",
     "RetrievalOperation",
     "RetrievalOperationKind",
+    "ReviewedWorldInitializationCommandV1",
+    "ReviewedWorldInitializationReceiptV1",
     "ScopeMode",
     "ScopeModeV2",
     "SemanticCandidate",

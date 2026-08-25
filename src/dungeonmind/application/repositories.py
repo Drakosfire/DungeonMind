@@ -13,7 +13,7 @@ Failure model (from ``domain.errors``):
 
 from collections.abc import Callable, Sequence
 from datetime import datetime
-from typing import Protocol, TypeAlias
+from typing import Any, Protocol, TypeAlias
 
 from ..contracts.contribution import (
     ContributionStatus,
@@ -51,6 +51,10 @@ from ..contracts.review_publication import (
     FinalizedReviewPublication,
     FinalizedReviewPublicationCommand,
 )
+from ..contracts.reviewed_world_initialization import (
+    ReviewedWorldInitializationCommandV1,
+    ReviewedWorldInitializationReceiptV1,
+)
 from ..contracts.semantic import (
     EmbeddingRun,
     SemanticCandidate,
@@ -74,6 +78,12 @@ DurableExistingWorldAdoptionReceipt: TypeAlias = (
     | ExistingWorldAdoptionReceiptV2
     | ExistingWorldAdoptionReceiptV3
     | ExistingWorldAdoptionReceiptV4
+)
+DurableReviewedWorldInitializationCommand: TypeAlias = (
+    ReviewedWorldInitializationCommandV1
+)
+DurableReviewedWorldInitializationReceipt: TypeAlias = (
+    ReviewedWorldInitializationReceiptV1
 )
 
 
@@ -319,6 +329,36 @@ class ExistingWorldAdoptionRepository(Protocol):
         zero writes.
         """
         ...
+
+
+class ReviewedWorldInitializationRepository(Protocol):
+    """Atomic reviewed first-world initialization unit of work.
+
+    The adapter binds the command digest before any replay, pristine-target,
+    or mutation branch. It then owns imported source persistence, the reviewed
+    contribution, first-revision/head publication with ``parent_revision_id is
+    None``, and the terminal receipt in one store transaction or one shared
+    in-memory lock. A globally unique ``initialization_id`` already claimed by
+    another world is an identity conflict. Receipt-first replay succeeds only
+    when both ``initialization_id`` and ``command_sha256`` match.
+    """
+
+    def initialize(
+        self,
+        command: ReviewedWorldInitializationCommandV1,
+        *,
+        graph_payload: dict[str, Any],
+        graph_payload_sha256: str,
+        accepted_assertion_ids: Sequence[str],
+    ) -> ReviewedWorldInitializationReceiptV1: ...
+
+    def get(
+        self, world_id: str, initialization_id: str
+    ) -> ReviewedWorldInitializationReceiptV1 | None: ...
+
+    def get_for_world(
+        self, world_id: str
+    ) -> ReviewedWorldInitializationReceiptV1 | None: ...
 
 
 class IdentityDecisionRepository(Protocol):

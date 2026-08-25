@@ -28,6 +28,8 @@ TRUNCATE TABLE
     dungeonmind.mind_threads,
     dungeonmind.retrieval_sessions,
     dungeonmind.finalized_review_publications,
+    dungeonmind.reviewed_world_initializations,
+    dungeonmind.existing_world_adoptions,
     dungeonmind.contribution_reviews,
     dungeonmind.identity_decisions,
     dungeonmind.graph_contributions,

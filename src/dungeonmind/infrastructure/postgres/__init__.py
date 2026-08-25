@@ -16,6 +16,7 @@ from .records import (
     PostgresSourceRepository,
 )
 from .review_publication import PostgresFinalizedReviewPublicationRepository
+from .reviewed_world_initialization import PostgresReviewedWorldInitializationRepository
 from .semantic import (
     PostgresEmbeddingRunRepository,
     PostgresSemanticDocumentRepository,
@@ -33,6 +34,7 @@ __all__ = [
     "PostgresIdentityDecisionRepository",
     "PostgresMindThreadRepository",
     "PostgresRetrievalSessionRepository",
+    "PostgresReviewedWorldInitializationRepository",
     "PostgresSemanticDocumentRepository",
     "PostgresSemanticSearch",
     "PostgresSourceRepository",
@@ -50,6 +52,9 @@ class PostgresRepositoryBundle:
         self.contribution_reviews = PostgresContributionReviewRepository(database)
         self.finalized_review_publications = PostgresFinalizedReviewPublicationRepository(database)
         self.existing_world_adoptions = PostgresExistingWorldAdoptionRepository(database)
+        self.reviewed_world_initializations = PostgresReviewedWorldInitializationRepository(
+            database
+        )
         self.identity_decisions = PostgresIdentityDecisionRepository(database)
         self.sources = PostgresSourceRepository(database)
         self.retrieval_sessions = PostgresRetrievalSessionRepository(database)
