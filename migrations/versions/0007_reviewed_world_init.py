@@ -1,6 +1,6 @@
 """Add terminal reviewed first-world initialization identities.
 
-Revision ID: 0007_reviewed_world_initializations
+Revision ID: 0007_reviewed_world_init
 Revises: 0006_existing_world_adoptions
 Create Date: 2026-08-25
 """
@@ -11,7 +11,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0007_reviewed_world_initializations"
+revision: str = "0007_reviewed_world_init"
 down_revision: str | None = "0006_existing_world_adoptions"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
