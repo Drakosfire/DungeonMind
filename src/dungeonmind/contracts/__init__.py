@@ -204,6 +204,12 @@ from .projection_v2 import (
     ScopeModeV2,
     WorldGraphProjectionRequestV2,
 )
+from .reviewed_world_initialization import (
+    REVIEWED_WORLD_INITIALIZATION_COMMAND_SCHEMA,
+    REVIEWED_WORLD_INITIALIZATION_RECEIPT_SCHEMA,
+    ReviewedWorldInitializationCommandV1,
+    ReviewedWorldInitializationReceiptV1,
+)
 from .retrieval import (
     RETRIEVAL_SESSION_SCHEMA,
     Claim,
@@ -299,6 +305,8 @@ __all__ = [
     "PROJECTION_REQUEST_SCHEMA_V2",
     "PROJECTION_SNAPSHOT_SCHEMA",
     "PROJECTION_SNAPSHOT_SCHEMA_V2",
+    "REVIEWED_WORLD_INITIALIZATION_COMMAND_SCHEMA",
+    "REVIEWED_WORLD_INITIALIZATION_RECEIPT_SCHEMA",
     "RETRIEVAL_SESSION_SCHEMA",
     "SEMANTIC_DOCUMENT_SCHEMA",
     "SOURCE_ARTIFACT_SCHEMA",
@@ -408,6 +416,8 @@ __all__ = [
     "ProjectionSnapshotV2",
     "PublishRevisionCommand",
     "ResolvedReferent",
+    "ReviewedWorldInitializationCommandV1",
+    "ReviewedWorldInitializationReceiptV1",
     "RetrievalOperation",
     "RetrievalOperationKind",
     "ScopeMode",
