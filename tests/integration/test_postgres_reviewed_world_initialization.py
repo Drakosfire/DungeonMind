@@ -15,6 +15,7 @@ from dungeonmind.contracts.existing_world_adoption import (
     existing_world_adoption_bundle_canonical_bytes,
 )
 from dungeonmind.contracts.graph import PublishRevisionCommand
+from dungeonmind.contracts.identity import IdentityOutcome
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import (
     IdempotencyConflictError,
@@ -35,9 +36,17 @@ from tests.unit.test_existing_world_adoption import (
 from tests.unit.test_reviewed_world_initialization_materialization_v6 import (
     INIT_ID,
     NOW,
+    REV,
     WORLD_ID,
     graph_reader,
+    make_accepted_edge_identity_command,
+    make_accepted_node_non_create_new_command,
+    make_artifact_only_command,
     make_command,
+    make_created_new_edge_command,
+    make_revision_only_assertion_command,
+    make_unreferenced_extra_artifact_command,
+    make_unreferenced_extra_revision_command,
 )
 
 pytestmark = pytest.mark.integration
@@ -296,3 +305,84 @@ def test_postgres_initialization_rejects_adopted_world(pg) -> None:
     assert exc.value.details["reason"] == "non_pristine_target"
     assert exc.value.details["family"] == "existing_world_adoption"
     assert _counts(pg)["init_receipts"] == 0
+
+
+_EMPTY_COUNTS = {
+    "heads": 0,
+    "revisions": 0,
+    "head_events": 0,
+    "contributions": 0,
+    "identity": 0,
+    "artifacts": 0,
+    "init_receipts": 0,
+    "adoption_receipts": 0,
+    "revisions_source": 0,
+}
+
+
+def _assert_initialized_edge(pg, receipt) -> None:
+    assert "asrt:leads" in receipt.accepted_assertion_ids
+    stored = pg.world_graph.get_revision(WORLD_ID, receipt.published_revision_id)
+    assert stored is not None
+    assert stored.revision.parent_revision_id is None
+    rels = stored.graph_payload["relationships"]
+    assert {item["relationship_id"] for item in rels} == {"rel:leads"}
+    for record in stored.graph_payload["evidence_refs"]:
+        assert record["source_revision_id"] == REV
+    counts = _counts(pg)
+    assert counts["heads"] == 1
+    assert counts["revisions"] == 1
+    assert counts["contributions"] == 1
+    assert counts["artifacts"] == 1
+    assert counts["revisions_source"] == 1
+    assert counts["init_receipts"] == 1
+
+
+def test_postgres_neutral_edge_identity_persists_relationship(pg) -> None:
+    receipt = _initialize(pg)
+    _assert_initialized_edge(pg, receipt)
+
+
+def test_postgres_created_new_edge_identity_persists_relationship(pg) -> None:
+    receipt = _initialize(pg, make_created_new_edge_command())
+    _assert_initialized_edge(pg, receipt)
+
+
+def test_postgres_non_create_new_node_identity_zero_mutation(pg) -> None:
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _initialize(pg, make_accepted_node_non_create_new_command())
+    assert exc.value.details["reason"] == "accepted_identity_not_create_new"
+    assert _counts(pg) == _EMPTY_COUNTS
+
+
+def test_postgres_unsupported_edge_identity_zero_mutation(pg) -> None:
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _initialize(
+            pg, make_accepted_edge_identity_command(IdentityOutcome.AMBIGUOUS)
+        )
+    assert exc.value.details["reason"] == "accepted_edge_identity_unsupported"
+    assert _counts(pg) == _EMPTY_COUNTS
+
+
+def test_postgres_artifact_only_provenance_persists_current_revision(pg) -> None:
+    receipt = _initialize(pg, make_artifact_only_command())
+    _assert_initialized_edge(pg, receipt)
+
+
+def test_postgres_revision_only_assertion_persists(pg) -> None:
+    receipt = _initialize(pg, make_revision_only_assertion_command())
+    _assert_initialized_edge(pg, receipt)
+
+
+def test_postgres_unreferenced_extra_artifact_zero_mutation(pg) -> None:
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _initialize(pg, make_unreferenced_extra_artifact_command())
+    assert exc.value.details["reason"] == "unreferenced_source_artifact"
+    assert _counts(pg) == _EMPTY_COUNTS
+
+
+def test_postgres_unreferenced_extra_revision_zero_mutation(pg) -> None:
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _initialize(pg, make_unreferenced_extra_revision_command())
+    assert exc.value.details["reason"] == "unreferenced_source_revision"
+    assert _counts(pg) == _EMPTY_COUNTS

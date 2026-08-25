@@ -12,6 +12,7 @@ from dungeonmind.application.reviewed_world_initialization import (
 from dungeonmind.contracts.existing_world_adoption import (
     existing_world_adoption_bundle_canonical_bytes,
 )
+from dungeonmind.contracts.identity import IdentityOutcome
 from dungeonmind.domain.errors import (
     IdempotencyConflictError,
     PersistenceIntegrityError,
@@ -35,9 +36,17 @@ from tests.unit.test_existing_world_adoption import (
 from tests.unit.test_reviewed_world_initialization_materialization_v6 import (
     INIT_ID,
     NOW,
+    REV,
     WORLD_ID,
     graph_reader,
+    make_accepted_edge_identity_command,
+    make_accepted_node_non_create_new_command,
+    make_artifact_only_command,
     make_command,
+    make_created_new_edge_command,
+    make_revision_only_assertion_command,
+    make_unreferenced_extra_artifact_command,
+    make_unreferenced_extra_revision_command,
 )
 
 OTHER_WORLD = "world:reviewed-init-other"
@@ -78,6 +87,29 @@ def _initialize(inits, command=None, *, initialized_at=NOW):
         initialization_repository=inits,
         graph_reader=graph_reader(),
     )
+
+
+def _assert_zero_mutation(
+    graph, sources, contributions, inits, *, world_id: str = WORLD_ID
+) -> None:
+    assert graph.get_head(world_id) is None
+    assert graph._revisions == {}
+    assert sources._artifacts == {}
+    assert sources._revisions == {}
+    assert contributions._items == {}
+    assert inits._receipts_by_world == {}
+    assert inits._receipts_by_initialization == {}
+
+
+def _assert_initialized_edge(graph, receipt) -> None:
+    assert "asrt:leads" in receipt.accepted_assertion_ids
+    stored = graph.get_revision(WORLD_ID, receipt.published_revision_id)
+    assert stored is not None
+    assert stored.revision.parent_revision_id is None
+    rels = stored.graph_payload["relationships"]
+    assert {item["relationship_id"] for item in rels} == {"rel:leads"}
+    for record in stored.graph_payload["evidence_refs"]:
+        assert record["source_revision_id"] == REV
 
 
 def test_command_digest_is_deterministic() -> None:
@@ -282,3 +314,65 @@ def test_failure_hook_before_commit_leaves_zero_partial_state() -> None:
     assert sources._artifacts == {}
     assert contributions._items == {}
     assert inits._receipts_by_world == {}
+
+
+def test_initialize_accepts_neutral_edge_identity_and_persists_relationship() -> None:
+    graph, _sources, _contributions, _identity, inits, _adoptions = make_stores()
+    receipt = _initialize(inits)
+    _assert_initialized_edge(graph, receipt)
+
+
+def test_initialize_accepts_created_new_edge_identity() -> None:
+    graph, _sources, _contributions, _identity, inits, _adoptions = make_stores()
+    receipt = _initialize(inits, make_created_new_edge_command())
+    _assert_initialized_edge(graph, receipt)
+
+
+def test_initialize_rejects_non_create_new_node_identity_with_zero_mutation() -> None:
+    graph, sources, contributions, _identity, inits, _adoptions = make_stores()
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _initialize(inits, make_accepted_node_non_create_new_command())
+    assert exc.value.details["reason"] == "accepted_identity_not_create_new"
+    _assert_zero_mutation(graph, sources, contributions, inits)
+
+
+def test_initialize_rejects_unsupported_edge_identity_with_zero_mutation() -> None:
+    graph, sources, contributions, _identity, inits, _adoptions = make_stores()
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _initialize(
+            inits, make_accepted_edge_identity_command(IdentityOutcome.AMBIGUOUS)
+        )
+    assert exc.value.details["reason"] == "accepted_edge_identity_unsupported"
+    _assert_zero_mutation(graph, sources, contributions, inits)
+
+
+def test_initialize_artifact_only_provenance_persists_current_revision_evidence() -> None:
+    graph, sources, contributions, _identity, inits, _adoptions = make_stores()
+    receipt = _initialize(inits, make_artifact_only_command())
+    _assert_initialized_edge(graph, receipt)
+    assert len(sources._artifacts) == 1
+    assert len(sources._revisions) == 1
+    assert len(contributions._items) == 1
+    assert len(inits._receipts_by_world) == 1
+
+
+def test_initialize_revision_only_assertion_persists() -> None:
+    graph, _sources, _contributions, _identity, inits, _adoptions = make_stores()
+    receipt = _initialize(inits, make_revision_only_assertion_command())
+    _assert_initialized_edge(graph, receipt)
+
+
+def test_initialize_unreferenced_extra_artifact_zero_mutation() -> None:
+    graph, sources, contributions, _identity, inits, _adoptions = make_stores()
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _initialize(inits, make_unreferenced_extra_artifact_command())
+    assert exc.value.details["reason"] == "unreferenced_source_artifact"
+    _assert_zero_mutation(graph, sources, contributions, inits)
+
+
+def test_initialize_unreferenced_extra_revision_zero_mutation() -> None:
+    graph, sources, contributions, _identity, inits, _adoptions = make_stores()
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        _initialize(inits, make_unreferenced_extra_revision_command())
+    assert exc.value.details["reason"] == "unreferenced_source_revision"
+    _assert_zero_mutation(graph, sources, contributions, inits)

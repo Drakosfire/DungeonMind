@@ -125,6 +125,8 @@ def _node(
     label: str = "Wizard College",
     acceptance: AcceptanceState = AcceptanceState.ACCEPTED,
     identity: IdentityOutcome | None = IdentityOutcome.CREATED_NEW,
+    source_artifact_id: str | None = ART,
+    source_revision_id: str | None = REV,
 ) -> GraphContributionAssertionV2:
     return GraphContributionAssertionV2(
         assertion_id=assertion_id,
@@ -132,8 +134,8 @@ def _node(
         subject_object_id=object_id,
         label=label,
         value=json.dumps({"dm_kind": kind, "label": label, "aliases": [label]}),
-        source_artifact_id=ART,
-        source_revision_id=REV,
+        source_artifact_id=source_artifact_id,
+        source_revision_id=source_revision_id,
         campaign_scope=CAMPAIGN_ID,
         acceptance_state=acceptance,
         identity_resolution_outcome=identity,
@@ -149,6 +151,9 @@ def _edge(
     predicate: str = "leads",
     dm_predicate: str = "test:leads",
     acceptance: AcceptanceState = AcceptanceState.ACCEPTED,
+    identity: IdentityOutcome | None = None,
+    source_artifact_id: str | None = ART,
+    source_revision_id: str | None = REV,
 ) -> GraphContributionAssertionV2:
     return GraphContributionAssertionV2(
         assertion_id=assertion_id,
@@ -157,11 +162,11 @@ def _edge(
         object_object_id=target,
         predicate=predicate,
         value=json.dumps({"dm_predicate": dm_predicate, "edge_id": edge_id}),
-        source_artifact_id=ART,
-        source_revision_id=REV,
+        source_artifact_id=source_artifact_id,
+        source_revision_id=source_revision_id,
         campaign_scope=CAMPAIGN_ID,
         acceptance_state=acceptance,
-        identity_resolution_outcome=IdentityOutcome.CREATED_NEW,
+        identity_resolution_outcome=identity,
     )
 
 
@@ -228,6 +233,121 @@ def make_command(
         actor=actor,
         requested_initialized_at=NOW,
     )
+
+
+def make_artifact_only_command(
+    **kwargs: Any,
+) -> ReviewedWorldInitializationCommandV1:
+    """Buddy-mappable artifact-only provenance: revision lives on the artifact pointer."""
+    contribution = _contribution(
+        [
+            _node(source_revision_id=None),
+            _node(
+                assertion_id="asrt:headmaster",
+                object_id="obj:headmaster",
+                kind="test:person",
+                label="Headmaster",
+                source_revision_id=None,
+            ),
+            _edge(source_revision_id=None),
+        ]
+    ).model_copy(update={"source_revision_id": None})
+    return make_command(contribution=contribution, **kwargs)
+
+
+def make_revision_only_assertion_command() -> ReviewedWorldInitializationCommandV1:
+    return make_command(
+        contribution=_contribution(
+            [
+                _node(source_artifact_id=None),
+                _node(
+                    assertion_id="asrt:headmaster",
+                    object_id="obj:headmaster",
+                    kind="test:person",
+                    label="Headmaster",
+                    source_artifact_id=None,
+                ),
+                _edge(),
+            ]
+        )
+    )
+
+
+def make_created_new_edge_command() -> ReviewedWorldInitializationCommandV1:
+    return make_command(
+        contribution=_contribution(
+            [
+                _node(),
+                _node(
+                    assertion_id="asrt:headmaster",
+                    object_id="obj:headmaster",
+                    kind="test:person",
+                    label="Headmaster",
+                ),
+                _edge(identity=IdentityOutcome.CREATED_NEW),
+            ]
+        )
+    )
+
+
+def make_accepted_node_non_create_new_command(
+    outcome: IdentityOutcome | None = IdentityOutcome.AMBIGUOUS,
+) -> ReviewedWorldInitializationCommandV1:
+    return make_command(
+        contribution=_contribution(
+            assertions=[
+                _node(identity=IdentityOutcome.CREATED_NEW),
+                _node(
+                    assertion_id="asrt:ambiguous-college",
+                    object_id="obj:ambiguous",
+                    kind="test:location",
+                    label="Ambiguous Hall",
+                    identity=outcome,
+                ),
+            ]
+        )
+    )
+
+
+def make_accepted_edge_identity_command(
+    outcome: IdentityOutcome | None,
+) -> ReviewedWorldInitializationCommandV1:
+    return make_command(
+        contribution=_contribution(
+            assertions=[
+                _node(),
+                _node(
+                    assertion_id="asrt:headmaster",
+                    object_id="obj:headmaster",
+                    kind="test:person",
+                    label="Headmaster",
+                ),
+                _edge(identity=outcome),
+            ]
+        )
+    )
+
+
+def make_unreferenced_extra_artifact_command() -> ReviewedWorldInitializationCommandV1:
+    extra = _artifact().model_copy(
+        update={
+            "source_artifact_id": "src:unused",
+            "current_revision_id": None,
+        }
+    )
+    return make_command(artifacts=[_artifact(), extra])
+
+
+def make_unreferenced_extra_revision_command() -> ReviewedWorldInitializationCommandV1:
+    extra = SourceRevision(
+        source_revision_id="srcrev:unused",
+        source_artifact_id=ART,
+        content_sha256="c" * 64,
+        body_storage="object_store",
+        locator="object://unused",
+        created_at=NOW,
+    )
+    return make_command(revisions=[_revision(), extra])
 
 
 def test_command_digest_is_deterministic() -> None:
@@ -302,6 +422,15 @@ def test_accepted_resolved_existing_refused() -> None:
     assert exc.value.details["reason"] == "accepted_resolved_existing"
 
 
+def test_accepted_edge_resolved_existing_refused() -> None:
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        materialize_reviewed_world_initialization_v6(
+            make_accepted_edge_identity_command(IdentityOutcome.RESOLVED_EXISTING),
+            graph_reader=graph_reader(),
+        )
+    assert exc.value.details["reason"] == "accepted_resolved_existing"
+
+
 @pytest.mark.parametrize(
     "outcome",
     [
@@ -313,26 +442,71 @@ def test_accepted_resolved_existing_refused() -> None:
         IdentityOutcome.HUMAN_OVERRIDE,
     ],
 )
-def test_accepted_non_create_new_identity_fails_closed(
+def test_accepted_non_create_new_node_identity_fails_closed(
     outcome: IdentityOutcome | None,
 ) -> None:
-    command = make_command(
-        contribution=_contribution(
-            assertions=[
-                _node(identity=IdentityOutcome.CREATED_NEW),
-                _node(
-                    assertion_id="asrt:ambiguous-college",
-                    object_id="obj:ambiguous",
-                    kind="test:location",
-                    label="Ambiguous Hall",
-                    identity=outcome,
-                ),
-            ]
-        )
-    )
     with pytest.raises(PersistenceIntegrityError) as exc:
-        materialize_reviewed_world_initialization_v6(command, graph_reader=graph_reader())
+        materialize_reviewed_world_initialization_v6(
+            make_accepted_node_non_create_new_command(outcome),
+            graph_reader=graph_reader(),
+        )
     assert exc.value.details["reason"] == "accepted_identity_not_create_new"
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        IdentityOutcome.AMBIGUOUS,
+        IdentityOutcome.BLOCKED_COLLISION,
+        IdentityOutcome.REJECTED,
+        IdentityOutcome.PROVISIONAL_NEW,
+        IdentityOutcome.HUMAN_OVERRIDE,
+    ],
+)
+def test_accepted_unsupported_edge_identity_fails_closed(
+    outcome: IdentityOutcome,
+) -> None:
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        materialize_reviewed_world_initialization_v6(
+            make_accepted_edge_identity_command(outcome),
+            graph_reader=graph_reader(),
+        )
+    assert exc.value.details["reason"] == "accepted_edge_identity_unsupported"
+
+
+def test_accepted_edge_identity_none_materializes() -> None:
+    result = materialize_reviewed_world_initialization_v6(
+        make_command(), graph_reader=graph_reader()
+    )
+    rels = result.graph_payload["relationships"]
+    assert len(rels) == 1
+    assert rels[0]["relationship_id"] == "rel:leads"
+    assert "asrt:leads" in result.accepted_assertion_ids
+
+
+def test_accepted_edge_created_new_still_materializes() -> None:
+    result = materialize_reviewed_world_initialization_v6(
+        make_created_new_edge_command(), graph_reader=graph_reader()
+    )
+    rels = result.graph_payload["relationships"]
+    assert len(rels) == 1
+    assert rels[0]["relationship_id"] == "rel:leads"
+    assert "asrt:leads" in result.accepted_assertion_ids
+
+
+def test_artifact_only_provenance_uses_artifact_current_revision() -> None:
+    command = make_artifact_only_command()
+    result = materialize_reviewed_world_initialization_v6(
+        command, graph_reader=graph_reader()
+    )
+    evidence = result.graph_payload["evidence_refs"]
+    assert evidence
+    for record in evidence:
+        assert record["source_artifact_id"] == ART
+        assert record["source_revision_id"] == REV
+        assert record["source_artifact_id"] != (
+            f"artifact:{command.reviewed_contribution.contribution_id}"
+        )
 
 
 def test_revision_only_assertion_derives_artifact_from_revision_owner() -> None:
@@ -360,30 +534,20 @@ def test_revision_only_assertion_derives_artifact_from_revision_owner() -> None:
 
 
 def test_unreferenced_source_artifact_is_refused() -> None:
-    extra = _artifact().model_copy(
-        update={
-            "source_artifact_id": "src:unused",
-            "current_revision_id": None,
-        }
-    )
-    command = make_command(artifacts=[_artifact(), extra])
     with pytest.raises(PersistenceIntegrityError) as exc:
-        materialize_reviewed_world_initialization_v6(command, graph_reader=graph_reader())
+        materialize_reviewed_world_initialization_v6(
+            make_unreferenced_extra_artifact_command(),
+            graph_reader=graph_reader(),
+        )
     assert exc.value.details["reason"] == "unreferenced_source_artifact"
 
 
 def test_unreferenced_source_revision_is_refused() -> None:
-    extra = SourceRevision(
-        source_revision_id="srcrev:unused",
-        source_artifact_id=ART,
-        content_sha256="c" * 64,
-        body_storage="object_store",
-        locator="object://unused",
-        created_at=NOW,
-    )
-    command = make_command(revisions=[_revision(), extra])
     with pytest.raises(PersistenceIntegrityError) as exc:
-        materialize_reviewed_world_initialization_v6(command, graph_reader=graph_reader())
+        materialize_reviewed_world_initialization_v6(
+            make_unreferenced_extra_revision_command(),
+            graph_reader=graph_reader(),
+        )
     assert exc.value.details["reason"] == "unreferenced_source_revision"
 
 

@@ -217,11 +217,13 @@ def _is_existing_identity(outcome: IdentityOutcome | str | None) -> bool:
 
 
 def _is_materializable(assertion: GraphContributionAssertionV2) -> bool:
-    return (
-        assertion.acceptance_state is AcceptanceState.ACCEPTED
-        and assertion.assertion_kind in _MATERIALIZABLE_KINDS
-        and assertion.identity_resolution_outcome is IdentityOutcome.CREATED_NEW
-    )
+    if assertion.acceptance_state is not AcceptanceState.ACCEPTED:
+        return False
+    if assertion.assertion_kind == "node":
+        return assertion.identity_resolution_outcome is IdentityOutcome.CREATED_NEW
+    if assertion.assertion_kind == "edge":
+        return assertion.identity_resolution_outcome in {None, IdentityOutcome.CREATED_NEW}
+    return False
 
 
 def validate_reviewed_world_initialization_command(
@@ -307,7 +309,7 @@ def validate_reviewed_world_initialization_command(
         if assertion.acceptance_state is not AcceptanceState.ACCEPTED:
             continue
         outcome = assertion.identity_resolution_outcome
-        if assertion.assertion_kind in _MATERIALIZABLE_KINDS:
+        if assertion.assertion_kind == "node":
             if _is_existing_identity(outcome):
                 _integrity(
                     "accepted_resolved_existing",
@@ -316,6 +318,20 @@ def validate_reviewed_world_initialization_command(
             if outcome is not IdentityOutcome.CREATED_NEW:
                 _integrity(
                     "accepted_identity_not_create_new",
+                    assertion_id=assertion.assertion_id,
+                    identity_resolution_outcome=(
+                        outcome.value if outcome is not None else None
+                    ),
+                )
+        elif assertion.assertion_kind == "edge":
+            if _is_existing_identity(outcome):
+                _integrity(
+                    "accepted_resolved_existing",
+                    assertion_id=assertion.assertion_id,
+                )
+            if outcome not in {None, IdentityOutcome.CREATED_NEW}:
+                _integrity(
+                    "accepted_edge_identity_unsupported",
                     assertion_id=assertion.assertion_id,
                     identity_resolution_outcome=(
                         outcome.value if outcome is not None else None
@@ -347,6 +363,11 @@ def validate_reviewed_world_initialization_command(
                 "accepted_edge_missing_endpoint",
                 assertion_id=assertion.assertion_id,
             )
+    for artifact_id in referenced_artifacts:
+        artifact = artifact_map[artifact_id]
+        current = artifact.current_revision_id
+        if current is not None and current in revision_map:
+            referenced_revisions.add(current)
     for artifact in artifacts:
         if artifact.source_artifact_id not in referenced_artifacts:
             _integrity(
