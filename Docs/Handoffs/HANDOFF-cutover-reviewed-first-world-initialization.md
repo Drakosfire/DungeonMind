@@ -236,18 +236,21 @@ Stop and report rather than broadening scope if any of these occur:
 
 - **Repo / branch:** `Drakosfire/DungeonMind` / `cutover/reviewed-first-world-initialization`
 - **Base SHA (dispatch-only):** `a20d88f7ee469e0e8d2eb71e2de1c0293d2672a4`
-- **Implementation HEAD:** `b9c3ac6a0da13294d3ebb019f0e76cd75c430cdb`
+- **Implementation HEAD:** `cd8a3d898dddea600e9be3aa604e08f07d29c4e1`
 - **PR:** [Drakosfire/DungeonMind#46](https://github.com/Drakosfire/DungeonMind/pull/46) — **still draft**; not merged
 - **Alembic head:** `0007_reviewed_world_init` (revises `0006_existing_world_adoptions`)
 
 ### Review cycles
 
-Implementation cycle 1. Formal Review Cycle 1 (`5024424372`) was REQUEST-CHANGES-equivalent against `6b51c6476f9843f199d653fc4ac1356eafe7e8cc`. This head (`b9c3ac6a0da13294d3ebb019f0e76cd75c430cdb`) repairs:
+Implementation cycle 1. Formal Review Cycle 1 (`5024424372`) was REQUEST-CHANGES-equivalent against `6b51c6476f9843f199d653fc4ac1356eafe7e8cc`. That repair closed invented `artifact:<contribution>` evidence and stopped silently dropping accepted non-mutating identity.
 
-1. first-world evidence must resolve through command-owned source records (artifact derived from the proven revision owner; no invented `artifact:<contribution>`; unreferenced source rows fail closed);
-2. accepted first-world node/edge facts must be `created_new` (accepted non-mutating identity no longer silently drops from `D_0` / receipt IDs).
+Cycle 2 PASS (`5024590474`) against `d5f3a4c22fc6d31e0e8584b0526fd9c26828e817` is **not operative**. Cycle 2 correction (`5024696192`) on that same SHA is REQUEST-CHANGES-equivalent. This head (`cd8a3d898dddea600e9be3aa604e08f07d29c4e1`) repairs:
 
-Awaiting Review Cycle 2. PR #46 remains draft until accepted.
+1. accepted **nodes** still require `created_new`; accepted **edges** accept Buddy-neutral `None` or `created_new`. Existing-identity outcomes still fail closed. Other non-mutating edge outcomes fail as `accepted_edge_identity_unsupported` instead of silent drop;
+2. a referenced artifact's command-owned `current_revision_id` counts as a referenced revision, so artifact-only fallback evidence is reachable; extra unused non-current revisions still fail `unreferenced_source_revision`;
+3. those cases now have whole-operation proofs through `initialize_reviewed_world` (in-memory and PostgreSQL): success persists the edge on `D_0`, and integrity failures leave zero rows/receipts.
+
+Awaiting Review Cycle 3 (SHA changed). PR #46 remains draft until accepted.
 
 ### Decisions
 
@@ -258,6 +261,8 @@ Awaiting Review Cycle 2. PR #46 remains draft until accepted.
 | Alembic revision id length? | `alembic_version.version_num` is `varchar(32)`; `0007_reviewed_world_initializations` is 35 chars and failed to stamp | Use `0007_reviewed_world_init` (24 chars); keep table name `reviewed_world_initializations` | Widen `version_num` | Filename/revision id shorter than the table name | Rename only if a later migration policy requires it |
 | How to prove receipt vs later head? | Need `D_0 → D_1` without inventing a second capability | Publish a legitimate child with `PostgresWorldGraphRepository.publish_revision` on a slightly mutated v6 payload, `parent=D_0` | Import full review-publication fixtures into this slice | Receipt readback still returns `D_0` and does not reset head | D.2C2 may replace this child with a real governed publication if useful |
 | Reciprocal pristine? | Adoption must not treat a reviewed-init world as empty | One extra SELECT on `reviewed_world_initializations` (`family=reviewed_world_initialization`); in-memory optional lookup defaults empty so existing adoption unit tests stay green | Redesign adoption contracts/replay | Init writes zero `existing_world_adoptions` rows; both directions fail closed | Remove the SELECT only if the two authorities are later unified |
+| Accepted edge identity? | Buddy first-world producer marks accepted edges `accepted_by_operator`; the existing Buddy→DungeonMind mapping normalizes that to `None` | Nodes require `CREATED_NEW`; edges accept `None` or `CREATED_NEW`; existing-identity and other non-mutating outcomes fail closed | Require `CREATED_NEW` for edges | D.2C2 can pass Buddy-true edge identity without falsifying the mapping | Re-tighten only if Buddy starts emitting `created_new` for edges |
+| Artifact-only current revision? | Fallback evidence already uses a referenced artifact's `current_revision_id`, but unreferenced-source checks never counted it | After collecting referenced artifacts, add each command-owned `current_revision_id` to `referenced_revisions` | Invent a revision pointer on the assertion | Artifact-only provenance is reachable; unused non-current revisions still fail | Keep failing closed if `current_revision_id` is missing from the command |
 
 No stop condition from §7 was hit. Read behavior is unchanged. `SourceRevisionV2` was not invented. Caller `graph_payload`, `ExistingWorldAdoption` provenance, and fake `EMPTY` parents are absent.
 
@@ -270,7 +275,7 @@ uv run pytest tests/unit/test_reviewed_world_initialization.py \
   tests/unit/test_reviewed_world_initialization_materialization_v6.py \
   tests/unit/test_import_boundaries.py \
   tests/unit/test_existing_world_adoption.py
-  → 94 passed in 2.82s
+  → 120 passed in 3.53s
 
 uv run ruff check .
   → All checks passed!
@@ -287,10 +292,10 @@ uv run pytest tests/integration/test_postgres_reviewed_world_initialization.py \
   tests/integration/test_postgres_existing_world_adoption.py \
   tests/integration/test_postgres_review_publication.py \
   tests/integration/test_postgres_review_publication_v6.py -m integration
-  → 68 passed in 41.11s
+  → 76 passed in 56.62s
 ```
 
-First integration attempt failed closed: Alembic could not stamp `0007_reviewed_world_initializations` into `varchar(32)`. After shortening the revision id, the live DB remained at `0006_existing_world_adoptions` with no leftover `reviewed_world_initializations` table, then the 68-test run passed.
+First integration attempt failed closed: Alembic could not stamp `0007_reviewed_world_initializations` into `varchar(32)`. After shortening the revision id, the live DB remained at `0006_existing_world_adoptions` with no leftover `reviewed_world_initializations` table. Cycle 2 correction re-ran the same suite at 76 passed.
 
 ### Atomicity / recovery witness
 
