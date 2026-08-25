@@ -242,7 +242,12 @@ Stop and report rather than broadening scope if any of these occur:
 
 ### Review cycles
 
-Implementation cycle 1. No formal accepting review yet; PR #46 remains draft pending review.
+Implementation cycle 1. Formal Review Cycle 1 (`5024424372`) was REQUEST-CHANGES-equivalent against `6b51c6476f9843f199d653fc4ac1356eafe7e8cc`. This head repairs:
+
+1. first-world evidence must resolve through command-owned source records (artifact derived from the proven revision owner; no invented `artifact:<contribution>`; unreferenced source rows fail closed);
+2. accepted first-world node/edge facts must be `created_new` (accepted non-mutating identity no longer silently drops from `D_0` / receipt IDs).
+
+Awaiting Review Cycle 2. PR #46 remains draft until accepted.
 
 ### Decisions
 

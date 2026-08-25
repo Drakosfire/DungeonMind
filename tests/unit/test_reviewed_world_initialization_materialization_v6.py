@@ -302,6 +302,91 @@ def test_accepted_resolved_existing_refused() -> None:
     assert exc.value.details["reason"] == "accepted_resolved_existing"
 
 
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        None,
+        IdentityOutcome.AMBIGUOUS,
+        IdentityOutcome.BLOCKED_COLLISION,
+        IdentityOutcome.REJECTED,
+        IdentityOutcome.PROVISIONAL_NEW,
+        IdentityOutcome.HUMAN_OVERRIDE,
+    ],
+)
+def test_accepted_non_create_new_identity_fails_closed(
+    outcome: IdentityOutcome | None,
+) -> None:
+    command = make_command(
+        contribution=_contribution(
+            assertions=[
+                _node(identity=IdentityOutcome.CREATED_NEW),
+                _node(
+                    assertion_id="asrt:ambiguous-college",
+                    object_id="obj:ambiguous",
+                    kind="test:location",
+                    label="Ambiguous Hall",
+                    identity=outcome,
+                ),
+            ]
+        )
+    )
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        materialize_reviewed_world_initialization_v6(command, graph_reader=graph_reader())
+    assert exc.value.details["reason"] == "accepted_identity_not_create_new"
+
+
+def test_revision_only_assertion_derives_artifact_from_revision_owner() -> None:
+    revision_only = _node().model_copy(update={"source_artifact_id": None})
+    headmaster = _node(
+        assertion_id="asrt:headmaster",
+        object_id="obj:headmaster",
+        kind="test:person",
+        label="Headmaster",
+    ).model_copy(update={"source_artifact_id": None})
+    command = make_command(
+        contribution=_contribution(assertions=[revision_only, headmaster, _edge()])
+    )
+    result = materialize_reviewed_world_initialization_v6(
+        command, graph_reader=graph_reader()
+    )
+    evidence = result.graph_payload["evidence_refs"]
+    assert evidence
+    for record in evidence:
+        assert record["source_artifact_id"] == ART
+        assert record["source_revision_id"] == REV
+        assert record["source_artifact_id"] != (
+            f"artifact:{command.reviewed_contribution.contribution_id}"
+        )
+
+
+def test_unreferenced_source_artifact_is_refused() -> None:
+    extra = _artifact().model_copy(
+        update={
+            "source_artifact_id": "src:unused",
+            "current_revision_id": None,
+        }
+    )
+    command = make_command(artifacts=[_artifact(), extra])
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        materialize_reviewed_world_initialization_v6(command, graph_reader=graph_reader())
+    assert exc.value.details["reason"] == "unreferenced_source_artifact"
+
+
+def test_unreferenced_source_revision_is_refused() -> None:
+    extra = SourceRevision(
+        source_revision_id="srcrev:unused",
+        source_artifact_id=ART,
+        content_sha256="c" * 64,
+        body_storage="object_store",
+        locator="object://unused",
+        created_at=NOW,
+    )
+    command = make_command(revisions=[_revision(), extra])
+    with pytest.raises(PersistenceIntegrityError) as exc:
+        materialize_reviewed_world_initialization_v6(command, graph_reader=graph_reader())
+    assert exc.value.details["reason"] == "unreferenced_source_revision"
+
+
 def test_corrections_refused() -> None:
     command = make_command(
         contribution=_contribution(
@@ -360,6 +445,9 @@ def test_valid_node_and_edge_materializes_strict_v6_and_reparses() -> None:
         "asrt:headmaster",
         "asrt:leads",
     )
+    for record in payload["evidence_refs"]:
+        assert record["source_artifact_id"] == ART
+        assert record["source_revision_id"] == REV
 
 
 def test_output_is_not_taken_from_command_bytes() -> None:

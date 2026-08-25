@@ -23,7 +23,6 @@ from ..contracts.contribution import (
     GraphContributionV2,
 )
 from ..contracts.contribution_review_v2 import (
-    NON_MUTATING_IDENTITY_OUTCOMES,
     contribution_v2_payload_sha256,
 )
 from ..contracts.evidence import EvidenceRefV2, EvidenceRole, SourceArtifactV2, SourceRevision
@@ -184,39 +183,45 @@ def _source_maps(
     return artifact_map, revision_map
 
 
-def _require_source_closure(
+def _resolve_command_source(
     *,
     source_artifact_id: str | None,
     source_revision_id: str | None,
     artifacts: dict[str, SourceArtifactV2],
     revisions: dict[str, SourceRevision],
     field_name: str,
-) -> None:
+) -> tuple[str | None, str | None]:
+    """Return the command-owned (artifact, revision) pair, deriving artifact from revision."""
     if source_artifact_id is None and source_revision_id is None:
-        return
-    if source_artifact_id is not None and source_artifact_id not in artifacts:
-        _integrity("source_artifact_not_in_command", field=field_name)
+        return None, None
     if source_revision_id is not None:
         revision = revisions.get(source_revision_id)
         if revision is None:
             _integrity("source_revision_not_in_command", field=field_name)
-        if source_artifact_id is not None and revision.source_artifact_id != source_artifact_id:
+        assert revision is not None
+        proven_artifact = revision.source_artifact_id
+        if proven_artifact not in artifacts:
+            _integrity("source_revision_artifact_not_in_command", field=field_name)
+        if source_artifact_id is not None and source_artifact_id != proven_artifact:
             _integrity("source_revision_artifact_mismatch", field=field_name)
+        return proven_artifact, source_revision_id
+    if source_artifact_id not in artifacts:
+        _integrity("source_artifact_not_in_command", field=field_name)
+    return source_artifact_id, None
+
+
+def _is_existing_identity(outcome: IdentityOutcome | str | None) -> bool:
+    if outcome in _REJECTED_EXISTING_IDENTITY:
+        return True
+    return outcome is not None and getattr(outcome, "value", outcome) == "confirm_existing"
 
 
 def _is_materializable(assertion: GraphContributionAssertionV2) -> bool:
-    if assertion.acceptance_state is not AcceptanceState.ACCEPTED:
-        return False
-    if assertion.identity_resolution_outcome in NON_MUTATING_IDENTITY_OUTCOMES:
-        return False
-    if assertion.identity_resolution_outcome in _REJECTED_EXISTING_IDENTITY:
-        return False
-    if (
-        assertion.identity_resolution_outcome is not None
-        and assertion.identity_resolution_outcome.value == "confirm_existing"
-    ):
-        return False
-    return assertion.assertion_kind in _MATERIALIZABLE_KINDS
+    return (
+        assertion.acceptance_state is AcceptanceState.ACCEPTED
+        and assertion.assertion_kind in _MATERIALIZABLE_KINDS
+        and assertion.identity_resolution_outcome is IdentityOutcome.CREATED_NEW
+    )
 
 
 def validate_reviewed_world_initialization_command(
@@ -259,43 +264,63 @@ def validate_reviewed_world_initialization_command(
         if revision.source_artifact_id not in artifact_map:
             _integrity("revision_artifact_missing")
 
-    _require_source_closure(
-        source_artifact_id=contribution.source_artifact_id,
-        source_revision_id=contribution.source_revision_id,
-        artifacts=artifact_map,
-        revisions=revision_map,
-        field_name="contribution",
+    referenced_artifacts: set[str] = set()
+    referenced_revisions: set[str] = set()
+
+    def _note_source(artifact_id: str | None, revision_id: str | None) -> None:
+        if artifact_id is not None:
+            referenced_artifacts.add(artifact_id)
+        if revision_id is not None:
+            referenced_revisions.add(revision_id)
+
+    _note_source(
+        *_resolve_command_source(
+            source_artifact_id=contribution.source_artifact_id,
+            source_revision_id=contribution.source_revision_id,
+            artifacts=artifact_map,
+            revisions=revision_map,
+            field_name="contribution",
+        )
     )
     created_object_ids: set[str] = set()
     materializable: list[GraphContributionAssertionV2] = []
     for assertion in contribution.assertions:
-        _require_source_closure(
-            source_artifact_id=assertion.source_artifact_id,
-            source_revision_id=assertion.source_revision_id,
-            artifacts=artifact_map,
-            revisions=revision_map,
-            field_name="assertion",
-        )
-        for ref in assertion.evidence_refs:
-            _require_source_closure(
-                source_artifact_id=ref.source_artifact_id,
-                source_revision_id=ref.source_revision_id,
+        _note_source(
+            *_resolve_command_source(
+                source_artifact_id=assertion.source_artifact_id,
+                source_revision_id=assertion.source_revision_id,
                 artifacts=artifact_map,
                 revisions=revision_map,
-                field_name="evidence_ref",
+                field_name="assertion",
+            )
+        )
+        for ref in assertion.evidence_refs:
+            _note_source(
+                *_resolve_command_source(
+                    source_artifact_id=ref.source_artifact_id,
+                    source_revision_id=ref.source_revision_id,
+                    artifacts=artifact_map,
+                    revisions=revision_map,
+                    field_name="evidence_ref",
+                )
             )
         if assertion.acceptance_state is not AcceptanceState.ACCEPTED:
             continue
         outcome = assertion.identity_resolution_outcome
-        if outcome is IdentityOutcome.RESOLVED_EXISTING or (
-            outcome is not None and outcome.value == "confirm_existing"
-        ):
-            _integrity(
-                "accepted_resolved_existing",
-                assertion_id=assertion.assertion_id,
-            )
-        if outcome in NON_MUTATING_IDENTITY_OUTCOMES:
-            continue
+        if assertion.assertion_kind in _MATERIALIZABLE_KINDS:
+            if _is_existing_identity(outcome):
+                _integrity(
+                    "accepted_resolved_existing",
+                    assertion_id=assertion.assertion_id,
+                )
+            if outcome is not IdentityOutcome.CREATED_NEW:
+                _integrity(
+                    "accepted_identity_not_create_new",
+                    assertion_id=assertion.assertion_id,
+                    identity_resolution_outcome=(
+                        outcome.value if outcome is not None else None
+                    ),
+                )
         if assertion.assertion_kind not in _MATERIALIZABLE_KINDS:
             _integrity(
                 "unsupported_accepted_assertion_kind",
@@ -321,6 +346,18 @@ def validate_reviewed_world_initialization_command(
             _integrity(
                 "accepted_edge_missing_endpoint",
                 assertion_id=assertion.assertion_id,
+            )
+    for artifact in artifacts:
+        if artifact.source_artifact_id not in referenced_artifacts:
+            _integrity(
+                "unreferenced_source_artifact",
+                source_artifact_id=artifact.source_artifact_id,
+            )
+    for revision in revisions:
+        if revision.source_revision_id not in referenced_revisions:
+            _integrity(
+                "unreferenced_source_revision",
+                source_revision_id=revision.source_revision_id,
             )
 
 
@@ -443,47 +480,138 @@ def _lift_evidence(assertion: GraphContributionAssertionV2) -> dict[str, Evidenc
     return lifted
 
 
+def _fallback_source_identity(
+    assertion: GraphContributionAssertionV2,
+    *,
+    contribution: GraphContributionV2,
+    artifacts: dict[str, SourceArtifactV2],
+    revisions: dict[str, SourceRevision],
+) -> tuple[str, str]:
+    """Derive fallback evidence source from the proven revision owner, or fail closed."""
+    revision_id = assertion.source_revision_id or contribution.source_revision_id
+    named_artifact_id = assertion.source_artifact_id or contribution.source_artifact_id
+    if revision_id is not None:
+        revision = revisions.get(revision_id)
+        if revision is None:
+            _fail(
+                "source_revision_not_in_command",
+                assertion_id=assertion.assertion_id,
+            )
+        proven_artifact_id = revision.source_artifact_id
+        if named_artifact_id is not None and named_artifact_id != proven_artifact_id:
+            _fail(
+                "source_revision_artifact_mismatch",
+                assertion_id=assertion.assertion_id,
+            )
+        if proven_artifact_id not in artifacts:
+            _fail(
+                "source_revision_artifact_not_in_command",
+                assertion_id=assertion.assertion_id,
+            )
+        return proven_artifact_id, revision_id
+    if named_artifact_id is None:
+        _fail(
+            "accepted_assertion_missing_source_identity",
+            assertion_id=assertion.assertion_id,
+        )
+    artifact = artifacts.get(named_artifact_id)
+    if artifact is None:
+        _fail(
+            "source_artifact_not_in_command",
+            assertion_id=assertion.assertion_id,
+        )
+    current = artifact.current_revision_id
+    if current is None or current not in revisions:
+        _fail(
+            "accepted_assertion_missing_source_revision",
+            assertion_id=assertion.assertion_id,
+        )
+    if revisions[current].source_artifact_id != named_artifact_id:
+        _fail(
+            "source_revision_artifact_mismatch",
+            assertion_id=assertion.assertion_id,
+        )
+    return named_artifact_id, current
+
+
 def _fallback_evidence(
     assertion: GraphContributionAssertionV2,
     *,
-    reviewed_contribution_id: str,
-    reviewed_source_artifact_id: str | None,
-    reviewed_source_revision_id: str | None,
+    contribution: GraphContributionV2,
+    artifacts: dict[str, SourceArtifactV2],
+    revisions: dict[str, SourceRevision],
     graph_object_id: str,
 ) -> EvidenceRefV2:
+    artifact_id, revision_id = _fallback_source_identity(
+        assertion,
+        contribution=contribution,
+        artifacts=artifacts,
+        revisions=revisions,
+    )
+    artifact = artifacts[artifact_id]
+    domain = artifact.source_domain
     return EvidenceRefV2(
-        evidence_ref_id=f"evidence:{reviewed_contribution_id}:{graph_object_id}",
-        source_artifact_id=(
-            assertion.source_artifact_id
-            or reviewed_source_artifact_id
-            or f"artifact:{reviewed_contribution_id}"
-        ),
-        source_revision_id=assertion.source_revision_id or reviewed_source_revision_id,
-        source_domain_key="manual_seed",
-        source_domain=None,
+        evidence_ref_id=f"evidence:{contribution.contribution_id}:{graph_object_id}",
+        source_artifact_id=artifact_id,
+        source_revision_id=revision_id,
+        source_domain_key=artifact.source_domain_key,
+        source_domain=domain,
         evidence_role=EvidenceRole.SUPPORT,
         can_open_source=False,
         can_highlight_span=False,
         session_id=None,
         source_span_ref_id=None,
-        locator=f"contribution/{reviewed_contribution_id}/{graph_object_id}",
+        locator=f"contribution/{contribution.contribution_id}/{graph_object_id}",
         uri=None,
         source_locator=None,
         line_ref=None,
     )
 
 
+def _require_emitted_evidence_in_command(
+    record: EvidenceRefV2,
+    *,
+    artifacts: dict[str, SourceArtifactV2],
+    revisions: dict[str, SourceRevision],
+) -> None:
+    if record.source_revision_id is None:
+        _fail(
+            "emitted_evidence_missing_source_revision",
+            evidence_ref_id=record.evidence_ref_id,
+        )
+    revision = revisions.get(record.source_revision_id)
+    if revision is None:
+        _fail(
+            "emitted_evidence_source_revision_not_in_command",
+            evidence_ref_id=record.evidence_ref_id,
+        )
+    if revision.source_artifact_id != record.source_artifact_id:
+        _fail(
+            "emitted_evidence_source_revision_artifact_mismatch",
+            evidence_ref_id=record.evidence_ref_id,
+        )
+    if record.source_artifact_id not in artifacts:
+        _fail(
+            "emitted_evidence_source_artifact_not_in_command",
+            evidence_ref_id=record.evidence_ref_id,
+        )
+
+
 def _assertion_evidence(
     assertion: GraphContributionAssertionV2,
     *,
     kind: str,
-    reviewed_contribution_id: str,
-    reviewed_source_artifact_id: str | None,
-    reviewed_source_revision_id: str | None,
+    contribution: GraphContributionV2,
+    artifacts: dict[str, SourceArtifactV2],
+    revisions: dict[str, SourceRevision],
     graph_object_id: str,
 ) -> tuple[list[str], dict[str, EvidenceRefV2]]:
     lifted = _lift_evidence(assertion)
     if lifted:
+        for record in lifted.values():
+            _require_emitted_evidence_in_command(
+                record, artifacts=artifacts, revisions=revisions
+            )
         return sorted(lifted), lifted
     if kind not in _MATERIALIZABLE_KINDS:
         _fail(
@@ -492,10 +620,13 @@ def _assertion_evidence(
         )
     fallback = _fallback_evidence(
         assertion,
-        reviewed_contribution_id=reviewed_contribution_id,
-        reviewed_source_artifact_id=reviewed_source_artifact_id,
-        reviewed_source_revision_id=reviewed_source_revision_id,
+        contribution=contribution,
+        artifacts=artifacts,
+        revisions=revisions,
         graph_object_id=graph_object_id,
+    )
+    _require_emitted_evidence_in_command(
+        fallback, artifacts=artifacts, revisions=revisions
     )
     return [fallback.evidence_ref_id], {fallback.evidence_ref_id: fallback}
 
@@ -522,8 +653,16 @@ def _alias_record(
 class _FirstWorldWorkspace:
     """Mutable typed-payload workspace over an empty v6 value."""
 
-    def __init__(self, *, contribution: GraphContributionV2) -> None:
+    def __init__(
+        self,
+        *,
+        contribution: GraphContributionV2,
+        artifacts: dict[str, SourceArtifactV2],
+        revisions: dict[str, SourceRevision],
+    ) -> None:
         self.reviewed = contribution
+        self.artifacts = artifacts
+        self.revisions = revisions
         self.objects: dict[str, GraphObjectV6Record] = {}
         self.object_order: list[str] = []
         self.relationships: dict[str, GraphRelationshipV6Record] = {}
@@ -555,9 +694,9 @@ class _FirstWorldWorkspace:
         evidence_ids, evidence_records = _assertion_evidence(
             assertion,
             kind="node",
-            reviewed_contribution_id=self.reviewed.contribution_id,
-            reviewed_source_artifact_id=self.reviewed.source_artifact_id,
-            reviewed_source_revision_id=self.reviewed.source_revision_id,
+            contribution=self.reviewed,
+            artifacts=self.artifacts,
+            revisions=self.revisions,
             graph_object_id=object_id,
         )
         session_refs = _session_refs(assertion, value)
@@ -641,9 +780,9 @@ class _FirstWorldWorkspace:
         evidence_ids, evidence_records = _assertion_evidence(
             assertion,
             kind="edge",
-            reviewed_contribution_id=self.reviewed.contribution_id,
-            reviewed_source_artifact_id=self.reviewed.source_artifact_id,
-            reviewed_source_revision_id=self.reviewed.source_revision_id,
+            contribution=self.reviewed,
+            artifacts=self.artifacts,
+            revisions=self.revisions,
             graph_object_id=relationship_id,
         )
         session_refs = _session_refs(assertion, value)
@@ -698,7 +837,11 @@ def materialize_reviewed_world_initialization_v6(
         )
     except Exception:
         _fail("empty_graph_validation")
-    workspace = _FirstWorldWorkspace(contribution=contribution)
+    workspace = _FirstWorldWorkspace(
+        contribution=contribution,
+        artifacts={item.source_artifact_id: item for item in validated.source_artifacts},
+        revisions={item.source_revision_id: item for item in validated.source_revisions},
+    )
     accepted_nodes = sorted(
         (
             assertion
