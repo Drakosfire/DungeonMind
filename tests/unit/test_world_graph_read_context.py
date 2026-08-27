@@ -41,6 +41,9 @@ from dungeonmind.infrastructure.memory import (
     InMemoryWorldGraphRepository,
 )
 from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
+from tests.unit.null_reviewed_world_initialization import (
+    NullReviewedWorldInitializationRepository,
+)
 from tests.unit.test_world_graph_retrieval_service import (
     CAMPAIGN_A,
     NOW,
@@ -106,6 +109,7 @@ def _projection(world_graph, sources, *, reader=None, cache=None):
         or VersionedUnionGraphSnapshotReader(
             profile_registry=StaticSemanticProfileRegistry([_v6_descriptor()])
         ),
+        reviewed_world_initializations=NullReviewedWorldInitializationRepository(),
         clock=_FixedClock(),
         parsed_revision_cache=cache,
     )

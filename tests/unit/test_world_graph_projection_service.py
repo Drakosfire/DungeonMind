@@ -52,6 +52,9 @@ from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRe
 from dungeonmind_dnd.application.world_object_vocabulary import (
     load_builtin_v3_descriptor,
 )
+from tests.unit.null_reviewed_world_initialization import (
+    NullReviewedWorldInitializationRepository,
+)
 
 WORLD_ID = "world:test"
 NOW = datetime(2026, 8, 22, 18, 0, tzinfo=UTC)
@@ -97,6 +100,7 @@ def _service(world_graph) -> WorldGraphProjectionService:
         world_graph=world_graph,
         sources=InMemorySourceRepository(),
         graph_reader=UnionGraphV1SnapshotReader(),
+        reviewed_world_initializations=NullReviewedWorldInitializationRepository(),
         clock=_FixedClock(),
     )
 
@@ -396,6 +400,7 @@ def _v6_service(world_graph) -> WorldGraphProjectionService:
         graph_reader=VersionedUnionGraphSnapshotReader(
             profile_registry=StaticSemanticProfileRegistry([_v6_descriptor()])
         ),
+        reviewed_world_initializations=NullReviewedWorldInitializationRepository(),
         clock=_FixedClock(),
     )
 

@@ -43,6 +43,9 @@ from dungeonmind.infrastructure.memory import (
     InMemoryWorldGraphRepository,
 )
 from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
+from tests.unit.null_reviewed_world_initialization import (
+    NullReviewedWorldInitializationRepository,
+)
 from tests.unit.test_world_graph_retrieval_service import (
     _FixedClock,
     _publish,
@@ -192,6 +195,7 @@ def _services(
         graph_reader=VersionedUnionGraphSnapshotReader(
             profile_registry=StaticSemanticProfileRegistry([_v6_descriptor()])
         ),
+        reviewed_world_initializations=NullReviewedWorldInitializationRepository(),
         clock=_FixedClock(),
         read_observer=projection_observer if projection_observer is not None else observer,
         read_clock=read_clock,
@@ -427,6 +431,7 @@ def test_project_late_error_retains_parsed_counts():
         graph_reader=VersionedUnionGraphSnapshotReader(
             profile_registry=StaticSemanticProfileRegistry([_v6_descriptor()])
         ),
+        reviewed_world_initializations=NullReviewedWorldInitializationRepository(),
         clock=_FixedClock(),
         read_observer=observer,
     )
@@ -521,6 +526,7 @@ def test_retrieval_observer_without_projection_observer_emits_one_event():
         graph_reader=VersionedUnionGraphSnapshotReader(
             profile_registry=StaticSemanticProfileRegistry([_v6_descriptor()])
         ),
+        reviewed_world_initializations=NullReviewedWorldInitializationRepository(),
         clock=_FixedClock(),
     )
     retrieval = WorldGraphRetrievalService(

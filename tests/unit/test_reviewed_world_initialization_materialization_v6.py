@@ -235,6 +235,71 @@ def make_command(
     )
 
 
+FIRST_WORLD_INIT_ID = "dmb:first-world:" + "cd" * 32
+FAMILY_EVIDENCE_ID = "ev:notes-a"
+
+
+def _evidence_ref(*, domain: SourceDomain) -> EvidenceRef:
+    return EvidenceRef(
+        evidence_ref_id=FAMILY_EVIDENCE_ID,
+        source_artifact_id=ART,
+        source_revision_id=REV,
+        source_domain=domain,
+        evidence_role=EvidenceRole.SUPPORT,
+    )
+
+
+def _family_assertions(*, evidence_domain: SourceDomain) -> list[GraphContributionAssertionV2]:
+    ref = _evidence_ref(domain=evidence_domain)
+    return [
+        _node().model_copy(update={"evidence_refs": [ref]}),
+        _node(
+            assertion_id="asrt:headmaster",
+            object_id="obj:headmaster",
+            kind="test:person",
+            label="Headmaster",
+        ).model_copy(update={"evidence_refs": [ref]}),
+        _edge().model_copy(update={"evidence_refs": [ref]}),
+    ]
+
+
+def make_first_world_family_command(
+    *,
+    evidence_domain: SourceDomain = SourceDomain.OTHER,
+    artifact_domain: SourceDomain = SourceDomain.WORLDBUILDING,
+    artifact_key: str = "worldbuilding",
+    actor: str = "live_control:graph_review_confirm",
+    source_plan_schema: str = "dmb_first_world_graph_plan_v1",
+    initialization_id: str = FIRST_WORLD_INIT_ID,
+    world_id: str = WORLD_ID,
+) -> ReviewedWorldInitializationCommandV1:
+    """Synthetic #645-family command. Evidence domain is the v1 stamp."""
+    artifact = _artifact(world_id=world_id).model_copy(
+        update={"source_domain_key": artifact_key, "source_domain": artifact_domain}
+    )
+    command = make_command(
+        initialization_id=initialization_id,
+        world_id=world_id,
+        contribution=_contribution(
+            _family_assertions(evidence_domain=evidence_domain),
+            world_id=world_id,
+        ),
+        artifacts=[artifact],
+        actor=actor,
+    )
+    return command.model_copy(update={"source_plan_schema": source_plan_schema})
+
+
+def make_non_family_other_evidence_command(
+    **kwargs: Any,
+) -> ReviewedWorldInitializationCommandV1:
+    """Non-family reviewed-init with OTHER evidence stamps — must keep rejecting."""
+    return make_command(
+        contribution=_contribution(_family_assertions(evidence_domain=SourceDomain.OTHER)),
+        **kwargs,
+    )
+
+
 def make_artifact_only_command(
     **kwargs: Any,
 ) -> ReviewedWorldInitializationCommandV1:

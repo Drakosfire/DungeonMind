@@ -24,17 +24,39 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Protocol
 
+from ..contracts.graph import StoredGraphRevision
 from ..contracts.projection_v2 import ProjectionSnapshotV2, WorldGraphProjectionRequestV2
-from ..domain.errors import HeadNotFoundError, RevisionNotFoundError, ScopeResolutionError
-from .graph_scope import EvidenceResolution, ScopedGraphProjection, project_scoped_snapshot
+from ..contracts.reviewed_world_initialization import ReviewedWorldInitializationReceiptV1
+from ..domain.canonical import canonical_sha256
+from ..domain.errors import (
+    HeadNotFoundError,
+    PersistenceIntegrityError,
+    RevisionNotFoundError,
+    ScopeResolutionError,
+)
+from .graph_scope import (
+    EvidenceResolution,
+    GenesisEvidenceCompatibility,
+    ScopedGraphProjection,
+    genesis_evidence_compatibility_from_d0,
+    project_scoped_snapshot,
+)
 from .graph_snapshot import GraphSnapshotReader, ParsedGraphSnapshot
 from .parsed_revision_cache import (
     DEFAULT_PARSED_REVISION_CACHE_MAX_ENTRIES,
     ParsedImmutableRevisionCache,
     graph_reader_parse_compatibility_id,
 )
-from .repositories import SourceRepository, WorldGraphRepository
-from .source_provenance_snapshot import provenance_refs_from_parsed_graph
+from .repositories import (
+    ReviewedWorldInitializationRepository,
+    SourceRepository,
+    WorldGraphRepository,
+)
+from .reviewed_world_initialization import is_first_world_producer_family_receipt
+from .source_provenance_snapshot import (
+    SourceProvenanceSnapshot,
+    provenance_refs_from_parsed_graph,
+)
 from .world_graph_observability import (
     NOOP_READ_OBSERVER,
     GraphObservationFields,
@@ -138,6 +160,7 @@ class WorldGraphProjectionService:
         world_graph: WorldGraphRepository,
         sources: SourceRepository,
         graph_reader: GraphSnapshotReader,
+        reviewed_world_initializations: ReviewedWorldInitializationRepository,
         clock: ProjectionClock | None = None,
         read_observer: WorldGraphReadObserver | None = None,
         read_clock: WorldGraphReadClock | None = None,
@@ -147,6 +170,7 @@ class WorldGraphProjectionService:
         self._world_graph = world_graph
         self._sources = sources
         self._graph_reader = graph_reader
+        self._reviewed_world_initializations = reviewed_world_initializations
         self._clock = clock or _SystemProjectionClock()
         self._read_observer = (
             read_observer if read_observer is not None else NOOP_READ_OBSERVER
@@ -159,6 +183,78 @@ class WorldGraphProjectionService:
     @property
     def parsed_revision_cache(self) -> ParsedImmutableRevisionCache:
         return self._parsed_revisions
+
+    @staticmethod
+    def _verify_reviewed_init_d0(
+        receipt: ReviewedWorldInitializationReceiptV1,
+        stored: StoredGraphRevision,
+        *,
+        world_id: str,
+    ) -> None:
+        revision = stored.revision
+        if (
+            receipt.world_id != world_id
+            or revision.world_id != world_id
+            or revision.revision_id != receipt.published_revision_id
+            or revision.graph_schema != receipt.published_graph_schema
+            or revision.graph_payload_sha256 != receipt.published_graph_payload_sha256
+            or canonical_sha256(stored.graph_payload) != receipt.published_graph_payload_sha256
+            or revision.parent_revision_id is not None
+        ):
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization receipt disagrees with its published revision"
+            )
+
+    def _genesis_compatibility_for(
+        self,
+        world_id: str,
+        *,
+        stored: StoredGraphRevision,
+        parsed: ParsedGraphSnapshot,
+        source_snapshot: SourceProvenanceSnapshot,
+    ) -> GenesisEvidenceCompatibility | None:
+        receipt = self._reviewed_world_initializations.get_for_world(world_id)
+        if receipt is None:
+            return None
+        if receipt.world_id != world_id:
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization receipt disagrees with its published revision"
+            )
+        d0_id = receipt.published_revision_id
+        if stored.revision.revision_id == d0_id:
+            d0_stored = stored
+            d0_parsed = parsed
+            d0_sources: SourceProvenanceSnapshot | SourceRepository = source_snapshot
+        else:
+            loaded = self._world_graph.get_revision(world_id, d0_id)
+            if loaded is None:
+                raise PersistenceIntegrityError(
+                    "reviewed-world initialization receipt references a missing revision"
+                )
+            d0_stored = loaded
+            d0_parsed, _ = self._parsed_revisions.get_or_load(
+                world_id,
+                d0_id,
+                lambda: self._graph_reader.parse(
+                    graph_schema=d0_stored.revision.graph_schema,
+                    graph_payload=d0_stored.graph_payload,
+                ),
+                compatibility_id=graph_reader_parse_compatibility_id(self._graph_reader),
+            )
+            artifact_ids, revision_ids = provenance_refs_from_parsed_graph(d0_parsed)
+            d0_sources = self._sources.get_provenance_snapshot(
+                artifact_ids=artifact_ids,
+                revision_ids=revision_ids,
+            )
+        self._verify_reviewed_init_d0(receipt, d0_stored, world_id=world_id)
+        if not is_first_world_producer_family_receipt(receipt):
+            return None
+        return genesis_evidence_compatibility_from_d0(
+            world_id=world_id,
+            d0_revision_id=d0_id,
+            parsed_d0=d0_parsed,
+            sources=d0_sources,
+        )
 
     def open_read_context(
         self, request: WorldGraphProjectionRequestV2
@@ -281,6 +377,13 @@ class WorldGraphProjectionService:
         facts.source_artifact_count = source_snapshot.artifact_count
         facts.source_revision_count = source_snapshot.revision_count
 
+        genesis_compatibility = self._genesis_compatibility_for(
+            request.world_id,
+            stored=stored,
+            parsed=parsed,
+            source_snapshot=source_snapshot,
+        )
+
         evidence_memo: dict[str, EvidenceResolution] = {}
         with recorder.phase("scope_projection"):
             scoped = project_scoped_snapshot(
@@ -291,6 +394,7 @@ class WorldGraphProjectionService:
                 admissibility=request.admissibility,
                 scope_mode=request.scope_mode,
                 evidence_cache=evidence_memo,
+                genesis_compatibility=genesis_compatibility,
             )
         facts.scoped_counts = _scoped_count_fields(scoped)
         snapshot = ProjectionSnapshotV2(

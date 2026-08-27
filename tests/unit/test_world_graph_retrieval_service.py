@@ -43,6 +43,9 @@ from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRe
 from dungeonmind_dnd.application.world_object_vocabulary import (
     load_builtin_v3_descriptor,
 )
+from tests.unit.null_reviewed_world_initialization import (
+    NullReviewedWorldInitializationRepository,
+)
 
 WORLD_ID = "world:test"
 CAMPAIGN_A = "camp:alpha"
@@ -373,6 +376,7 @@ def _services(
         graph_reader=VersionedUnionGraphSnapshotReader(
             profile_registry=StaticSemanticProfileRegistry([_v6_descriptor()])
         ),
+        reviewed_world_initializations=NullReviewedWorldInitializationRepository(),
         clock=_FixedClock(),
     )
     return WorldGraphRetrievalService(projection=projection, sources=sources), projection
