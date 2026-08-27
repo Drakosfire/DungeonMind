@@ -554,3 +554,66 @@ def test_concurrent_conflicting_semantic_document_across_runs(
     stored = docs_a.get("sdoc:cross-run")
     assert stored is not None
     assert stored.materialization_run_id == successes[0]
+
+
+@pytest.mark.integration
+def test_concurrent_family_corrected_retry_converges(
+    migrated_database: str, pg
+) -> None:
+    from dungeonmind.application.reviewed_world_initialization import (
+        initialize_reviewed_world,
+        reviewed_world_initialization_command_sha256,
+    )
+    from dungeonmind.contracts.evidence import SourceDomain
+    from dungeonmind.infrastructure.postgres import (
+        PostgresDatabase,
+        PostgresReviewedWorldInitializationRepository,
+    )
+    from tests.unit.test_reviewed_world_initialization_materialization_v6 import (
+        graph_reader,
+        make_first_world_family_command,
+    )
+
+    historical = make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    stored = initialize_reviewed_world(
+        historical,
+        initialization_repository=pg.reviewed_world_initializations,
+        graph_reader=graph_reader(),
+    )
+    a = PostgresReviewedWorldInitializationRepository(PostgresDatabase(migrated_database))
+    b = PostgresReviewedWorldInitializationRepository(PostgresDatabase(migrated_database))
+    corrected = make_first_world_family_command(
+        evidence_domain=SourceDomain.WORLDBUILDING
+    )
+    barrier = threading.Barrier(2)
+    results: list[object] = []
+    errors: list[BaseException] = []
+
+    def retry(repo: PostgresReviewedWorldInitializationRepository) -> None:
+        try:
+            barrier.wait(timeout=5)
+            results.append(
+                initialize_reviewed_world(
+                    corrected,
+                    initialization_repository=repo,
+                    graph_reader=graph_reader(),
+                )
+            )
+        except BaseException as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=retry, args=(a,))
+    t2 = threading.Thread(target=retry, args=(b,))
+    t1.start()
+    t2.start()
+    t1.join(timeout=15)
+    t2.join(timeout=15)
+    assert not t1.is_alive() and not t2.is_alive()
+    assert errors == []
+    assert len(results) == 2
+    assert results[0] == results[1] == stored
+    reloaded = a.get_for_world(stored.world_id)
+    assert reloaded == stored
+    assert stored.command_sha256 == reviewed_world_initialization_command_sha256(
+        historical
+    )

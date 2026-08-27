@@ -11,6 +11,7 @@ from dungeonmind.application.existing_world_adoption import adopt_existing_world
 from dungeonmind.application.reviewed_world_initialization import (
     initialize_reviewed_world,
 )
+from dungeonmind.contracts.evidence import SourceDomain
 from dungeonmind.contracts.existing_world_adoption import (
     existing_world_adoption_bundle_canonical_bytes,
 )
@@ -44,6 +45,7 @@ from tests.unit.test_reviewed_world_initialization_materialization_v6 import (
     make_artifact_only_command,
     make_command,
     make_created_new_edge_command,
+    make_first_world_family_command,
     make_revision_only_assertion_command,
     make_unreferenced_extra_artifact_command,
     make_unreferenced_extra_revision_command,
@@ -386,3 +388,35 @@ def test_postgres_unreferenced_extra_revision_zero_mutation(pg) -> None:
         _initialize(pg, make_unreferenced_extra_revision_command())
     assert exc.value.details["reason"] == "unreferenced_source_revision"
     assert _counts(pg) == _EMPTY_COUNTS
+
+
+def test_postgres_family_corrected_retry_returns_stored_receipt(pg) -> None:
+    first = _initialize(
+        pg, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+    stored_hash = first.command_sha256
+    before = _counts(pg)
+    recovered = _initialize(
+        pg,
+        make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING),
+    )
+    assert recovered == first
+    assert recovered.command_sha256 == stored_hash
+    assert _counts(pg) == before
+
+
+def test_postgres_family_other_delta_still_conflicts(pg) -> None:
+    stored = _initialize(
+        pg, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+    before = _counts(pg)
+    with pytest.raises(IdempotencyConflictError):
+        _initialize(
+            pg,
+            make_first_world_family_command(
+                evidence_domain=SourceDomain.OTHER
+            ).model_copy(update={"source_plan_id": "plan:different"}),
+        )
+    assert pg.reviewed_world_initializations.get_for_world(WORLD_ID) == stored
+    assert _counts(pg) == before
+
