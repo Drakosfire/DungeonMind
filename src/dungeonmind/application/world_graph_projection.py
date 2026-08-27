@@ -225,6 +225,7 @@ class WorldGraphProjectionService:
             d0_stored = stored
             d0_parsed = parsed
             d0_sources: SourceProvenanceSnapshot | SourceRepository = source_snapshot
+            self._verify_reviewed_init_d0(receipt, d0_stored, world_id=world_id)
         else:
             loaded = self._world_graph.get_revision(world_id, d0_id)
             if loaded is None:
@@ -232,6 +233,7 @@ class WorldGraphProjectionService:
                     "reviewed-world initialization receipt references a missing revision"
                 )
             d0_stored = loaded
+            self._verify_reviewed_init_d0(receipt, d0_stored, world_id=world_id)
             d0_parsed, _ = self._parsed_revisions.get_or_load(
                 world_id,
                 d0_id,
@@ -246,7 +248,10 @@ class WorldGraphProjectionService:
                 artifact_ids=artifact_ids,
                 revision_ids=revision_ids,
             )
-        self._verify_reviewed_init_d0(receipt, d0_stored, world_id=world_id)
+        if d0_parsed.world_id != world_id:
+            raise PersistenceIntegrityError(
+                "reviewed-world initialization receipt disagrees with its published revision"
+            )
         if not is_first_world_producer_family_receipt(receipt):
             return None
         return genesis_evidence_compatibility_from_d0(

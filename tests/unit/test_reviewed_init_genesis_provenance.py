@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import copy
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
-from dungeonmind.application.graph_snapshot import GRAPH_SCHEMA_V6
+from dungeonmind.application.graph_snapshot import GRAPH_SCHEMA_V5, GRAPH_SCHEMA_V6
 from dungeonmind.application.reviewed_world_initialization import (
     initialize_reviewed_world,
+    materialize_reviewed_world_initialization_v6,
     reviewed_world_initialization_command_sha256,
     reviewed_world_initialization_replay_identity,
 )
@@ -18,7 +20,15 @@ from dungeonmind.contracts.evidence import SourceDomain
 from dungeonmind.contracts.graph import PublishRevisionCommand
 from dungeonmind.contracts.projection import Admissibility
 from dungeonmind.contracts.projection_v2 import ScopeModeV2, WorldGraphProjectionRequestV2
-from dungeonmind.domain.errors import IdempotencyConflictError, PersistenceIntegrityError
+from dungeonmind.contracts.reviewed_world_initialization import (
+    ReviewedWorldInitializationReceiptV1,
+)
+from dungeonmind.domain.canonical import canonical_sha256
+from dungeonmind.domain.errors import (
+    IdempotencyConflictError,
+    PersistenceIntegrityError,
+    PersistenceUnavailableError,
+)
 from tests.unit.test_reviewed_world_initialization import make_stores
 from tests.unit.test_reviewed_world_initialization_materialization_v6 import (
     CAMPAIGN_ID,
@@ -33,6 +43,7 @@ from tests.unit.test_reviewed_world_initialization_materialization_v6 import (
 )
 
 LATER = NOW + timedelta(seconds=1)
+FOREIGN_WORLD = "world:foreign-genesis-payload"
 
 
 class _FixedClock:
@@ -68,6 +79,67 @@ def _project(graph, sources, inits, *, revision_pin=None, admissibility=Admissib
 
 def _admitted_object_ids(result) -> set[str]:
     return set(result.scoped_graph.snapshot.objects)
+
+
+def _publish_identical_child(graph, receipt):
+    stored = graph.get_revision(WORLD_ID, receipt.published_revision_id)
+    assert stored is not None
+    return graph.publish_revision(
+        PublishRevisionCommand(
+            world_id=WORLD_ID,
+            parent_revision_id=receipt.published_revision_id,
+            expected_parent_revision_id=receipt.published_revision_id,
+            operation_ids=["op:genesis-integrity-child"],
+            graph_schema=GRAPH_SCHEMA_V6,
+            graph_payload=copy.deepcopy(stored.graph_payload),
+            created_at=LATER,
+        )
+    )
+
+
+class _RawReceiptRepository:
+    """Return a stored receipt without adapter reconstruction so projection owns D0 checks."""
+
+    def __init__(self, receipt: ReviewedWorldInitializationReceiptV1) -> None:
+        self._receipt = receipt
+
+    def get_for_world(self, world_id: str) -> ReviewedWorldInitializationReceiptV1 | None:
+        if world_id != self._receipt.world_id:
+            return None
+        return self._receipt
+
+    def get(
+        self, world_id: str, initialization_id: str
+    ) -> ReviewedWorldInitializationReceiptV1 | None:
+        if (
+            world_id != self._receipt.world_id
+            or initialization_id != self._receipt.initialization_id
+        ):
+            return None
+        return self._receipt
+
+    def initialize(self, *args: Any, **kwargs: Any) -> ReviewedWorldInitializationReceiptV1:
+        raise AssertionError("initialize is not used by genesis integrity projection tests")
+
+
+def _d0_key(receipt) -> tuple[str, str]:
+    return (WORLD_ID, receipt.published_revision_id)
+
+
+def _replace_d0(graph, receipt, stored) -> None:
+    graph._revisions[_d0_key(receipt)] = stored
+
+
+def _adapter_initialize(inits, command):
+    materialization = materialize_reviewed_world_initialization_v6(
+        command, graph_reader=graph_reader()
+    )
+    return inits.initialize(
+        command,
+        graph_payload=materialization.graph_payload,
+        graph_payload_sha256=materialization.graph_payload_sha256,
+        accepted_assertion_ids=materialization.accepted_assertion_ids,
+    )
 
 
 def test_corrected_family_command_has_historical_other_digest() -> None:
@@ -302,3 +374,261 @@ def test_ordinary_exact_replay_unchanged_for_non_family() -> None:
     assert replayed == first
     with pytest.raises(IdempotencyConflictError):
         _initialize(inits, make_command(actor="gm:other-reviewer"))
+
+
+def test_family_corrected_preflight_does_not_enter_initialize() -> None:
+    _graph, _sources, _contributions, _identity, inner, _adoptions = make_stores()
+    stored = _initialize(
+        inner, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+
+    class _CountInitialize:
+        def __init__(self) -> None:
+            self.initialize_calls = 0
+
+        def get(self, world_id: str, initialization_id: str):
+            return inner.get(world_id, initialization_id)
+
+        def get_for_world(self, world_id: str):
+            return inner.get_for_world(world_id)
+
+        def initialize(self, command, **kwargs):
+            self.initialize_calls += 1
+            return inner.initialize(command, **kwargs)
+
+    wrapper = _CountInitialize()
+    recovered = initialize_reviewed_world(
+        make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING),
+        initialization_repository=wrapper,  # type: ignore[arg-type]
+        graph_reader=graph_reader(),
+    )
+    assert recovered == stored
+    assert wrapper.initialize_calls == 0
+
+
+def test_family_corrected_lost_response_recovery_returns_stored_receipt() -> None:
+    _graph, _sources, _contributions, _identity, inner, _adoptions = make_stores()
+    stored = _initialize(
+        inner, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+
+    class _HidePreflightThenUnavailable:
+        def __init__(self) -> None:
+            self.initialize_calls = 0
+            self.recovery_probes = 0
+
+        def get(self, world_id: str, initialization_id: str):
+            return inner.get(world_id, initialization_id)
+
+        def get_for_world(self, world_id: str):
+            if self.initialize_calls == 0:
+                return None
+            self.recovery_probes += 1
+            return inner.get_for_world(world_id)
+
+        def initialize(self, command, **kwargs):
+            self.initialize_calls += 1
+            inner.initialize(command, **kwargs)
+            raise PersistenceUnavailableError("response lost")
+
+    wrapper = _HidePreflightThenUnavailable()
+    recovered = initialize_reviewed_world(
+        make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING),
+        initialization_repository=wrapper,  # type: ignore[arg-type]
+        graph_reader=graph_reader(),
+    )
+    assert recovered == stored
+    assert wrapper.initialize_calls == 1
+    assert wrapper.recovery_probes == 1
+    assert inner.get_for_world(WORLD_ID) == stored
+
+
+def test_family_corrected_in_memory_under_lock_returns_stored_receipt() -> None:
+    _graph, _sources, _contributions, _identity, inits, _adoptions = make_stores()
+    stored = _initialize(
+        inits, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+    replayed = _adapter_initialize(
+        inits,
+        make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING),
+    )
+    assert replayed == stored
+    assert inits.get_for_world(WORLD_ID) == stored
+
+
+def test_family_corrected_in_memory_under_lock_via_hidden_preflight() -> None:
+    _graph, _sources, _contributions, _identity, inner, _adoptions = make_stores()
+    stored = _initialize(
+        inner, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+
+    class _HidePreflight:
+        def __init__(self) -> None:
+            self.initialize_calls = 0
+
+        def get(self, world_id: str, initialization_id: str):
+            return inner.get(world_id, initialization_id)
+
+        def get_for_world(self, world_id: str):
+            if self.initialize_calls == 0:
+                return None
+            return inner.get_for_world(world_id)
+
+        def initialize(self, command, **kwargs):
+            self.initialize_calls += 1
+            return inner.initialize(command, **kwargs)
+
+    wrapper = _HidePreflight()
+    recovered = initialize_reviewed_world(
+        make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING),
+        initialization_repository=wrapper,  # type: ignore[arg-type]
+        graph_reader=graph_reader(),
+    )
+    assert recovered == stored
+    assert wrapper.initialize_calls == 1
+
+
+def test_receipt_d0_missing_revision_is_integrity_error() -> None:
+    graph, sources, _contributions, _identity, inits, _adoptions = make_stores()
+    receipt = _initialize(
+        inits, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+    child = _publish_identical_child(graph, receipt)
+    del graph._revisions[_d0_key(receipt)]
+    with pytest.raises(PersistenceIntegrityError):
+        _project(
+            graph,
+            sources,
+            _RawReceiptRepository(receipt),
+            revision_pin=child.revision_id,
+        )
+
+
+def test_receipt_d0_revision_identity_mismatch_is_integrity_error() -> None:
+    graph, sources, _contributions, _identity, inits, _adoptions = make_stores()
+    receipt = _initialize(
+        inits, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+    child = _publish_identical_child(graph, receipt)
+    stored = graph._revisions[_d0_key(receipt)]
+    _replace_d0(
+        graph,
+        receipt,
+        stored.model_copy(
+            update={
+                "revision": stored.revision.model_copy(
+                    update={"revision_id": "rev:imposter-genesis"}
+                )
+            }
+        ),
+    )
+    with pytest.raises(PersistenceIntegrityError):
+        _project(
+            graph,
+            sources,
+            _RawReceiptRepository(receipt),
+            revision_pin=child.revision_id,
+        )
+
+
+def test_receipt_d0_envelope_world_mismatch_is_integrity_error() -> None:
+    graph, sources, _contributions, _identity, inits, _adoptions = make_stores()
+    receipt = _initialize(
+        inits, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+    child = _publish_identical_child(graph, receipt)
+    stored = graph._revisions[_d0_key(receipt)]
+    _replace_d0(
+        graph,
+        receipt,
+        stored.model_copy(
+            update={
+                "revision": stored.revision.model_copy(update={"world_id": FOREIGN_WORLD})
+            }
+        ),
+    )
+    with pytest.raises(PersistenceIntegrityError):
+        _project(
+            graph,
+            sources,
+            _RawReceiptRepository(receipt),
+            revision_pin=child.revision_id,
+        )
+
+
+def test_receipt_d0_payload_world_mismatch_is_integrity_error() -> None:
+    graph, sources, _contributions, _identity, inits, _adoptions = make_stores()
+    receipt = _initialize(
+        inits, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+    child = _publish_identical_child(graph, receipt)
+    stored = graph._revisions[_d0_key(receipt)]
+    payload = copy.deepcopy(stored.graph_payload)
+    payload["world_id"] = FOREIGN_WORLD
+    new_sha = canonical_sha256(payload)
+    _replace_d0(
+        graph,
+        receipt,
+        stored.model_copy(
+            update={
+                "graph_payload": payload,
+                "revision": stored.revision.model_copy(
+                    update={"graph_payload_sha256": new_sha}
+                ),
+            }
+        ),
+    )
+    drifted = receipt.model_copy(update={"published_graph_payload_sha256": new_sha})
+    with pytest.raises(PersistenceIntegrityError):
+        _project(
+            graph,
+            sources,
+            _RawReceiptRepository(drifted),
+            revision_pin=child.revision_id,
+        )
+
+
+def test_receipt_d0_graph_schema_mismatch_is_integrity_error() -> None:
+    graph, sources, _contributions, _identity, inits, _adoptions = make_stores()
+    receipt = _initialize(
+        inits, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+    child = _publish_identical_child(graph, receipt)
+    stored = graph._revisions[_d0_key(receipt)]
+    _replace_d0(
+        graph,
+        receipt,
+        stored.model_copy(
+            update={
+                "revision": stored.revision.model_copy(
+                    update={"graph_schema": GRAPH_SCHEMA_V5}
+                )
+            }
+        ),
+    )
+    with pytest.raises(PersistenceIntegrityError):
+        _project(
+            graph,
+            sources,
+            _RawReceiptRepository(receipt),
+            revision_pin=child.revision_id,
+        )
+
+
+def test_receipt_d0_payload_sha_mismatch_is_integrity_error() -> None:
+    graph, sources, _contributions, _identity, inits, _adoptions = make_stores()
+    receipt = _initialize(
+        inits, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+    child = _publish_identical_child(graph, receipt)
+    stored = graph._revisions[_d0_key(receipt)]
+    payload = copy.deepcopy(stored.graph_payload)
+    payload["objects"][0]["label"] = "mutated-without-hash-update"
+    _replace_d0(graph, receipt, stored.model_copy(update={"graph_payload": payload}))
+    with pytest.raises(PersistenceIntegrityError):
+        _project(
+            graph,
+            sources,
+            _RawReceiptRepository(receipt),
+            revision_pin=child.revision_id,
+        )

@@ -574,46 +574,88 @@ def test_concurrent_family_corrected_retry_converges(
         make_first_world_family_command,
     )
 
+    del pg  # truncate only
     historical = make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
-    stored = initialize_reviewed_world(
-        historical,
-        initialization_repository=pg.reviewed_world_initializations,
-        graph_reader=graph_reader(),
-    )
-    a = PostgresReviewedWorldInitializationRepository(PostgresDatabase(migrated_database))
-    b = PostgresReviewedWorldInitializationRepository(PostgresDatabase(migrated_database))
     corrected = make_first_world_family_command(
         evidence_domain=SourceDomain.WORLDBUILDING
     )
-    barrier = threading.Barrier(2)
+    hold_historical = threading.Event()
+    historical_locked = threading.Event()
+
+    def hook(stage: str) -> None:
+        if stage == "source_records":
+            historical_locked.set()
+            assert hold_historical.wait(timeout=5)
+
+    historical_repo = PostgresReviewedWorldInitializationRepository(
+        PostgresDatabase(migrated_database),
+        failure_hook=hook,
+    )
+    corrected_inner = PostgresReviewedWorldInitializationRepository(
+        PostgresDatabase(migrated_database)
+    )
+
+    class _CountInitialize:
+        def __init__(self) -> None:
+            self.initialize_calls = 0
+
+        def get(self, world_id: str, initialization_id: str):
+            return corrected_inner.get(world_id, initialization_id)
+
+        def get_for_world(self, world_id: str):
+            return corrected_inner.get_for_world(world_id)
+
+        def initialize(self, command, **kwargs):
+            self.initialize_calls += 1
+            return corrected_inner.initialize(command, **kwargs)
+
+    corrected_repo = _CountInitialize()
+    stored_box: list[object] = []
     results: list[object] = []
     errors: list[BaseException] = []
 
-    def retry(repo: PostgresReviewedWorldInitializationRepository) -> None:
+    def write_historical() -> None:
         try:
-            barrier.wait(timeout=5)
-            results.append(
+            stored_box.append(
                 initialize_reviewed_world(
-                    corrected,
-                    initialization_repository=repo,
+                    historical,
+                    initialization_repository=historical_repo,
                     graph_reader=graph_reader(),
                 )
             )
         except BaseException as exc:
             errors.append(exc)
 
-    t1 = threading.Thread(target=retry, args=(a,))
-    t2 = threading.Thread(target=retry, args=(b,))
-    t1.start()
-    t2.start()
-    t1.join(timeout=15)
-    t2.join(timeout=15)
-    assert not t1.is_alive() and not t2.is_alive()
+    def retry_corrected() -> None:
+        try:
+            results.append(
+                initialize_reviewed_world(
+                    corrected,
+                    initialization_repository=corrected_repo,  # type: ignore[arg-type]
+                    graph_reader=graph_reader(),
+                )
+            )
+        except BaseException as exc:
+            errors.append(exc)
+
+    t_hist = threading.Thread(target=write_historical)
+    t_hist.start()
+    assert historical_locked.wait(timeout=5)
+    t_corr = threading.Thread(target=retry_corrected)
+    t_corr.start()
+    _wait_for_postgres_lock_wait(migrated_database)
+    hold_historical.set()
+    t_hist.join(timeout=15)
+    t_corr.join(timeout=15)
+    assert not t_hist.is_alive() and not t_corr.is_alive()
     assert errors == []
-    assert len(results) == 2
-    assert results[0] == results[1] == stored
-    reloaded = a.get_for_world(stored.world_id)
+    assert len(stored_box) == 1
+    assert results == stored_box
+    assert corrected_repo.initialize_calls == 1
+    stored = stored_box[0]
+    reloaded = corrected_inner.get_for_world(historical.world_id)
     assert reloaded == stored
-    assert stored.command_sha256 == reviewed_world_initialization_command_sha256(
+    assert reloaded is not None
+    assert reloaded.command_sha256 == reviewed_world_initialization_command_sha256(
         historical
     )
