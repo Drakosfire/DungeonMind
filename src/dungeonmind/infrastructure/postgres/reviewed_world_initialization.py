@@ -13,7 +13,7 @@ from ...application.reviewed_world_initialization import (
     FirstWorldMaterialization,
     bind_reviewed_world_initialization_command,
     replay_conflict_if_present,
-    reviewed_world_initialization_command_sha256,
+    reviewed_world_initialization_replay_identity,
     terminal_reviewed_world_initialization_receipt,
 )
 from ...contracts.contribution_review_v2 import contribution_v2_payload_sha256
@@ -296,7 +296,8 @@ class PostgresReviewedWorldInitializationRepository:
         accepted_assertion_ids: Sequence[str],
     ) -> ReviewedWorldInitializationReceiptV1:
         validated = bind_reviewed_world_initialization_command(command)
-        command_sha256 = reviewed_world_initialization_command_sha256(validated)
+        identity = reviewed_world_initialization_replay_identity(validated)
+        command_sha256 = identity.current_command_sha256
         world_id = validated.world_id
         if canonical_sha256(graph_payload) != graph_payload_sha256:
             raise PersistenceIntegrityError(
@@ -311,7 +312,7 @@ class PostgresReviewedWorldInitializationRepository:
             matched = replay_conflict_if_present(
                 verified_existing,
                 initialization_id=validated.initialization_id,
-                command_sha256=command_sha256,
+                identity=identity,
                 world_id=world_id,
                 other_world_receipt=lambda: (
                     self._load_verified(conn, other)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, NoReturn
@@ -25,7 +26,13 @@ from ..contracts.contribution import (
 from ..contracts.contribution_review_v2 import (
     contribution_v2_payload_sha256,
 )
-from ..contracts.evidence import EvidenceRefV2, EvidenceRole, SourceArtifactV2, SourceRevision
+from ..contracts.evidence import (
+    EvidenceRefV2,
+    EvidenceRole,
+    SourceArtifactV2,
+    SourceDomain,
+    SourceRevision,
+)
 from ..contracts.identity import IdentityOutcome
 from ..contracts.knowledge_assertion import (
     EpistemicKindV2,
@@ -58,6 +65,12 @@ from .graph_snapshot_v6 import (
     UnionGraphV6Payload,
 )
 from .repositories import ReviewedWorldInitializationRepository
+
+# Historical #645 first-world producer family. Copy these literals; do not import Buddy.
+FIRST_WORLD_GRAPH_PLAN_SCHEMA = "dmb_first_world_graph_plan_v1"
+FIRST_WORLD_GRAPH_ACTOR = "live_control:graph_review_confirm"
+_FIRST_WORLD_INITIALIZATION_ID = re.compile(r"^dmb:first-world:[0-9a-f]{64}$")
+_WORLDBUILDING_DOMAIN_KEY = "worldbuilding"
 
 _MECHANICS_BINDING_PREDICATE = "uses_statblock"
 _MECHANICS_BINDING_VALUE_KEYS = frozenset({"threat_statblock_binding", "statblock_binding"})
@@ -132,6 +145,140 @@ def reviewed_world_initialization_command_sha256(
 ) -> str:
     """Digest every semantic command field. The command model has no digest field."""
     return canonical_sha256(command.model_dump(mode="json"))
+
+
+def _is_first_world_producer_family(
+    *,
+    source_plan_schema: str,
+    initialization_id: str,
+    actor: str,
+) -> bool:
+    return (
+        source_plan_schema == FIRST_WORLD_GRAPH_PLAN_SCHEMA
+        and _FIRST_WORLD_INITIALIZATION_ID.fullmatch(initialization_id) is not None
+        and actor == FIRST_WORLD_GRAPH_ACTOR
+    )
+
+
+def is_first_world_producer_family_command(
+    command: ReviewedWorldInitializationCommandV1,
+) -> bool:
+    """True when the command matches the historical #645 producer family."""
+    return _is_first_world_producer_family(
+        source_plan_schema=command.source_plan_schema,
+        initialization_id=command.initialization_id,
+        actor=command.actor,
+    )
+
+
+def is_first_world_producer_family_receipt(
+    receipt: ReviewedWorldInitializationReceiptV1,
+) -> bool:
+    """True when the receipt matches the historical #645 producer family."""
+    return _is_first_world_producer_family(
+        source_plan_schema=receipt.source_plan_schema,
+        initialization_id=receipt.initialization_id,
+        actor=receipt.actor,
+    )
+
+
+@dataclass(frozen=True)
+class ReviewedWorldInitializationReplayIdentity:
+    """Current command digest plus optional historical OTHER-normalized digest.
+
+    The historical digest is never persisted. First insert stores
+    ``current_command_sha256`` only. Replay may match a stored #645-family
+    receipt whose digest equals the historical value.
+    """
+
+    current_command_sha256: str
+    historical_other_normalized_sha256: str | None
+
+
+def _historical_other_normalized_sha256(
+    command: ReviewedWorldInitializationCommandV1,
+) -> str | None:
+    """Return the OTHER-normalized digest of a corrected #645-family command.
+
+    Reverse-normalization rewrites eligible v1 ``EvidenceRef.source_domain``
+    values from the artifact's non-OTHER domain back to ``OTHER``. Ambiguous
+    or ineligible commands produce no historical digest.
+    """
+    if not is_first_world_producer_family_command(command):
+        return None
+    artifacts_by_id: dict[str, SourceArtifactV2] = {}
+    for artifact in command.source_artifacts:
+        if artifact.source_artifact_id in artifacts_by_id:
+            return None
+        artifacts_by_id[artifact.source_artifact_id] = artifact
+    revisions_by_id = {
+        revision.source_revision_id: revision for revision in command.source_revisions
+    }
+    if len(revisions_by_id) != len(command.source_revisions):
+        return None
+    payload = command.model_dump(mode="json")
+    changed = False
+    for assertion in payload["reviewed_contribution"]["assertions"]:
+        for ref in assertion.get("evidence_refs") or []:
+            artifact = artifacts_by_id.get(ref["source_artifact_id"])
+            if artifact is None:
+                return None
+            if (
+                artifact.source_domain is not SourceDomain.WORLDBUILDING
+                or artifact.source_domain_key != _WORLDBUILDING_DOMAIN_KEY
+            ):
+                return None
+            revision_id = ref.get("source_revision_id")
+            if revision_id is not None:
+                revision = revisions_by_id.get(revision_id)
+                if (
+                    revision is None
+                    or revision.source_artifact_id != artifact.source_artifact_id
+                ):
+                    return None
+            domain = ref.get("source_domain")
+            if domain != artifact.source_domain.value:
+                return None
+            ref["source_domain"] = SourceDomain.OTHER.value
+            changed = True
+    if not changed:
+        return None
+    try:
+        reversed_command = ReviewedWorldInitializationCommandV1.model_validate(payload)
+    except (TypeError, ValidationError, ValueError):
+        return None
+    historical = reviewed_world_initialization_command_sha256(reversed_command)
+    current = reviewed_world_initialization_command_sha256(command)
+    if historical == current:
+        return None
+    return historical
+
+
+def reviewed_world_initialization_replay_identity(
+    command: ReviewedWorldInitializationCommandV1,
+) -> ReviewedWorldInitializationReplayIdentity:
+    """Build the shared replay identity used by every reviewed-init seam."""
+    return ReviewedWorldInitializationReplayIdentity(
+        current_command_sha256=reviewed_world_initialization_command_sha256(command),
+        historical_other_normalized_sha256=_historical_other_normalized_sha256(command),
+    )
+
+
+def _receipt_matches_replay_identity(
+    receipt: ReviewedWorldInitializationReceiptV1,
+    *,
+    initialization_id: str,
+    identity: ReviewedWorldInitializationReplayIdentity,
+) -> bool:
+    if receipt.initialization_id != initialization_id:
+        return False
+    if receipt.command_sha256 == identity.current_command_sha256:
+        return True
+    return (
+        identity.historical_other_normalized_sha256 is not None
+        and receipt.command_sha256 == identity.historical_other_normalized_sha256
+        and is_first_world_producer_family_receipt(receipt)
+    )
 
 
 def bind_reviewed_world_initialization_command(
@@ -957,18 +1104,6 @@ def terminal_reviewed_world_initialization_receipt(
         _integrity("initialization_receipt_validation")
 
 
-def _receipt_matches_command(
-    receipt: ReviewedWorldInitializationReceiptV1,
-    *,
-    initialization_id: str,
-    command_sha256: str,
-) -> bool:
-    return (
-        receipt.initialization_id == initialization_id
-        and receipt.command_sha256 == command_sha256
-    )
-
-
 def initialize_reviewed_world(
     command: ReviewedWorldInitializationCommandV1,
     *,
@@ -977,14 +1112,15 @@ def initialize_reviewed_world(
 ) -> ReviewedWorldInitializationReceiptV1:
     """Initialize or exactly replay one reviewed first-world command."""
     validated = bind_reviewed_world_initialization_command(command)
-    command_sha256 = reviewed_world_initialization_command_sha256(validated)
+    identity = reviewed_world_initialization_replay_identity(validated)
+    command_sha256 = identity.current_command_sha256
     world_id = validated.world_id
     existing = initialization_repository.get_for_world(world_id)
     if existing is not None:
-        if _receipt_matches_command(
+        if _receipt_matches_replay_identity(
             existing,
             initialization_id=validated.initialization_id,
-            command_sha256=command_sha256,
+            identity=identity,
         ):
             return _reload_receipt(existing, world_id=world_id)
         raise IdempotencyConflictError(
@@ -1019,10 +1155,10 @@ def initialize_reviewed_world(
     except Exception as exc:
         try:
             recovered = initialization_repository.get_for_world(world_id)
-            if recovered is not None and _receipt_matches_command(
+            if recovered is not None and _receipt_matches_replay_identity(
                 recovered,
                 initialization_id=validated.initialization_id,
-                command_sha256=command_sha256,
+                identity=identity,
             ):
                 return _reload_receipt(recovered, world_id=world_id)
         except Exception:
@@ -1044,14 +1180,14 @@ def replay_conflict_if_present(
     receipt: ReviewedWorldInitializationReceiptV1 | None,
     *,
     initialization_id: str,
-    command_sha256: str,
+    identity: ReviewedWorldInitializationReplayIdentity,
     world_id: str,
     other_world_receipt: Callable[[], ReviewedWorldInitializationReceiptV1 | None] | None = None,
 ) -> ReviewedWorldInitializationReceiptV1 | None:
     """Shared receipt-first probe used by adapters after ``lock_world``."""
     if receipt is not None:
-        if _receipt_matches_command(
-            receipt, initialization_id=initialization_id, command_sha256=command_sha256
+        if _receipt_matches_replay_identity(
+            receipt, initialization_id=initialization_id, identity=identity
         ):
             return receipt
         raise IdempotencyConflictError(
@@ -1059,7 +1195,7 @@ def replay_conflict_if_present(
             details={
                 "world_id": world_id,
                 "initialization_id": receipt.initialization_id,
-                "command_sha256": command_sha256,
+                "command_sha256": identity.current_command_sha256,
                 "stored_command_sha256": receipt.command_sha256,
             },
         )
@@ -1070,3 +1206,4 @@ def replay_conflict_if_present(
                 f"initialization {initialization_id!r} already exists for another world"
             )
     return None
+

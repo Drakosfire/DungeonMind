@@ -339,8 +339,10 @@ class ReviewedWorldInitializationRepository(Protocol):
     contribution, first-revision/head publication with ``parent_revision_id is
     None``, and the terminal receipt in one store transaction or one shared
     in-memory lock. A globally unique ``initialization_id`` already claimed by
-    another world is an identity conflict. Receipt-first replay succeeds only
-    when both ``initialization_id`` and ``command_sha256`` match.
+    another world is an identity conflict. Receipt-first replay succeeds when
+    ``initialization_id`` matches and the stored ``command_sha256`` equals the
+    current command digest or the optional historical OTHER-normalized digest
+    for the #645 producer family.
     """
 
     def initialize(
