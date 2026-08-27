@@ -10,7 +10,9 @@ import pytest
 from dungeonmind.application.existing_world_adoption import adopt_existing_world
 from dungeonmind.application.reviewed_world_initialization import (
     initialize_reviewed_world,
+    materialize_reviewed_world_initialization_v6,
 )
+from dungeonmind.contracts.evidence import SourceDomain
 from dungeonmind.contracts.existing_world_adoption import (
     existing_world_adoption_bundle_canonical_bytes,
 )
@@ -44,6 +46,7 @@ from tests.unit.test_reviewed_world_initialization_materialization_v6 import (
     make_artifact_only_command,
     make_command,
     make_created_new_edge_command,
+    make_first_world_family_command,
     make_revision_only_assertion_command,
     make_unreferenced_extra_artifact_command,
     make_unreferenced_extra_revision_command,
@@ -386,3 +389,112 @@ def test_postgres_unreferenced_extra_revision_zero_mutation(pg) -> None:
         _initialize(pg, make_unreferenced_extra_revision_command())
     assert exc.value.details["reason"] == "unreferenced_source_revision"
     assert _counts(pg) == _EMPTY_COUNTS
+
+
+def test_postgres_family_corrected_retry_returns_stored_receipt(pg) -> None:
+    first = _initialize(
+        pg, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+    stored_hash = first.command_sha256
+    before = _counts(pg)
+    inner = pg.reviewed_world_initializations
+
+    class _CountInitialize:
+        def __init__(self) -> None:
+            self.initialize_calls = 0
+
+        def get(self, world_id: str, initialization_id: str):
+            return inner.get(world_id, initialization_id)
+
+        def get_for_world(self, world_id: str):
+            return inner.get_for_world(world_id)
+
+        def initialize(self, command, **kwargs: Any):
+            self.initialize_calls += 1
+            return inner.initialize(command, **kwargs)
+
+    wrapper = _CountInitialize()
+    recovered = initialize_reviewed_world(
+        make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING),
+        initialization_repository=wrapper,  # type: ignore[arg-type]
+        graph_reader=graph_reader(),
+    )
+    assert recovered == first
+    assert recovered.command_sha256 == stored_hash
+    assert wrapper.initialize_calls == 0
+    assert _counts(pg) == before
+
+
+def test_postgres_family_corrected_under_lock_returns_stored_receipt(pg) -> None:
+    stored = _initialize(
+        pg, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+    before = _counts(pg)
+    corrected = make_first_world_family_command(
+        evidence_domain=SourceDomain.WORLDBUILDING
+    )
+    materialization = materialize_reviewed_world_initialization_v6(
+        corrected, graph_reader=graph_reader()
+    )
+    replayed = pg.reviewed_world_initializations.initialize(
+        corrected,
+        graph_payload=materialization.graph_payload,
+        graph_payload_sha256=materialization.graph_payload_sha256,
+        accepted_assertion_ids=materialization.accepted_assertion_ids,
+    )
+    assert replayed == stored
+    assert _counts(pg) == before
+
+
+def test_postgres_family_corrected_lost_response_returns_stored_receipt(pg) -> None:
+    stored = _initialize(
+        pg, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+    inner = pg.reviewed_world_initializations
+
+    class _HidePreflightThenUnavailable:
+        def __init__(self) -> None:
+            self.initialize_calls = 0
+            self.recovery_probes = 0
+
+        def get(self, world_id: str, initialization_id: str):
+            return inner.get(world_id, initialization_id)
+
+        def get_for_world(self, world_id: str):
+            if self.initialize_calls == 0:
+                return None
+            self.recovery_probes += 1
+            return inner.get_for_world(world_id)
+
+        def initialize(self, command, **kwargs: Any):
+            self.initialize_calls += 1
+            inner.initialize(command, **kwargs)
+            raise PersistenceUnavailableError("response lost")
+
+    wrapper = _HidePreflightThenUnavailable()
+    recovered = initialize_reviewed_world(
+        make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING),
+        initialization_repository=wrapper,  # type: ignore[arg-type]
+        graph_reader=graph_reader(),
+    )
+    assert recovered == stored
+    assert wrapper.initialize_calls == 1
+    assert wrapper.recovery_probes == 1
+    assert inner.get_for_world(WORLD_ID) == stored
+
+
+def test_postgres_family_other_delta_still_conflicts(pg) -> None:
+    stored = _initialize(
+        pg, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    )
+    before = _counts(pg)
+    with pytest.raises(IdempotencyConflictError):
+        _initialize(
+            pg,
+            make_first_world_family_command(
+                evidence_domain=SourceDomain.OTHER
+            ).model_copy(update={"source_plan_id": "plan:different"}),
+        )
+    assert pg.reviewed_world_initializations.get_for_world(WORLD_ID) == stored
+    assert _counts(pg) == before
+

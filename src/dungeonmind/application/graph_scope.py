@@ -31,8 +31,10 @@ request actually targets the affected object.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Literal
 
 from ..contracts.evidence import (
@@ -48,6 +50,7 @@ from ..contracts.knowledge_assertion import KnowledgeAssertionMetadataV1
 from ..contracts.projection import Admissibility, ScopeMode
 from ..contracts.projection_v2 import ScopeModeV2
 from ..contracts.vocabulary import Visibility
+from ..domain.canonical import canonical_sha256
 from ..domain.errors import ScopeResolutionError
 from .graph_snapshot import (
     GRAPH_SCHEMA_V2,
@@ -75,6 +78,90 @@ SourceLookup = SourceRepository | SourceProvenanceSnapshot
 # Public gap code for corruption whose scope cannot be established, or when
 # detailed identity must not appear in MindTurnResponse.coverage.
 STORED_PROVENANCE_INVALID = "stored_provenance_invalid"
+_GENESIS_OTHER_DOMAIN_KEY = "other"
+_GENESIS_WORLDBUILDING_DOMAIN_KEY = "worldbuilding"
+
+
+@dataclass(frozen=True)
+class GenesisEvidenceCompatibility:
+    """Content-bound #645-family D0 OTHER evidence that may match worldbuilding.
+
+    ``eligible_records`` maps evidence_ref_id to the exact canonical D0
+    ``GraphEvidenceRecordV2``. Compatibility applies only when the current
+    record is byte-identical to that bound record. This is request context,
+    not replacement graph bytes.
+    """
+
+    world_id: str
+    d0_revision_id: str
+    eligible_records: Mapping[str, GraphEvidenceRecordV2]
+
+
+def genesis_evidence_compatibility_from_d0(
+    *,
+    world_id: str,
+    d0_revision_id: str,
+    parsed_d0: ParsedGraphSnapshot,
+    sources: SourceLookup,
+) -> GenesisEvidenceCompatibility:
+    """Select D0 OTHER records whose live artifact is worldbuilding."""
+    eligible: dict[str, GraphEvidenceRecordV2] = {}
+    for evidence_ref_id, record in parsed_d0.evidence.items():
+        if not isinstance(record, GraphEvidenceRecordV2):
+            continue
+        if (
+            record.source_domain is not SourceDomain.OTHER
+            or record.source_domain_key != _GENESIS_OTHER_DOMAIN_KEY
+        ):
+            continue
+        artifact = sources.get_artifact(record.source_artifact_id)
+        if not isinstance(artifact, SourceArtifactV2):
+            continue
+        if (
+            artifact.source_domain is not SourceDomain.WORLDBUILDING
+            or artifact.source_domain_key != _GENESIS_WORLDBUILDING_DOMAIN_KEY
+        ):
+            continue
+        eligible[evidence_ref_id] = record.model_copy(deep=True)
+    return GenesisEvidenceCompatibility(
+        world_id=world_id,
+        d0_revision_id=d0_revision_id,
+        eligible_records=MappingProxyType(eligible),
+    )
+
+
+def _canonical_evidence_digest(record: GraphEvidenceRecordV2) -> str:
+    return canonical_sha256(record.model_dump(mode="json"))
+
+
+def _genesis_other_placeholder_admits(
+    record: GraphEvidenceRecordV2,
+    artifact: SourceArtifactV2,
+    *,
+    world_id: str,
+    genesis_compatibility: GenesisEvidenceCompatibility | None,
+) -> bool:
+    """Treat the OTHER stamp as the known placeholder for one bound D0 record.
+
+    Provenance domain comparison then compares the live artifact domain to
+    itself. The stored evidence record is not rewritten.
+    """
+    if genesis_compatibility is None or genesis_compatibility.world_id != world_id:
+        return False
+    bound = genesis_compatibility.eligible_records.get(record.evidence_ref_id)
+    if bound is None:
+        return False
+    if _canonical_evidence_digest(record) != _canonical_evidence_digest(bound):
+        return False
+    if (
+        record.source_domain is not SourceDomain.OTHER
+        or record.source_domain_key != _GENESIS_OTHER_DOMAIN_KEY
+    ):
+        return False
+    return (
+        artifact.source_domain is SourceDomain.WORLDBUILDING
+        and artifact.source_domain_key == _GENESIS_WORLDBUILDING_DOMAIN_KEY
+    )
 
 
 def _norm_alias(text: str) -> str:
@@ -427,6 +514,7 @@ def _resolve_v2_evidence_provenance(
     world_id: str,
     scope: CampaignScope,
     admissibility: Admissibility,
+    genesis_compatibility: GenesisEvidenceCompatibility | None = None,
 ) -> ValidatedProvenance | ProvenanceRejection | EvidenceScopeVerdict | None:
     artifact = sources.get_artifact(record.source_artifact_id)
     if artifact is None:
@@ -457,6 +545,11 @@ def _resolve_v2_evidence_provenance(
     if (
         artifact.source_domain_key != record.source_domain_key
         or artifact.source_domain != record.source_domain
+    ) and not _genesis_other_placeholder_admits(
+        record,
+        artifact,
+        world_id=world_id,
+        genesis_compatibility=genesis_compatibility,
     ):
         return ProvenanceRejection("evidence_source_domain_mismatch", evidence_ref_id)
 
@@ -490,6 +583,7 @@ def resolve_evidence_provenance(
     admissibility: Admissibility,
     scope_mode: ScopeMode | ScopeModeV2 | None = None,
     evidence_cache: dict[str, EvidenceResolution] | None = None,
+    genesis_compatibility: GenesisEvidenceCompatibility | None = None,
 ) -> EvidenceResolution:
     """Validate the complete evidence → artifact → revision provenance chain.
 
@@ -524,6 +618,7 @@ def resolve_evidence_provenance(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
+            genesis_compatibility=genesis_compatibility,
         )
     else:
         resolved = _resolve_v1_evidence_provenance(
@@ -567,6 +662,7 @@ def _classify_evidence_ids(
     scope: CampaignScope,
     admissibility: Admissibility,
     evidence_cache: dict[str, EvidenceResolution] | None = None,
+    genesis_compatibility: GenesisEvidenceCompatibility | None = None,
 ) -> tuple[bool, ObjectScopeExclusion]:
     """Return whether every evidence ID is in-scope+valid, plus exclusion info."""
     rejections: list[ProvenanceRejection] = []
@@ -582,7 +678,7 @@ def _classify_evidence_ids(
             campaign_id=scope.campaign_id,
             admissibility=admissibility,
             scope_mode=scope.mode,
-            evidence_cache=evidence_cache,
+            evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
         )
         if isinstance(resolved, ValidatedProvenance):
             continue
@@ -617,6 +713,7 @@ def _project_v1_objects(
     scope: CampaignScope,
     admissibility: Admissibility,
     evidence_cache: dict[str, EvidenceResolution] | None = None,
+    genesis_compatibility: GenesisEvidenceCompatibility | None = None,
 ) -> tuple[dict[str, GraphObjectView], dict[str, ObjectScopeExclusion]]:
     """Coarse-object policy for ``dm_union_graph_v1``."""
     object_exclusions: dict[str, ObjectScopeExclusion] = {}
@@ -629,7 +726,7 @@ def _project_v1_objects(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
-            evidence_cache=evidence_cache,
+            evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
         )
         if not all_valid or not obj.evidence_ref_ids:
             if not obj.evidence_ref_ids:
@@ -649,6 +746,7 @@ def _project_v2_objects(
     scope: CampaignScope,
     admissibility: Admissibility,
     evidence_cache: dict[str, EvidenceResolution] | None = None,
+    genesis_compatibility: GenesisEvidenceCompatibility | None = None,
 ) -> tuple[
     dict[str, GraphObjectView],
     dict[str, ObjectScopeExclusion],
@@ -678,7 +776,7 @@ def _project_v2_objects(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
-            evidence_cache=evidence_cache,
+            evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
         )
         if not all_valid or not core_ids:
             if not core_ids:
@@ -696,7 +794,7 @@ def _project_v2_objects(
                 world_id=world_id,
                 scope=scope,
                 admissibility=admissibility,
-                evidence_cache=evidence_cache,
+                evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
             )
             if alias_ok and assertion.evidence_ref_ids:
                 admitted_aliases.append(assertion)
@@ -719,7 +817,7 @@ def _project_v2_objects(
                 world_id=world_id,
                 scope=scope,
                 admissibility=admissibility,
-                evidence_cache=evidence_cache,
+                evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
             )
             if summary_ok and summary.evidence_ref_ids:
                 admitted_summary = summary
@@ -821,6 +919,7 @@ def _admit_v4_assertion(
     scope: CampaignScope,
     admissibility: Admissibility,
     evidence_cache: dict[str, EvidenceResolution] | None = None,
+    genesis_compatibility: GenesisEvidenceCompatibility | None = None,
 ) -> tuple[bool, ObjectScopeExclusion]:
     """Assertion-scope gate first, then the existing evidence provenance chain.
 
@@ -843,7 +942,7 @@ def _admit_v4_assertion(
         world_id=world_id,
         scope=scope,
         admissibility=admissibility,
-        evidence_cache=evidence_cache,
+        evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
     )
 
 
@@ -855,6 +954,7 @@ def _project_v4_objects(
     scope: CampaignScope,
     admissibility: Admissibility,
     evidence_cache: dict[str, EvidenceResolution] | None = None,
+    genesis_compatibility: GenesisEvidenceCompatibility | None = None,
 ) -> tuple[
     dict[str, GraphObjectView],
     dict[str, ObjectScopeExclusion],
@@ -880,7 +980,7 @@ def _project_v4_objects(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
-            evidence_cache=evidence_cache,
+            evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
         )
         if not existence_ok:
             object_exclusions[object_id] = existence_exclusion
@@ -897,7 +997,7 @@ def _project_v4_objects(
                 world_id=world_id,
                 scope=scope,
                 admissibility=admissibility,
-                evidence_cache=evidence_cache,
+                evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
             )
             if alias_ok:
                 admitted_aliases.append(alias)
@@ -916,7 +1016,7 @@ def _project_v4_objects(
                 world_id=world_id,
                 scope=scope,
                 admissibility=admissibility,
-                evidence_cache=evidence_cache,
+                evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
             )
             if summary_ok:
                 admitted_summary = summary
@@ -933,7 +1033,7 @@ def _project_v4_objects(
                 world_id=world_id,
                 scope=scope,
                 admissibility=admissibility,
-                evidence_cache=evidence_cache,
+                evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
             )
             if property_ok:
                 admitted_properties.append(prop)
@@ -969,7 +1069,7 @@ def _project_v4_objects(
                 world_id=world_id,
                 scope=scope,
                 admissibility=admissibility,
-                evidence_cache=evidence_cache,
+                evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
             )
             if aspect_ok:
                 admitted_aspects.append(aspect)
@@ -1007,6 +1107,7 @@ def project_scoped_snapshot(
     admissibility: Admissibility,
     scope_mode: ScopeMode | ScopeModeV2 | None = None,
     evidence_cache: dict[str, EvidenceResolution] | None = None,
+    genesis_compatibility: GenesisEvidenceCompatibility | None = None,
 ) -> ScopedGraphProjection:
     """Return a scoped snapshot and exclusion diagnostics.
 
@@ -1034,7 +1135,7 @@ def project_scoped_snapshot(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
-            evidence_cache=evidence_cache,
+            evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
         )
     elif snapshot.graph_schema in (GRAPH_SCHEMA_V2, GRAPH_SCHEMA_V3):
         (
@@ -1048,7 +1149,7 @@ def project_scoped_snapshot(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
-            evidence_cache=evidence_cache,
+            evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
         )
     else:
         objects, object_exclusions = _project_v1_objects(
@@ -1057,7 +1158,7 @@ def project_scoped_snapshot(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
-            evidence_cache=evidence_cache,
+            evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
         )
 
     relationship_exclusions: dict[str, ObjectScopeExclusion] = {}
@@ -1083,7 +1184,7 @@ def project_scoped_snapshot(
             world_id=world_id,
             scope=scope,
             admissibility=admissibility,
-            evidence_cache=evidence_cache,
+            evidence_cache=evidence_cache, genesis_compatibility=genesis_compatibility,
         )
         if not all_valid or not rel.evidence_ref_ids:
             if not rel.evidence_ref_ids:
