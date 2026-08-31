@@ -16,17 +16,19 @@ _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-from k0_inventory_curated import (  # noqa: E402
-    EXCEPTION_OVERLAY,
-    REPOSITORY_OVERLAY,
-    TABLE_OVERLAY,
-    subsystem_dispositions,
+from k0_inventory_dispositions import (  # noqa: E402
+    DEFAULT_DISPOSITIONS_PATH,
+    dispositions_digest,
+    load_dispositions,
+)
+from k0_inventory_module_strings import (  # noqa: E402
+    downgrade_unused_for_module_strings,
+    scan_module_string_references,
 )
 from k0_inventory_scan import (  # noqa: E402
     AnchorMismatchError,
     consumer_kind,
     dump_json,
-    git_rev_parse,
     internal_import_graph,
     inventory_alembic_tables,
     inventory_explicit_exports,
@@ -36,6 +38,7 @@ from k0_inventory_scan import (  # noqa: E402
     probe_optional_dependency_loads,
     reachable,
     resolve_import,
+    runtime_tree_digest,
     scan_file_imports,
     verify_buddy_anchor,
     verify_dungeonmind_code_anchor,
@@ -45,6 +48,8 @@ from k0_inventory_validate import SCHEMA, validate_ledger  # noqa: E402
 DEFAULT_CODE_ANCHOR = "5ca5d688612349034f8ca490d465af166d883e6e"
 DEFAULT_STEWARD_BASE = "84a4479494a37d8b5bd550465d17ff29f0e359ec"
 DEFAULT_BUDDY_ANCHOR = "a9d4c61d04f2a4a5f92cb6947442d8173079454c"
+DEFAULT_OUTPUT = Path("Docs/Reports/K0-surface-inventory.json")
+SCANNER_VERSION = "k0.1.1"
 
 READ_SEEDS = (
     "dungeonmind.application.world_graph_projection",
@@ -116,16 +121,28 @@ def _export_rows(
     exports: list[Any],
     buddy_imports: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    imported: set[tuple[str, str]] = set()
+    imported_symbols: set[tuple[str, str]] = set()
     imported_modules: set[str] = set()
     for row in buddy_imports:
         imported_modules.add(str(row["imported_module"]))
         for symbol in row["imported_symbols"]:
-            imported.add((str(row["imported_module"]), str(symbol)))
+            if symbol != "*":
+                imported_symbols.add((str(row["imported_module"]), str(symbol)))
     rows: list[dict[str, Any]] = []
     for export in exports:
-        direct = (export.module, export.name) in imported
+        direct_reexport = (export.module, export.name) in imported_symbols
+        origin_symbol = (export.origin, export.name) in imported_symbols
         module_imported = export.module in imported_modules
+        consumer_paths: list[str] = []
+        if direct_reexport:
+            consumer_paths.append("reexport_path")
+        if origin_symbol:
+            consumer_paths.append("origin_module")
+        known = (
+            "YES"
+            if direct_reexport or origin_symbol
+            else "NO_KNOWN_EXTERNAL_CONSUMER"
+        )
         rows.append(
             {
                 "package": export.package,
@@ -133,21 +150,26 @@ def _export_rows(
                 "name": export.name,
                 "origin": export.origin,
                 "in_all": export.in_all,
-                "buddy_direct_import": direct,
+                "buddy_direct_reexport_import": direct_reexport,
+                "buddy_origin_symbol_import": origin_symbol,
                 "buddy_imports_module": module_imported,
-                "known_external_consumer": "YES" if direct else "NO_KNOWN_EXTERNAL_CONSUMER",
+                "known_external_consumer": known,
+                "external_consumer_paths": consumer_paths,
             }
         )
     return rows
 
 
-def _merge_repository_ledger(derived: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _merge_repository_ledger(
+    derived: list[dict[str, Any]],
+    overlay: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
     merged: list[dict[str, Any]] = []
     for row in derived:
         ident = str(row["id"])
-        overlay = REPOSITORY_OVERLAY.get(ident, {})
-        merged.append({**row, **overlay})
-        if ident not in REPOSITORY_OVERLAY:
+        curated = overlay.get(ident, {})
+        merged.append({**row, **curated})
+        if ident not in overlay:
             merged[-1]["disposition"] = "UNKNOWN"
             merged[-1]["blocking_question"] = (
                 f"No curated overlay for repository protocol/bundle {ident}."
@@ -157,13 +179,16 @@ def _merge_repository_ledger(derived: list[dict[str, Any]]) -> list[dict[str, An
     return merged
 
 
-def _merge_table_ledger(derived: list[dict[str, str]]) -> list[dict[str, Any]]:
+def _merge_table_ledger(
+    derived: list[dict[str, str]],
+    overlay: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
     merged: list[dict[str, Any]] = []
     for row in derived:
         ident = str(row["id"])
-        overlay = TABLE_OVERLAY.get(ident, {})
-        item = {**row, **overlay}
-        if ident not in TABLE_OVERLAY:
+        curated = overlay.get(ident, {})
+        item = {**row, **curated}
+        if ident not in overlay:
             item["disposition"] = "UNKNOWN"
             item["blocking_question"] = f"No curated overlay for table {ident}."
             item["k1_code_demolition_while_table_remains"] = False
@@ -173,12 +198,15 @@ def _merge_table_ledger(derived: list[dict[str, str]]) -> list[dict[str, Any]]:
     return merged
 
 
-def _merge_exceptions(derived: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _merge_exceptions(
+    derived: list[dict[str, Any]],
+    overlay: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
     merged: list[dict[str, Any]] = []
     for row in derived:
         ident = str(row["id"])
-        overlay = EXCEPTION_OVERLAY.get(ident, {})
-        item = {**row, **overlay}
+        curated = overlay.get(ident, {})
+        item = {**row, **curated}
         if "protects" not in item:
             item["protects"] = "UNKNOWN"
             item["blocking_question"] = f"No classification for import-boundary exception {ident}."
@@ -195,11 +223,14 @@ def build_ledger(
     steward_base: str,
     buddy_anchor: str,
     expected_pin: str,
+    dispositions_path: Path | None = None,
     skip_probe: bool = False,
 ) -> dict[str, Any]:
     verify_dungeonmind_code_anchor(dungeonmind_root, code_anchor)
     pin = verify_buddy_anchor(buddy_root, buddy_anchor, expected_pin)
     src_root = dungeonmind_root / "src"
+    curated = load_dispositions(dispositions_path)
+    digest = dispositions_digest(dispositions_path)
 
     buddy_records = []
     dynamic_findings: list[dict[str, Any]] = []
@@ -208,6 +239,10 @@ def build_ledger(
         buddy_records.extend(records)
         dynamic_findings.extend(extra)
     imports = _import_rows(buddy_records, src_root)
+
+    buddy_module_strings = scan_module_string_references(buddy_root)
+    dungeonmind_module_strings = scan_module_string_references(dungeonmind_root)
+    all_module_strings = [*buddy_module_strings, *dungeonmind_module_strings]
 
     exports = _export_rows(inventory_explicit_exports(src_root), imports)
     graph = internal_import_graph(src_root)
@@ -222,7 +257,10 @@ def build_ledger(
         else probe_optional_dependency_loads(dungeonmind_root)
     )
 
-    subsystems = subsystem_dispositions()
+    subsystems, downgrade_notes = downgrade_unused_for_module_strings(
+        curated["subsystem_dispositions"],
+        all_module_strings,
+    )
     subsystems.sort(key=lambda row: str(row["id"]))
 
     production_files = sorted(
@@ -233,14 +271,23 @@ def build_ledger(
         }
     )
 
+    merged_exceptions = _merge_exceptions(exceptions, curated["exception_overlays"])
+
     ledger: dict[str, Any] = {
         "schema": SCHEMA,
-        "anchors": {
-            "dungeonmind_code_anchor": code_anchor,
+        "inputs": {
+            "dungeonmind_runtime_anchor": code_anchor,
             "dungeonmind_steward_base": steward_base,
-            "dungeonmind_scanned_head": git_rev_parse(dungeonmind_root),
+            "runtime_tree_digest": runtime_tree_digest(dungeonmind_root, code_anchor),
             "buddy_anchor": buddy_anchor,
             "buddy_dungeonmind_pin": pin,
+            "dispositions_digest": digest,
+            "dispositions_path": (
+                dispositions_path or DEFAULT_DISPOSITIONS_PATH
+            ).relative_to(dungeonmind_root.resolve()).as_posix(),
+            "scanner_version": str(
+                curated.get("meta", {}).get("scanner_version") or SCANNER_VERSION
+            ),
         },
         "reproduction": {
             "command": [
@@ -259,7 +306,7 @@ def build_ledger(
                 "--expected-buddy-dungeonmind-pin",
                 expected_pin,
                 "--output",
-                "Docs/Reports/K0-current-consumer-public-surface-v1.json",
+                DEFAULT_OUTPUT.as_posix(),
             ]
         },
         "headline_counts": {},
@@ -273,15 +320,21 @@ def build_ledger(
             "founding_runtime_path_modules": reachable(graph, FOUNDING_SEEDS),
             "compatibility_path_modules": reachable(graph, COMPAT_SEEDS),
         },
-        "repository_ledger": _merge_repository_ledger(repos),
-        "table_ledger": _merge_table_ledger(tables),
-        "import_boundary_exceptions": _merge_exceptions(exceptions),
+        "repository_ledger": _merge_repository_ledger(repos, curated["repository_overlays"]),
+        "table_ledger": _merge_table_ledger(tables, curated["table_overlays"]),
+        "import_boundary_exceptions": merged_exceptions,
         "optional_dependency_probe": probe,
         "subsystem_dispositions": subsystems,
         "dynamic_import_findings": sorted(
             dynamic_findings,
             key=lambda row: (str(row.get("consumer_file")), int(row.get("line") or 0)),
         ),
+        "module_string_consumer_evidence": {
+            "buddy": buddy_module_strings,
+            "dungeonmind": dungeonmind_module_strings,
+        },
+        "known_red_baselines": curated["known_red_baselines"],
+        "module_string_disposition_notes": downgrade_notes,
         "derived_alembic_tables": [row["id"] for row in tables],
         "derived_repository_ids": [row["id"] for row in repos],
         "unresolved_questions": [
@@ -291,14 +344,14 @@ def build_ledger(
         ]
         + [
             row["blocking_question"]
-            for row in _merge_exceptions(exceptions)
+            for row in merged_exceptions
             if row.get("protects") == "UNKNOWN" and row.get("blocking_question")
         ],
         "production_consumer_files": production_files,
         "observation_notice": (
             "NO_KNOWN_EXTERNAL_CONSUMER is not permission to delete. This ledger "
-            "describes the exact anchors above and does not promote observed exports "
-            "into a permanent public API."
+            "describes the audited runtime tree at inputs.dungeonmind_runtime_anchor "
+            "and does not promote observed exports into a permanent public API."
         ),
     }
 
@@ -331,6 +384,7 @@ def build_ledger(
         },
         "import_boundary_exceptions": len(ledger["import_boundary_exceptions"]),
         "dynamic_import_findings": len(ledger["dynamic_import_findings"]),
+        "module_string_findings": len(all_module_strings),
     }
     validate_ledger(ledger)
     return ledger
@@ -348,10 +402,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_CODE_ANCHOR,
     )
     parser.add_argument(
-        "--output",
+        "--dispositions",
         type=Path,
-        default=Path("Docs/Reports/K0-current-consumer-public-surface-v1.json"),
+        default=DEFAULT_DISPOSITIONS_PATH,
     )
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--skip-optional-probe", action="store_true")
     return parser.parse_args(argv)
 
@@ -360,6 +415,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     dungeonmind_root = args.dungeonmind_root.resolve()
     buddy_root = args.buddy_root.resolve()
+    dispositions_path = args.dispositions.resolve()
     try:
         ledger = build_ledger(
             dungeonmind_root=dungeonmind_root,
@@ -368,6 +424,7 @@ def main(argv: list[str] | None = None) -> int:
             steward_base=args.dungeonmind_steward_base,
             buddy_anchor=args.buddy_anchor,
             expected_pin=args.expected_buddy_dungeonmind_pin,
+            dispositions_path=dispositions_path,
             skip_probe=args.skip_optional_probe,
         )
     except AnchorMismatchError as exc:

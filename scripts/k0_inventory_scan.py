@@ -139,6 +139,34 @@ def verify_buddy_anchor(
     return pin
 
 
+RUNTIME_TREE_PATHS = ("src", "migrations", "alembic.ini", "pyproject.toml", "uv.lock")
+
+
+def runtime_tree_digest(root: Path, anchor: str) -> str:
+    """Stable digest of the audited runtime tree at the exact code anchor."""
+
+    import hashlib
+
+    hasher = hashlib.sha256()
+    for rel in RUNTIME_TREE_PATHS:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", f"{anchor}:{rel}"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise AnchorMismatchError(
+                f"unable to resolve runtime tree path {rel} at anchor {anchor}: "
+                f"{result.stderr.strip()}"
+            )
+        hasher.update(rel.encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(result.stdout.strip().encode("utf-8"))
+        hasher.update(b"\n")
+    return f"sha256:{hasher.hexdigest()}"
+
+
 def _is_dm_module(name: str) -> bool:
     return bool(DM_MODULE_RE.fullmatch(name))
 

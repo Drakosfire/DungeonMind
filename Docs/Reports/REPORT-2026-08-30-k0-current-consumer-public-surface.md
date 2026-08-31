@@ -1,22 +1,26 @@
 # Report — 2026-08-30 K0.1 current consumer and public-surface inventory
 
 **Status:** observational evidence for K1 eligibility; not a deletion authorization  
-**Ledger:** [`K0-current-consumer-public-surface-v1.json`](K0-current-consumer-public-surface-v1.json)  
+**Ledger (generated):** [`K0-surface-inventory.json`](K0-surface-inventory.json)  
+**Dispositions (human-authored):** [`K0-dispositions.toml`](../Inventory/K0-dispositions.toml)  
 **Schema:** `dm_k0_surface_inventory_v1`  
-**Formal review cycles:** 2
+**Formal review cycles:** 3 (includes PR #48 audit-correctness pass)
 
 `NO_KNOWN_EXTERNAL_CONSUMER` means exactly that. It is not permission to delete.
 
-## 1. Anchors and reproduction
+## 1. Inputs, anchors, and reproduction
 
 ```text
-dungeonmind_code_anchor  = 5ca5d688612349034f8ca490d465af166d883e6e
-dungeonmind_steward_base = 84a4479494a37d8b5bd550465d17ff29f0e359ec
-buddy_anchor             = a9d4c61d04f2a4a5f92cb6947442d8173079454c
-buddy_dungeonmind_pin    = 5ca5d688612349034f8ca490d465af166d883e6e
+dungeonmind_runtime_anchor = 5ca5d688612349034f8ca490d465af166d883e6e
+dungeonmind_steward_base   = 84a4479494a37d8b5bd550465d17ff29f0e359ec
+runtime_tree_digest        = sha256:0fa4c6042ae6ee8c51a19c1b20f76b095ab6885e0587156c5d57e9d49fbbc700
+buddy_anchor               = a9d4c61d04f2a4a5f92cb6947442d8173079454c
+buddy_dungeonmind_pin      = 5ca5d688612349034f8ca490d465af166d883e6e
 ```
 
-The generator fails closed if Buddy HEAD or the DungeonMind pin differ, or if `src` / `migrations` / `pyproject.toml` / `uv.lock` differ from the code anchor.
+The generated ledger describes the audited runtime tree at `dungeonmind_runtime_anchor`. It does **not** record the commit that contains the JSON artifact (no self-referential `dungeonmind_scanned_head`). PR/branch provenance belongs in git history and this report, not in the machine ledger.
+
+The generator fails closed if Buddy HEAD or the DungeonMind pin differ, or if `src` / `migrations` / `pyproject.toml` / `uv.lock` differ from the runtime anchor.
 
 ```bash
 uv run python scripts/k0_surface_inventory.py \
@@ -25,8 +29,10 @@ uv run python scripts/k0_surface_inventory.py \
   --buddy-root ../DungeonMindBuddy \
   --buddy-anchor a9d4c61d04f2a4a5f92cb6947442d8173079454c \
   --expected-buddy-dungeonmind-pin 5ca5d688612349034f8ca490d465af166d883e6e \
-  --output Docs/Reports/K0-current-consumer-public-surface-v1.json
+  --output Docs/Reports/K0-surface-inventory.json
 ```
+
+Curated architecture judgments live in TOML; the scanner combines derived facts + dispositions into the JSON snapshot.
 
 This implementation scanned Buddy from a detached worktree at the exact anchor. Do not scan whatever Buddy checkout happens to be present.
 
@@ -42,10 +48,11 @@ This implementation scanned Buddy from a detached worktree at the exact anchor. 
 | PostgreSQL tables | 20 |
 | Import-boundary exceptions | 9 |
 | Dynamic-import findings (importlib/`__import__`) | 0 |
+| Module-string / deployment findings (Buddy + DungeonMind) | 3481 |
 | Subsystem USED | 9 |
-| Subsystem UNUSED | 10 |
+| Subsystem UNUSED | 9 |
 | Subsystem HISTORICAL-COMPAT | 4 |
-| Subsystem UNKNOWN | 2 |
+| Subsystem UNKNOWN | 3 |
 
 Import statements: 73 production, 54 test. Tests are recorded as imports; they do not by themselves make a subsystem `USED`.
 
@@ -70,7 +77,7 @@ Buddy tests additionally import in-memory adapters, `PublishRevisionCommand`, ad
 
 ## 4. Explicit export surface
 
-Package `__init__` re-exports are a museum: 444 names, of which 3 are also imported by Buddy from those package modules (`InMemorySourceRepository`, `InMemoryWorldGraphRepository`, `PostgresDatabase`). Buddy otherwise imports implementation modules directly (`world_graph_projection`, `world_graph_retrieval`, `graph_snapshot`, `review_publication`, …).
+Package `__init__` re-exports are a museum: 444 names. Export consumer matching now distinguishes **re-export path** imports from **origin-module** symbol imports (`buddy_direct_reexport_import`, `buddy_origin_symbol_import`). Example: Buddy imports `WorldGraphProjectionService` from `dungeonmind.application.world_graph_projection`, so the re-export at `dungeonmind.application` is marked `known_external_consumer: YES` via the origin path even though Buddy never imports through the package facade.
 
 `PostgresRepositoryBundle` is a current production import and is **not** listed in `dungeonmind.infrastructure.postgres.__all__`. `__all__` is not the consumer map.
 
@@ -114,7 +121,7 @@ K1 still needs its own PR-level proof. These are not already deleted.
 | agents/ protocol + fixture | Buddy/Hermes `dungeonmind.agents`; none. Only MindTurnService |
 | CapabilityPolicy as **agent-visible tool authority** | Buddy `evaluate_capability` / `permitted_tool_names`; none. The CapabilityPolicy **type** is USED for review and is a separate row |
 | context assembly / MindTurn budgeting | only `MindTurnService` imports `assemble_agent_context` |
-| demo_access / curated MindTurn host | no Buddy import |
+| demo_access / curated MindTurn host | no Buddy import; **downgraded to UNKNOWN** because runbook `uvicorn dungeonmind.service.bootstrap:create_demo_app` is documented deployment evidence |
 | MindThread / RetrievalSession / SemanticDocument / EmbeddingRun / semantic-search runtime | no Buddy call; World retrieval is graph-only. Physical tables remain `HISTORICAL-COMPAT` |
 
 ### HISTORICAL-COMPAT — blocks physical deletion
@@ -128,8 +135,17 @@ K1 still needs its own PR-level proof. These are not already deleted.
 
 - claim / answer-validation machinery: Claim ledger shares `contracts/retrieval.py` with `ResolvedReferent` used by current World retrieval. Split the module first.
 - optional FastAPI/httpx D&D transport / statblock resource resolver: Buddy uses `dungeonmind_statblocks`, not this extra. Another deployment might. Do not guess.
+- demo_access / curated MindTurn host: runbook documents `uvicorn …dungeonmind.service.bootstrap:create_demo_app`. No Buddy consumer, but static-import absence alone is insufficient for demolition.
 
-## 7. Import-boundary exceptions
+## 7. Module-string and deployment evidence
+
+Beyond Python `import` AST scanning, the ledger records conservative module-string hits from both repos: `uvicorn package.module:app`, `python -m …`, `pyproject.toml` script values, compose/Docker/shell/markdown/runbook text, and subprocess command arrays where present.
+
+Findings are tagged by `consumer_kind` (`production`, `documented_deployment`, `deployment_or_tooling`, `documentation`, `inventory_tooling`, `test`). Only production/deployment/runbook hits can auto-downgrade an `UNUSED` subsystem to `UNKNOWN`. K0 inventory scripts and generated JSON are excluded from downgrade triggers.
+
+Buddy AST dynamic-import findings remain 0 at this pin.
+
+## 8. Import-boundary exceptions
 
 | Exception | Protects |
 |---|---|
@@ -142,7 +158,7 @@ K1 still needs its own PR-level proof. These are not already deleted.
 
 This PR does not change the import rules.
 
-## 8. Optional dependency / import findings
+## 9. Optional dependency / import findings
 
 `import dungeonmind` loads no postgres/api extras and does not load `dungeonmind_dnd`.
 
@@ -150,11 +166,11 @@ This PR does not change the import rules.
 
 This matches `tests/unit/test_import_boundaries.py`.
 
-## 9. Unknowns
+## 10. Unknowns
 
-See ledger `unresolved_questions`. Headline blockers: mixed retrieval contracts; optional D&D HTTP extra; mixed FastAPI host; whether any non-Buddy consumer hosts the D&D transport.
+See ledger `unresolved_questions`. Headline blockers: mixed retrieval contracts; optional D&D HTTP extra; mixed FastAPI host; documented demo/bootstrap deployment without Buddy consumer.
 
-## 10. K1 eligibility list
+## 11. K1 eligibility list
 
 Only `UNUSED` targets above. Warning: K1 still needs its own proof. Do not delete historical tables, codecs, adoption receipts, or mixed modules.
 
@@ -189,6 +205,26 @@ Downgrades:
 - Semantic/thread **tables** stayed `HISTORICAL-COMPAT` even where runtime is `UNUSED`.
 
 No remaining `UNUSED` target has a Buddy import of its covered prefix. Living-database contents were not queried (handoff forbids Eldyrwild). Table protection is the substitute for that unknown.
+
+### Cycle 3 — PR #48 audit-correctness (review 5063054103)
+
+Fixes:
+
+1. Removed self-referential `dungeonmind_scanned_head`; ledger identity uses `inputs.runtime_tree_digest` at the fixed runtime anchor.
+2. Split curated judgments into `Docs/Inventory/K0-dispositions.toml`; JSON is generated-only evidence with `dispositions_digest`.
+3. Export consumer map matches origin-module symbol imports, not only re-export `(module, name)` pairs.
+4. Expanded module-string/deployment scanning; `demo_access` downgraded to `UNKNOWN` on runbook uvicorn bootstrap evidence.
+5. Recorded known red `benchmark-smoke` baseline (pre-existing at anchor; not repaired in K0.1).
+
+## Known CI baseline (not repaired in K0.1)
+
+| Job | Status at runtime anchor | Disposition |
+|---|---|---|
+| `core` | green | — |
+| `integration` | green | — |
+| `benchmark-smoke` | **red** | pre-existing defect |
+
+Failure: `WorldGraphProjectionService.__init__() missing required keyword-only argument: 'reviewed_world_initializations'` in `benchmarks/world_graph_reads.py`. The benchmark harness at anchor `5ca5d688…` constructs the service without that repository while the service already requires it. Corrective slice: repair benchmark construction; do not fold runtime fixes into K0.1.
 
 ## Verification
 

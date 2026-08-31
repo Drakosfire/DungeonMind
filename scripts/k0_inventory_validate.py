@@ -8,7 +8,7 @@ SCHEMA = "dm_k0_surface_inventory_v1"
 DISPOSITIONS = frozenset({"USED", "UNUSED", "HISTORICAL-COMPAT", "UNKNOWN"})
 REQUIRED_TOP_LEVEL = (
     "schema",
-    "anchors",
+    "inputs",
     "external_consumer_imports",
     "explicit_exports",
     "internal_import_evidence",
@@ -17,6 +17,8 @@ REQUIRED_TOP_LEVEL = (
     "import_boundary_exceptions",
     "optional_dependency_probe",
     "subsystem_dispositions",
+    "module_string_consumer_evidence",
+    "known_red_baselines",
     "unresolved_questions",
 )
 NAMED_SUBSYSTEM_IDS = (
@@ -182,15 +184,23 @@ def validate_ledger(ledger: dict[str, Any]) -> None:
                 f"repository protocol/bundle entry omitted from repository ledger: {name}"
             )
 
-    anchors = ledger.get("anchors") or {}
+    inputs = ledger.get("inputs") or {}
     for key in (
-        "dungeonmind_code_anchor",
+        "dungeonmind_runtime_anchor",
         "dungeonmind_steward_base",
+        "runtime_tree_digest",
         "buddy_anchor",
         "buddy_dungeonmind_pin",
+        "dispositions_digest",
+        "scanner_version",
     ):
-        if not str(anchors.get(key) or ""):
-            errors.append(f"anchors.{key} missing")
+        if not str(inputs.get(key) or ""):
+            errors.append(f"inputs.{key} missing")
+
+    if "dungeonmind_scanned_head" in ledger.get("anchors", {}):
+        errors.append(
+            "anchors.dungeonmind_scanned_head is forbidden; use inputs.runtime_tree_digest"
+        )
 
     if errors:
         raise LedgerValidationError("\n".join(errors))

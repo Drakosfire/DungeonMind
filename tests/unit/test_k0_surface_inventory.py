@@ -39,11 +39,14 @@ def _minimal_ledger(**overrides: Any) -> dict[str, Any]:
     ]
     ledger: dict[str, Any] = {
         "schema": "dm_k0_surface_inventory_v1",
-        "anchors": {
-            "dungeonmind_code_anchor": "a" * 40,
+        "inputs": {
+            "dungeonmind_runtime_anchor": "a" * 40,
             "dungeonmind_steward_base": "b" * 40,
+            "runtime_tree_digest": "sha256:" + ("0" * 64),
             "buddy_anchor": "c" * 40,
             "buddy_dungeonmind_pin": "a" * 40,
+            "dispositions_digest": "sha256:" + ("1" * 64),
+            "scanner_version": "k0.1.1",
         },
         "external_consumer_imports": [],
         "explicit_exports": [],
@@ -53,6 +56,8 @@ def _minimal_ledger(**overrides: Any) -> dict[str, Any]:
         "import_boundary_exceptions": [],
         "optional_dependency_probe": {"ok": True, "probes": []},
         "subsystem_dispositions": subsystems,
+        "module_string_consumer_evidence": {"buddy": [], "dungeonmind": []},
+        "known_red_baselines": [],
         "unresolved_questions": [],
         "derived_alembic_tables": ["worlds"],
         "derived_repository_ids": ["WorldGraphRepository"],
@@ -205,3 +210,41 @@ def test_generator_module_loads() -> None:
     assert module.DEFAULT_CODE_ANCHOR == "5ca5d688612349034f8ca490d465af166d883e6e"
     parsed = json.loads(dump_json({"schema": "dm_k0_surface_inventory_v1"}))
     assert parsed["schema"] == "dm_k0_surface_inventory_v1"
+
+
+def test_export_rows_match_origin_symbol_imports() -> None:
+    from k0_inventory_scan import ExportRecord
+    from k0_surface_inventory import _export_rows
+
+    exports = [
+        ExportRecord(
+            package="dungeonmind",
+            module="dungeonmind.application",
+            name="WorldGraphProjectionService",
+            origin="dungeonmind.application.world_graph_projection",
+            in_all=True,
+        )
+    ]
+    buddy_imports = [
+        {
+            "imported_module": "dungeonmind.application.world_graph_projection",
+            "imported_symbols": ["WorldGraphProjectionService"],
+        }
+    ]
+    rows = _export_rows(exports, buddy_imports)
+    assert rows[0]["buddy_origin_symbol_import"] is True
+    assert rows[0]["buddy_direct_reexport_import"] is False
+    assert rows[0]["known_external_consumer"] == "YES"
+    assert rows[0]["external_consumer_paths"] == ["origin_module"]
+
+
+def test_dispositions_digest_is_stable() -> None:
+    from k0_inventory_dispositions import (
+        DEFAULT_DISPOSITIONS_PATH,
+        dispositions_digest,
+    )
+
+    first = dispositions_digest(DEFAULT_DISPOSITIONS_PATH)
+    second = dispositions_digest(DEFAULT_DISPOSITIONS_PATH)
+    assert first == second
+    assert first.startswith("sha256:")
