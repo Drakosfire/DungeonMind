@@ -43,6 +43,8 @@ def _minimal_ledger(**overrides: Any) -> dict[str, Any]:
             "dungeonmind_runtime_anchor": "a" * 40,
             "dungeonmind_steward_base": "b" * 40,
             "runtime_tree_digest": "sha256:" + ("0" * 64),
+            "dungeonmind_module_string_scan_ref": "a" * 40,
+            "dungeonmind_module_string_corpus_digest": "sha256:" + ("2" * 64),
             "buddy_anchor": "c" * 40,
             "buddy_dungeonmind_pin": "a" * 40,
             "dispositions_digest": "sha256:" + ("1" * 64),
@@ -248,3 +250,24 @@ def test_dispositions_digest_is_stable() -> None:
     second = dispositions_digest(DEFAULT_DISPOSITIONS_PATH)
     assert first == second
     assert first.startswith("sha256:")
+
+
+def test_dispositions_reject_duplicate_ids(tmp_path: Path) -> None:
+    from k0_inventory_dispositions import DispositionsError, load_dispositions
+
+    path = tmp_path / "dup.toml"
+    path.write_text(
+        '[meta]\nscanner_version = "k0.1.1"\n\n'
+        '[[repository]]\nid = "WorldGraphRepository"\ndisposition = "USED"\n'
+        '[[repository]]\nid = "WorldGraphRepository"\ndisposition = "UNUSED"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(DispositionsError, match="duplicate repository id"):
+        load_dispositions(path)
+
+
+def test_validate_rejects_module_string_scan_ref_mismatch() -> None:
+    ledger = _minimal_ledger()
+    ledger["inputs"]["dungeonmind_module_string_scan_ref"] = "d" * 40
+    with pytest.raises(LedgerValidationError, match="module_string_scan_ref"):
+        validate_ledger(ledger)

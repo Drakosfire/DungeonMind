@@ -24,6 +24,7 @@ from k0_inventory_dispositions import (  # noqa: E402
 from k0_inventory_module_strings import (  # noqa: E402
     downgrade_unused_for_module_strings,
     scan_module_string_references,
+    scan_module_string_references_at_git_ref,
 )
 from k0_inventory_scan import (  # noqa: E402
     AnchorMismatchError,
@@ -49,7 +50,7 @@ DEFAULT_CODE_ANCHOR = "5ca5d688612349034f8ca490d465af166d883e6e"
 DEFAULT_STEWARD_BASE = "84a4479494a37d8b5bd550465d17ff29f0e359ec"
 DEFAULT_BUDDY_ANCHOR = "a9d4c61d04f2a4a5f92cb6947442d8173079454c"
 DEFAULT_OUTPUT = Path("Docs/Reports/K0-surface-inventory.json")
-SCANNER_VERSION = "k0.1.1"
+SCANNER_VERSION = "k0.1.2"
 
 READ_SEEDS = (
     "dungeonmind.application.world_graph_projection",
@@ -241,7 +242,11 @@ def build_ledger(
     imports = _import_rows(buddy_records, src_root)
 
     buddy_module_strings = scan_module_string_references(buddy_root)
-    dungeonmind_module_strings = scan_module_string_references(dungeonmind_root)
+    # Pin DungeonMind module-string evidence to the runtime anchor tree, not the
+    # mutable PR worktree (reports/runbooks/scripts on this branch are undeclared).
+    dungeonmind_module_strings, dm_module_string_corpus_digest = (
+        scan_module_string_references_at_git_ref(dungeonmind_root, code_anchor)
+    )
     all_module_strings = [*buddy_module_strings, *dungeonmind_module_strings]
 
     exports = _export_rows(inventory_explicit_exports(src_root), imports)
@@ -279,6 +284,8 @@ def build_ledger(
             "dungeonmind_runtime_anchor": code_anchor,
             "dungeonmind_steward_base": steward_base,
             "runtime_tree_digest": runtime_tree_digest(dungeonmind_root, code_anchor),
+            "dungeonmind_module_string_scan_ref": code_anchor,
+            "dungeonmind_module_string_corpus_digest": dm_module_string_corpus_digest,
             "buddy_anchor": buddy_anchor,
             "buddy_dungeonmind_pin": pin,
             "dispositions_digest": digest,

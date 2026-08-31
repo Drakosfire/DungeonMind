@@ -189,6 +189,8 @@ def validate_ledger(ledger: dict[str, Any]) -> None:
         "dungeonmind_runtime_anchor",
         "dungeonmind_steward_base",
         "runtime_tree_digest",
+        "dungeonmind_module_string_scan_ref",
+        "dungeonmind_module_string_corpus_digest",
         "buddy_anchor",
         "buddy_dungeonmind_pin",
         "dispositions_digest",
@@ -196,6 +198,14 @@ def validate_ledger(ledger: dict[str, Any]) -> None:
     ):
         if not str(inputs.get(key) or ""):
             errors.append(f"inputs.{key} missing")
+
+    runtime_anchor = str(inputs.get("dungeonmind_runtime_anchor") or "")
+    scan_ref = str(inputs.get("dungeonmind_module_string_scan_ref") or "")
+    if runtime_anchor and scan_ref and runtime_anchor != scan_ref:
+        errors.append(
+            "inputs.dungeonmind_module_string_scan_ref must equal "
+            "inputs.dungeonmind_runtime_anchor"
+        )
 
     if "dungeonmind_scanned_head" in ledger.get("anchors", {}):
         errors.append(

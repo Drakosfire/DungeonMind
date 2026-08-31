@@ -11,14 +11,16 @@
 ## 1. Inputs, anchors, and reproduction
 
 ```text
-dungeonmind_runtime_anchor = 5ca5d688612349034f8ca490d465af166d883e6e
-dungeonmind_steward_base   = 84a4479494a37d8b5bd550465d17ff29f0e359ec
-runtime_tree_digest        = sha256:0fa4c6042ae6ee8c51a19c1b20f76b095ab6885e0587156c5d57e9d49fbbc700
-buddy_anchor               = a9d4c61d04f2a4a5f92cb6947442d8173079454c
-buddy_dungeonmind_pin      = 5ca5d688612349034f8ca490d465af166d883e6e
+dungeonmind_runtime_anchor              = 5ca5d688612349034f8ca490d465af166d883e6e
+dungeonmind_steward_base                = 84a4479494a37d8b5bd550465d17ff29f0e359ec
+runtime_tree_digest                     = sha256:0fa4c6042ae6ee8c51a19c1b20f76b095ab6885e0587156c5d57e9d49fbbc700
+dungeonmind_module_string_scan_ref      = 5ca5d688612349034f8ca490d465af166d883e6e
+dungeonmind_module_string_corpus_digest = sha256:044984424db62ddefcf0279e29fdd2cc16c868390fa29c9c5e4166856d259814
+buddy_anchor                            = a9d4c61d04f2a4a5f92cb6947442d8173079454c
+buddy_dungeonmind_pin                   = 5ca5d688612349034f8ca490d465af166d883e6e
 ```
 
-The generated ledger describes the audited runtime tree at `dungeonmind_runtime_anchor`. It does **not** record the commit that contains the JSON artifact (no self-referential `dungeonmind_scanned_head`). PR/branch provenance belongs in git history and this report, not in the machine ledger.
+The generated ledger describes the audited runtime tree at `dungeonmind_runtime_anchor`. It does **not** record the commit that contains the JSON artifact (no self-referential `dungeonmind_scanned_head`). PR/branch provenance belongs in git history and this report, not in the machine ledger. DungeonMind module-string evidence is taken from that same runtime-anchor tree (`dungeonmind_module_string_scan_ref` + `dungeonmind_module_string_corpus_digest`), so report/runbook edits on this branch are not undeclared inputs.
 
 The generator fails closed if Buddy HEAD or the DungeonMind pin differ, or if `src` / `migrations` / `pyproject.toml` / `uv.lock` differ from the runtime anchor.
 
@@ -48,7 +50,7 @@ This implementation scanned Buddy from a detached worktree at the exact anchor. 
 | PostgreSQL tables | 20 |
 | Import-boundary exceptions | 9 |
 | Dynamic-import findings (importlib/`__import__`) | 0 |
-| Module-string / deployment findings (Buddy + DungeonMind) | 3481 |
+| Module-string / deployment findings (Buddy + DungeonMind) | 3220 |
 | Subsystem USED | 9 |
 | Subsystem UNUSED | 9 |
 | Subsystem HISTORICAL-COMPAT | 4 |
@@ -121,7 +123,6 @@ K1 still needs its own PR-level proof. These are not already deleted.
 | agents/ protocol + fixture | Buddy/Hermes `dungeonmind.agents`; none. Only MindTurnService |
 | CapabilityPolicy as **agent-visible tool authority** | Buddy `evaluate_capability` / `permitted_tool_names`; none. The CapabilityPolicy **type** is USED for review and is a separate row |
 | context assembly / MindTurn budgeting | only `MindTurnService` imports `assemble_agent_context` |
-| demo_access / curated MindTurn host | no Buddy import; **downgraded to UNKNOWN** because runbook `uvicorn dungeonmind.service.bootstrap:create_demo_app` is documented deployment evidence |
 | MindThread / RetrievalSession / SemanticDocument / EmbeddingRun / semantic-search runtime | no Buddy call; World retrieval is graph-only. Physical tables remain `HISTORICAL-COMPAT` |
 
 ### HISTORICAL-COMPAT — blocks physical deletion
@@ -135,13 +136,15 @@ K1 still needs its own PR-level proof. These are not already deleted.
 
 - claim / answer-validation machinery: Claim ledger shares `contracts/retrieval.py` with `ResolvedReferent` used by current World retrieval. Split the module first.
 - optional FastAPI/httpx D&D transport / statblock resource resolver: Buddy uses `dungeonmind_statblocks`, not this extra. Another deployment might. Do not guess.
-- demo_access / curated MindTurn host: runbook documents `uvicorn …dungeonmind.service.bootstrap:create_demo_app`. No Buddy consumer, but static-import absence alone is insufficient for demolition.
+- demo_access / curated MindTurn host: runbook at the runtime-anchor tree documents `uvicorn …dungeonmind.service.bootstrap:create_demo_app`. No Buddy consumer, but static-import absence alone is insufficient for demolition. Auto-downgraded from a would-be `UNUSED`.
 
 ## 7. Module-string and deployment evidence
 
 Beyond Python `import` AST scanning, the ledger records conservative module-string hits from both repos: `uvicorn package.module:app`, `python -m …`, `pyproject.toml` script values, compose/Docker/shell/markdown/runbook text, and subprocess command arrays where present.
 
-Findings are tagged by `consumer_kind` (`production`, `documented_deployment`, `deployment_or_tooling`, `documentation`, `inventory_tooling`, `test`). Only production/deployment/runbook hits can auto-downgrade an `UNUSED` subsystem to `UNKNOWN`. K0 inventory scripts and generated JSON are excluded from downgrade triggers.
+**DungeonMind module-string evidence is scanned from the exact git tree at `dungeonmind_runtime_anchor` (`inputs.dungeonmind_module_string_scan_ref`), not from the mutable PR worktree.** The ledger also records `dungeonmind_module_string_corpus_digest` over that scanned corpus. Editing a report or runbook on this branch cannot change the machine ledger without changing a declared input.
+
+Buddy is scanned from its exact checkout (`buddy_anchor`). Findings are tagged by `consumer_kind` (`production`, `documented_deployment`, `deployment_or_tooling`, `documentation`, `inventory_tooling`, `test`). Only production/deployment/runbook hits can auto-downgrade an `UNUSED` subsystem to `UNKNOWN`.
 
 Buddy AST dynamic-import findings remain 0 at this pin.
 
@@ -177,7 +180,7 @@ Only `UNUSED` targets above. Warning: K1 still needs its own proof. Do not delet
 Blocked:
 
 - `HISTORICAL-COMPAT`: adoption write, repair, correspondence, v1-v5 codecs, and the six semantic/thread tables
-- `UNKNOWN`: claim/answer module, D&D optional HTTP
+- `UNKNOWN`: claim/answer module, D&D optional HTTP, demo_access / curated MindTurn host
 - `USED`: World read/write/init/source/review/publication/profile
 
 ## Review telemetry
@@ -215,6 +218,14 @@ Fixes:
 3. Export consumer map matches origin-module symbol imports, not only re-export `(module, name)` pairs.
 4. Expanded module-string/deployment scanning; `demo_access` downgraded to `UNKNOWN` on runbook uvicorn bootstrap evidence.
 5. Recorded known red `benchmark-smoke` baseline (pre-existing at anchor; not repaired in K0.1).
+
+### Cycle 4 — PR #48 second-pass (review 5068857983)
+
+Fixes:
+
+1. DungeonMind module-string scan pinned to exact `dungeonmind_runtime_anchor` git tree (not PR worktree); corpus digest recorded in `inputs`.
+2. Human report `UNUSED`/`UNKNOWN`/blocked-summary aligned with machine ledger for `demo_access`.
+3. TOML dispositions loader rejects duplicate curated IDs.
 
 ## Known CI baseline (not repaired in K0.1)
 

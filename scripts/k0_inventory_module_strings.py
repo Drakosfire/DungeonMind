@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
-from k0_inventory_scan import SKIP_DIR_NAMES, _is_dm_module
+from k0_inventory_scan import SKIP_DIR_NAMES, AnchorMismatchError, _is_dm_module
 
 SCAN_SUFFIXES = {
     ".py",
@@ -43,15 +45,18 @@ SKIP_RELATIVE_PATHS = {
 }
 
 
-def _should_scan(path: Path, root: Path) -> bool:
-    relative = path.relative_to(root).as_posix()
+def should_scan_relative(relative: str) -> bool:
     if relative in SKIP_RELATIVE_PATHS:
         return False
     if relative.startswith("Docs/Reports/") and relative.endswith(".json"):
         return False
-    if path.name in SCAN_BASENAMES or path.name.startswith("Dockerfile"):
+    parts = relative.split("/")
+    if any(part in SKIP_DIR_NAMES for part in parts[:-1]):
+        return False
+    name = parts[-1]
+    if name in SCAN_BASENAMES or name.startswith("Dockerfile"):
         return True
-    return path.suffix in SCAN_SUFFIXES
+    return Path(relative).suffix in SCAN_SUFFIXES
 
 
 def iter_scan_files(root: Path) -> list[Path]:
@@ -60,7 +65,8 @@ def iter_scan_files(root: Path) -> list[Path]:
         dirnames[:] = sorted(name for name in dirnames if name not in SKIP_DIR_NAMES)
         for name in sorted(filenames):
             path = Path(dirpath) / name
-            if _should_scan(path, root):
+            relative = path.relative_to(root).as_posix()
+            if should_scan_relative(relative):
                 files.append(path)
     return files
 
@@ -81,80 +87,79 @@ def _consumer_kind(relative: str) -> str:
     return "other"
 
 
-def scan_module_string_references(root: Path) -> list[dict[str, Any]]:
+def _findings_from_text(relative: str, text: str) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    for path in iter_scan_files(root):
-        try:
-            text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
-        relative = path.relative_to(root).as_posix()
-        kind = _consumer_kind(relative)
-        for line_no, line in enumerate(text.splitlines(), start=1):
-            for match in MODULE_TOKEN_RE.finditer(line):
-                module = match.group(1)
-                if not _is_dm_module(module):
-                    continue
-                findings.append(
-                    {
-                        "consumer_file": relative,
-                        "consumer_kind": kind,
-                        "kind": "module_string_reference",
-                        "imported_module": module,
-                        "line": line_no,
-                        "context": line.strip()[:240],
-                    }
-                )
-            for match in UVICORN_TARGET_RE.finditer(line):
-                target = match.group(1)
-                module = target.split(":", 1)[0]
-                if not _is_dm_module(module):
-                    continue
-                findings.append(
-                    {
-                        "consumer_file": relative,
-                        "consumer_kind": kind,
-                        "kind": "uvicorn_factory_target",
-                        "imported_module": module,
-                        "target": target,
-                        "line": line_no,
-                        "context": line.strip()[:240],
-                    }
-                )
-            for match in PYTHON_DASH_M_RE.finditer(line):
-                module = match.group(1)
-                if not _is_dm_module(module):
-                    continue
-                findings.append(
-                    {
-                        "consumer_file": relative,
-                        "consumer_kind": kind,
-                        "kind": "python_dash_m",
-                        "imported_module": module,
-                        "line": line_no,
-                        "context": line.strip()[:240],
-                    }
-                )
-        if path.name == "pyproject.toml":
-            for match in PYPROJECT_SCRIPT_RE.finditer(text):
-                script_name, value = match.group(1), match.group(2)
-                module_hit = MODULE_TOKEN_RE.search(value)
-                if module_hit is None:
-                    continue
-                module = module_hit.group(1)
-                if not _is_dm_module(module):
-                    continue
-                findings.append(
-                    {
-                        "consumer_file": relative,
-                        "consumer_kind": kind,
-                        "kind": "pyproject_script",
-                        "script_name": script_name,
-                        "imported_module": module,
-                        "line": text[: match.start()].count("\n") + 1,
-                        "context": value.strip()[:240],
-                    }
-                )
+    kind = _consumer_kind(relative)
+    name = relative.rsplit("/", 1)[-1]
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        for match in MODULE_TOKEN_RE.finditer(line):
+            module = match.group(1)
+            if not _is_dm_module(module):
+                continue
+            findings.append(
+                {
+                    "consumer_file": relative,
+                    "consumer_kind": kind,
+                    "kind": "module_string_reference",
+                    "imported_module": module,
+                    "line": line_no,
+                    "context": line.strip()[:240],
+                }
+            )
+        for match in UVICORN_TARGET_RE.finditer(line):
+            target = match.group(1)
+            module = target.split(":", 1)[0]
+            if not _is_dm_module(module):
+                continue
+            findings.append(
+                {
+                    "consumer_file": relative,
+                    "consumer_kind": kind,
+                    "kind": "uvicorn_factory_target",
+                    "imported_module": module,
+                    "target": target,
+                    "line": line_no,
+                    "context": line.strip()[:240],
+                }
+            )
+        for match in PYTHON_DASH_M_RE.finditer(line):
+            module = match.group(1)
+            if not _is_dm_module(module):
+                continue
+            findings.append(
+                {
+                    "consumer_file": relative,
+                    "consumer_kind": kind,
+                    "kind": "python_dash_m",
+                    "imported_module": module,
+                    "line": line_no,
+                    "context": line.strip()[:240],
+                }
+            )
+    if name == "pyproject.toml":
+        for match in PYPROJECT_SCRIPT_RE.finditer(text):
+            script_name, value = match.group(1), match.group(2)
+            module_hit = MODULE_TOKEN_RE.search(value)
+            if module_hit is None:
+                continue
+            module = module_hit.group(1)
+            if not _is_dm_module(module):
+                continue
+            findings.append(
+                {
+                    "consumer_file": relative,
+                    "consumer_kind": kind,
+                    "kind": "pyproject_script",
+                    "script_name": script_name,
+                    "imported_module": module,
+                    "line": text[: match.start()].count("\n") + 1,
+                    "context": value.strip()[:240],
+                }
+            )
+    return findings
+
+
+def _sort_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     findings.sort(
         key=lambda row: (
             str(row.get("consumer_file")),
@@ -164,6 +169,84 @@ def scan_module_string_references(root: Path) -> list[dict[str, Any]]:
         )
     )
     return findings
+
+
+def scan_module_string_references(root: Path) -> list[dict[str, Any]]:
+    """Scan a filesystem tree (Buddy exact checkout)."""
+    findings: list[dict[str, Any]] = []
+    for path in iter_scan_files(root):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        relative = path.relative_to(root).as_posix()
+        findings.extend(_findings_from_text(relative, text))
+    return _sort_findings(findings)
+
+
+def _git_ls_tree_paths(root: Path, ref: str) -> list[str]:
+    result = subprocess.run(
+        ["git", "-C", str(root), "ls-tree", "-r", "--name-only", ref],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise AnchorMismatchError(
+            f"unable to list tree at {ref}: {result.stderr.strip()}"
+        )
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def _git_show_text(root: Path, ref: str, relative: str) -> str | None:
+    result = subprocess.run(
+        ["git", "-C", str(root), "show", f"{ref}:{relative}"],
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        return result.stdout.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def scan_module_string_references_at_git_ref(
+    root: Path,
+    ref: str,
+) -> tuple[list[dict[str, Any]], str]:
+    """Scan module-string evidence from an exact git tree, not the worktree.
+
+    Returns (findings, corpus_digest) where corpus_digest is a stable digest of
+    the scanned path list + blob OIDs at ``ref``. Declared ledger inputs must
+    include this digest so report/runbook edits on the PR branch cannot mutate
+    the evidence without changing inputs.
+    """
+    paths = [p for p in _git_ls_tree_paths(root, ref) if should_scan_relative(p)]
+    hasher = hashlib.sha256()
+    findings: list[dict[str, Any]] = []
+    for relative in paths:
+        oid_result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", f"{ref}:{relative}"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if oid_result.returncode != 0:
+            raise AnchorMismatchError(
+                f"unable to resolve {relative} at {ref}: {oid_result.stderr.strip()}"
+            )
+        oid = oid_result.stdout.strip()
+        hasher.update(relative.encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(oid.encode("utf-8"))
+        hasher.update(b"\n")
+        text = _git_show_text(root, ref, relative)
+        if text is None:
+            continue
+        findings.extend(_findings_from_text(relative, text))
+    return _sort_findings(findings), f"sha256:{hasher.hexdigest()}"
 
 
 def module_string_hits_cover(cover: str, module: str) -> bool:
