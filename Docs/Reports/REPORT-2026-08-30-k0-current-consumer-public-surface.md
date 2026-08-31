@@ -4,7 +4,7 @@
 **Ledger (generated):** [`K0-surface-inventory.json`](K0-surface-inventory.json)  
 **Dispositions (human-authored):** [`K0-dispositions.toml`](../Inventory/K0-dispositions.toml)  
 **Schema:** `dm_k0_surface_inventory_v1`  
-**Formal review cycles:** 5 (includes PR #48 audit-correctness passes)
+**Formal review cycles:** 6 (includes PR #48 audit-correctness passes)
 
 `NO_KNOWN_EXTERNAL_CONSUMER` means exactly that. It is not permission to delete.
 
@@ -16,6 +16,8 @@ dungeonmind_steward_base                = 84a4479494a37d8b5bd550465d17ff29f0e359
 runtime_tree_digest                     = sha256:0fa4c6042ae6ee8c51a19c1b20f76b095ab6885e0587156c5d57e9d49fbbc700
 dungeonmind_module_string_scan_ref      = 5ca5d688612349034f8ca490d465af166d883e6e
 dungeonmind_module_string_corpus_digest = sha256:044984424db62ddefcf0279e29fdd2cc16c868390fa29c9c5e4166856d259814
+dungeonmind_fact_scan_ref               = 5ca5d688612349034f8ca490d465af166d883e6e
+dungeonmind_fact_corpus_digest          = sha256:f058d5fac60f9646a739e313595ea0564a6a8194acc41e44aa23f4ff799fc999
 buddy_anchor                            = a9d4c61d04f2a4a5f92cb6947442d8173079454c
 buddy_dungeonmind_pin                   = 5ca5d688612349034f8ca490d465af166d883e6e
 buddy_import_scan_ref                   = a9d4c61d04f2a4a5f92cb6947442d8173079454c
@@ -40,7 +42,7 @@ uv run python scripts/k0_surface_inventory.py \
 
 Curated architecture judgments live in TOML; the scanner combines derived facts + dispositions into the JSON snapshot.
 
-Buddy and DungeonMind consumer evidence are both scanned from exact git trees at their declared SHAs (imports + module strings). A dirty Buddy worktree or untracked file cannot mutate the ledger while `inputs.buddy_anchor` stays fixed.
+DungeonMind and Buddy consumer evidence (imports, module strings, exports, import graph, repositories, Alembic tables, import-boundary exceptions, optional-dependency probe, and Buddy-import resolution) are all scanned from exact git trees at their declared SHAs. Untracked or dirty worktree files cannot mutate the ledger while those inputs stay fixed.
 
 ## 2. Headline counts
 
@@ -146,7 +148,7 @@ K1 still needs its own PR-level proof. These are not already deleted.
 
 Beyond Python `import` AST scanning, the ledger records conservative module-string hits from both repos: `uvicorn package.module:app`, `python -m …`, `pyproject.toml` script values, compose/Docker/shell/markdown/runbook text, and subprocess command arrays where present.
 
-**DungeonMind module-string evidence is scanned from the exact git tree at `dungeonmind_runtime_anchor` (`inputs.dungeonmind_module_string_scan_ref`), not from the mutable PR worktree.** Buddy imports and module-string evidence are likewise scanned from the exact git tree at `buddy_anchor` (`buddy_import_scan_ref`, `buddy_module_string_scan_ref`) with declared corpus digests. Dirty tracked files and untracked paths cannot change the machine ledger without changing a declared input.
+**DungeonMind module-string evidence is scanned from the exact git tree at `dungeonmind_runtime_anchor`.** Export/graph/repo/table/exception/optional-probe facts and Buddy-import resolution use a temporary extract of that same tree (`dungeonmind_fact_scan_ref` + `dungeonmind_fact_corpus_digest`). Buddy imports and module-string evidence are scanned from the exact git tree at `buddy_anchor` with declared corpus digests. Dirty tracked files and untracked paths cannot change the machine ledger without changing a declared input.
 
 Findings are tagged by `consumer_kind` (`production`, `documented_deployment`, `deployment_or_tooling`, `documentation`, `inventory_tooling`, `test`). Only production/deployment/runbook hits can auto-downgrade an `UNUSED` subsystem to `UNKNOWN`.
 
@@ -237,6 +239,13 @@ Fixes:
 
 1. Buddy imports and module-string evidence pinned to exact `buddy_anchor` git tree (not filesystem checkout); pin read from that tree; corpus digests recorded in `inputs`.
 2. Report formal review-cycle count corrected to match documented cycles.
+
+### Cycle 6 — PR #48 fourth-pass (review 5070708431)
+
+Fixes:
+
+1. Remaining DungeonMind fact scanners (exports, import graph, repositories, Alembic tables, import-boundary exceptions, optional-dependency probe, Buddy-import resolution) now read an extracted exact tree at `dungeonmind_runtime_anchor`, not the mutable worktree.
+2. Declared `dungeonmind_fact_scan_ref` / `dungeonmind_fact_corpus_digest`; unit test proves untracked modules cannot contaminate resolution.
 
 ## Known CI baseline (not repaired in K0.1)
 

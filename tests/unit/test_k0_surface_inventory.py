@@ -45,6 +45,8 @@ def _minimal_ledger(**overrides: Any) -> dict[str, Any]:
             "runtime_tree_digest": "sha256:" + ("0" * 64),
             "dungeonmind_module_string_scan_ref": "a" * 40,
             "dungeonmind_module_string_corpus_digest": "sha256:" + ("2" * 64),
+            "dungeonmind_fact_scan_ref": "a" * 40,
+            "dungeonmind_fact_corpus_digest": "sha256:" + ("5" * 64),
             "buddy_anchor": "c" * 40,
             "buddy_dungeonmind_pin": "a" * 40,
             "buddy_import_scan_ref": "c" * 40,
@@ -52,7 +54,7 @@ def _minimal_ledger(**overrides: Any) -> dict[str, Any]:
             "buddy_module_string_scan_ref": "c" * 40,
             "buddy_module_string_corpus_digest": "sha256:" + ("4" * 64),
             "dispositions_digest": "sha256:" + ("1" * 64),
-            "scanner_version": "k0.1.3",
+            "scanner_version": "k0.1.4",
         },
         "external_consumer_imports": [],
         "explicit_exports": [],
@@ -233,6 +235,37 @@ def test_buddy_import_scan_ignores_dirty_worktree(tmp_path: Path) -> None:
     assert "dungeonmind.application.mind_turn" not in modules
     assert "dungeonmind.agents.protocol" not in modules
     assert digest.startswith("sha256:")
+
+
+def test_dungeonmind_fact_scan_ignores_untracked_module(tmp_path: Path) -> None:
+    from k0_inventory_scan import materialize_git_tree, resolve_import
+
+    repo = tmp_path / "dm"
+    _init_repo(repo)
+    pkg = repo / "src" / "dungeonmind"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("__version__ = '0'\n", encoding="utf-8")
+    (repo / "migrations").mkdir()
+    (repo / "migrations" / ".gitkeep").write_text("", encoding="utf-8")
+    boundary = repo / "tests" / "unit"
+    boundary.mkdir(parents=True)
+    (boundary / "test_import_boundaries.py").write_text(
+        "FORBIDDEN_ROOTS = []\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "src", "migrations", "tests")
+    _git(repo, "commit", "-m", "baseline src")
+    head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    # Untracked module would falsely resolve against a worktree scan.
+    (pkg / "untracked_only.py").write_text("UNTRACKED = True\n", encoding="utf-8")
+    assert resolve_import(repo / "src", "dungeonmind.untracked_only", []) is True
+
+    with materialize_git_tree(repo, head) as fact_root:
+        assert (fact_root / "src" / "dungeonmind" / "__init__.py").is_file()
+        assert not (fact_root / "src" / "dungeonmind" / "untracked_only.py").exists()
+        assert resolve_import(fact_root / "src", "dungeonmind.untracked_only", []) is False
+        assert resolve_import(fact_root / "src", "dungeonmind", []) is True
 
 
 def test_dump_json_is_deterministic() -> None:

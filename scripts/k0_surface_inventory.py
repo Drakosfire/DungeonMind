@@ -29,11 +29,13 @@ from k0_inventory_scan import (  # noqa: E402
     AnchorMismatchError,
     consumer_kind,
     dump_json,
+    dungeonmind_fact_corpus_digest,
     internal_import_graph,
     inventory_alembic_tables,
     inventory_explicit_exports,
     inventory_import_boundary_exceptions,
     inventory_repository_protocols,
+    materialize_git_tree,
     probe_optional_dependency_loads,
     reachable,
     resolve_import,
@@ -48,7 +50,7 @@ DEFAULT_CODE_ANCHOR = "5ca5d688612349034f8ca490d465af166d883e6e"
 DEFAULT_STEWARD_BASE = "84a4479494a37d8b5bd550465d17ff29f0e359ec"
 DEFAULT_BUDDY_ANCHOR = "a9d4c61d04f2a4a5f92cb6947442d8173079454c"
 DEFAULT_OUTPUT = Path("Docs/Reports/K0-surface-inventory.json")
-SCANNER_VERSION = "k0.1.3"
+SCANNER_VERSION = "k0.1.4"
 
 READ_SEEDS = (
     "dungeonmind.application.world_graph_projection",
@@ -227,14 +229,13 @@ def build_ledger(
 ) -> dict[str, Any]:
     verify_dungeonmind_code_anchor(dungeonmind_root, code_anchor)
     pin = verify_buddy_anchor(buddy_root, buddy_anchor, expected_pin)
-    src_root = dungeonmind_root / "src"
     curated = load_dispositions(dispositions_path)
     digest = dispositions_digest(dispositions_path)
+    fact_corpus_digest = dungeonmind_fact_corpus_digest(dungeonmind_root, code_anchor)
 
     buddy_records, dynamic_findings, buddy_import_corpus_digest = (
         scan_buddy_imports_at_git_ref(buddy_root, buddy_anchor)
     )
-    imports = _import_rows(buddy_records, src_root)
 
     # Pin both repos' module-string evidence to exact git trees (not worktrees).
     buddy_module_strings, buddy_module_string_corpus_digest = (
@@ -245,19 +246,23 @@ def build_ledger(
     )
     all_module_strings = [*buddy_module_strings, *dungeonmind_module_strings]
 
-    exports = _export_rows(inventory_explicit_exports(src_root), imports)
-    graph = internal_import_graph(src_root)
-    repos = inventory_repository_protocols(src_root)
-    tables = inventory_alembic_tables(dungeonmind_root / "migrations")
-    exceptions = inventory_import_boundary_exceptions(
-        dungeonmind_root / "tests" / "unit" / "test_import_boundaries.py"
-    )
-    probe = (
-        {"ok": True, "probes": [], "skipped": True}
-        if skip_probe
-        else probe_optional_dependency_loads(dungeonmind_root)
-    )
-
+    # Remaining DungeonMind facts (exports, graph, repos, tables, exceptions,
+    # optional probe, Buddy-import resolution) come from an extracted exact tree.
+    with materialize_git_tree(dungeonmind_root, code_anchor) as fact_root:
+        src_root = fact_root / "src"
+        imports = _import_rows(buddy_records, src_root)
+        exports = _export_rows(inventory_explicit_exports(src_root), imports)
+        graph = internal_import_graph(src_root)
+        repos = inventory_repository_protocols(src_root)
+        tables = inventory_alembic_tables(fact_root / "migrations")
+        exceptions = inventory_import_boundary_exceptions(
+            fact_root / "tests" / "unit" / "test_import_boundaries.py"
+        )
+        probe = (
+            {"ok": True, "probes": [], "skipped": True}
+            if skip_probe
+            else probe_optional_dependency_loads(fact_root)
+        )
     subsystems, downgrade_notes = downgrade_unused_for_module_strings(
         curated["subsystem_dispositions"],
         all_module_strings,
@@ -280,6 +285,8 @@ def build_ledger(
             "dungeonmind_runtime_anchor": code_anchor,
             "dungeonmind_steward_base": steward_base,
             "runtime_tree_digest": runtime_tree_digest(dungeonmind_root, code_anchor),
+            "dungeonmind_fact_scan_ref": code_anchor,
+            "dungeonmind_fact_corpus_digest": fact_corpus_digest,
             "dungeonmind_module_string_scan_ref": code_anchor,
             "dungeonmind_module_string_corpus_digest": dm_module_string_corpus_digest,
             "buddy_anchor": buddy_anchor,

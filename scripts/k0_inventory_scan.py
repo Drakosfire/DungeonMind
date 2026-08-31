@@ -6,9 +6,12 @@ import ast
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
-from collections.abc import Iterable
+import tempfile
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -188,6 +191,14 @@ def verify_buddy_anchor(
 
 RUNTIME_TREE_PATHS = ("src", "migrations", "alembic.ini", "pyproject.toml", "uv.lock")
 
+# Paths used for export/graph/repo/table/exception/optional-probe facts.
+# Must be read from the exact runtime-anchor tree, never the mutable worktree.
+DUNGEONMIND_FACT_SCAN_PATHS = (
+    "src",
+    "migrations",
+    "tests/unit/test_import_boundaries.py",
+)
+
 
 def runtime_tree_digest(root: Path, anchor: str) -> str:
     """Stable digest of the audited runtime tree at the exact code anchor."""
@@ -212,6 +223,59 @@ def runtime_tree_digest(root: Path, anchor: str) -> str:
         hasher.update(result.stdout.strip().encode("utf-8"))
         hasher.update(b"\n")
     return f"sha256:{hasher.hexdigest()}"
+
+
+def dungeonmind_fact_corpus_digest(root: Path, ref: str) -> str:
+    """Digest of DungeonMind fact-scan paths (src/migrations/boundary test) at ref."""
+
+    import hashlib
+
+    hasher = hashlib.sha256()
+    for rel in DUNGEONMIND_FACT_SCAN_PATHS:
+        oid = git_blob_oid(root, ref, rel)
+        hasher.update(rel.encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(oid.encode("utf-8"))
+        hasher.update(b"\n")
+    return f"sha256:{hasher.hexdigest()}"
+
+
+@contextmanager
+def materialize_git_tree(
+    root: Path,
+    ref: str,
+    paths: tuple[str, ...] = DUNGEONMIND_FACT_SCAN_PATHS,
+) -> Iterator[Path]:
+    """Extract an exact git tree into a temporary directory for path-based scanners.
+
+    Untracked or dirty worktree files under ``root`` cannot appear in the result.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="k0-dm-fact-tree-"))
+    try:
+        archive = subprocess.run(
+            ["git", "-C", str(root), "archive", "--format=tar", ref, "--", *paths],
+            check=False,
+            capture_output=True,
+        )
+        if archive.returncode != 0:
+            raise AnchorMismatchError(
+                f"unable to archive {ref} paths {paths}: "
+                f"{archive.stderr.decode('utf-8', errors='replace').strip()}"
+            )
+        extract = subprocess.run(
+            ["tar", "-x", "-C", str(tmp)],
+            check=False,
+            input=archive.stdout,
+            capture_output=True,
+        )
+        if extract.returncode != 0:
+            raise AnchorMismatchError(
+                f"unable to extract archived tree at {ref}: "
+                f"{extract.stderr.decode('utf-8', errors='replace').strip()}"
+            )
+        yield tmp
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _is_dm_module(name: str) -> bool:
