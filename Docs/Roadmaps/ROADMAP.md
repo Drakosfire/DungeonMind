@@ -109,17 +109,16 @@ No behavior changes.
 
 ## K0.1 — Current consumer and public-surface inventory
 
-Produce a machine-checkable ledger of:
+**Disposition:** DONE (observational; no runtime change)
 
-- every DungeonMind symbol imported by DungeonMindBuddy at the exact pin;
-- every `dungeonmind_dnd` symbol imported by Buddy;
-- every exported DungeonMind symbol with no known external consumer;
-- every repository/table used by current graph read, write, source, publication, and initialization paths;
-- every repository/table used only by MindTurn, threads, retrieval sessions, semantic documents, embeddings, demo hosts, adoption, or historical repair;
-- current import-boundary exceptions;
-- optional dependency load behavior.
+Landed artifacts:
 
-**Exit:** every demolition target has an explicit `USED | UNUSED | HISTORICAL-COMPAT | UNKNOWN` disposition.
+- [`Docs/Reports/REPORT-2026-08-30-k0-current-consumer-public-surface.md`](../Reports/REPORT-2026-08-30-k0-current-consumer-public-surface.md)
+- [`Docs/Reports/K0-current-consumer-public-surface-v1.json`](../Reports/K0-current-consumer-public-surface-v1.json)
+- `scripts/k0_surface_inventory.py` (regenerator)
+- `tests/unit/test_k0_surface_inventory.py`
+
+Every named demolition target has an explicit `USED | UNUSED | HISTORICAL-COMPAT | UNKNOWN` disposition. `UNUSED` is K1 eligibility, not a deletion. Next: K0.2.
 
 ## K0.2 — Golden semantic witness
 
