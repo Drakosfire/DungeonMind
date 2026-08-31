@@ -106,6 +106,39 @@ def read_buddy_dungeonmind_pin(buddy_root: Path) -> str:
     return pin
 
 
+def read_buddy_dungeonmind_pin_at_ref(buddy_root: Path, ref: str) -> str:
+    """Read Buddy's DungeonMind pin from an exact git tree, not the worktree."""
+    py_result = subprocess.run(
+        ["git", "-C", str(buddy_root), "show", f"{ref}:pyproject.toml"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if py_result.returncode != 0:
+        raise AnchorMismatchError(
+            f"Buddy ref {ref} has no readable pyproject.toml: {py_result.stderr.strip()}"
+        )
+    match = PIN_RE.search(py_result.stdout)
+    if match is None:
+        raise AnchorMismatchError(
+            f"Buddy pyproject.toml at {ref} does not pin DungeonMind to an exact git SHA."
+        )
+    pin = match.group(1)
+    lock_result = subprocess.run(
+        ["git", "-C", str(buddy_root), "show", f"{ref}:uv.lock"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if lock_result.returncode == 0:
+        lock_match = LOCK_PIN_RE.search(lock_result.stdout)
+        if lock_match is None or lock_match.group(1) != pin:
+            raise AnchorMismatchError(
+                f"Buddy uv.lock at {ref} DungeonMind pin does not match pyproject.toml."
+            )
+    return pin
+
+
 def verify_dungeonmind_code_anchor(root: Path, expected: str) -> None:
     changed = git_diff_names(
         root,
@@ -125,16 +158,30 @@ def verify_buddy_anchor(
     expected_anchor: str,
     expected_pin: str,
 ) -> str:
-    actual = git_rev_parse(buddy_root)
-    if actual != expected_anchor:
+    # Evidence is scanned from the exact git tree at expected_anchor; only require
+    # that object to exist (do not trust a dirty or wrong HEAD checkout).
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(buddy_root),
+            "rev-parse",
+            "--verify",
+            f"{expected_anchor}^{{commit}}",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
         raise AnchorMismatchError(
-            f"Buddy checkout is {actual}, expected {expected_anchor}. "
-            "Use a detached worktree or exact checkout; do not scan whatever is present."
+            f"Buddy repo does not contain required anchor {expected_anchor}. "
+            f"{result.stderr.strip()}"
         )
-    pin = read_buddy_dungeonmind_pin(buddy_root)
+    pin = read_buddy_dungeonmind_pin_at_ref(buddy_root, expected_anchor)
     if pin != expected_pin:
         raise AnchorMismatchError(
-            f"Buddy pins DungeonMind {pin}, expected {expected_pin}."
+            f"Buddy at {expected_anchor} pins DungeonMind {pin}, expected {expected_pin}."
         )
     return pin
 
@@ -215,16 +262,16 @@ def _type_checking_scopes(tree: ast.AST) -> set[int]:
     return ids
 
 
-def scan_file_imports(
-    path: Path, repo_root: Path
+def scan_source_imports(
+    relative: str,
+    source: str,
 ) -> tuple[list[ImportRecord], list[dict[str, Any]]]:
-    source = path.read_text(encoding="utf-8")
     try:
-        tree = ast.parse(source, filename=str(path))
+        tree = ast.parse(source, filename=relative)
     except SyntaxError as exc:
         return [], [
             {
-                "consumer_file": path.relative_to(repo_root).as_posix(),
+                "consumer_file": relative,
                 "kind": "syntax_error",
                 "detail": str(exc),
             }
@@ -232,7 +279,6 @@ def scan_file_imports(
     type_checking = _type_checking_scopes(tree)
     records: list[ImportRecord] = []
     dynamic_findings: list[dict[str, Any]] = []
-    relative = path.relative_to(repo_root).as_posix()
 
     for node in ast.walk(tree):
         in_tc = id(node) in type_checking
@@ -294,6 +340,87 @@ def scan_file_imports(
                     }
                 )
     return records, dynamic_findings
+
+
+def scan_file_imports(
+    path: Path, repo_root: Path
+) -> tuple[list[ImportRecord], list[dict[str, Any]]]:
+    source = path.read_text(encoding="utf-8")
+    relative = path.relative_to(repo_root).as_posix()
+    return scan_source_imports(relative, source)
+
+
+def git_ls_tree_paths(root: Path, ref: str) -> list[str]:
+    result = subprocess.run(
+        ["git", "-C", str(root), "ls-tree", "-r", "--name-only", ref],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise AnchorMismatchError(
+            f"unable to list tree at {ref}: {result.stderr.strip()}"
+        )
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def git_show_text(root: Path, ref: str, relative: str) -> str | None:
+    result = subprocess.run(
+        ["git", "-C", str(root), "show", f"{ref}:{relative}"],
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        return result.stdout.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def git_blob_oid(root: Path, ref: str, relative: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", f"{ref}:{relative}"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise AnchorMismatchError(
+            f"unable to resolve {relative} at {ref}: {result.stderr.strip()}"
+        )
+    return result.stdout.strip()
+
+
+def scan_buddy_imports_at_git_ref(
+    root: Path,
+    ref: str,
+) -> tuple[list[ImportRecord], list[dict[str, Any]], str]:
+    """Scan Buddy Python imports from an exact git tree, not the worktree."""
+    import hashlib
+
+    paths = [
+        p
+        for p in git_ls_tree_paths(root, ref)
+        if p.endswith(".py")
+        and not any(part in SKIP_DIR_NAMES for part in p.split("/")[:-1])
+    ]
+    hasher = hashlib.sha256()
+    records: list[ImportRecord] = []
+    dynamic_findings: list[dict[str, Any]] = []
+    for relative in paths:
+        oid = git_blob_oid(root, ref, relative)
+        hasher.update(relative.encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(oid.encode("utf-8"))
+        hasher.update(b"\n")
+        text = git_show_text(root, ref, relative)
+        if text is None:
+            continue
+        file_records, extras = scan_source_imports(relative, text)
+        records.extend(file_records)
+        dynamic_findings.extend(extras)
+    return records, dynamic_findings, f"sha256:{hasher.hexdigest()}"
 
 
 def consumer_kind(path: str) -> str:

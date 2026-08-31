@@ -47,8 +47,12 @@ def _minimal_ledger(**overrides: Any) -> dict[str, Any]:
             "dungeonmind_module_string_corpus_digest": "sha256:" + ("2" * 64),
             "buddy_anchor": "c" * 40,
             "buddy_dungeonmind_pin": "a" * 40,
+            "buddy_import_scan_ref": "c" * 40,
+            "buddy_import_corpus_digest": "sha256:" + ("3" * 64),
+            "buddy_module_string_scan_ref": "c" * 40,
+            "buddy_module_string_corpus_digest": "sha256:" + ("4" * 64),
             "dispositions_digest": "sha256:" + ("1" * 64),
-            "scanner_version": "k0.1.1",
+            "scanner_version": "k0.1.3",
         },
         "external_consumer_imports": [],
         "explicit_exports": [],
@@ -164,7 +168,7 @@ def _init_repo(path: Path) -> None:
     _git(path, "commit", "-m", "init")
 
 
-def test_buddy_anchor_mismatch(tmp_path: Path) -> None:
+def test_buddy_anchor_missing_commit(tmp_path: Path) -> None:
     repo = tmp_path / "buddy"
     _init_repo(repo)
     (repo / "pyproject.toml").write_text(
@@ -176,7 +180,7 @@ def test_buddy_anchor_mismatch(tmp_path: Path) -> None:
     )
     _git(repo, "add", "pyproject.toml")
     _git(repo, "commit", "-m", "pin")
-    with pytest.raises(AnchorMismatchError, match="expected"):
+    with pytest.raises(AnchorMismatchError, match="does not contain required anchor"):
         verify_buddy_anchor(repo, expected_anchor="b" * 40, expected_pin="a" * 40)
 
 
@@ -195,6 +199,40 @@ def test_buddy_pin_reader_and_match(tmp_path: Path) -> None:
     head = _git(repo, "rev-parse", "HEAD").stdout.strip()
     assert read_buddy_dungeonmind_pin(repo) == pin
     assert verify_buddy_anchor(repo, expected_anchor=head, expected_pin=pin) == pin
+    # Dirty worktree must not affect pin verification (reads from git tree).
+    (repo / "pyproject.toml").write_text("dependencies = []\n", encoding="utf-8")
+    assert verify_buddy_anchor(repo, expected_anchor=head, expected_pin=pin) == pin
+
+
+def test_buddy_import_scan_ignores_dirty_worktree(tmp_path: Path) -> None:
+    from k0_inventory_scan import scan_buddy_imports_at_git_ref
+
+    repo = tmp_path / "buddy"
+    _init_repo(repo)
+    app = repo / "apps" / "live_control_server"
+    app.mkdir(parents=True)
+    (app / "clean.py").write_text(
+        "from dungeonmind.application.world_graph_projection import WorldGraphProjectionService\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "apps/live_control_server/clean.py")
+    _git(repo, "commit", "-m", "clean import")
+    head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    # Dirty/untracked files must not appear in the git-tree scan.
+    (app / "clean.py").write_text(
+        "from dungeonmind.application.mind_turn import MindTurnService\n",
+        encoding="utf-8",
+    )
+    (app / "dirty_untracked.py").write_text(
+        "from dungeonmind.agents.protocol import AgentProtocol\n",
+        encoding="utf-8",
+    )
+    records, _dynamic, digest = scan_buddy_imports_at_git_ref(repo, head)
+    modules = {r.imported_module for r in records}
+    assert "dungeonmind.application.world_graph_projection" in modules
+    assert "dungeonmind.application.mind_turn" not in modules
+    assert "dungeonmind.agents.protocol" not in modules
+    assert digest.startswith("sha256:")
 
 
 def test_dump_json_is_deterministic() -> None:

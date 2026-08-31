@@ -23,7 +23,6 @@ from k0_inventory_dispositions import (  # noqa: E402
 )
 from k0_inventory_module_strings import (  # noqa: E402
     downgrade_unused_for_module_strings,
-    scan_module_string_references,
     scan_module_string_references_at_git_ref,
 )
 from k0_inventory_scan import (  # noqa: E402
@@ -35,12 +34,11 @@ from k0_inventory_scan import (  # noqa: E402
     inventory_explicit_exports,
     inventory_import_boundary_exceptions,
     inventory_repository_protocols,
-    iter_python_files,
     probe_optional_dependency_loads,
     reachable,
     resolve_import,
     runtime_tree_digest,
-    scan_file_imports,
+    scan_buddy_imports_at_git_ref,
     verify_buddy_anchor,
     verify_dungeonmind_code_anchor,
 )
@@ -50,7 +48,7 @@ DEFAULT_CODE_ANCHOR = "5ca5d688612349034f8ca490d465af166d883e6e"
 DEFAULT_STEWARD_BASE = "84a4479494a37d8b5bd550465d17ff29f0e359ec"
 DEFAULT_BUDDY_ANCHOR = "a9d4c61d04f2a4a5f92cb6947442d8173079454c"
 DEFAULT_OUTPUT = Path("Docs/Reports/K0-surface-inventory.json")
-SCANNER_VERSION = "k0.1.2"
+SCANNER_VERSION = "k0.1.3"
 
 READ_SEEDS = (
     "dungeonmind.application.world_graph_projection",
@@ -233,17 +231,15 @@ def build_ledger(
     curated = load_dispositions(dispositions_path)
     digest = dispositions_digest(dispositions_path)
 
-    buddy_records = []
-    dynamic_findings: list[dict[str, Any]] = []
-    for path in iter_python_files(buddy_root):
-        records, extra = scan_file_imports(path, buddy_root)
-        buddy_records.extend(records)
-        dynamic_findings.extend(extra)
+    buddy_records, dynamic_findings, buddy_import_corpus_digest = (
+        scan_buddy_imports_at_git_ref(buddy_root, buddy_anchor)
+    )
     imports = _import_rows(buddy_records, src_root)
 
-    buddy_module_strings = scan_module_string_references(buddy_root)
-    # Pin DungeonMind module-string evidence to the runtime anchor tree, not the
-    # mutable PR worktree (reports/runbooks/scripts on this branch are undeclared).
+    # Pin both repos' module-string evidence to exact git trees (not worktrees).
+    buddy_module_strings, buddy_module_string_corpus_digest = (
+        scan_module_string_references_at_git_ref(buddy_root, buddy_anchor)
+    )
     dungeonmind_module_strings, dm_module_string_corpus_digest = (
         scan_module_string_references_at_git_ref(dungeonmind_root, code_anchor)
     )
@@ -288,6 +284,10 @@ def build_ledger(
             "dungeonmind_module_string_corpus_digest": dm_module_string_corpus_digest,
             "buddy_anchor": buddy_anchor,
             "buddy_dungeonmind_pin": pin,
+            "buddy_import_scan_ref": buddy_anchor,
+            "buddy_import_corpus_digest": buddy_import_corpus_digest,
+            "buddy_module_string_scan_ref": buddy_anchor,
+            "buddy_module_string_corpus_digest": buddy_module_string_corpus_digest,
             "dispositions_digest": digest,
             "dispositions_path": (
                 dispositions_path or DEFAULT_DISPOSITIONS_PATH

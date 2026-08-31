@@ -2,7 +2,7 @@
 # Generated once from the review refactor seed; edit here, not in Python.
 
 [meta]
-scanner_version = "k0.1.2"
+scanner_version = "k0.1.3"
 
 [[repository]]
 in_memory = "src/dungeonmind/infrastructure/memory/repositories.py:InMemoryContributionRepository"

@@ -193,6 +193,10 @@ def validate_ledger(ledger: dict[str, Any]) -> None:
         "dungeonmind_module_string_corpus_digest",
         "buddy_anchor",
         "buddy_dungeonmind_pin",
+        "buddy_import_scan_ref",
+        "buddy_import_corpus_digest",
+        "buddy_module_string_scan_ref",
+        "buddy_module_string_corpus_digest",
         "dispositions_digest",
         "scanner_version",
     ):
@@ -206,6 +210,12 @@ def validate_ledger(ledger: dict[str, Any]) -> None:
             "inputs.dungeonmind_module_string_scan_ref must equal "
             "inputs.dungeonmind_runtime_anchor"
         )
+
+    buddy_anchor = str(inputs.get("buddy_anchor") or "")
+    for key in ("buddy_import_scan_ref", "buddy_module_string_scan_ref"):
+        value = str(inputs.get(key) or "")
+        if buddy_anchor and value and buddy_anchor != value:
+            errors.append(f"inputs.{key} must equal inputs.buddy_anchor")
 
     if "dungeonmind_scanned_head" in ledger.get("anchors", {}):
         errors.append(

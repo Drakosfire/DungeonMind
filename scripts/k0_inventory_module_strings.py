@@ -5,11 +5,16 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-import subprocess
 from pathlib import Path
 from typing import Any
 
-from k0_inventory_scan import SKIP_DIR_NAMES, AnchorMismatchError, _is_dm_module
+from k0_inventory_scan import (
+    SKIP_DIR_NAMES,
+    _is_dm_module,
+    git_blob_oid,
+    git_ls_tree_paths,
+    git_show_text,
+)
 
 SCAN_SUFFIXES = {
     ".py",
@@ -184,34 +189,6 @@ def scan_module_string_references(root: Path) -> list[dict[str, Any]]:
     return _sort_findings(findings)
 
 
-def _git_ls_tree_paths(root: Path, ref: str) -> list[str]:
-    result = subprocess.run(
-        ["git", "-C", str(root), "ls-tree", "-r", "--name-only", ref],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise AnchorMismatchError(
-            f"unable to list tree at {ref}: {result.stderr.strip()}"
-        )
-    return [line for line in result.stdout.splitlines() if line.strip()]
-
-
-def _git_show_text(root: Path, ref: str, relative: str) -> str | None:
-    result = subprocess.run(
-        ["git", "-C", str(root), "show", f"{ref}:{relative}"],
-        check=False,
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        return None
-    try:
-        return result.stdout.decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-
-
 def scan_module_string_references_at_git_ref(
     root: Path,
     ref: str,
@@ -223,26 +200,16 @@ def scan_module_string_references_at_git_ref(
     include this digest so report/runbook edits on the PR branch cannot mutate
     the evidence without changing inputs.
     """
-    paths = [p for p in _git_ls_tree_paths(root, ref) if should_scan_relative(p)]
+    paths = [p for p in git_ls_tree_paths(root, ref) if should_scan_relative(p)]
     hasher = hashlib.sha256()
     findings: list[dict[str, Any]] = []
     for relative in paths:
-        oid_result = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", f"{ref}:{relative}"],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if oid_result.returncode != 0:
-            raise AnchorMismatchError(
-                f"unable to resolve {relative} at {ref}: {oid_result.stderr.strip()}"
-            )
-        oid = oid_result.stdout.strip()
+        oid = git_blob_oid(root, ref, relative)
         hasher.update(relative.encode("utf-8"))
         hasher.update(b"\0")
         hasher.update(oid.encode("utf-8"))
         hasher.update(b"\n")
-        text = _git_show_text(root, ref, relative)
+        text = git_show_text(root, ref, relative)
         if text is None:
             continue
         findings.extend(_findings_from_text(relative, text))

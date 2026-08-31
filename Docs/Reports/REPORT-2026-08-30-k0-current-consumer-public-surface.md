@@ -4,7 +4,7 @@
 **Ledger (generated):** [`K0-surface-inventory.json`](K0-surface-inventory.json)  
 **Dispositions (human-authored):** [`K0-dispositions.toml`](../Inventory/K0-dispositions.toml)  
 **Schema:** `dm_k0_surface_inventory_v1`  
-**Formal review cycles:** 3 (includes PR #48 audit-correctness pass)
+**Formal review cycles:** 5 (includes PR #48 audit-correctness passes)
 
 `NO_KNOWN_EXTERNAL_CONSUMER` means exactly that. It is not permission to delete.
 
@@ -18,11 +18,15 @@ dungeonmind_module_string_scan_ref      = 5ca5d688612349034f8ca490d465af166d883e
 dungeonmind_module_string_corpus_digest = sha256:044984424db62ddefcf0279e29fdd2cc16c868390fa29c9c5e4166856d259814
 buddy_anchor                            = a9d4c61d04f2a4a5f92cb6947442d8173079454c
 buddy_dungeonmind_pin                   = 5ca5d688612349034f8ca490d465af166d883e6e
+buddy_import_scan_ref                   = a9d4c61d04f2a4a5f92cb6947442d8173079454c
+buddy_import_corpus_digest              = sha256:9db4711fe4205e7934be173d4e4ed6d866f0a1fcf3de085081c1fd9560246418
+buddy_module_string_scan_ref            = a9d4c61d04f2a4a5f92cb6947442d8173079454c
+buddy_module_string_corpus_digest       = sha256:84cc945aee63e9f883d9364790095e5ac1a317f422493c25d66dcfb8822e0e05
 ```
 
 The generated ledger describes the audited runtime tree at `dungeonmind_runtime_anchor`. It does **not** record the commit that contains the JSON artifact (no self-referential `dungeonmind_scanned_head`). PR/branch provenance belongs in git history and this report, not in the machine ledger. DungeonMind module-string evidence is taken from that same runtime-anchor tree (`dungeonmind_module_string_scan_ref` + `dungeonmind_module_string_corpus_digest`), so report/runbook edits on this branch are not undeclared inputs.
 
-The generator fails closed if Buddy HEAD or the DungeonMind pin differ, or if `src` / `migrations` / `pyproject.toml` / `uv.lock` differ from the runtime anchor.
+The generator fails closed if Buddy lacks the required anchor object / pin, or if `src` / `migrations` / `pyproject.toml` / `uv.lock` differ from the runtime anchor.
 
 ```bash
 uv run python scripts/k0_surface_inventory.py \
@@ -36,7 +40,7 @@ uv run python scripts/k0_surface_inventory.py \
 
 Curated architecture judgments live in TOML; the scanner combines derived facts + dispositions into the JSON snapshot.
 
-This implementation scanned Buddy from a detached worktree at the exact anchor. Do not scan whatever Buddy checkout happens to be present.
+Buddy and DungeonMind consumer evidence are both scanned from exact git trees at their declared SHAs (imports + module strings). A dirty Buddy worktree or untracked file cannot mutate the ledger while `inputs.buddy_anchor` stays fixed.
 
 ## 2. Headline counts
 
@@ -142,9 +146,9 @@ K1 still needs its own PR-level proof. These are not already deleted.
 
 Beyond Python `import` AST scanning, the ledger records conservative module-string hits from both repos: `uvicorn package.module:app`, `python -m …`, `pyproject.toml` script values, compose/Docker/shell/markdown/runbook text, and subprocess command arrays where present.
 
-**DungeonMind module-string evidence is scanned from the exact git tree at `dungeonmind_runtime_anchor` (`inputs.dungeonmind_module_string_scan_ref`), not from the mutable PR worktree.** The ledger also records `dungeonmind_module_string_corpus_digest` over that scanned corpus. Editing a report or runbook on this branch cannot change the machine ledger without changing a declared input.
+**DungeonMind module-string evidence is scanned from the exact git tree at `dungeonmind_runtime_anchor` (`inputs.dungeonmind_module_string_scan_ref`), not from the mutable PR worktree.** Buddy imports and module-string evidence are likewise scanned from the exact git tree at `buddy_anchor` (`buddy_import_scan_ref`, `buddy_module_string_scan_ref`) with declared corpus digests. Dirty tracked files and untracked paths cannot change the machine ledger without changing a declared input.
 
-Buddy is scanned from its exact checkout (`buddy_anchor`). Findings are tagged by `consumer_kind` (`production`, `documented_deployment`, `deployment_or_tooling`, `documentation`, `inventory_tooling`, `test`). Only production/deployment/runbook hits can auto-downgrade an `UNUSED` subsystem to `UNKNOWN`.
+Findings are tagged by `consumer_kind` (`production`, `documented_deployment`, `deployment_or_tooling`, `documentation`, `inventory_tooling`, `test`). Only production/deployment/runbook hits can auto-downgrade an `UNUSED` subsystem to `UNKNOWN`.
 
 Buddy AST dynamic-import findings remain 0 at this pin.
 
@@ -226,6 +230,13 @@ Fixes:
 1. DungeonMind module-string scan pinned to exact `dungeonmind_runtime_anchor` git tree (not PR worktree); corpus digest recorded in `inputs`.
 2. Human report `UNUSED`/`UNKNOWN`/blocked-summary aligned with machine ledger for `demo_access`.
 3. TOML dispositions loader rejects duplicate curated IDs.
+
+### Cycle 5 — PR #48 third-pass (review 5069068685)
+
+Fixes:
+
+1. Buddy imports and module-string evidence pinned to exact `buddy_anchor` git tree (not filesystem checkout); pin read from that tree; corpus digests recorded in `inputs`.
+2. Report formal review-cycle count corrected to match documented cycles.
 
 ## Known CI baseline (not repaired in K0.1)
 
