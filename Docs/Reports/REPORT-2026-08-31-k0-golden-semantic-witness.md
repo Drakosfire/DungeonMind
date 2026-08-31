@@ -4,7 +4,7 @@
 **Artifact:** [`K0-golden-semantic-witness-v1.json`](K0-golden-semantic-witness-v1.json)  
 **Schema:** `dm_k0_semantic_witness_v1`  
 **Predecessor:** PR #48 / [`REPORT-2026-08-30-k0-current-consumer-public-surface.md`](REPORT-2026-08-30-k0-current-consumer-public-surface.md) / [`K0-surface-inventory.json`](K0-surface-inventory.json)  
-**Formal review cycles:** 1 (implementation self-check); steward PASS review ID pending PR review
+**Formal review cycles:** 1 (implementation self-check); steward PASS review ID pending PR #49 review
 
 This witness freezes meaning, not wall-clock cost. Observation-only fields never participate in golden equality. K0.2 does **not** authorize demolition, performance claims, or Buddy pin movement.
 
