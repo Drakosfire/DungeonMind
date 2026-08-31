@@ -1,0 +1,821 @@
+{
+  "aggregate_semantic_sha256": "sha256:1e43340fc00eac54c0c52378e0e879fd42ff87c6aabcb082b59b47ef12767906",
+  "fixture": {
+    "campaigns": [
+      "camp:alpha",
+      "camp:beta"
+    ],
+    "derivation": "tests/unit/test_world_graph_retrieval_service.py payload helpers",
+    "gm_only_object_ids": [
+      "obj:alpha-secret"
+    ],
+    "graph_schema": "dm_union_graph_v6",
+    "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+    "id": "k0_synthetic_governed_world_v1",
+    "player_visible_campaign_a_object_ids": [
+      "obj:world-tavern",
+      "obj:world-gate",
+      "obj:alpha-keep"
+    ],
+    "provenance_invalid_object_id": "obj:broken-lore",
+    "world_id": "world:test"
+  },
+  "historical_compatibility": [
+    {
+      "reader_path": "VersionedUnionGraphSnapshotReader.parse v1",
+      "semantic_result": {
+        "evidence_count": 0,
+        "object_count": 3,
+        "relationship_count": 2,
+        "world_id": "world:demo-atlas"
+      },
+      "semantic_sha256": "b378bae1ffe0b7ad69aee58a5aee195f4dd2aef6832297240e18a913ca3e9c9d",
+      "stored_schema_version": "dm_union_graph_v1"
+    },
+    {
+      "reader_path": "VersionedUnionGraphSnapshotReader.parse v2",
+      "semantic_result": {
+        "evidence_count": 0,
+        "object_count": 1,
+        "relationship_count": 0,
+        "world_id": "world:assertion-scope-demo"
+      },
+      "semantic_sha256": "367fe66826464c49acb4ed0a4287adbbbf45fc4274a43c229707dd5445940af5",
+      "stored_schema_version": "dm_union_graph_v2"
+    },
+    {
+      "reader_path": "VersionedUnionGraphSnapshotReader.parse gatewatch-world-graph-v3.json",
+      "semantic_result": {
+        "evidence_count": 0,
+        "object_count": 3,
+        "relationship_count": 1,
+        "world_id": "world:synthetic-gatewatch"
+      },
+      "semantic_sha256": "02cac24e37bffff7958b97b42b67cb23648233a6ee1f464f38935ec72d2e6791",
+      "stored_schema_version": "dm_union_graph_v3"
+    },
+    {
+      "reader_path": "VersionedUnionGraphSnapshotReader.parse v4",
+      "semantic_result": {
+        "evidence_count": 0,
+        "object_count": 5,
+        "relationship_count": 3,
+        "world_id": "world:assertion-scoped-v4"
+      },
+      "semantic_sha256": "4b446069d51bfd03a0153151d0cb8c75d267841fa2229cde0a068193f7e403b5",
+      "stored_schema_version": "dm_union_graph_v4"
+    },
+    {
+      "reader_path": "VersionedUnionGraphSnapshotReader.parse v5",
+      "semantic_result": {
+        "evidence_count": 0,
+        "object_count": 1,
+        "relationship_count": 0,
+        "world_id": "world:union-graph-v5"
+      },
+      "semantic_sha256": "5b1ba59395e69eac364d5c5593fe2553f76020e1e0c3ddc572c5e4556a4cb426",
+      "stored_schema_version": "dm_union_graph_v5"
+    },
+    {
+      "reader_path": "VersionedUnionGraphSnapshotReader.parse synthetic v6 witness payload",
+      "semantic_result": {
+        "evidence_count": 0,
+        "object_count": 6,
+        "relationship_count": 4,
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "dee8782531bfbed46a63ff3e74eaac44f86c995ce45ceb20dc36182bdf2e31da",
+      "stored_schema_version": "dm_union_graph_v6"
+    },
+    {
+      "reader_path": "adopt_existing_world(eldyrwild_existing_world_adoption_bundle_v2.json)",
+      "semantic_result": {
+        "bundle_sha256": "90574dfc4101e4198c7fd96478d6f49e65aa534d0aa91fa41a9a17da9d49695f",
+        "disposition": "ExistingWorldAdoptionReceiptV3",
+        "membership_sha256": "538195e399158bfb4fafce01f9c5af3c63e2137f70694fdead7a26e5800e0890",
+        "published_revision_id": "rev:34b1f8e2625d5ba693fc726a2a1a4720",
+        "world_id": "eldyrwild"
+      },
+      "semantic_sha256": "a03f67a23d696ee2c39af6f12502370ed6aa6861bc2912a9f0adcb7fe5942ec9",
+      "stored_schema_version": "dm_existing_world_adoption_bundle_v2"
+    },
+    {
+      "reader_path": "repair_existing_world_adoption_source_classification",
+      "semantic_result": {
+        "disposition": "ExistingWorldAdoptionReceiptV4",
+        "effective_membership_sha256": "96bed049d750f65ba72a0542b1cc6ae1ab3556623f3e83e30d4d42acd3ac2ef9",
+        "mechanism": "repair_existing_world_adoption_source_classification",
+        "membership_sha256": "538195e399158bfb4fafce01f9c5af3c63e2137f70694fdead7a26e5800e0890",
+        "schema_version": "dm_existing_world_adoption_receipt_v4",
+        "world_id": "eldyrwild"
+      },
+      "semantic_sha256": "904c1836b6c607984618f7704b5345cc45b4b62ab93d5822dedc0ff14854ca36",
+      "stored_schema_version": "dm_existing_world_adoption_repair"
+    },
+    {
+      "reader_path": "initialize_reviewed_world + get_for_world",
+      "semantic_result": {
+        "compatibility": "reviewed_first_world_provenance",
+        "has_receipt": true,
+        "initialization_id": "init:reviewed-fixture-v1",
+        "world_id": "world:reviewed-init-fixture"
+      },
+      "semantic_sha256": "c08c346cf8e837dc33ac4c171713d545d030292725e807de03176d453a4070f3",
+      "stored_schema_version": "dm_reviewed_world_initialization_v1"
+    }
+  ],
+  "inputs": {
+    "adapter": "memory",
+    "dungeonmind_base_sha": "3b52a81a6c113ac6bfb4d1b0fa7fa78246aa31f1",
+    "fixture_digest": "sha256:d5e9ee49b54e07e757cf7d57597506052e93606f2dbfc7644600504daa8a015f",
+    "k0_inventory_digest": "sha256:1154b0fb9ce4d0845782aaaff0d9ad901920633bb940d2e0514925a274214358",
+    "k0_inventory_schema": "dm_k0_surface_inventory_v1",
+    "normalization_policy_digest": "sha256:3238b159569ecbb66f1b6298f34a0903bc79a792f04ffecd481abc39bd802fa9",
+    "witness_schema": "dm_k0_semantic_witness_v1"
+  },
+  "normalization_policy": {
+    "classes": {
+      "FORBIDDEN_NONDETERMINISM": [
+        "absolute filesystem paths",
+        "database DSNs / connection strings",
+        "wall-clock timestamps in equality keys",
+        "trace/span/process identifiers",
+        "full exception message prose (unless declared semantic)"
+      ],
+      "OBSERVATION_ONLY": [
+        "adopted_at",
+        "cache_hit",
+        "created_at",
+        "duration_ms",
+        "elapsed_ms",
+        "initialized_at",
+        "observation",
+        "projected_at",
+        "projection_count",
+        "published_at",
+        "repaired_at",
+        "span_id",
+        "trace_id",
+        "updated_at",
+        "wall_clock_ms"
+      ],
+      "SEMANTIC": [
+        "world_id",
+        "campaign_id",
+        "scope_mode",
+        "admissibility",
+        "revision_id",
+        "parent_revision_id",
+        "expected_parent_revision_id",
+        "head_revision_id",
+        "published_revision_id",
+        "object_id",
+        "object_ids",
+        "relationship_ids",
+        "assertion_ids",
+        "evidence_ref_ids",
+        "source_artifact_id",
+        "source_revision_id",
+        "anchor_id",
+        "labels",
+        "aliases",
+        "predicates",
+        "visibility",
+        "coverage",
+        "fail_closed",
+        "status",
+        "error_type",
+        "error_code",
+        "disposition",
+        "graph_schema",
+        "semantic_profile",
+        "binding_integrity"
+      ]
+    },
+    "id": "k0_semantic_normalization_v1",
+    "rules": [
+      "Model dumps are converted to plain JSON-compatible structures.",
+      "Observation-only keys are dropped recursively.",
+      "Lists of mappings are sorted by a stable JSON dump of each item.",
+      "Dict keys are sorted at dump time (canonical JSON).",
+      "Error results keep error_type and selected identity fields only.",
+      "Exception message text is omitted unless explicitly declared semantic."
+    ]
+  },
+  "operations": [
+    {
+      "family": "failure",
+      "id": "failure.missing_head",
+      "request_identity": {
+        "world_id": "world:test"
+      },
+      "semantic_result": {
+        "bound": {
+          "world_id": "world:test"
+        },
+        "error_type": "HeadNotFoundError"
+      },
+      "semantic_sha256": "4e1dd3be2e3c0d01c0756b19c9e6b20875987cda14bdab713e9446eba73d9bf9",
+      "status": "error"
+    },
+    {
+      "family": "failure",
+      "id": "failure.missing_object",
+      "request_identity": {
+        "object_id": "obj:does-not-exist"
+      },
+      "semantic_result": {
+        "admissibility": "gm",
+        "campaign_id": "camp:alpha",
+        "coverage": {
+          "gap_codes": [],
+          "missing_ids": []
+        },
+        "found": false,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "is_head": true,
+        "labels": [],
+        "matched_object_ids": [],
+        "object_depths": {},
+        "object_ids": [],
+        "relationship_ids": [],
+        "revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "scope_mode": "campaign",
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "8746e23c7d89af62627fd30861e008301cc66f7786bb9cfdfbfb2042572924ca",
+      "status": "miss"
+    },
+    {
+      "family": "failure",
+      "id": "failure.missing_revision",
+      "request_identity": {
+        "revision_pin": "rev:missing"
+      },
+      "semantic_result": {
+        "bound": {
+          "revision_id": "rev:missing"
+        },
+        "error_type": "RevisionNotFoundError"
+      },
+      "semantic_sha256": "422ee55f4e98df469116369ef9b5987b0b74c19eb718ea04f206cc82868454fa",
+      "status": "error"
+    },
+    {
+      "family": "failure",
+      "id": "failure.provenance_invalid_fail_closed",
+      "request_identity": {
+        "object_id": "obj:broken-lore"
+      },
+      "semantic_result": {
+        "admissibility": "gm",
+        "campaign_id": "camp:alpha",
+        "coverage": {
+          "gap_codes": [
+            "evidence_source_revision_missing"
+          ],
+          "missing_ids": [
+            "srcrev:missing-rev"
+          ]
+        },
+        "excluded_knowledge_stays_excluded": true,
+        "fail_closed": true,
+        "found": false,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "is_head": true,
+        "labels": [],
+        "matched_object_ids": [],
+        "object_depths": {},
+        "object_ids": [],
+        "relationship_ids": [],
+        "revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "scope_mode": "campaign",
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "317f7a72af70da974cc506d01d9d7aac71744b305ab6acd2c5035c654711e23c",
+      "status": "ok"
+    },
+    {
+      "family": "read",
+      "id": "read.deterministic_search",
+      "request_identity": {
+        "admissibility": "player",
+        "query_text": "Keep"
+      },
+      "semantic_result": {
+        "admissibility": "player",
+        "campaign_id": "camp:alpha",
+        "coverage": {
+          "gap_codes": [],
+          "missing_ids": []
+        },
+        "found": null,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "is_head": true,
+        "labels": [
+          "Alpha Keep",
+          "World Tavern"
+        ],
+        "matched_object_ids": [
+          "obj:alpha-keep",
+          "obj:world-tavern"
+        ],
+        "object_depths": {},
+        "object_ids": [
+          "obj:alpha-keep",
+          "obj:world-tavern"
+        ],
+        "relationship_ids": [
+          "rel:tavern-gate",
+          "rel:tavern-keep"
+        ],
+        "revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "scope_mode": "campaign",
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "40327d5274af34b8bceb8a36cb2d7a112f1e1e1c89504c4afb95d42e61d5e751",
+      "status": "ok"
+    },
+    {
+      "family": "read",
+      "id": "read.evidence",
+      "request_identity": {
+        "target": "obj:alpha-keep"
+      },
+      "semantic_result": {
+        "admissibility": "gm",
+        "anchors": [
+          {
+            "anchor_id": "dm-source-anchor:v1:72b9af16079320c75e6230db6c0a9f99f15b63f50ff0ecff495f53768911a20b",
+            "evidence_ref_id": "ev:alpha",
+            "source_artifact_id": "src:alpha-notes",
+            "source_revision_id": "srcrev:alpha-notes-v1"
+          }
+        ],
+        "campaign_id": "camp:alpha",
+        "coverage": {
+          "gap_codes": [],
+          "missing_ids": []
+        },
+        "found": true,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "is_head": true,
+        "labels": [
+          "Alpha Keep"
+        ],
+        "matched_object_ids": [],
+        "object_depths": {},
+        "object_ids": [
+          "obj:alpha-keep"
+        ],
+        "relationship_ids": [],
+        "revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "scope_mode": "campaign",
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "a7c1db77f1b1f032723299ab02f699e50cd9e9d70f68051d6967886eaa7a0254",
+      "status": "ok"
+    },
+    {
+      "family": "read",
+      "id": "read.exact_historical_revision",
+      "request_identity": {
+        "revision_pin": "rev:f7bc592c9df1c1338db212c1eb6f1d0c"
+      },
+      "semantic_result": {
+        "admissibility": "gm",
+        "campaign_id": "camp:alpha",
+        "coverage": null,
+        "found": null,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "is_head": true,
+        "labels": [],
+        "matched_object_ids": [],
+        "object_depths": {},
+        "object_ids": [],
+        "relationship_ids": [],
+        "revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "scope_mode": "campaign",
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "2c4e67cfb51a11eb9ed2a1f95c814479c50b5aae88778c07d724efaa362df448",
+      "status": "ok"
+    },
+    {
+      "family": "read",
+      "id": "read.exact_object",
+      "request_identity": {
+        "object_id": "obj:alpha-keep"
+      },
+      "semantic_result": {
+        "admissibility": "gm",
+        "campaign_id": "camp:alpha",
+        "coverage": {
+          "gap_codes": [],
+          "missing_ids": []
+        },
+        "found": true,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "is_head": true,
+        "labels": [
+          "Alpha Keep"
+        ],
+        "matched_object_ids": [],
+        "object_depths": {},
+        "object_ids": [
+          "obj:alpha-keep"
+        ],
+        "relationship_ids": [
+          "rel:keep-secret",
+          "rel:tavern-keep"
+        ],
+        "revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "scope_mode": "campaign",
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "aaa6431ce0dbbfd2b59e241c7ed475f57f03e810575d96c52d5ca28fd6de061b",
+      "status": "ok"
+    },
+    {
+      "family": "read",
+      "id": "read.head_projection",
+      "request_identity": {
+        "scope": "gm_campaign_a"
+      },
+      "semantic_result": {
+        "admissibility": "gm",
+        "campaign_id": "camp:alpha",
+        "coverage": null,
+        "found": null,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "is_head": true,
+        "labels": [],
+        "matched_object_ids": [],
+        "object_depths": {},
+        "object_ids": [],
+        "relationship_ids": [],
+        "revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "scope_mode": "campaign",
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "2c4e67cfb51a11eb9ed2a1f95c814479c50b5aae88778c07d724efaa362df448",
+      "status": "ok"
+    },
+    {
+      "family": "read",
+      "id": "read.neighborhood.depth_1",
+      "request_identity": {
+        "depth": 1,
+        "seed": "obj:alpha-keep"
+      },
+      "semantic_result": {
+        "admissibility": "gm",
+        "campaign_id": "camp:alpha",
+        "coverage": {
+          "gap_codes": [],
+          "missing_ids": []
+        },
+        "found": null,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "is_head": true,
+        "labels": [
+          "Alpha Keep",
+          "Alpha Secret Vault",
+          "World Tavern"
+        ],
+        "matched_object_ids": [],
+        "object_depths": {
+          "obj:alpha-keep": 0,
+          "obj:alpha-secret": 1,
+          "obj:world-tavern": 1
+        },
+        "object_ids": [
+          "obj:alpha-keep",
+          "obj:alpha-secret",
+          "obj:world-tavern"
+        ],
+        "relationship_ids": [
+          "rel:keep-secret",
+          "rel:tavern-keep"
+        ],
+        "revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "scope_mode": "campaign",
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "a49f2008007846b50b72d74425357e63cab2e39fedb728ff7e0e0bd3da6d6756",
+      "status": "ok"
+    },
+    {
+      "family": "read",
+      "id": "read.neighborhood.depth_2",
+      "request_identity": {
+        "depth": 2,
+        "seed": "obj:alpha-keep"
+      },
+      "semantic_result": {
+        "admissibility": "gm",
+        "campaign_id": "camp:alpha",
+        "coverage": {
+          "gap_codes": [],
+          "missing_ids": []
+        },
+        "found": null,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "is_head": true,
+        "labels": [
+          "Alpha Keep",
+          "Alpha Secret Vault",
+          "North Gate",
+          "World Tavern"
+        ],
+        "matched_object_ids": [],
+        "object_depths": {
+          "obj:alpha-keep": 0,
+          "obj:alpha-secret": 1,
+          "obj:world-gate": 2,
+          "obj:world-tavern": 1
+        },
+        "object_ids": [
+          "obj:alpha-keep",
+          "obj:alpha-secret",
+          "obj:world-gate",
+          "obj:world-tavern"
+        ],
+        "relationship_ids": [
+          "rel:keep-secret",
+          "rel:tavern-gate",
+          "rel:tavern-keep"
+        ],
+        "revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "scope_mode": "campaign",
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "92e37de7f45c6ecb9c0e2e8bc75449c6bd53af5cf079c36fff5a71485da99eda",
+      "status": "ok"
+    },
+    {
+      "family": "read",
+      "id": "read.source_anchor.emit",
+      "request_identity": {
+        "object_id": "obj:world-tavern"
+      },
+      "semantic_result": {
+        "anchors": [
+          {
+            "anchor_id": "dm-source-anchor:v1:3004ad01488d615859795d3502663b083ef355b34a6c363c65234f9118f86380",
+            "evidence_ref_id": "ev:world",
+            "source_artifact_id": "src:world-lore",
+            "source_revision_id": "srcrev:world-lore-v1"
+          },
+          {
+            "anchor_id": "dm-source-anchor:v1:72b9af16079320c75e6230db6c0a9f99f15b63f50ff0ecff495f53768911a20b",
+            "evidence_ref_id": "ev:alpha",
+            "source_artifact_id": "src:alpha-notes",
+            "source_revision_id": "srcrev:alpha-notes-v1"
+          }
+        ]
+      },
+      "semantic_sha256": "1fdfc5310045026b10c6116151f4f9dfdcfda1ad8b9b32ec36124158c82c0c23",
+      "status": "ok"
+    },
+    {
+      "family": "read",
+      "id": "read.source_anchor.revalidate",
+      "request_identity": {
+        "anchor_id": "dm-source-anchor:v1:3004ad01488d615859795d3502663b083ef355b34a6c363c65234f9118f86380"
+      },
+      "semantic_result": {
+        "anchor_id": "dm-source-anchor:v1:3004ad01488d615859795d3502663b083ef355b34a6c363c65234f9118f86380",
+        "evidence_ref_id": "ev:world",
+        "found": true
+      },
+      "semantic_sha256": "fae34d0f56a050d7fc2ed7af10da6e869c7193ce38a4e2398ae709ba3a2a9c68",
+      "status": "ok"
+    },
+    {
+      "family": "scope",
+      "id": "scope.cross_campaign",
+      "request_identity": {
+        "scope_label": "cross"
+      },
+      "semantic_result": {
+        "admissibility": "gm",
+        "campaign_id": null,
+        "coverage": null,
+        "found": null,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "is_head": true,
+        "labels": [],
+        "matched_object_ids": [],
+        "object_depths": {},
+        "object_ids": [],
+        "relationship_ids": [],
+        "revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "scope_mode": "world_cross_campaign",
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "0583aef7800bd77270824e8d4d29d537ed0c1951bb246474dad6ff331ea1ea0c",
+      "status": "ok"
+    },
+    {
+      "family": "scope",
+      "id": "scope.gm_campaign",
+      "request_identity": {
+        "scope_label": "gm"
+      },
+      "semantic_result": {
+        "admissibility": "gm",
+        "campaign_id": "camp:alpha",
+        "coverage": null,
+        "found": null,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "is_head": true,
+        "labels": [],
+        "matched_object_ids": [],
+        "object_depths": {},
+        "object_ids": [],
+        "relationship_ids": [],
+        "revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "scope_mode": "campaign",
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "2c4e67cfb51a11eb9ed2a1f95c814479c50b5aae88778c07d724efaa362df448",
+      "status": "ok"
+    },
+    {
+      "family": "scope",
+      "id": "scope.player_campaign",
+      "request_identity": {
+        "scope_label": "player"
+      },
+      "semantic_result": {
+        "admissibility": "player",
+        "campaign_id": "camp:alpha",
+        "coverage": null,
+        "found": null,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "is_head": true,
+        "labels": [],
+        "matched_object_ids": [],
+        "object_depths": {},
+        "object_ids": [],
+        "relationship_ids": [],
+        "revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "scope_mode": "campaign",
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "04d29f7f3b0c78b6214d832d6257e0dc16e205afecbe4bdbebeec064c45a3762",
+      "status": "ok"
+    },
+    {
+      "family": "scope",
+      "id": "scope.world_owned",
+      "request_identity": {
+        "scope_label": "world"
+      },
+      "semantic_result": {
+        "admissibility": "gm",
+        "campaign_id": null,
+        "coverage": null,
+        "found": null,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "is_head": true,
+        "labels": [],
+        "matched_object_ids": [],
+        "object_depths": {},
+        "object_ids": [],
+        "relationship_ids": [],
+        "revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "scope_mode": "world",
+        "world_id": "world:test"
+      },
+      "semantic_sha256": "ebd76976d7a21753c8eff42802589d3f3c2dcee06820f5ead1937ef7f114ab7d",
+      "status": "ok"
+    },
+    {
+      "family": "write",
+      "id": "write.correction_or_retraction",
+      "request_identity": {
+        "adoption_id": "adoption:eldyrwild:dungeonmind-v6:rev:0c644e56b45bcaac709012206e3e41c2",
+        "mechanism": "adoption_source_classification_repair",
+        "world_id": "eldyrwild"
+      },
+      "semantic_result": {
+        "disposition": "ExistingWorldAdoptionReceiptV4",
+        "effective_membership_sha256": "96bed049d750f65ba72a0542b1cc6ae1ab3556623f3e83e30d4d42acd3ac2ef9",
+        "mechanism": "existing_world_adoption_source_classification_repair",
+        "membership_sha256": "538195e399158bfb4fafce01f9c5af3c63e2137f70694fdead7a26e5800e0890",
+        "schema_version": "dm_existing_world_adoption_receipt_v4",
+        "world_id": "eldyrwild"
+      },
+      "semantic_sha256": "0ba1bf07688bb4c310957c7da3f55696b1b6e93b1a1473fcc07ee590b2f4e609",
+      "status": "ok"
+    },
+    {
+      "family": "write",
+      "id": "write.exact_parent_publication",
+      "request_identity": {
+        "review_id": "review:cff0162637b428e634e8cccaa9958dc2"
+      },
+      "semantic_result": {
+        "disposition": "FinalizedReviewPublication",
+        "expected_parent_revision_id": "rev:f2d5164c176289c5f3df7e68b4f0e46d",
+        "parent_revision_id": "rev:f2d5164c176289c5f3df7e68b4f0e46d",
+        "published_revision_id": "rev:6e02bd224f6b5616534f10026c8b9679"
+      },
+      "semantic_sha256": "cdae138f067f63ea1204c5ebec07d6677f7b5764041ac31592cb72d00b30aad7",
+      "status": "ok"
+    },
+    {
+      "family": "write",
+      "id": "write.exact_replay_idempotency",
+      "request_identity": {
+        "mode": "replay",
+        "review_id": "review:cff0162637b428e634e8cccaa9958dc2"
+      },
+      "semantic_result": {
+        "disposition": "FinalizedReviewPublication",
+        "matches_first_publish": true,
+        "published_revision_id": "rev:6e02bd224f6b5616534f10026c8b9679"
+      },
+      "semantic_sha256": "0b6f05e863db0f9ff2726387b92105305facb09fb4ccbe9295a03c7e0af11339",
+      "status": "ok"
+    },
+    {
+      "family": "write",
+      "id": "write.outcome_unknown_recovery",
+      "request_identity": {
+        "review_id": "review:cff0162637b428e634e8cccaa9958dc2"
+      },
+      "semantic_result": {
+        "details": {
+          "reason": "publication_attempt_or_recovery_probe_failed",
+          "review_id": "review:cff0162637b428e634e8cccaa9958dc2",
+          "world_id": "world:synthetic-gatewatch"
+        },
+        "error_type": "FinalizedReviewPublicationOutcomeUnknownError"
+      },
+      "semantic_sha256": "a5ab3ace96fdabca4cc01e251bea65c53111322ab2ca43e9202aa2e23956434e",
+      "status": "error"
+    },
+    {
+      "family": "write",
+      "id": "write.reviewed_first_world_initialization",
+      "request_identity": {
+        "initialization_id": "init:reviewed-fixture-v1"
+      },
+      "semantic_result": {
+        "disposition": "ReviewedWorldInitializationReceiptV1",
+        "initialization_id": "init:reviewed-fixture-v1",
+        "published_revision_id": "rev:c36842969e5a598d738227d2a018ca84",
+        "world_id": "world:reviewed-init-fixture"
+      },
+      "semantic_sha256": "c86d08d911c749b2cc6e755e5cad84e06870c8938c6340c95bf08b3ef967860f",
+      "status": "ok"
+    },
+    {
+      "family": "write",
+      "id": "write.source_evidence_binding_integrity",
+      "request_identity": {
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "object_id": "obj:alpha-keep"
+      },
+      "semantic_result": {
+        "anchors": [
+          {
+            "anchor_id": "dm-source-anchor:v1:72b9af16079320c75e6230db6c0a9f99f15b63f50ff0ecff495f53768911a20b",
+            "evidence_ref_id": "ev:alpha",
+            "source_artifact_id": "src:alpha-notes",
+            "source_revision_id": "srcrev:alpha-notes-v1"
+          }
+        ],
+        "binding_integrity": "source_revision_present_for_admitted_evidence",
+        "evidence_ref_ids": [
+          "ev:alpha"
+        ],
+        "found": true,
+        "head_revision_id": "rev:f7bc592c9df1c1338db212c1eb6f1d0c",
+        "object_id": "obj:alpha-keep"
+      },
+      "semantic_sha256": "48409ca17ffe57ffcfb7a923c38262b11e37b52f398a49a4de1f9084f279425a",
+      "status": "ok"
+    },
+    {
+      "family": "write",
+      "id": "write.stale_parent_rejection",
+      "request_identity": {
+        "review_id": "review:cff0162637b428e634e8cccaa9958dc2"
+      },
+      "semantic_result": {
+        "details": {
+          "expected_parent_revision_id": "rev:f2d5164c176289c5f3df7e68b4f0e46d",
+          "world_id": "world:synthetic-gatewatch"
+        },
+        "error_type": "StaleParentRevisionError"
+      },
+      "semantic_sha256": "bf26c62b306f9f09db722a6bd17d90c1ca9ff55215b6d0c85a393662dc5557e6",
+      "status": "error"
+    }
+  ],
+  "schema": "dm_k0_semantic_witness_v1"
+}
