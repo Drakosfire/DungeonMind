@@ -109,17 +109,21 @@ No behavior changes.
 
 ## K0.1 — Current consumer and public-surface inventory
 
-Produce a machine-checkable ledger of:
+**Disposition:** IMPLEMENTATION COMPLETE — audit fixes landed; await second review merge
 
-- every DungeonMind symbol imported by DungeonMindBuddy at the exact pin;
-- every `dungeonmind_dnd` symbol imported by Buddy;
-- every exported DungeonMind symbol with no known external consumer;
-- every repository/table used by current graph read, write, source, publication, and initialization paths;
-- every repository/table used only by MindTurn, threads, retrieval sessions, semantic documents, embeddings, demo hosts, adoption, or historical repair;
-- current import-boundary exceptions;
-- optional dependency load behavior.
+Landed artifacts:
 
-**Exit:** every demolition target has an explicit `USED | UNUSED | HISTORICAL-COMPAT | UNKNOWN` disposition.
+- [`Docs/Inventory/K0-dispositions.toml`](../Inventory/K0-dispositions.toml) (human-authored judgments)
+- [`Docs/Reports/K0-surface-inventory.json`](../Reports/K0-surface-inventory.json) (generated machine evidence)
+- [`Docs/Reports/REPORT-2026-08-30-k0-current-consumer-public-surface.md`](../Reports/REPORT-2026-08-30-k0-current-consumer-public-surface.md)
+- `scripts/k0_surface_inventory.py` (regenerator)
+- `tests/unit/test_k0_surface_inventory.py`
+
+Every named demolition target has an explicit `USED | UNUSED | HISTORICAL-COMPAT | UNKNOWN` disposition. `UNUSED` is K1 eligibility, not a deletion.
+
+Known baseline: `benchmark-smoke` is red at the runtime anchor (benchmark harness vs `WorldGraphProjectionService` constructor drift). Recorded in ledger `known_red_baselines`; corrective slice is out of K0.1 scope.
+
+Next: K0.2 after merge.
 
 ## K0.2 — Golden semantic witness
 
