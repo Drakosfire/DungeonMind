@@ -123,9 +123,14 @@ Every named demolition target has an explicit `USED | UNUSED | HISTORICAL-COMPAT
 
 Known baseline: `benchmark-smoke` is red at the runtime anchor (benchmark harness vs `WorldGraphProjectionService` constructor drift). Recorded in ledger `known_red_baselines`; corrective slice is out of K0.1 scope.
 
-Next: K0.2 after merge.
+Next: K0.2 landed; see K0.2 section.
 
 ## K0.2 — Golden semantic witness
+
+**Status:** DONE  
+**Landed evidence:** [`Docs/Reports/K0-golden-semantic-witness-v1.json`](../Reports/K0-golden-semantic-witness-v1.json), [`Docs/Reports/REPORT-2026-08-31-k0-golden-semantic-witness.md`](../Reports/REPORT-2026-08-31-k0-golden-semantic-witness.md)  
+**Base:** `e5fb104708f979b0ebb481ee925db4beb22e2bfe` (landed PR #49 base; first parent `3b52a81a6c113ac6bfb4d1b0fa7fa78246aa31f1`, identical tree, pins the diff gates)  
+**Aggregate digest:** `sha256:928d459288e208cf37f11ca63fac426c5f338d2f531292ebefa8118071fdd9fa`
 
 Freeze expected outputs/digests for the surviving World authority contract.
 
@@ -173,6 +178,8 @@ wall-clock timing
 ```
 
 Wall-clock `projected_at` is not a semantic equality key.
+
+Next: K0.3 performance baseline expansion. Do not advance K1 solely because K0.2 passed.
 
 ## K0.3 — Performance baseline expansion
 
