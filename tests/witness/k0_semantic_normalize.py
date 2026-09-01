@@ -15,6 +15,15 @@ from typing import Any
 WITNESS_SCHEMA = "dm_k0_semantic_witness_v1"
 K0_INVENTORY_SCHEMA = "dm_k0_surface_inventory_v1"
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+INVENTORY_PATH = REPO_ROOT / "Docs" / "Reports" / "K0-surface-inventory.json"
+
+# Anchor bookkeeping: GitHub reports the landed PR #49 base as the merge commit
+# e5fb104…; its first parent 3b52a81… has an identical tree and is the revision
+# the witness diff gates pin. Record both separately.
+LANDED_BASE_SHA = "e5fb104708f979b0ebb481ee925db4beb22e2bfe"
+BASE_TREE_SHA = "3b52a81a6c113ac6bfb4d1b0fa7fa78246aa31f1"
+
 # Absolute paths, DSNs, and wall-clock fields must never appear in semantic payloads.
 FORBIDDEN_KEY_FRAGMENTS = (
     "projected_at",
@@ -85,6 +94,20 @@ REQUIRED_OPERATION_IDS: tuple[str, ...] = (
     "write.source_evidence_binding_integrity",
 )
 
+# Historical compatibility cases the witness must contain to be a valid oracle.
+REQUIRED_HISTORICAL_CASE_IDS: tuple[str, ...] = (
+    "graph.dm_union_graph_v1",
+    "graph.dm_union_graph_v2",
+    "graph.dm_union_graph_v3",
+    "graph.dm_union_graph_v4",
+    "graph.dm_union_graph_v5",
+    "graph.dm_union_graph_v6",
+    "adoption.eldyrwild_bundle_v2",
+    "adoption.eldyrwild_source_classification_repair",
+    "reviewed_init.receipt_roundtrip",
+    "reviewed_init.adr0023_genesis_other_compatibility",
+)
+
 NORMALIZATION_POLICY: dict[str, Any] = {
     "id": "k0_semantic_normalization_v1",
     "classes": {
@@ -131,8 +154,9 @@ NORMALIZATION_POLICY: dict[str, Any] = {
     },
     "rules": [
         "Model dumps are converted to plain JSON-compatible structures.",
-        "Observation-only keys are dropped recursively.",
-        "Lists of mappings are sorted by a stable JSON dump of each item.",
+        "Only keys listed in OBSERVATION_ONLY are dropped (exact match, recursive).",
+        "List order is preserved; contractual ranking/order drift changes digests.",
+        "Sets are sorted at conversion time because they are unordered by definition.",
         "Dict keys are sorted at dump time (canonical JSON).",
         "Error results keep error_type and selected identity fields only.",
         "Exception message text is omitted unless explicitly declared semantic.",
@@ -179,10 +203,10 @@ def _to_plain(value: Any) -> Any:
 
 
 def _is_observation_key(key: str) -> bool:
-    lowered = key.lower()
-    if lowered in OBSERVATION_ONLY_KEYS:
-        return True
-    return any(frag in lowered for frag in ("_at", "duration", "elapsed", "trace", "span"))
+    # Exact-match only: the observation policy is an explicit allowlist. Broader
+    # substring rules (e.g. any key containing "_at") would silently drop semantic
+    # content and weaken the oracle.
+    return key.lower() in OBSERVATION_ONLY_KEYS
 
 
 def strip_observation_only(value: Any) -> Any:
@@ -195,14 +219,9 @@ def strip_observation_only(value: Any) -> Any:
             out[str(key)] = strip_observation_only(item)
         return out
     if isinstance(plain, list):
-        cleaned = [strip_observation_only(item) for item in plain]
-        if cleaned and all(isinstance(item, dict) for item in cleaned):
-            return sorted(cleaned, key=lambda item: dump_canonical_json(item))
-        if cleaned and all(
-            isinstance(item, (str, int, float, bool)) or item is None for item in cleaned
-        ):
-            return sorted(cleaned, key=lambda item: dump_canonical_json(item))
-        return cleaned
+        # Preserve list order: ordering can be contractual (e.g. search ranking),
+        # so the oracle must observe reordering.
+        return [strip_observation_only(item) for item in plain]
     return plain
 
 
@@ -227,6 +246,7 @@ def normalize_error(exc: BaseException, *, bound: dict[str, Any] | None = None) 
                 "world_id",
                 "revision_id",
                 "expected_parent_revision_id",
+                "actual_head_revision_id",
                 "parent_revision_id",
                 "object_id",
                 "review_id",
@@ -249,7 +269,9 @@ def find_forbidden_nondeterminism(value: Any, path: str = "$") -> list[str]:
             key_s = str(key)
             lowered = key_s.lower()
             child = f"{path}.{key_s}"
-            if any(frag in lowered for frag in FORBIDDEN_KEY_FRAGMENTS):
+            if any(frag in lowered for frag in FORBIDDEN_KEY_FRAGMENTS) or (
+                lowered.endswith("_at") and lowered not in OBSERVATION_ONLY_KEYS
+            ):
                 hits.append(child)
             hits.extend(find_forbidden_nondeterminism(item, child))
     elif isinstance(value, list):
@@ -282,6 +304,38 @@ def validate_witness(witness: dict[str, Any]) -> None:
         if key not in witness:
             errors.append(f"missing top-level key {key!r}")
 
+    # Declared inputs are verified fail-closed against pinned anchors, the
+    # checked-in K0 inventory, the embedded fixture, and the canonical policy.
+    inputs = witness.get("inputs")
+    if not isinstance(inputs, dict):
+        errors.append("inputs must be a mapping")
+        inputs = {}
+    if inputs.get("dungeonmind_landed_base_sha") != LANDED_BASE_SHA:
+        errors.append(
+            "inputs.dungeonmind_landed_base_sha does not match pinned landed base "
+            f"{LANDED_BASE_SHA}"
+        )
+    if inputs.get("dungeonmind_base_tree_sha") != BASE_TREE_SHA:
+        errors.append(
+            f"inputs.dungeonmind_base_tree_sha does not match pinned base tree {BASE_TREE_SHA}"
+        )
+    if inputs.get("k0_inventory_schema") != K0_INVENTORY_SCHEMA:
+        errors.append(f"inputs.k0_inventory_schema must be {K0_INVENTORY_SCHEMA}")
+    if inputs.get("witness_schema") != WITNESS_SCHEMA:
+        errors.append(f"inputs.witness_schema must be {WITNESS_SCHEMA}")
+    if not INVENTORY_PATH.exists():
+        errors.append(f"K0 inventory file missing: {INVENTORY_PATH.name}")
+    elif inputs.get("k0_inventory_digest") != file_digest(INVENTORY_PATH):
+        errors.append("inputs.k0_inventory_digest does not match checked-in inventory")
+    expected_fixture_digest = f"sha256:{sha256_canonical(witness.get('fixture'))}"
+    if inputs.get("fixture_digest") != expected_fixture_digest:
+        errors.append("inputs.fixture_digest does not match embedded fixture manifest")
+    policy = witness.get("normalization_policy")
+    if policy != NORMALIZATION_POLICY:
+        errors.append("normalization_policy does not match the canonical policy")
+    elif inputs.get("normalization_policy_digest") != normalization_policy_digest():
+        errors.append("inputs.normalization_policy_digest does not match the canonical policy")
+
     operations = list(witness.get("operations") or [])
     ids = [str(row.get("id") or "") for row in operations]
     if len(ids) != len(set(ids)):
@@ -306,6 +360,12 @@ def validate_witness(witness: dict[str, Any]) -> None:
             errors.append(f"forbidden nondeterministic field in {ident}: {hit}")
 
     historical = list(witness.get("historical_compatibility") or [])
+    case_ids = [str(row.get("case_id") or "") for row in historical]
+    if len(case_ids) != len(set(case_ids)):
+        errors.append("duplicate historical compatibility case_id")
+    for required_case in REQUIRED_HISTORICAL_CASE_IDS:
+        if required_case not in set(case_ids):
+            errors.append(f"missing required historical case: {required_case}")
     for row in historical:
         if not row.get("stored_schema_version"):
             errors.append("historical entry missing stored_schema_version")
@@ -316,7 +376,11 @@ def validate_witness(witness: dict[str, Any]) -> None:
         expected = row.get("semantic_sha256")
         actual = sha256_canonical(row.get("semantic_result"))
         if expected != actual:
-            errors.append(f"mismatched historical digest for {row.get('stored_schema_version')}")
+            errors.append(f"mismatched historical digest for {row.get('case_id')}")
+        for hit in find_forbidden_nondeterminism(row.get("semantic_result")):
+            errors.append(
+                f"forbidden nondeterministic field in historical {row.get('case_id')}: {hit}"
+            )
 
     aggregate = aggregate_semantic_sha256(operations)
     if witness.get("aggregate_semantic_sha256") != aggregate:

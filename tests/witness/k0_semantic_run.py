@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import json
-from pathlib import Path
 from typing import Any, Literal
 
 from dungeonmind.application.existing_world_adoption import adopt_existing_world
@@ -20,45 +19,50 @@ from dungeonmind.application.graph_snapshot import (
     VersionedUnionGraphSnapshotReader,
 )
 from dungeonmind.application.review_publication import publish_finalized_review
-from dungeonmind.application.reviewed_world_initialization import initialize_reviewed_world
-from dungeonmind.application.world_graph_retrieval import EvidenceTarget
+from dungeonmind.application.reviewed_world_initialization import (
+    initialize_reviewed_world,
+    reviewed_world_initialization_replay_identity,
+)
+from dungeonmind.application.world_graph_projection import WorldGraphProjectionService
+from dungeonmind.application.world_graph_retrieval import (
+    EvidenceTarget,
+    WorldGraphRetrievalService,
+)
+from dungeonmind.contracts.evidence import SourceDomain
 from dungeonmind.contracts.existing_world_adoption_repair import (
     ExistingWorldAdoptionSourceArtifactClassificationRepairIntentV1,
     ExistingWorldAdoptionSourceClassificationRepairIntentV1,
 )
 from dungeonmind.contracts.graph import PublishRevisionCommand
 from dungeonmind.contracts.projection import Admissibility
-from dungeonmind.contracts.projection_v2 import ScopeModeV2
-from dungeonmind.contracts.vocabulary import Visibility
+from dungeonmind.contracts.projection_v2 import ScopeModeV2, WorldGraphProjectionRequestV2
 from dungeonmind.domain.errors import (
     FinalizedReviewPublicationOutcomeUnknownError,
     HeadNotFoundError,
     RevisionNotFoundError,
     StaleParentRevisionError,
 )
-from dungeonmind.domain.existing_world_membership import (
-    existing_world_adoption_membership_sha256,
-)
-from dungeonmind.infrastructure.memory import (
-    InMemoryFinalizedReviewPublicationRepository,
-    InMemoryWorldGraphRepository,
-)
 from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
 from tests.witness.k0_semantic_fixture import (
     CAMPAIGN_A,
     NOW,
-    WORLD_ID,
+    FixedClock,
     WitnessStores,
     fixture_manifest,
     make_memory_stores,
     make_services,
+    publish_synthetic_ancestor,
     publish_synthetic_head,
     request,
     synthetic_graph_payload,
 )
 from tests.witness.k0_semantic_normalize import (
+    BASE_TREE_SHA,
+    INVENTORY_PATH,
     K0_INVENTORY_SCHEMA,
+    LANDED_BASE_SHA,
     NORMALIZATION_POLICY,
+    REPO_ROOT,
     REQUIRED_OPERATION_IDS,
     WITNESS_SCHEMA,
     aggregate_semantic_sha256,
@@ -72,34 +76,20 @@ from tests.witness.k0_semantic_normalize import (
     validate_witness,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-BASE_SHA = "3b52a81a6c113ac6bfb4d1b0fa7fa78246aa31f1"
-INVENTORY_PATH = REPO_ROOT / "Docs" / "Reports" / "K0-surface-inventory.json"
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 GATEWATCH_GRAPH = FIXTURES / "dungeonmind_dnd" / "gatewatch-world-graph-v3.json"
 PLAYER_FORBIDDEN = ("obj:alpha-secret", "Hidden Cache", "Traitor's Keep")
+NEVER_PUBLISHED_WORLD = "world:never-published"
 REPAIRED_AT = NOW  # pinned; observation clocks must not affect semantic digests
 
 
-def _world_membership(sources, contributions, identity, world_id: str) -> str:
-    artifacts = [
-        artifact for artifact in sources._artifacts.values() if artifact.world_id == world_id
-    ]
-    artifact_ids = {artifact.source_artifact_id for artifact in artifacts}
-    return existing_world_adoption_membership_sha256(
-        source_artifacts=artifacts,
-        source_revisions=[
-            revision
-            for revision in sources._revisions.values()
-            if revision.source_artifact_id in artifact_ids
-        ],
-        contributions=[item for key, item in contributions._items.items() if key[0] == world_id],
-        identity_decisions=[item for key, item in identity._items.items() if key[0] == world_id],
-    )
-
-
 def _eldyrwild_classification_repair(stores: WitnessStores, *, raw: bytes, bundle: Any) -> Any:
-    """Corrupt then repair Eldyrwild source classification (matches unit fixture lane)."""
+    """Corrupt then repair Eldyrwild source classification (matches unit fixture lane).
+
+    The corruption seam is adapter-private: in-memory stores mutate repository
+    internals; PostgreSQL stores rewrite durable rows. Both converge on the same
+    semantic pre-repair state, so the repair receipt is adapter-identical.
+    """
     unnamed = next(artifact for artifact in bundle.source_artifacts if artifact.visibility is None)
     intent = ExistingWorldAdoptionSourceClassificationRepairIntentV1(
         world_id=bundle.world_id,
@@ -111,16 +101,9 @@ def _eldyrwild_classification_repair(stores: WitnessStores, *, raw: bytes, bundl
             )
         ],
     )
-    stores.sources._artifacts[unnamed.source_artifact_id] = unnamed.model_copy(
-        update={"visibility": Visibility.GM}
-    )
-    digest = _world_membership(
-        stores.sources, stores.contributions, stores.identity, bundle.world_id
-    )
-    stored = stores.adoptions._receipts_by_world[bundle.world_id]
-    rewritten = stored.model_copy(update={"membership_sha256": digest})
-    stores.adoptions._receipts_by_world[bundle.world_id] = rewritten
-    stores.adoptions._receipts_by_adoption[rewritten.adoption_id] = rewritten
+    if stores.corrupt_source_classification is None:
+        raise RuntimeError("stores do not provide the source-classification corruption seam")
+    stores.corrupt_source_classification(bundle.world_id, unnamed.source_artifact_id)
     from tests.unit.test_eldyrwild_existing_world_adoption_bundle_v2 import (
         eldyrwild_graph_reader,
     )
@@ -166,9 +149,17 @@ def _snap(result: Any) -> dict[str, Any]:
     objects = list(getattr(result, "objects", ()) or ())
     if not objects and hasattr(result, "object") and result.object is not None:
         objects = [result.object]
+    rels = list(getattr(result, "relationships", ()) or ())
+    # Projection results carry the admitted graph under scoped_graph.snapshot;
+    # surface it so scope/projection digests reflect the admitted content.
+    scoped_snapshot = getattr(getattr(result, "scoped_graph", None), "snapshot", None)
+    if scoped_snapshot is not None and isinstance(getattr(scoped_snapshot, "objects", None), dict):
+        objects = list(scoped_snapshot.objects.values())
+        rels = list(scoped_snapshot.relationships.values())
+    # Object/relationship id lists are unordered sets semantically; sort at the
+    # extraction site. Ranking-ordered lists (matched_object_ids) keep order.
     object_ids = sorted(o.object_id for o in objects if getattr(o, "object_id", None))
     labels = sorted(o.label for o in objects if getattr(o, "label", None))
-    rels = list(getattr(result, "relationships", ()) or ())
     coverage = getattr(result, "coverage", None)
     return normalize_semantic(
         {
@@ -216,7 +207,7 @@ def _player_safe(semantic: Any) -> None:
             raise AssertionError(f"PLAYER semantic leak of {token!r}")
 
 
-def _run_reads(stores: WitnessStores, head: str) -> list[dict[str, Any]]:
+def _run_reads(stores: WitnessStores, head: str, ancestor: str) -> list[dict[str, Any]]:
     projection, retrieval = make_services(stores)
     ops: list[dict[str, Any]] = []
     gm = request(
@@ -238,19 +229,26 @@ def _run_reads(stores: WitnessStores, head: str) -> list[dict[str, Any]]:
         )
     )
 
+    # Pin the non-head historical ancestor: the pinned projection must return the
+    # older, smaller world state, not the current head.
     pinned = request(
         scope_mode=ScopeModeV2.CAMPAIGN,
         campaign_id=CAMPAIGN_A,
         admissibility=Admissibility.GM,
-        revision_pin=head,
+        revision_pin=ancestor,
     )
+    pinned_sem = _snap(projection.project(pinned))
+    if pinned_sem.get("revision_id") != ancestor or pinned_sem.get("is_head") is not False:
+        raise AssertionError("pinned historical read did not resolve the ancestor revision")
+    if pinned_sem.get("revision_id") == head:
+        raise AssertionError("pinned historical read resolved the head revision")
     ops.append(
         make_operation(
             operation_id="read.exact_historical_revision",
             family="read",
-            request_identity={"revision_pin": head},
+            request_identity={"revision_pin": ancestor},
             status="ok",
-            semantic_result=_snap(projection.project(pinned)),
+            semantic_result=pinned_sem,
         )
     )
 
@@ -277,28 +275,31 @@ def _run_reads(stores: WitnessStores, head: str) -> list[dict[str, Any]]:
         )
     )
 
-    ops.append(
-        make_operation(
-            operation_id="read.neighborhood.depth_1",
-            family="read",
-            request_identity={"seed": "obj:alpha-keep", "depth": 1},
-            status="ok",
-            semantic_result=_snap(
-                retrieval.get_neighborhood(gm, seed_object_ids=["obj:alpha-keep"], depth=1)
-            ),
+    # PLAYER neighborhood traversal must fail closed: the GM-only neighbor
+    # (obj:alpha-secret, one hop from the seed) must never be admitted.
+    for depth in (1, 2):
+        neighborhood = retrieval.get_neighborhood(
+            player, seed_object_ids=["obj:alpha-keep"], depth=depth
         )
-    )
-    ops.append(
-        make_operation(
-            operation_id="read.neighborhood.depth_2",
-            family="read",
-            request_identity={"seed": "obj:alpha-keep", "depth": 2},
-            status="ok",
-            semantic_result=_snap(
-                retrieval.get_neighborhood(gm, seed_object_ids=["obj:alpha-keep"], depth=2)
-            ),
+        neighborhood_sem = _snap(neighborhood)
+        _player_safe(neighborhood_sem)
+        ops.append(
+            make_operation(
+                operation_id=f"read.neighborhood.depth_{depth}",
+                family="read",
+                request_identity={
+                    "seed": "obj:alpha-keep",
+                    "depth": depth,
+                    "admissibility": "player",
+                },
+                status="ok",
+                semantic_result={
+                    **neighborhood_sem,
+                    "player_traversal_fail_closed": "obj:alpha-secret"
+                    not in neighborhood_sem["object_ids"],
+                },
+            )
         )
-    )
 
     evidence = retrieval.get_evidence(
         gm, target=EvidenceTarget(kind="object", target_id="obj:alpha-keep")
@@ -397,19 +398,26 @@ def _run_reads(stores: WitnessStores, head: str) -> list[dict[str, Any]]:
             )
         )
 
-    empty = make_memory_stores()
-    empty_proj, _ = make_services(empty)
+    # Missing-head proof runs on the adapter stores against a world that was
+    # never published, so PostgreSQL exercises the same error path.
+    never_published = WorldGraphProjectionRequestV2(
+        world_id=NEVER_PUBLISHED_WORLD,
+        campaign_id=None,
+        admissibility=Admissibility.GM,
+        revision_pin=None,
+        scope_mode=ScopeModeV2.WORLD,
+    )
     try:
-        empty_proj.project(gm)
+        projection.project(never_published)
         raise AssertionError("expected HeadNotFoundError")
     except HeadNotFoundError as exc:
         ops.append(
             make_operation(
                 operation_id="failure.missing_head",
                 family="failure",
-                request_identity={"world_id": WORLD_ID},
+                request_identity={"world_id": NEVER_PUBLISHED_WORLD},
                 status="error",
-                semantic_result=normalize_error(exc, bound={"world_id": WORLD_ID}),
+                semantic_result=normalize_error(exc, bound={"world_id": NEVER_PUBLISHED_WORLD}),
             )
         )
 
@@ -433,9 +441,13 @@ def _run_reads(stores: WitnessStores, head: str) -> list[dict[str, Any]]:
     return ops
 
 
-def _run_writes() -> list[dict[str, Any]]:
+def _run_writes(stores: WitnessStores) -> list[dict[str, Any]]:
+    """Governed write/publication cases executed on the adapter stores.
+
+    Every case runs against the caller-provided stores so the PostgreSQL parity
+    lane proves write/governance semantics, not just reads.
+    """
     from tests.conformance import test_review_publication as pub
-    from tests.unit.test_reviewed_world_initialization import make_stores as make_init_stores
     from tests.unit.test_reviewed_world_initialization_materialization_v6 import (
         graph_reader as init_reader,
     )
@@ -444,10 +456,11 @@ def _run_writes() -> list[dict[str, Any]]:
     )
 
     ops: list[dict[str, Any]] = []
-    _graph, _sources, _contrib, _identity, inits, _adoptions = make_init_stores()
+
+    # Reviewed first-world initialization (governed genesis write).
     command = make_command()
     init_result = initialize_reviewed_world(
-        command, initialization_repository=inits, graph_reader=init_reader()
+        command, initialization_repository=stores.initializations, graph_reader=init_reader()
     )
     ops.append(
         make_operation(
@@ -464,17 +477,101 @@ def _run_writes() -> list[dict[str, Any]]:
         )
     )
 
-    graph = InMemoryWorldGraphRepository()
-    parent, reader = pub._seed_graph(graph)
-    reviews, _state = pub._seed_review()
-    publications = InMemoryFinalizedReviewPublicationRepository(reviews, graph)
-    published = publish_finalized_review(
-        pub.WORLD_ID,
+    # Finalized-review publication lane. Review A is the happy path; review B is
+    # pinned to the same parent and serves the failure lanes.
+    parent, reader = pub._seed_graph(stores.world_graph)
+    stores.reviews.finalize(pub._state())
+    review_b = pub.review_state_for_operation("2" * 32)
+    stores.reviews.finalize(review_b)
+    review_b_id = review_b.record.review_id
+    parent_id = parent.revision.revision_id
+
+    def _publish(review_id: str, *, publication_repository: Any, graph_reader: Any) -> Any:
+        return publish_finalized_review(
+            pub.WORLD_ID,
+            review_id,
+            published_at=pub.PUBLISHED_AT,
+            review_repository=stores.reviews,
+            world_graph_repository=stores.world_graph,
+            publication_repository=publication_repository,
+            graph_reader=graph_reader,
+        )
+
+    # Stale parent: a competing writer advances the head, so review B's pinned
+    # parent is stale at publish time. The head is then rolled back so later
+    # cases keep their own durable boundaries.
+    stores.world_graph.publish_revision(
+        PublishRevisionCommand(
+            world_id=pub.WORLD_ID,
+            parent_revision_id=parent_id,
+            expected_parent_revision_id=parent_id,
+            operation_ids=["op:competing-writer"],
+            graph_schema=parent.revision.graph_schema,
+            graph_payload=copy.deepcopy(parent.graph_payload),
+            created_at=pub.PUBLISHED_AT,
+        )
+    )
+    try:
+        _publish(
+            review_b_id,
+            publication_repository=stores.publications,
+            graph_reader=reader,
+        )
+        raise AssertionError("expected StaleParentRevisionError")
+    except StaleParentRevisionError as exc:
+        ops.append(
+            make_operation(
+                operation_id="write.stale_parent_rejection",
+                family="write",
+                request_identity={"review_id": review_b_id},
+                status="error",
+                semantic_result=normalize_error(exc),
+            )
+        )
+    stores.world_graph.rollback_head(pub.WORLD_ID, parent_id, updated_at=pub.PUBLISHED_AT)
+
+    # Outcome-unknown: the publication commits durably but the response is lost
+    # and the recovery probe fails. The follow-up publish must recover the
+    # durable record without rematerialization.
+    spy_pubs = pub._SpyPublicationRepository(
+        stores.publications,
+        raise_after_publish=True,
+        fail_recovery_probe=True,
+    )
+    unknown_error: dict[str, Any] | None = None
+    try:
+        _publish(review_b_id, publication_repository=spy_pubs, graph_reader=reader)
+        raise AssertionError("expected FinalizedReviewPublicationOutcomeUnknownError")
+    except FinalizedReviewPublicationOutcomeUnknownError as exc:
+        unknown_error = normalize_error(exc)
+    recovered = _publish(
+        review_b_id,
+        publication_repository=pub._SpyPublicationRepository(stores.publications),
+        graph_reader=pub._RejectingReader(),
+    )
+    ops.append(
+        make_operation(
+            operation_id="write.outcome_unknown_recovery",
+            family="write",
+            request_identity={"review_id": review_b_id},
+            status="error",
+            semantic_result={
+                "error": unknown_error,
+                "durable_recovery": {
+                    "recovered": True,
+                    "review_id": review_b_id,
+                    "published_revision_id": recovered.published_revision_id,
+                    "replay_without_rematerialization": True,
+                },
+            },
+        )
+    )
+    stores.world_graph.rollback_head(pub.WORLD_ID, parent_id, updated_at=pub.PUBLISHED_AT)
+
+    # Happy path: exact-parent publication of review A, then exact replay.
+    published = _publish(
         pub.REVIEW_ID,
-        published_at=pub.PUBLISHED_AT,
-        review_repository=reviews,
-        world_graph_repository=graph,
-        publication_repository=publications,
+        publication_repository=stores.publications,
         graph_reader=reader,
     )
     ops.append(
@@ -486,19 +583,15 @@ def _run_writes() -> list[dict[str, Any]]:
             semantic_result={
                 "published_revision_id": published.published_revision_id,
                 "expected_parent_revision_id": published.expected_parent_revision_id,
-                "parent_revision_id": parent.revision.revision_id,
+                "parent_revision_id": parent_id,
                 "disposition": type(published).__name__,
             },
         )
     )
 
-    replayed = publish_finalized_review(
-        pub.WORLD_ID,
+    replayed = _publish(
         pub.REVIEW_ID,
-        published_at=pub.PUBLISHED_AT,
-        review_repository=reviews,
-        world_graph_repository=graph,
-        publication_repository=publications,
+        publication_repository=stores.publications,
         graph_reader=reader,
     )
     ops.append(
@@ -516,90 +609,23 @@ def _run_writes() -> list[dict[str, Any]]:
         )
     )
 
-    stale_graph = InMemoryWorldGraphRepository()
-    parent2, reader2 = pub._seed_graph(stale_graph)
-    stale_reviews, _ = pub._seed_review()
-    stale_graph.publish_revision(
-        PublishRevisionCommand(
-            world_id=pub.WORLD_ID,
-            parent_revision_id=parent2.revision.revision_id,
-            expected_parent_revision_id=parent2.revision.revision_id,
-            operation_ids=["op:competing-writer"],
-            graph_schema=parent2.revision.graph_schema,
-            graph_payload=copy.deepcopy(parent2.graph_payload),
-            created_at=pub.PUBLISHED_AT,
-        )
-    )
-    try:
-        publish_finalized_review(
-            pub.WORLD_ID,
-            pub.REVIEW_ID,
-            published_at=pub.PUBLISHED_AT,
-            review_repository=stale_reviews,
-            world_graph_repository=stale_graph,
-            publication_repository=InMemoryFinalizedReviewPublicationRepository(
-                stale_reviews, stale_graph
-            ),
-            graph_reader=reader2,
-        )
-        raise AssertionError("expected StaleParentRevisionError")
-    except StaleParentRevisionError as exc:
-        ops.append(
-            make_operation(
-                operation_id="write.stale_parent_rejection",
-                family="write",
-                request_identity={"review_id": pub.REVIEW_ID},
-                status="error",
-                semantic_result=normalize_error(exc),
-            )
-        )
-
-    unk_graph = InMemoryWorldGraphRepository()
-    _, unk_reader = pub._seed_graph(unk_graph)
-    unk_reviews, _ = pub._seed_review()
-    spy_pubs = pub._SpyPublicationRepository(
-        InMemoryFinalizedReviewPublicationRepository(unk_reviews, unk_graph),
-        raise_after_publish=True,
-        fail_recovery_probe=True,
-    )
-    try:
-        publish_finalized_review(
-            pub.WORLD_ID,
-            pub.REVIEW_ID,
-            published_at=pub.PUBLISHED_AT,
-            review_repository=unk_reviews,
-            world_graph_repository=unk_graph,
-            publication_repository=spy_pubs,
-            graph_reader=unk_reader,
-        )
-        raise AssertionError("expected FinalizedReviewPublicationOutcomeUnknownError")
-    except FinalizedReviewPublicationOutcomeUnknownError as exc:
-        ops.append(
-            make_operation(
-                operation_id="write.outcome_unknown_recovery",
-                family="write",
-                request_identity={"review_id": pub.REVIEW_ID},
-                status="error",
-                semantic_result=normalize_error(exc),
-            )
-        )
-
+    # Correction/retraction: Eldyrwild sealed-bundle adoption, adapter-private
+    # classification corruption, then the governed repair.
     from tests.unit.test_eldyrwild_existing_world_adoption_bundle_v2 import (
         eldyrwild_graph_reader,
         parse_sealed_bundle,
         raw_bundle,
     )
 
-    adopt_stores = make_memory_stores()
     adopt_raw = raw_bundle()
     adopt_bundle = parse_sealed_bundle()
     adopt_existing_world(
         adopt_raw,
         adopted_at=NOW,
-        adoption_repository=adopt_stores.adoptions,
+        adoption_repository=stores.adoptions,
         graph_reader=eldyrwild_graph_reader(),
     )
-    repair = _eldyrwild_classification_repair(adopt_stores, raw=adopt_raw, bundle=adopt_bundle)
+    repair = _eldyrwild_classification_repair(stores, raw=adopt_raw, bundle=adopt_bundle)
     ops.append(
         make_operation(
             operation_id="write.correction_or_retraction",
@@ -621,29 +647,52 @@ def _run_writes() -> list[dict[str, Any]]:
         )
     )
 
-    bind = make_memory_stores()
-    head = publish_synthetic_head(bind)
-    _, retrieval = make_services(bind)
-    view = retrieval.get_object(
-        request(
-            scope_mode=ScopeModeV2.CAMPAIGN, campaign_id=CAMPAIGN_A, admissibility=Admissibility.GM
-        ),
-        object_id="obj:alpha-keep",
+    # Source/evidence binding integrity through the governed path: read an object
+    # published by the reviewed first-world initialization above and prove its
+    # evidence binds to the durable source records that write persisted.
+    init_projection = WorldGraphProjectionService(
+        world_graph=stores.world_graph,
+        sources=stores.sources,
+        graph_reader=init_reader(),
+        reviewed_world_initializations=stores.initializations,
+        clock=FixedClock(),
     )
+    init_retrieval = WorldGraphRetrievalService(projection=init_projection, sources=stores.sources)
+    init_request = WorldGraphProjectionRequestV2(
+        world_id=command.world_id,
+        campaign_id=command.campaign_id,
+        admissibility=Admissibility.GM,
+        revision_pin=None,
+        scope_mode=ScopeModeV2.CAMPAIGN,
+    )
+    view = init_retrieval.get_object(init_request, object_id="obj:college")
     obj = view.object
+    bound_anchors = _anchors(view)
+    if not bound_anchors:
+        raise RuntimeError("governed publication produced no resolvable source anchors")
     ops.append(
         make_operation(
             operation_id="write.source_evidence_binding_integrity",
             family="write",
-            request_identity={"object_id": "obj:alpha-keep", "head_revision_id": head},
+            request_identity={
+                "object_id": "obj:college",
+                "world_id": command.world_id,
+                "governed_by": "reviewed_world_initialization",
+                "initialization_id": command.initialization_id,
+            },
             status="ok",
             semantic_result={
-                "head_revision_id": head,
-                "object_id": "obj:alpha-keep",
-                "evidence_ref_ids": list(obj.evidence_ref_ids if obj is not None else []),
-                "anchors": _anchors(view),
-                "binding_integrity": "source_revision_present_for_admitted_evidence",
+                "governed_by": "reviewed_world_initialization",
+                "initialization_id": command.initialization_id,
+                "published_revision_id": init_result.published_revision_id,
+                "object_id": "obj:college",
                 "found": bool(getattr(view, "found", obj is not None)),
+                "evidence_ref_ids": list(obj.evidence_ref_ids if obj is not None else []),
+                "anchors": bound_anchors,
+                "source_artifact_persisted": stores.sources.get_artifact("src:notes-a") is not None,
+                "source_revision_persisted": stores.sources.get_revision("srcrev:notes-a-v1")
+                is not None,
+                "binding_integrity": "governed_publication_evidence_bound_to_durable_source",
             },
         )
     )
@@ -664,16 +713,20 @@ def _run_historical(stores: WitnessStores) -> list[dict[str, Any]]:
     from tests.unit.test_graph_snapshot_reader import _payload as v1_payload
     from tests.unit.test_reviewed_world_initialization import make_stores as make_init_stores
     from tests.unit.test_reviewed_world_initialization_materialization_v6 import (
-        graph_reader as init_reader,
+        CAMPAIGN_ID as INIT_CAMPAIGN_ID,
     )
     from tests.unit.test_reviewed_world_initialization_materialization_v6 import (
+        FAMILY_EVIDENCE_ID,
+        graph_reader,
         make_command,
+        make_first_world_family_command,
+        make_non_family_other_evidence_command,
     )
 
     reader = _reader()
     historical: list[dict[str, Any]] = []
 
-    def add(schema: str, payload: dict[str, Any], path: str) -> None:
+    def add(schema: str, payload: dict[str, Any], path: str, case_id: str) -> None:
         parsed = reader.parse(graph_schema=schema, graph_payload=payload)
         summary = normalize_semantic(
             {
@@ -685,6 +738,7 @@ def _run_historical(stores: WitnessStores) -> list[dict[str, Any]]:
         )
         historical.append(
             {
+                "case_id": case_id,
                 "stored_schema_version": schema,
                 "reader_path": path,
                 "semantic_result": summary,
@@ -692,30 +746,52 @@ def _run_historical(stores: WitnessStores) -> list[dict[str, Any]]:
             }
         )
 
-    add(GRAPH_SCHEMA_V1, v1_payload(), "VersionedUnionGraphSnapshotReader.parse v1")
+    add(
+        GRAPH_SCHEMA_V1,
+        v1_payload(),
+        "VersionedUnionGraphSnapshotReader.parse v1",
+        "graph.dm_union_graph_v1",
+    )
 
     from dungeonmind.application.graph_snapshot import GRAPH_SCHEMA_V2
     from tests.unit.test_assertion_scoped_graph import _v2_payload
 
-    add(GRAPH_SCHEMA_V2, _v2_payload(), "VersionedUnionGraphSnapshotReader.parse v2")
+    add(
+        GRAPH_SCHEMA_V2,
+        _v2_payload(),
+        "VersionedUnionGraphSnapshotReader.parse v2",
+        "graph.dm_union_graph_v2",
+    )
 
     gate = json.loads(GATEWATCH_GRAPH.read_text(encoding="utf-8"))
     add(
         gate.get("graph_schema", GRAPH_SCHEMA_V3),
         gate["graph_payload"],
         "VersionedUnionGraphSnapshotReader.parse gatewatch-world-graph-v3.json",
+        "graph.dm_union_graph_v3",
     )
 
     from tests.unit.test_union_graph_v4 import _v4_payload
     from tests.unit.test_union_graph_v5 import _v5_payload
 
-    add(GRAPH_SCHEMA_V4, _v4_payload(), "VersionedUnionGraphSnapshotReader.parse v4")
-    add(GRAPH_SCHEMA_V5, _v5_payload(), "VersionedUnionGraphSnapshotReader.parse v5")
+    add(
+        GRAPH_SCHEMA_V4,
+        _v4_payload(),
+        "VersionedUnionGraphSnapshotReader.parse v4",
+        "graph.dm_union_graph_v4",
+    )
+    add(
+        GRAPH_SCHEMA_V5,
+        _v5_payload(),
+        "VersionedUnionGraphSnapshotReader.parse v5",
+        "graph.dm_union_graph_v5",
+    )
 
     add(
         GRAPH_SCHEMA_V6,
         synthetic_graph_payload(),
         "VersionedUnionGraphSnapshotReader.parse synthetic v6 witness payload",
+        "graph.dm_union_graph_v6",
     )
 
     adopt_raw = raw_bundle()
@@ -735,11 +811,12 @@ def _run_historical(stores: WitnessStores) -> list[dict[str, Any]]:
             "bundle_sha256": BUNDLE_SHA256,
             "published_revision_id": PUBLISHED_REVISION_ID,
             "disposition": type(adopt_result).__name__,
-            "membership_sha256": adopt_result.membership_sha256,
+            "membership_sha256": getattr(adopt_result, "membership_sha256", None),
         }
     )
     historical.append(
         {
+            "case_id": "adoption.eldyrwild_bundle_v2",
             "stored_schema_version": "dm_existing_world_adoption_bundle_v2",
             "reader_path": "adopt_existing_world(eldyrwild_existing_world_adoption_bundle_v2.json)",
             "semantic_result": adopt_sem,
@@ -760,6 +837,7 @@ def _run_historical(stores: WitnessStores) -> list[dict[str, Any]]:
     )
     historical.append(
         {
+            "case_id": "adoption.eldyrwild_source_classification_repair",
             "stored_schema_version": "dm_existing_world_adoption_repair",
             "reader_path": "repair_existing_world_adoption_source_classification",
             "semantic_result": repair_sem,
@@ -769,7 +847,7 @@ def _run_historical(stores: WitnessStores) -> list[dict[str, Any]]:
 
     _g, _s, _c, _i, inits, _a = make_init_stores()
     command = make_command()
-    initialize_reviewed_world(command, initialization_repository=inits, graph_reader=init_reader())
+    initialize_reviewed_world(command, initialization_repository=inits, graph_reader=graph_reader())
     receipt = inits.get_for_world(command.world_id)
     compat = normalize_semantic(
         {
@@ -781,10 +859,89 @@ def _run_historical(stores: WitnessStores) -> list[dict[str, Any]]:
     )
     historical.append(
         {
+            "case_id": "reviewed_init.receipt_roundtrip",
             "stored_schema_version": "dm_reviewed_world_initialization_v1",
             "reader_path": "initialize_reviewed_world + get_for_world",
             "semantic_result": compat,
             "semantic_sha256": sha256_canonical(compat),
+        }
+    )
+
+    # ADR-0023: historical #645-family OTHER-stamped D0 evidence must project
+    # through GenesisEvidenceCompatibility while the raw stored revision keeps
+    # its OTHER stamps; the corrected WORLDBUILDING retry must replay onto the
+    # stored receipt; non-family OTHER evidence stays fail-closed.
+    fam_graph, fam_sources, _fc, _fi, fam_inits, _fa = make_init_stores()
+    family_command = make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+    family_receipt = initialize_reviewed_world(
+        family_command, initialization_repository=fam_inits, graph_reader=graph_reader()
+    )
+    stored_d0 = fam_graph.get_revision(
+        family_command.world_id, family_receipt.published_revision_id
+    )
+    if stored_d0 is None:
+        raise RuntimeError("family D0 revision missing")
+    raw_d0_domains = sorted(
+        {record["source_domain"] for record in stored_d0.graph_payload["evidence_refs"]}
+    )
+
+    def _init_projection(graph: Any, sources: Any, init_repo: Any, world_id: str) -> Any:
+        return WorldGraphProjectionService(
+            world_graph=graph,
+            sources=sources,
+            graph_reader=graph_reader(),
+            reviewed_world_initializations=init_repo,
+            clock=FixedClock(),
+        ).project(
+            WorldGraphProjectionRequestV2(
+                world_id=world_id,
+                campaign_id=INIT_CAMPAIGN_ID,
+                admissibility=Admissibility.GM,
+                revision_pin=None,
+                scope_mode=ScopeModeV2.CAMPAIGN,
+            )
+        )
+
+    family_projection = _init_projection(fam_graph, fam_sources, fam_inits, family_command.world_id)
+    family_admitted = sorted(family_projection.scoped_graph.snapshot.objects)
+    admitted_evidence = family_projection.scoped_graph.snapshot.evidence[FAMILY_EVIDENCE_ID]
+
+    corrected_command = make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING)
+    replay_identity = reviewed_world_initialization_replay_identity(corrected_command)
+    corrected_retry = initialize_reviewed_world(
+        corrected_command, initialization_repository=fam_inits, graph_reader=graph_reader()
+    )
+
+    nf_graph, nf_sources, _nfc, _nfi, nf_inits, _nfa = make_init_stores()
+    non_family_command = make_non_family_other_evidence_command()
+    initialize_reviewed_world(
+        non_family_command, initialization_repository=nf_inits, graph_reader=graph_reader()
+    )
+    nf_projection = _init_projection(nf_graph, nf_sources, nf_inits, non_family_command.world_id)
+    nf_admitted = sorted(nf_projection.scoped_graph.snapshot.objects)
+
+    adr_sem = normalize_semantic(
+        {
+            "world_id": family_command.world_id,
+            "initialization_id": family_command.initialization_id,
+            "family_admitted_object_ids": family_admitted,
+            "family_admitted_evidence_domain": admitted_evidence.source_domain.value,
+            "raw_d0_evidence_domains": raw_d0_domains,
+            "corrected_retry_returns_stored_receipt": corrected_retry == family_receipt,
+            "historical_other_normalized_sha256": (
+                replay_identity.historical_other_normalized_sha256
+            ),
+            "non_family_other_admitted_object_ids": nf_admitted,
+            "non_family_other_fail_closed": nf_admitted == [],
+        }
+    )
+    historical.append(
+        {
+            "case_id": "reviewed_init.adr0023_genesis_other_compatibility",
+            "stored_schema_version": "dm_reviewed_world_initialization_v1",
+            "reader_path": "initialize_reviewed_world(#645 OTHER) + project + corrected retry",
+            "semantic_result": adr_sem,
+            "semantic_sha256": sha256_canonical(adr_sem),
         }
     )
     return historical
@@ -800,10 +957,11 @@ def run_witness(
             raise ValueError("postgres adapter requires stores=")
         stores = make_memory_stores()
 
-    head = publish_synthetic_head(stores)
-    manifest = fixture_manifest(head_revision_id=head)
-    operations = _run_reads(stores, head)
-    operations.extend(_run_writes())
+    ancestor = publish_synthetic_ancestor(stores)
+    head = publish_synthetic_head(stores, parent_revision_id=ancestor)
+    manifest = fixture_manifest(head_revision_id=head, ancestor_revision_id=ancestor)
+    operations = _run_reads(stores, head, ancestor)
+    operations.extend(_run_writes(stores))
     historical = _run_historical(stores)
 
     missing = [op for op in REQUIRED_OPERATION_IDS if op not in {r["id"] for r in operations}]
@@ -813,7 +971,8 @@ def run_witness(
     witness: dict[str, Any] = {
         "schema": WITNESS_SCHEMA,
         "inputs": {
-            "dungeonmind_base_sha": BASE_SHA,
+            "dungeonmind_landed_base_sha": LANDED_BASE_SHA,
+            "dungeonmind_base_tree_sha": BASE_TREE_SHA,
             "k0_inventory_schema": K0_INVENTORY_SCHEMA,
             "k0_inventory_digest": file_digest(INVENTORY_PATH),
             "fixture_digest": f"sha256:{sha256_canonical(manifest)}",

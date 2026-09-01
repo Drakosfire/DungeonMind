@@ -28,6 +28,9 @@ from dungeonmind.contracts.graph import PublishRevisionCommand
 from dungeonmind.contracts.projection import Admissibility
 from dungeonmind.contracts.projection_v2 import ScopeModeV2, WorldGraphProjectionRequestV2
 from dungeonmind.contracts.vocabulary import Visibility
+from dungeonmind.domain.existing_world_membership import (
+    existing_world_adoption_membership_sha256,
+)
 from dungeonmind.infrastructure.memory import (
     InMemoryContributionRepository,
     InMemoryContributionReviewRepository,
@@ -312,6 +315,31 @@ def _payload() -> dict:
     }
 
 
+def _ancestor_payload() -> dict:
+    """Strictly older world state: the head payload before beta/crypt, the GM-only
+    secret, and the broken-provenance object were introduced.
+
+    The pinned historical read must return this smaller world, not the head.
+    """
+    full = _payload()
+    keep_objects = {"obj:world-tavern", "obj:world-gate", "obj:alpha-keep"}
+    keep_relationships = {"rel:tavern-gate", "rel:tavern-keep"}
+    return {
+        "world_id": WORLD_ID,
+        "semantic_profile": full["semantic_profile"],
+        "relationship_endpoint_aspect_schema": full["relationship_endpoint_aspect_schema"],
+        "objects": [item for item in full["objects"] if item["object_id"] in keep_objects],
+        "relationships": [
+            item for item in full["relationships"] if item["relationship_id"] in keep_relationships
+        ],
+        "evidence_refs": [
+            item
+            for item in full["evidence_refs"]
+            if item["evidence_ref_id"] in {"ev:world", "ev:alpha"}
+        ],
+    }
+
+
 def _seed_sources() -> InMemorySourceRepository:
     sources = InMemorySourceRepository()
     for artifact_id, revision_id, campaign_id in (
@@ -413,9 +441,111 @@ class WitnessStores:
     publications: Any
     adoptions: Any
     initializations: Any
+    # Adapter-private seam used only by the correction/retraction write case:
+    # corrupt one adopted artifact's classification to GM, rewrite the stored
+    # receipt membership to match the corrupted rows, and return that digest.
+    corrupt_source_classification: Any = None
+
+
+def world_membership_digest(stores: WitnessStores, world_id: str) -> str:
+    artifacts = [
+        artifact for artifact in stores.sources._artifacts.values() if artifact.world_id == world_id
+    ]
+    artifact_ids = {artifact.source_artifact_id for artifact in artifacts}
+    return existing_world_adoption_membership_sha256(
+        source_artifacts=artifacts,
+        source_revisions=[
+            revision
+            for revision in stores.sources._revisions.values()
+            if revision.source_artifact_id in artifact_ids
+        ],
+        contributions=[
+            item for key, item in stores.contributions._items.items() if key[0] == world_id
+        ],
+        identity_decisions=[
+            item for key, item in stores.identity._items.items() if key[0] == world_id
+        ],
+    )
+
+
+def _memory_corrupt_source_classification(
+    stores: WitnessStores, world_id: str, artifact_id: str
+) -> str:
+    artifact = stores.sources._artifacts[artifact_id]
+    stores.sources._artifacts[artifact_id] = artifact.model_copy(
+        update={"visibility": Visibility.GM}
+    )
+    digest = world_membership_digest(stores, world_id)
+    stored = stores.adoptions._receipts_by_world[world_id]
+    rewritten = stored.model_copy(update={"membership_sha256": digest})
+    stores.adoptions._receipts_by_world[world_id] = rewritten
+    stores.adoptions._receipts_by_adoption[rewritten.adoption_id] = rewritten
+    return digest
+
+
+def _postgres_corrupt_source_classification(
+    bundle: AdapterBundle, world_id: str, artifact_id: str
+) -> str:
+    from psycopg.types.json import Jsonb
+
+    from dungeonmind.infrastructure.postgres.serialization import model_fingerprint
+
+    artifact = bundle.sources.get_artifact(artifact_id)
+    if artifact is None:
+        raise RuntimeError(f"artifact {artifact_id!r} not adopted for {world_id!r}")
+    corrupted = artifact.model_copy(update={"visibility": Visibility.GM})
+    with bundle.database.connect() as conn:
+        conn.execute(
+            """
+            UPDATE dungeonmind.source_artifacts
+            SET visibility = %s,
+                record_fingerprint = %s,
+                payload = %s
+            WHERE source_artifact_id = %s
+            """,
+            (
+                corrupted.visibility.value,
+                model_fingerprint(corrupted),
+                Jsonb(corrupted.model_dump(mode="json")),
+                artifact_id,
+            ),
+        )
+        conn.commit()
+
+    artifacts = bundle.sources.list_artifacts_for_world(world_id)
+    digest = existing_world_adoption_membership_sha256(
+        source_artifacts=artifacts,
+        source_revisions=[
+            revision
+            for artifact_row in artifacts
+            for revision in bundle.sources.list_revisions(artifact_row.source_artifact_id)
+        ],
+        contributions=bundle.contributions.list_for_world(world_id),
+        identity_decisions=bundle.identity_decisions.list_for_world(world_id),
+    )
+    stored = bundle.existing_world_adoptions.get_for_world(world_id)
+    if stored is None:
+        raise RuntimeError(f"no adoption receipt stored for {world_id!r}")
+    rewritten = stored.model_copy(update={"membership_sha256": digest})
+    with bundle.database.connect() as conn:
+        conn.execute(
+            """
+            UPDATE dungeonmind.existing_world_adoptions
+            SET record_fingerprint = %s, payload = %s
+            WHERE world_id = %s
+            """,
+            (
+                model_fingerprint(rewritten),
+                Jsonb(rewritten.model_dump(mode="json")),
+                world_id,
+            ),
+        )
+        conn.commit()
+    return digest
 
 
 class AdapterBundle(Protocol):
+    database: Any
     world_graph: Any
     sources: Any
     contributions: Any
@@ -437,7 +567,7 @@ def make_memory_stores() -> WitnessStores:
     initializations = InMemoryReviewedWorldInitializationRepository(
         graph, sources, contributions, identity
     )
-    return WitnessStores(
+    stores = WitnessStores(
         world_graph=graph,
         sources=sources,
         contributions=contributions,
@@ -447,10 +577,14 @@ def make_memory_stores() -> WitnessStores:
         adoptions=adoptions,
         initializations=initializations,
     )
+    stores.corrupt_source_classification = lambda world_id, artifact_id: (
+        _memory_corrupt_source_classification(stores, world_id, artifact_id)
+    )
+    return stores
 
 
 def stores_from_postgres_bundle(bundle: AdapterBundle) -> WitnessStores:
-    return WitnessStores(
+    stores = WitnessStores(
         world_graph=bundle.world_graph,
         sources=bundle.sources,
         contributions=bundle.contributions,
@@ -460,9 +594,24 @@ def stores_from_postgres_bundle(bundle: AdapterBundle) -> WitnessStores:
         adoptions=bundle.existing_world_adoptions,
         initializations=bundle.reviewed_world_initializations,
     )
+    stores.corrupt_source_classification = lambda world_id, artifact_id: (
+        _postgres_corrupt_source_classification(bundle, world_id, artifact_id)
+    )
+    return stores
 
 
-def publish_synthetic_head(stores: WitnessStores) -> str:
+def publish_synthetic_ancestor(stores: WitnessStores) -> str:
+    """Publish the older world state that the pinned historical read must return."""
+    revision = _publish(
+        stores.world_graph,
+        _ancestor_payload(),
+        parent_revision_id=None,
+        operation_id="op:fixture-ancestor",
+    )
+    return str(revision.revision_id)
+
+
+def publish_synthetic_head(stores: WitnessStores, *, parent_revision_id: str | None = None) -> str:
     sources = _seed_sources()
     # Copy seeded artifacts into stores.sources
     for artifact in sources.list_artifacts_for_world(WORLD_ID):
@@ -476,7 +625,11 @@ def publish_synthetic_head(stores: WitnessStores) -> str:
         rev = sources.get_revision(revision_id)
         if rev is not None:
             stores.sources.put_revision(rev)
-    revision = _publish(stores.world_graph)
+    revision = _publish(
+        stores.world_graph,
+        parent_revision_id=parent_revision_id,
+        operation_id=("op:fixture" if parent_revision_id is None else "op:fixture-head"),
+    )
     return str(revision.revision_id)
 
 
@@ -515,14 +668,19 @@ def synthetic_graph_payload() -> dict[str, Any]:
     return _payload()
 
 
-def fixture_manifest(*, head_revision_id: str) -> dict[str, Any]:
+def fixture_manifest(
+    *, head_revision_id: str, ancestor_revision_id: str | None = None
+) -> dict[str, Any]:
     return {
         "id": FIXTURE_ID,
         "world_id": WORLD_ID,
         "campaigns": [CAMPAIGN_A, CAMPAIGN_B],
         "head_revision_id": head_revision_id,
+        "ancestor_revision_id": ancestor_revision_id,
+        "ancestor_object_ids": ["obj:world-tavern", "obj:world-gate", "obj:alpha-keep"],
         "graph_schema": GRAPH_SCHEMA_V6,
         "gm_only_object_ids": ["obj:alpha-secret"],
+        "gm_only_neighbor_of_player_seed": "obj:alpha-secret",
         "player_visible_campaign_a_object_ids": [
             "obj:world-tavern",
             "obj:world-gate",

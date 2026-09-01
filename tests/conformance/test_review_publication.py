@@ -20,7 +20,19 @@ from dungeonmind.application import (
     publish_finalized_review,
 )
 from dungeonmind.application.graph_snapshot import UnionGraphV3SnapshotReader
-from dungeonmind.contracts.contribution_review import ContributionReviewState
+from dungeonmind.contracts.contribution import ContributionStatus, GraphContribution
+from dungeonmind.contracts.contribution_review import (
+    ContributionAssertionVerdict,
+    ContributionIdentityProposal,
+    ContributionIdentityVerdict,
+    ContributionPlanRef,
+    ContributionReviewState,
+    contribution_payload_sha256,
+    derive_confirmation_id,
+    derive_review_id,
+    derive_review_intent_sha256,
+    derive_reviewed_contribution_id,
+)
 from dungeonmind.contracts.graph import (
     PublishRevisionCommand,
     StoredGraphRevision,
@@ -117,14 +129,76 @@ def _seed_graph(
     return parent, reader
 
 
-def _seed_review() -> tuple[
-    InMemoryContributionReviewRepository, ContributionReviewState
-]:
+def _seed_review() -> tuple[InMemoryContributionReviewRepository, ContributionReviewState]:
     contributions = InMemoryContributionRepository()
     reviews = InMemoryContributionReviewRepository(contributions)
     state = _state()
     persisted = reviews.finalize(state)
     return reviews, persisted
+
+
+def review_state_for_operation(operation_suffix: str) -> ContributionReviewState:
+    """A second valid finalized review pinned to the same parent, new operation.
+
+    Used by failure lanes that need a fresh durable publication boundary on a
+    world whose head has already advanced past the fixture parent.
+    """
+    payload = json.loads(STATE_FIXTURE.read_text(encoding="utf-8"))
+    payload["record"]["operation_id"] = f"reviewop:{operation_suffix}"
+    payload["record"]["plan_ref"]["source_plan_id"] = f"plan:{operation_suffix}"
+
+    candidate = GraphContribution.model_validate(payload["candidate_contribution"])
+    candidate_preview = candidate.model_copy(update={"status": ContributionStatus.ACTIVE})
+    plan_ref = ContributionPlanRef.model_validate(payload["record"]["plan_ref"])
+    identity_proposals = [
+        ContributionIdentityProposal.model_validate(item)
+        for item in payload["record"]["identity_proposals"]
+    ]
+    identity_verdicts = [
+        ContributionIdentityVerdict.model_validate(item)
+        for item in payload["record"]["identity_verdicts"]
+    ]
+    assertion_verdicts = [
+        ContributionAssertionVerdict.model_validate(item)
+        for item in payload["record"]["assertion_verdicts"]
+    ]
+    reviewed_at = datetime.fromisoformat(payload["record"]["reviewed_at"].replace("Z", "+00:00"))
+    review_intent_sha256 = derive_review_intent_sha256(
+        operation_id=payload["record"]["operation_id"],
+        world_id=payload["record"]["world_id"],
+        campaign_id=payload["record"]["campaign_id"],
+        plan_ref=plan_ref,
+        candidate_contribution=candidate_preview,
+        identity_proposals=identity_proposals,
+        identity_verdicts=identity_verdicts,
+        assertion_verdicts=assertion_verdicts,
+        reviewer_id=payload["record"]["reviewer_id"],
+        reviewed_at=reviewed_at,
+    )
+    review_id = derive_review_id(
+        operation_id=payload["record"]["operation_id"],
+        review_intent_sha256=review_intent_sha256,
+        world_id=payload["record"]["world_id"],
+    )
+    reviewed_payload = payload["reviewed_contribution"]
+    reviewed_payload["contribution_id"] = derive_reviewed_contribution_id(
+        review_id=review_id,
+        candidate_contribution_id=candidate.contribution_id,
+    )
+    reviewed = GraphContribution.model_validate(reviewed_payload)
+
+    payload["record"]["review_id"] = review_id
+    payload["record"]["review_intent_sha256"] = review_intent_sha256
+    payload["record"]["reviewed_contribution_id"] = reviewed.contribution_id
+    payload["record"]["reviewed_contribution_sha256"] = contribution_payload_sha256(reviewed)
+    payload["record"]["confirmation_id"] = derive_confirmation_id(
+        operation_id=payload["record"]["operation_id"],
+        review_intent_sha256=review_intent_sha256,
+        actor=payload["record"]["reviewer_id"],
+        confirmed_at=reviewed_at,
+    )
+    payload["reviewed_contribution"] = reviewed.model_dump(mode="json")
+    return ContributionReviewState.model_validate(payload)
 
 
 class _SpyWorldGraphRepository:
@@ -349,9 +423,7 @@ def test_exact_tripod_publication_maps_one_review_to_one_revision() -> None:
     )
     published = graph.get_revision(WORLD_ID, PUBLISHED_REVISION_ID)
     assert published is not None
-    assert published.graph_payload == json.loads(
-        MATERIALIZED_FIXTURE.read_text(encoding="utf-8")
-    )
+    assert published.graph_payload == json.loads(MATERIALIZED_FIXTURE.read_text(encoding="utf-8"))
     assert published.revision.parent_revision_id == PARENT_REVISION_ID
     assert published.revision.operation_ids == [state.record.operation_id]
     assert published.revision.graph_schema == "dm_union_graph_v3"
@@ -643,9 +715,7 @@ def test_mismatched_returned_envelope_recovers_durable_record_without_republish(
     reviews, _state_value = _seed_review()
 
     def alter(publication: FinalizedReviewPublication) -> FinalizedReviewPublication:
-        return publication.model_copy(
-            update={"operation_id": "reviewop:" + "2" * 32}
-        )
+        return publication.model_copy(update={"operation_id": "reviewop:" + "2" * 32})
 
     publication = _SpyPublicationRepository(
         InMemoryFinalizedReviewPublicationRepository(reviews, graph),
