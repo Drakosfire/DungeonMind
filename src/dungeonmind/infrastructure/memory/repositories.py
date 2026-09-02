@@ -174,6 +174,9 @@ class InMemoryWorldGraphRepository:
         head = self._heads.get(world_id)
         return _copy(head) if head is not None else None
 
+    def list_heads(self) -> list[WorldGraphHead]:
+        return [_copy(head) for head in sorted(self._heads.values(), key=lambda h: h.world_id)]
+
     def get_revision(self, world_id: str, revision_id: str) -> StoredGraphRevision | None:
         stored = self._revisions.get((world_id, revision_id))
         return _copy(stored) if stored is not None else None
@@ -1901,6 +1904,9 @@ class InMemoryExistingWorldAdoptionRepository:
                 return None
             return self._reconstruct_unlocked(receipt)
 
+    def list_world_ids(self) -> list[str]:
+        return sorted(self._receipts_by_world.keys())
+
     def promote_to_v3_receipt(
         self,
         world_id: str,
@@ -2437,6 +2443,9 @@ class InMemoryReviewedWorldInitializationRepository:
             if receipt is None:
                 return None
             return self._reconstruct_unlocked(receipt)
+
+    def list_world_ids(self) -> list[str]:
+        return sorted(self._receipts_by_world.keys())
 
     def initialize(
         self,

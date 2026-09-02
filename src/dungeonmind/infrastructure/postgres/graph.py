@@ -64,6 +64,19 @@ class PostgresWorldGraphRepository:
             return None
         return _head_from_row(row).model_copy(deep=True)
 
+    def list_heads(self) -> list[WorldGraphHead]:
+        with self._database.transaction() as conn:
+            rows = conn.execute(
+                sql.SQL(
+                    f"""
+                    SELECT {_HEAD_SELECT}
+                    FROM {{}}.world_graph_heads
+                    ORDER BY world_id
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+            ).fetchall()
+        return [_head_from_row(row).model_copy(deep=True) for row in rows]
+
     def get_revision(self, world_id: str, revision_id: str) -> StoredGraphRevision | None:
         with self._database.transaction() as conn:
             row = conn.execute(

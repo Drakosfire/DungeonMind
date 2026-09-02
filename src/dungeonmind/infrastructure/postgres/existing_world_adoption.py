@@ -398,6 +398,19 @@ class PostgresExistingWorldAdoptionRepository:
             row = _adoption_row(conn, world_id=world_id)
             return None if row is None else self._load_verified(conn, row)
 
+    def list_world_ids(self) -> list[str]:
+        with self._database.transaction() as conn:
+            rows = conn.execute(
+                sql.SQL(
+                    """
+                    SELECT world_id
+                    FROM {}.existing_world_adoptions
+                    ORDER BY world_id
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+            ).fetchall()
+        return [str(row["world_id"]) for row in rows]
+
     def promote_to_v3_receipt(
         self,
         world_id: str,

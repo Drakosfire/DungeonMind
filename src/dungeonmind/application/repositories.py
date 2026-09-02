@@ -118,6 +118,10 @@ class WorldGraphRepository(Protocol):
 
     def get_head(self, world_id: str) -> WorldGraphHead | None: ...
 
+    def list_heads(self) -> list[WorldGraphHead]:
+        """Read-only enumeration of every current head, ordered by ``world_id``."""
+        ...
+
     def get_revision(self, world_id: str, revision_id: str) -> StoredGraphRevision | None: ...
 
     def publish_revision(self, command: PublishRevisionCommand) -> WorldGraphRevision:
@@ -222,6 +226,10 @@ class ExistingWorldAdoptionRepository(Protocol):
     ) -> DurableExistingWorldAdoptionReceipt | None: ...
 
     def get_for_world(self, world_id: str) -> DurableExistingWorldAdoptionReceipt | None: ...
+
+    def list_world_ids(self) -> list[str]:
+        """Read-only enumeration of worlds with an adoption receipt, ordered."""
+        ...
 
     def promote_to_v3_receipt(
         self,
@@ -361,6 +369,10 @@ class ReviewedWorldInitializationRepository(Protocol):
     def get_for_world(
         self, world_id: str
     ) -> ReviewedWorldInitializationReceiptV1 | None: ...
+
+    def list_world_ids(self) -> list[str]:
+        """Read-only enumeration of worlds with an init receipt, ordered."""
+        ...
 
 
 class IdentityDecisionRepository(Protocol):
