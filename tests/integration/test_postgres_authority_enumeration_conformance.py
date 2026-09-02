@@ -58,7 +58,7 @@ def test_postgres_enumeration_ports_are_read_only_witness(pg) -> None:
     head_worlds = ("world:head-alpha", "world:head-zebra")
     adopt_world = "world:adopt-alpha"
     init_world = "world:init-zebra"
-    world_ids = head_worlds + (adopt_world, init_world)
+    world_ids = (*head_worlds, adopt_world, init_world)
 
     for world_id in head_worlds:
         bundle.world_graph.publish_revision(
