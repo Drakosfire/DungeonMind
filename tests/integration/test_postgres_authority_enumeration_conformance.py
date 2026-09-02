@@ -71,7 +71,7 @@ def test_postgres_enumeration_ports_are_read_only_witness(pg) -> None:
         before = _table_counts(conn, world_ids=world_ids)
 
     heads = bundle.world_graph.list_heads()
-    assert [head.world_id for head in heads] == sorted(head_worlds)
+    assert [head.world_id for head in heads] == sorted(world_ids)
     assert bundle.existing_world_adoptions.list_world_ids() == [adopt_world]
     assert bundle.reviewed_world_initializations.list_world_ids() == [init_world]
 
