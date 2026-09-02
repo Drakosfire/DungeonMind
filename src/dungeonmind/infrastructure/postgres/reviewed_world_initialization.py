@@ -287,6 +287,19 @@ class PostgresReviewedWorldInitializationRepository:
             row = _init_row(conn, world_id=world_id)
             return None if row is None else self._load_verified(conn, row)
 
+    def list_world_ids(self) -> list[str]:
+        with self._database.transaction() as conn:
+            rows = conn.execute(
+                sql.SQL(
+                    """
+                    SELECT world_id
+                    FROM {}.reviewed_world_initializations
+                    ORDER BY world_id
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+            ).fetchall()
+        return [str(row["world_id"]) for row in rows]
+
     def initialize(
         self,
         command: ReviewedWorldInitializationCommandV1,
