@@ -47,26 +47,33 @@ def test_postgres_authority_enumeration_conformance(case_name: str, case_fn, pg)
 def test_postgres_enumeration_ports_are_read_only_witness(pg) -> None:
     """Enumeration calls must not mutate durable rows."""
     bundle = _enumeration_bundle(pg)
-    for world_id in ("world:alpha", "world:zebra"):
-        bundle.world_graph.publish_revision(
-            make_publish(world_id=world_id, payload={"world_id": world_id, "nodes": []})
-        )
 
     from tests.conformance.authority_enumeration_contract_cases import (
         _adopt_world,
         _initialize_world,
     )
 
-    _adopt_world(bundle, world_id="world:alpha", token="alpha")
-    _initialize_world(bundle, world_id="world:zebra", token="zebra")
-    world_ids = ("world:alpha", "world:zebra")
+    # Separate worlds per enumeration surface: heads require published revisions,
+    # while adoption and reviewed-init require pristine targets.
+    head_worlds = ("world:head-alpha", "world:head-zebra")
+    adopt_world = "world:adopt-alpha"
+    init_world = "world:init-zebra"
+    world_ids = head_worlds + (adopt_world, init_world)
+
+    for world_id in head_worlds:
+        bundle.world_graph.publish_revision(
+            make_publish(world_id=world_id, payload={"world_id": world_id, "nodes": []})
+        )
+    _adopt_world(bundle, world_id=adopt_world, token="adopt-alpha")
+    _initialize_world(bundle, world_id=init_world, token="init-zebra")
 
     with pg.database.connect() as conn:
         before = _table_counts(conn, world_ids=world_ids)
 
-    assert bundle.world_graph.list_heads()
-    assert bundle.existing_world_adoptions.list_world_ids() == ["world:alpha"]
-    assert bundle.reviewed_world_initializations.list_world_ids() == ["world:zebra"]
+    heads = bundle.world_graph.list_heads()
+    assert [head.world_id for head in heads] == sorted(head_worlds)
+    assert bundle.existing_world_adoptions.list_world_ids() == [adopt_world]
+    assert bundle.reviewed_world_initializations.list_world_ids() == [init_world]
 
     with pg.database.connect() as conn:
         after = _table_counts(conn, world_ids=world_ids)
