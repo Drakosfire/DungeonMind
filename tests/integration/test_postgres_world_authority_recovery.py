@@ -53,9 +53,15 @@ def test_empty_database_is_world_missing(pg) -> None:
         sources=pg.sources,
         contributions=pg.contributions,
         identity_decisions=pg.identity_decisions,
+        project=_unreached_projector,
     )
     assert report.status == STATUS_NOT_READY
     assert report.reason == REASON_WORLD_MISSING
+
+
+def _unreached_projector():
+    # world-missing / stale paths return before projection; never called.
+    raise AssertionError("projector must not run on the world-missing/stale path")
 
 
 def test_adopted_d_a_is_stale_when_expected_head_is_d_b(pg) -> None:
@@ -74,6 +80,7 @@ def test_adopted_d_a_is_stale_when_expected_head_is_d_b(pg) -> None:
         sources=pg.sources,
         contributions=pg.contributions,
         identity_decisions=pg.identity_decisions,
+        project=_unreached_projector,
     )
     assert report.status == STATUS_NOT_READY
     assert report.reason == REASON_STALE_RECOVERY_POINT
@@ -105,6 +112,7 @@ def test_coherent_membership_tamper_fails_closed(pg) -> None:
             expected=_expectation_d_a(),
             membership_manifest=MANIFEST,
             schema_revision=ELDYRWILD_SCHEMA_REVISION,
+            project=_projector_for(pg),
         )
 
     baseline = _check()
@@ -137,13 +145,61 @@ def test_coherent_membership_tamper_fails_closed(pg) -> None:
 
 
 def _expectation_d_a():
-    """D_A-only adoption: head == adopted revision is the accepted state."""
+    """D_A-only adoption: head == adopted revision is the accepted state.
+
+    A fresh D_A adoption projects to zero objects (the projection service does
+    not reconstruct the union graph from the adoption alone); the 469-object
+    cardinality is the D_B recovery target and is enforced there. This test
+    isolates the membership plane, so it pins the real D_A projection count.
+    """
     from dungeonmind.application.world_authority_recovery import RecoveryExpectation
 
     return RecoveryExpectation(
         expected_head=ELDYRWILD_D_A,
         current_contribution_count=93,
+        projection_object_count=0,
     )
+
+
+def _projector_for(pg):
+    """Build a real governed projector over an existing Postgres bundle."""
+    from dungeonmind.application.graph_snapshot import VersionedUnionGraphSnapshotReader
+    from dungeonmind.application.world_authority_recovery import ProjectionWitness
+    from dungeonmind.application.world_graph_projection import WorldGraphProjectionService
+    from dungeonmind.contracts.projection import Admissibility
+    from dungeonmind.contracts.projection_v2 import (
+        ScopeModeV2,
+        WorldGraphProjectionRequestV2,
+    )
+    from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
+    from dungeonmind_dnd.application.world_object_vocabulary import (
+        load_builtin_v3_descriptor,
+    )
+
+    reader = VersionedUnionGraphSnapshotReader(
+        profile_registry=StaticSemanticProfileRegistry([load_builtin_v3_descriptor()])
+    )
+    service = WorldGraphProjectionService(
+        world_graph=pg.world_graph,
+        sources=pg.sources,
+        graph_reader=reader,
+        reviewed_world_initializations=pg.reviewed_world_initializations,
+    )
+    request = WorldGraphProjectionRequestV2.for_authorized(
+        world_id="eldyrwild",
+        admissibility=Admissibility.GM,
+        scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN,
+    )
+
+    def _project() -> ProjectionWitness:
+        result = service.project(request)
+        return ProjectionWitness(
+            revision_id=result.snapshot.revision_id,
+            head_revision_id=result.snapshot.head_revision_id,
+            object_count=len(result.graph.objects),
+        )
+
+    return _project
 
 
 def _sibling_url(database_url: str, name: str) -> str:

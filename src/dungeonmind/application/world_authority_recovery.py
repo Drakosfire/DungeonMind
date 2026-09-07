@@ -18,6 +18,7 @@ from ..contracts.existing_world_adoption import (
     ExistingWorldAdoptionMembershipManifestV1,
 )
 from ..domain.existing_world_membership import existing_world_adoption_membership_sha256
+from ..domain.revision_ids import compute_revision_id
 
 ELDYRWILD_WORLD_ID = "eldyrwild"
 ELDYRWILD_D_A = "rev:34b1f8e2625d5ba693fc726a2a1a4720"
@@ -62,6 +63,9 @@ class _RevisionEnvelope(Protocol):
     revision_id: str
     parent_revision_id: str | None
     world_id: str
+    operation_ids: list[str]
+    graph_schema: str
+    graph_payload_sha256: str
 
 
 class _StoredRevision(Protocol):
@@ -224,6 +228,24 @@ def unavailable_preflight(
     )
 
 
+def _recompute_revision_id(stored: _StoredRevision) -> str:
+    """Recompute a revision's content-addressed identity from its envelope.
+
+    ``compute_revision_id`` commits to world, parent, ordered operation IDs,
+    graph schema, and graph payload hash. Recomputing it from the durable
+    envelope and comparing to the stored/public ID proves the restored head is
+    the exact accepted revision, not merely a row carrying its literal ID.
+    """
+    revision = stored.revision
+    return compute_revision_id(
+        world_id=revision.world_id,
+        parent_revision_id=revision.parent_revision_id,
+        operation_ids=list(revision.operation_ids),
+        graph_schema=revision.graph_schema,
+        graph_payload_sha256=revision.graph_payload_sha256,
+    )
+
+
 def _recompute_adopted_membership(
     *,
     world_id: str,
@@ -282,17 +304,22 @@ def check_world_authority(
     sources: _Sources,
     contributions: _WorldList,
     identity_decisions: _WorldList,
+    project: Callable[[], ProjectionWitness],
     expected: RecoveryExpectation | None = None,
-    project: Callable[[], ProjectionWitness] | None = None,
     schema_revision: str | None = None,
     membership_manifest: ExistingWorldAdoptionMembershipManifestV1 | None = None,
 ) -> WorldAuthorityPreflight:
     """Verify one Eldyrwild database against the accepted D_A/D_B lineage.
 
-    When ``membership_manifest`` is supplied, the canonical adopted-membership
-    digest is recomputed from the durable records selected by that manifest and
-    must equal the receipt's recorded checkpoint. This independently detects
-    same-cardinality substitution, which the cardinalities alone cannot.
+    ``project`` is required: a READY result requires a successful governed
+    projection of the current World at the accepted cardinality. Omitting it is
+    a ``TypeError``, so a caller cannot silently skip the projection plane.
+
+    The adopted-membership digest is always recomputed from the durable records
+    selected by the sealed-bundle manifest and must equal the receipt's
+    sanctioned checkpoint. When ``membership_manifest`` is omitted it is derived
+    from the sealed bundle fixture internally, so the membership plane cannot be
+    skipped either; if the manifest cannot be loaded the preflight fails closed.
     """
 
     expectation = expected or RecoveryExpectation()
@@ -335,6 +362,12 @@ def check_world_authority(
             diagnostics.append(f"current head {current_head} has no stored revision")
         else:
             parent_revision_id = stored.revision.parent_revision_id
+            recomputed_head = _recompute_revision_id(stored)
+            if recomputed_head != current_head:
+                diagnostics.append(
+                    f"head revision identity recompute {recomputed_head!r} != "
+                    f"stored id {current_head!r}"
+                )
 
     adopted_stored = None
     if adopted_revision_id:
@@ -343,6 +376,13 @@ def check_world_authority(
             diagnostics.append(f"adopted revision {adopted_revision_id} is missing")
         elif adopted_stored.revision.parent_revision_id is not None:
             diagnostics.append("adopted D_A must be parentless")
+        else:
+            recomputed_adopted = _recompute_revision_id(adopted_stored)
+            if recomputed_adopted != adopted_revision_id:
+                diagnostics.append(
+                    f"adopted revision identity recompute {recomputed_adopted!r} != "
+                    f"stored id {adopted_revision_id!r}"
+                )
 
     diagnostics.extend(
         _receipt_shape_diagnostics(
@@ -425,6 +465,13 @@ def check_world_authority(
             f"parent({current_head})={parent_revision_id!r} != {expectation.expected_parent!r}"
         )
 
+    if membership_manifest is None:
+        try:
+            membership_manifest = _load_sealed_manifest()
+        except Exception as exc:
+            diagnostics.append(f"sealed membership manifest unavailable: {exc}")
+            membership_manifest = None
+
     if membership_manifest is not None:
         recomputed = _recompute_adopted_membership(
             world_id=world_id,
@@ -463,7 +510,7 @@ def check_world_authority(
                 )
 
     projection: ProjectionWitness | None = None
-    if project is not None and not diagnostics:
+    if not diagnostics:
         try:
             projection = project()
         except Exception as exc:
