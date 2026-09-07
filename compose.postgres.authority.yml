@@ -1,0 +1,37 @@
+# Durable local World-authority PostgreSQL for Eldyrwild recovery.
+# This is not remote backup, HA, or production hosting.
+#
+# Keep compose.postgres.yml for disposable integration tests. That file uses
+# tmpfs and must remain ephemeral. Ordinary `docker compose down` here does
+# not delete the named volume; deleting the volume is an explicit operator
+# action (`docker volume rm`).
+#
+# Image is pinned by digest. Tag is documentation only.
+#   pgvector 0.8.6 / PostgreSQL 16
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg16@sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b
+    container_name: dungeonmind-postgres-authority
+    environment:
+      POSTGRES_DB: dungeonmind_cutover_live
+      POSTGRES_USER: dungeonmind
+      POSTGRES_PASSWORD: dungeonmind-dev
+    ports:
+      - "127.0.0.1:54330:5432"
+    volumes:
+      - dungeonmind_world_authority_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U dungeonmind -d dungeonmind_cutover_live && psql -U dungeonmind -d dungeonmind_cutover_live -tAc \"SELECT 1 FROM pg_available_extensions WHERE name = 'vector'\" | grep -q 1",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  dungeonmind_world_authority_data:
+    name: dungeonmind_world_authority_data
