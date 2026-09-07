@@ -7,9 +7,17 @@ remain operator/Postgres tooling in the recovery script.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
+
+from ..contracts.existing_world_adoption import (
+    ExistingWorldAdoptionBundleV2,
+    ExistingWorldAdoptionMembershipManifestV1,
+)
+from ..domain.existing_world_membership import existing_world_adoption_membership_sha256
 
 ELDYRWILD_WORLD_ID = "eldyrwild"
 ELDYRWILD_D_A = "rev:34b1f8e2625d5ba693fc726a2a1a4720"
@@ -25,6 +33,16 @@ ELDYRWILD_ADOPTION_CONTRIBUTIONS = 93
 ELDYRWILD_ADOPTION_IDENTITY_DECISIONS = 13
 ELDYRWILD_D_B_CONTRIBUTIONS = 95
 ELDYRWILD_SCHEMA_REVISION = "0007_reviewed_world_init"
+ELDYRWILD_PROJECTION_OBJECT_COUNT = 469
+
+# Canonical sealed adoption bundle (checked-in fixture). The recovery preflight
+# derives the adopted-member manifest from this bundle — never from the stored
+# receipt — so membership can be recomputed independently of the receipt's
+# recorded digest.
+SEALED_BUNDLE_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "tests/fixtures/dungeonmind_dnd/eldyrwild_existing_world_adoption_bundle_v2.json"
+)
 
 STATUS_READY = "READY"
 STATUS_NOT_READY = "NOT_READY"
@@ -61,13 +79,36 @@ class _Adoptions(Protocol):
 
 
 class _Sources(Protocol):
+    def get_artifact(self, source_artifact_id: str) -> Any | None: ...
+
+    def get_revision(self, source_revision_id: str) -> Any | None: ...
+
     def list_artifacts_for_world(self, world_id: str) -> list[Any]: ...
 
     def list_revisions(self, source_artifact_id: str) -> list[Any]: ...
 
 
 class _WorldList(Protocol):
+    def get(self, world_id: str, record_id: str) -> Any | None: ...
+
     def list_for_world(self, world_id: str) -> list[Any]: ...
+
+
+def _load_sealed_manifest(
+    bundle_path: Path | None = None,
+) -> ExistingWorldAdoptionMembershipManifestV1:
+    """Derive the adopted-member manifest from the sealed bundle fixture.
+
+    This is the independent source of adopted-member identity. The stored
+    receipt is never consulted for which records belong to the adoption, so a
+    tampered receipt cannot redefine membership.
+    """
+    from .existing_world_adoption_repair import derive_membership_manifest
+
+    path = bundle_path or SEALED_BUNDLE_PATH
+    payload = json.loads(path.read_bytes().decode("utf-8"))
+    bundle = ExistingWorldAdoptionBundleV2.model_validate(payload)
+    return derive_membership_manifest(bundle)
 
 
 @dataclass(frozen=True)
@@ -86,6 +127,7 @@ class RecoveryExpectation:
     current_contribution_count: int = ELDYRWILD_D_B_CONTRIBUTIONS
     identity_decision_count: int = ELDYRWILD_ADOPTION_IDENTITY_DECISIONS
     schema_revision: str = ELDYRWILD_SCHEMA_REVISION
+    projection_object_count: int = ELDYRWILD_PROJECTION_OBJECT_COUNT
 
 
 @dataclass(frozen=True)
@@ -156,8 +198,12 @@ def _receipt_shape_diagnostics(
         if membership_m1 != expected.membership_m1:
             diagnostics.append("membership M1 mismatch")
     elif receipt_schema == ELDYRWILD_RECEIPT_SCHEMA_V3:
-        if membership_m0 != expected.membership_m1:
-            diagnostics.append("dump v3 membership checkpoint mismatch")
+        # A v3 receipt carries one ``membership_sha256``: the pre-repair (M0)
+        # digest on a fresh adoption, or the post-repair (M1) digest on the
+        # accepted repaired dump. Both are sanctioned; the independent
+        # recomputation in ``check_world_authority`` is the integrity proof.
+        if membership_m0 not in (expected.membership_m0, expected.membership_m1):
+            diagnostics.append("v3 membership checkpoint is not sanctioned")
         if membership_m1 is not None:
             diagnostics.append("v3 receipt must not carry effective_membership_sha256")
     else:
@@ -178,6 +224,57 @@ def unavailable_preflight(
     )
 
 
+def _recompute_adopted_membership(
+    *,
+    world_id: str,
+    manifest: ExistingWorldAdoptionMembershipManifestV1,
+    sources: _Sources,
+    contributions: _WorldList,
+    identity_decisions: _WorldList,
+    diagnostics: list[str],
+) -> str | None:
+    """Recompute the canonical adopted-membership digest from durable rows.
+
+    Members are selected by the sealed-bundle manifest and fetched by id, so a
+    tampered record (same id, changed payload) or a missing member is detected.
+    Returns ``None`` when any member is missing/failed; diagnostics record why.
+    """
+    artifacts: list[Any] = []
+    for artifact_id in manifest.source_artifact_ids:
+        record = sources.get_artifact(artifact_id)
+        if record is None:
+            diagnostics.append(f"adopted source artifact {artifact_id!r} is missing")
+            return None
+        artifacts.append(record)
+    revisions: list[Any] = []
+    for revision_id in manifest.source_revision_ids:
+        record = sources.get_revision(revision_id)
+        if record is None:
+            diagnostics.append(f"adopted source revision {revision_id!r} is missing")
+            return None
+        revisions.append(record)
+    contribution_rows: list[Any] = []
+    for contribution_id in manifest.contribution_ids:
+        record = contributions.get(world_id, contribution_id)
+        if record is None:
+            diagnostics.append(f"adopted contribution {contribution_id!r} is missing")
+            return None
+        contribution_rows.append(record)
+    decision_rows: list[Any] = []
+    for decision_id in manifest.identity_decision_ids:
+        record = identity_decisions.get(world_id, decision_id)
+        if record is None:
+            diagnostics.append(f"adopted identity decision {decision_id!r} is missing")
+            return None
+        decision_rows.append(record)
+    return existing_world_adoption_membership_sha256(
+        source_artifacts=artifacts,
+        source_revisions=revisions,
+        contributions=contribution_rows,
+        identity_decisions=decision_rows,
+    )
+
+
 def check_world_authority(
     *,
     world_graph: _WorldGraph,
@@ -188,8 +285,15 @@ def check_world_authority(
     expected: RecoveryExpectation | None = None,
     project: Callable[[], ProjectionWitness] | None = None,
     schema_revision: str | None = None,
+    membership_manifest: ExistingWorldAdoptionMembershipManifestV1 | None = None,
 ) -> WorldAuthorityPreflight:
-    """Verify one Eldyrwild database against the accepted D_A/D_B lineage."""
+    """Verify one Eldyrwild database against the accepted D_A/D_B lineage.
+
+    When ``membership_manifest`` is supplied, the canonical adopted-membership
+    digest is recomputed from the durable records selected by that manifest and
+    must equal the receipt's recorded checkpoint. This independently detects
+    same-cardinality substitution, which the cardinalities alone cannot.
+    """
 
     expectation = expected or RecoveryExpectation()
     diagnostics: list[str] = []
@@ -312,10 +416,51 @@ def check_world_authority(
         diagnostics.append(
             f"current head {current_head!r} != expected {expectation.expected_head!r}"
         )
-    elif parent_revision_id != expectation.expected_parent:
+    elif current_head != expectation.adopted_revision_id and (
+        parent_revision_id != expectation.expected_parent
+    ):
+        # Parentage is only asserted for the post-adoption child head; the
+        # adopted D_A root is legitimately parentless.
         diagnostics.append(
             f"parent({current_head})={parent_revision_id!r} != {expectation.expected_parent!r}"
         )
+
+    if membership_manifest is not None:
+        recomputed = _recompute_adopted_membership(
+            world_id=world_id,
+            manifest=membership_manifest,
+            sources=sources,
+            contributions=contributions,
+            identity_decisions=identity_decisions,
+            diagnostics=diagnostics,
+        )
+        if recomputed is not None:
+            # The independent digest must match a checkpoint the receipt
+            # sanctions. A v4 receipt carries the post-repair checkpoint in
+            # ``effective_membership_sha256``; a v3 receipt carries a single
+            # ``membership_sha256`` that is the pre-repair (M0) digest on a
+            # fresh adoption or the post-repair (M1) digest on the accepted
+            # repaired dump. Accepting the recomputed digest against the
+            # receipt's own recorded checkpoint still detects substitution,
+            # because the digest is recomputed from durable rows, not trusted.
+            if receipt_schema == ELDYRWILD_RECEIPT_SCHEMA_V4:
+                sanctioned = {expectation.membership_m1}
+                checkpoint = membership_m1
+            else:
+                sanctioned = {expectation.membership_m0, expectation.membership_m1}
+                checkpoint = membership_m0
+            if checkpoint is None:
+                diagnostics.append("receipt carries no membership checkpoint to verify against")
+            elif checkpoint not in sanctioned:
+                diagnostics.append(
+                    f"receipt membership checkpoint {checkpoint!r} is not a "
+                    "sanctioned Eldyrwild checkpoint"
+                )
+            elif recomputed != checkpoint:
+                diagnostics.append(
+                    f"recomputed adopted-membership digest {recomputed!r} != "
+                    f"receipt checkpoint {checkpoint!r}"
+                )
 
     projection: ProjectionWitness | None = None
     if project is not None and not diagnostics:
@@ -333,6 +478,11 @@ def check_world_authority(
                 diagnostics.append(
                     f"projection head {projection.head_revision_id!r} != "
                     f"{expectation.expected_head!r}"
+                )
+            if projection.object_count != expectation.projection_object_count:
+                diagnostics.append(
+                    f"projection object count {projection.object_count} != "
+                    f"{expectation.projection_object_count}"
                 )
 
     if diagnostics:

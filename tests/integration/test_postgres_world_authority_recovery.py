@@ -16,17 +16,27 @@ from dungeonmind.application.existing_world_adoption import adopt_existing_world
 from dungeonmind.application.world_authority_recovery import (
     ELDYRWILD_D_A,
     ELDYRWILD_D_B,
+    ELDYRWILD_SCHEMA_REVISION,
+    REASON_INTEGRITY_FAILURE,
     REASON_STALE_RECOVERY_POINT,
     REASON_WORLD_MISSING,
     STATUS_NOT_READY,
     STATUS_READY,
+    _load_sealed_manifest,
     check_world_authority,
+)
+from dungeonmind.infrastructure.postgres.database import jsonb
+from dungeonmind.infrastructure.postgres.serialization import (
+    dump_payload,
+    model_fingerprint,
 )
 from tests.unit.test_eldyrwild_existing_world_adoption_bundle_v2 import (
     NOW,
     eldyrwild_graph_reader,
     raw_bundle,
 )
+
+MANIFEST = _load_sealed_manifest()
 
 pytestmark = pytest.mark.integration
 
@@ -70,6 +80,72 @@ def test_adopted_d_a_is_stale_when_expected_head_is_d_b(pg) -> None:
     assert report.current_head == ELDYRWILD_D_A
 
 
+def test_coherent_membership_tamper_fails_closed(pg) -> None:
+    """Same-cardinality substitution at the owning boundary must flip READY.
+
+    A durable contribution is rewritten coherently — payload and matching
+    record_fingerprint, same contribution_id, unchanged cardinality, receipt
+    untouched — so the read-time fingerprint check passes. Only the preflight's
+    independent recomputation of the adopted-membership digest can catch it.
+    """
+    adopt_existing_world(
+        raw_bundle(),
+        adopted_at=NOW,
+        adoption_repository=pg.existing_world_adoptions,
+        graph_reader=eldyrwild_graph_reader(),
+    )
+
+    def _check():
+        return check_world_authority(
+            world_graph=pg.world_graph,
+            adoptions=pg.existing_world_adoptions,
+            sources=pg.sources,
+            contributions=pg.contributions,
+            identity_decisions=pg.identity_decisions,
+            expected=_expectation_d_a(),
+            membership_manifest=MANIFEST,
+            schema_revision=ELDYRWILD_SCHEMA_REVISION,
+        )
+
+    baseline = _check()
+    assert baseline.status == STATUS_READY, baseline.diagnostics
+
+    target_id = MANIFEST.contribution_ids[0]
+    stored = pg.contributions.get("eldyrwild", target_id)
+    assert stored is not None
+    mutated = stored.model_copy(update={"extraction_profile": "tampered-profile"})
+    fingerprint = model_fingerprint(mutated)
+    with pg.database.transaction() as conn:
+        conn.execute(
+            sql.SQL(
+                "UPDATE {}.graph_contributions "
+                "SET payload = %s, record_fingerprint = %s "
+                "WHERE world_id = %s AND contribution_id = %s"
+            ).format(sql.Identifier("dungeonmind")),
+            (
+                jsonb(dump_payload(mutated)),
+                fingerprint,
+                "eldyrwild",
+                target_id,
+            ),
+        )
+
+    report = _check()
+    assert report.status == STATUS_NOT_READY
+    assert report.reason == REASON_INTEGRITY_FAILURE
+    assert any("recomputed adopted-membership digest" in d for d in report.diagnostics)
+
+
+def _expectation_d_a():
+    """D_A-only adoption: head == adopted revision is the accepted state."""
+    from dungeonmind.application.world_authority_recovery import RecoveryExpectation
+
+    return RecoveryExpectation(
+        expected_head=ELDYRWILD_D_A,
+        current_contribution_count=93,
+    )
+
+
 def _sibling_url(database_url: str, name: str) -> str:
     parsed = urlparse(database_url)
     if not parsed.path:
@@ -106,11 +182,11 @@ def test_exact_dump_restore_is_ready_at_d_b(database_url: str) -> None:
             [
                 sys.executable,
                 str(RECOVERY_SCRIPT),
+                "restore",
                 "--database-url",
                 witness_url,
                 "--expected-head",
                 ELDYRWILD_D_B,
-                "restore",
                 "--dump-path",
                 str(dump_path),
             ],

@@ -16,6 +16,9 @@ Usage:
     uv run python scripts/eldyrwild_world_authority_recovery.py backup \\
         --database-url "$DUNGEONMIND_WORLD_GRAPH_AUTHORITY_DATABASE_URL" \\
         --output-path /path/outside/git/eldyrwild.dump
+
+Options such as ``--database-url`` belong to the subcommand and must follow it
+(``check --database-url ...``), not precede it.
 """
 
 from __future__ import annotations
@@ -41,6 +44,7 @@ from dungeonmind.application.world_authority_recovery import (  # noqa: E402
     ProjectionWitness,
     RecoveryExpectation,
     WorldAuthorityPreflight,
+    _load_sealed_manifest,
     check_world_authority,
     unavailable_preflight,
 )
@@ -219,6 +223,7 @@ def _run_check(database_url: str, expected_head: str) -> WorldAuthorityPreflight
             expected=RecoveryExpectation(expected_head=expected_head),
             project=project,
             schema_revision=schema_revision,
+            membership_manifest=_load_sealed_manifest(),
         )
     except Exception as exc:
         return unavailable_preflight(diagnostic=str(exc))
@@ -337,6 +342,11 @@ def _cmd_backup(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # ``--database-url`` / ``--expected-head`` are owned by the subparsers only.
+    # Registering them on both the root parser and the subparsers lets argparse
+    # overwrite a value supplied before the subcommand with the subparser's
+    # environment default, silently re-targeting the command at the wrong DSN.
+    # A single owner makes the supplied value authoritative.
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
         "--database-url",
@@ -344,7 +354,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Designated World DSN; never the Buddy APP-STATE DSN.",
     )
     common.add_argument("--expected-head", default=ELDYRWILD_D_B)
-    parser = argparse.ArgumentParser(description=__doc__, parents=[common])
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=("common options must follow the subcommand, e.g. `check --database-url ...`"),
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser(
