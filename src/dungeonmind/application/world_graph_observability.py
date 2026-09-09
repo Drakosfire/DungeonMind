@@ -73,12 +73,22 @@ class CoverageObservationFields(TypedDict):
 WorldGraphReadOperation = Literal[
     "project",
     "get_object",
+    "get_complete_object",
     "search",
     "get_neighborhood",
     "get_evidence",
     "resolve_source_anchor",
 ]
 """Closed vocabulary of instrumented direct-read operations."""
+
+WorldGraphReadCompletenessStatus = Literal["complete", "partial"]
+"""Closed completeness vocabulary for selected-object reads. Other operations leave this unset."""
+
+WorldGraphReadCompletenessReason = Literal[
+    "missing_related_endpoint",
+    "truncated_anchors",
+]
+"""Closed partial-reason vocabulary. Never free text, identity, or source prose."""
 
 WorldGraphReadOutcome = Literal["success", "miss", "error"]
 """Closed terminal outcome vocabulary for one operation invocation."""
@@ -112,6 +122,12 @@ READ_OPERATIONS: frozenset[str] = frozenset(WorldGraphReadOperation.__args__)
 READ_OUTCOMES: frozenset[str] = frozenset(WorldGraphReadOutcome.__args__)
 READ_FAILURE_CODES: frozenset[str] = frozenset(WorldGraphReadFailureCode.__args__)
 READ_PHASES: frozenset[str] = frozenset(WorldGraphReadPhase.__args__)
+READ_COMPLETENESS_STATUSES: frozenset[str] = frozenset(
+    WorldGraphReadCompletenessStatus.__args__
+)
+READ_COMPLETENESS_REASONS: frozenset[str] = frozenset(
+    WorldGraphReadCompletenessReason.__args__
+)
 
 
 class WorldGraphReadClock(Protocol):
@@ -184,6 +200,8 @@ class WorldGraphReadObservation:
     parsed_revision_cache_hit: bool | None = None
     source_artifact_count: int | None = None
     source_revision_count: int | None = None
+    completeness_status: WorldGraphReadCompletenessStatus | None = None
+    completeness_reason: WorldGraphReadCompletenessReason | None = None
 
     def __post_init__(self) -> None:
         if self.duration_seconds < 0:
@@ -198,6 +216,21 @@ class WorldGraphReadObservation:
             raise ValueError("error outcome requires failure_code and vice versa")
         if self.neighborhood_depth is not None and self.neighborhood_depth not in (1, 2):
             raise ValueError("neighborhood_depth must be 1 or 2 when present")
+        if (
+            self.completeness_status is not None
+            and self.completeness_status not in READ_COMPLETENESS_STATUSES
+        ):
+            raise ValueError(f"unknown completeness status {self.completeness_status!r}")
+        if (
+            self.completeness_reason is not None
+            and self.completeness_reason not in READ_COMPLETENESS_REASONS
+        ):
+            raise ValueError(f"unknown completeness reason {self.completeness_reason!r}")
+        if self.completeness_status == "partial":
+            if self.completeness_reason is None:
+                raise ValueError("partial completeness_status requires completeness_reason")
+        elif self.completeness_reason is not None:
+            raise ValueError("completeness_reason requires partial completeness_status")
 
 
 class WorldGraphReadObserver(Protocol):
@@ -293,6 +326,8 @@ class PhaseRecorder:
 
 __all__ = [
     "NOOP_READ_OBSERVER",
+    "READ_COMPLETENESS_REASONS",
+    "READ_COMPLETENESS_STATUSES",
     "READ_FAILURE_CODES",
     "READ_OPERATIONS",
     "READ_OUTCOMES",
@@ -303,6 +338,8 @@ __all__ = [
     "RequestObservationFields",
     "SystemMonotonicReadClock",
     "WorldGraphReadClock",
+    "WorldGraphReadCompletenessReason",
+    "WorldGraphReadCompletenessStatus",
     "WorldGraphReadFailureCode",
     "WorldGraphReadObservation",
     "WorldGraphReadObserver",
