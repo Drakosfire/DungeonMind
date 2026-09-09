@@ -189,7 +189,8 @@ class AdmittedAssertionValue:
     Property assertions populate ``property_term`` / ``property_value`` so a
     product adapter can rebuild its claim ledger (assertion ID, subject object,
     property term/value, assertion metadata, evidence refs) without consulting
-    any foreign kernel. Other assertion kinds carry identity plus evidence.
+    any foreign kernel. Alias, summary, and aspect rows carry the matching
+    payload fields so excluded GraphObjectView internals are not the only copy.
     """
 
     assertion_id: str
@@ -201,6 +202,10 @@ class AdmittedAssertionValue:
     assertion_metadata: KnowledgeAssertionMetadataV1 | None
     property_term: str | None = None
     property_value: Any = None
+    alias: str | None = None
+    summary: str | None = None
+    aspect_key: str | None = None
+    aspect_kind: str | None = None
 
 
 @dataclass(frozen=True)
@@ -288,6 +293,12 @@ class SelectedObjectCompleteness:
 
 @dataclass(frozen=True)
 class CompleteObjectLookupResult:
+    """Complete selected-object one-hop result.
+
+    ``property_assertions`` is the full selected-object assertion ledger
+    (existence, alias, summary, property, aspect), not property rows only.
+    """
+
     snapshot: ProjectionSnapshotV2
     found: bool
     object: GraphObjectView | None
@@ -582,48 +593,73 @@ def _assertion_rows_for_object(obj: GraphObjectView) -> list[AdmittedAssertionVa
     return rows
 
 
+def _selected_object_assertion_rows(obj: GraphObjectView) -> list[AdmittedAssertionValue]:
+    """All admitted object-owned assertion rows for one selected object.
+
+    Bounded retrieval still uses property rows only. Complete selected-object
+    reads must expose existence, alias, summary, property, and aspect rows so
+    excluded GraphObjectView internals are not the only copy of that truth.
+    Relationship assertions remain on the returned relationship views.
+    """
+    rows: list[AdmittedAssertionValue] = []
+    existence = obj.existence_assertion_metadata
+    if existence is not None:
+        rows.append(
+            AdmittedAssertionValue(
+                assertion_id=existence.assertion_id,
+                subject_object_id=obj.object_id,
+                assertion_kind="existence",
+                evidence_ref_ids=tuple(existence.evidence_ref_ids),
+                assertion_metadata=existence,
+            )
+        )
+    for alias in obj.admitted_alias_assertions:
+        rows.append(
+            AdmittedAssertionValue(
+                assertion_id=alias.assertion_id,
+                subject_object_id=obj.object_id,
+                assertion_kind="alias",
+                evidence_ref_ids=tuple(alias.evidence_ref_ids),
+                assertion_metadata=alias.assertion_metadata,
+                alias=alias.alias,
+            )
+        )
+    summary = obj.admitted_summary_assertion
+    if summary is not None:
+        rows.append(
+            AdmittedAssertionValue(
+                assertion_id=summary.assertion_id,
+                subject_object_id=obj.object_id,
+                assertion_kind="summary",
+                evidence_ref_ids=tuple(summary.evidence_ref_ids),
+                assertion_metadata=summary.assertion_metadata,
+                summary=summary.summary,
+            )
+        )
+    rows.extend(_assertion_rows_for_object(obj))
+    for aspect in obj.admitted_aspect_assertions:
+        rows.append(
+            AdmittedAssertionValue(
+                assertion_id=aspect.assertion_id,
+                subject_object_id=obj.object_id,
+                assertion_kind="aspect",
+                evidence_ref_ids=tuple(aspect.evidence_ref_ids),
+                assertion_metadata=aspect.assertion_metadata,
+                aspect_key=aspect.aspect_key,
+                aspect_kind=aspect.kind,
+            )
+        )
+    return rows
+
+
 def _index_admitted_assertions(
     result: WorldGraphProjectionResult,
 ) -> dict[str, AdmittedAssertionValue]:
     """Index every admitted assertion by ID across the scoped projection."""
     index: dict[str, AdmittedAssertionValue] = {}
-    for object_id, obj in result.graph.objects.items():
-        existence = obj.existence_assertion_metadata
-        if existence is not None:
-            index[existence.assertion_id] = AdmittedAssertionValue(
-                assertion_id=existence.assertion_id,
-                subject_object_id=object_id,
-                assertion_kind="existence",
-                evidence_ref_ids=tuple(existence.evidence_ref_ids),
-                assertion_metadata=existence,
-            )
-        for alias in obj.admitted_alias_assertions:
-            index[alias.assertion_id] = AdmittedAssertionValue(
-                assertion_id=alias.assertion_id,
-                subject_object_id=object_id,
-                assertion_kind="alias",
-                evidence_ref_ids=tuple(alias.evidence_ref_ids),
-                assertion_metadata=alias.assertion_metadata,
-            )
-        summary = obj.admitted_summary_assertion
-        if summary is not None:
-            index[summary.assertion_id] = AdmittedAssertionValue(
-                assertion_id=summary.assertion_id,
-                subject_object_id=object_id,
-                assertion_kind="summary",
-                evidence_ref_ids=tuple(summary.evidence_ref_ids),
-                assertion_metadata=summary.assertion_metadata,
-            )
-        for row in _assertion_rows_for_object(obj):
+    for obj in result.graph.objects.values():
+        for row in _selected_object_assertion_rows(obj):
             index[row.assertion_id] = row
-        for aspect in obj.admitted_aspect_assertions:
-            index[aspect.assertion_id] = AdmittedAssertionValue(
-                assertion_id=aspect.assertion_id,
-                subject_object_id=object_id,
-                assertion_kind="aspect",
-                evidence_ref_ids=tuple(aspect.evidence_ref_ids),
-                assertion_metadata=aspect.assertion_metadata,
-            )
     for rel in result.graph.relationships.values():
         metadata = rel.assertion_metadata
         if metadata is not None:
@@ -891,7 +927,7 @@ class WorldGraphRetrievalService:
                 return op_result
             with recorder.phase("object_selection"):
                 relationships = tuple(self._relationships_touching(result, {object_id}))
-                assertions = tuple(_assertion_rows_for_object(obj))
+                assertions = tuple(_selected_object_assertion_rows(obj))
                 related_objects, missing_endpoints = self._related_objects_for(
                     result,
                     object_id=object_id,

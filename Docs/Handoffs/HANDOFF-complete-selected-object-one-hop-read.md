@@ -1,7 +1,7 @@
 # HANDOFF — complete selected-object one-hop read
 
 **Created:** 2026-09-08
-**Status:** ACTIVE — Cycle 1 HOLD repairs on this branch; awaiting Cycle 2
+**Status:** ACTIVE — Cycle 2 HOLD assertion-completeness repair on this branch; awaiting Cycle 3
 **Repository / branch:** `Drakosfire/DungeonMind` / `retrieval/complete-selected-object-one-hop-v1`
 **Base:** `e82e790e011773369f07b1b431482d5026d4dd3e`
 **Predecessor:** DungeonMindBuddy PR #697 stop condition on full World-object projection
@@ -379,4 +379,40 @@ The dispatch body above is unchanged. Cycle 1 required:
 4. **PR body is the merge contract.** Update GitHub PR #52 after evidence is produced; do not leave “implementation has not started” in the description.
 
 Partial graph states (`missing_related_endpoint`, `truncated_anchors`) remain modeled and observed. The current projection excludes relationships whose endpoints are not admitted, and this operation passes `max_anchors=None`, so those partial reasons are not expected on a well-formed admitted graph. They still must survive into telemetry when produced.
+
+---
+
+## Addendum — Review Cycle 2 HOLD (`5149678809` on `1df3a87a`)
+
+Cycle 1 blockers are closed: partial-reason telemetry, the >32 distinct-anchor fixture, the live Eldyrwild timing witness, and PR/evidence synchronization.
+
+Remaining defect: `get_complete_object()` used `_assertion_rows_for_object()`, which emits **property rows only**. Existence, alias, summary, and aspect metadata live on excluded `GraphObjectView` internals, so a result labeled `complete` could silently drop assertion-level evidence/temporal semantics. The live Bonogo witness `assertions=0` meant **0 property assertions**, not 0 admitted assertions about Bonogo.
+
+---
+
+## Addendum — Review Cycle 3 repair
+
+`get_complete_object` now returns the full selected-object assertion ledger — existence, alias, summary, property, and aspect — with assertion ID, kind, payload fields, evidence refs, and assertion/temporal metadata. Anchors include those IDs in `supporting_assertion_ids` where applicable. Observability `result_assertion_count` counts the full ledger. Bounded `get_object` / search / neighborhood remain property-row retrieval.
+
+Quality gates on this repair (not a full live re-characterization):
+
+```text
+uv run pytest tests/unit/test_world_graph_retrieval_service.py tests/unit/test_world_graph_read_observability.py
+uv run pytest
+uv run ruff check src tests benchmarks
+uv run pyright
+git diff --check
+```
+
+Cheap live honesty check for `pc:bonogo` (one `get_complete_object`, no cold/warm timing rerun):
+
+```text
+returned: relationships=30 endpoints=25 assertions=1 (existence=1) anchors=47
+completeness=complete
+revision/head=rev:680c246047d67f9fe0293ee90526f670 (unchanged)
+```
+
+The Cycle 2 live timing (~534ms cold / ~327ms warm) is still the characterization witness. Adding the existence row does not change that disposition.
+
+DungeonMindBuddy #697 remains **DESIGN HOLD — CODE NOT STARTED** until this PR is accepted. After this repair, the Cycle 2 reviewer currently sees no remaining reason to keep #52 from merging.
 

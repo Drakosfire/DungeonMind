@@ -52,6 +52,7 @@ from tests.unit.null_reviewed_world_initialization import (
 from tests.unit.test_world_graph_retrieval_service import (
     HUB_DEGREE,
     HUB_OBJECT_ID,
+    HUB_PROPERTY_COUNT,
     _complete_object_payload,
     _complete_object_sources,
     _FixedClock,
@@ -640,6 +641,7 @@ def test_get_complete_object_observation_reports_counts_and_completeness():
     assert outer.result_object_count == 1 + HUB_DEGREE
     assert outer.result_relationship_count == HUB_DEGREE
     assert outer.result_assertion_count == len(result.property_assertions)
+    assert outer.result_assertion_count == 1 + HUB_PROPERTY_COUNT
     assert outer.result_anchor_count == len(result.anchors)
     assert outer.result_anchor_count is not None and outer.result_anchor_count > 32
     _assert_no_forbidden_tokens(outer)

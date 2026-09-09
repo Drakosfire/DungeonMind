@@ -359,6 +359,17 @@ def _complete_object_payload() -> dict:
             ],
         )
     )
+    payload["objects"][-1]["aspects"] = [
+        {
+            "aspect_key": "site",
+            "kind": "dnd5e:location",
+            "assertion_metadata": _meta(
+                "asrt:isolated-well-site",
+                evidence=("ev:world",),
+                campaign_scope=None,
+            ),
+        }
+    ]
     timeless = {
         "schema_version": "dm_temporal_scope_ref_v1",
         "kind": "world_timeless",
@@ -1284,8 +1295,30 @@ def test_complete_object_zero_relationships_is_complete():
     assert result.relationships == ()
     assert result.related_objects == ()
     assert [row.assertion_id for row in result.property_assertions] == [
-        "asrt:prop-isolated-depth"
+        "asrt:isolated-well",
+        "asrt:prop-isolated-depth",
+        "asrt:isolated-well-site",
     ]
+    assert [row.assertion_kind for row in result.property_assertions] == [
+        "existence",
+        "property",
+        "aspect",
+    ]
+    aspect = result.property_assertions[2]
+    assert aspect.aspect_key == "site"
+    assert aspect.aspect_kind == "dnd5e:location"
+    assert aspect.evidence_ref_ids == ("ev:world",)
+    assert aspect.assertion_metadata is not None
+    supporting = {
+        assertion_id
+        for anchor in result.anchors
+        for assertion_id in anchor.supporting_assertion_ids
+    }
+    assert {
+        "asrt:isolated-well",
+        "asrt:prop-isolated-depth",
+        "asrt:isolated-well-site",
+    } <= supporting
     assert result.completeness.status == "complete"
     assert result.coverage.truncated_fields == ()
     assert result.snapshot.revision_id == revision.revision_id
@@ -1326,10 +1359,15 @@ def test_complete_object_returns_every_edge_when_degree_exceeds_bounded_cap():
         assert rel.subject_object_id in _endpoint_ids(result)
         assert rel.object_object_id in _endpoint_ids(result)
     assert [row.assertion_id for row in result.property_assertions] == [
+        "asrt:hub-plaza",
         "asrt:prop-hub-population",
         *[f"asrt:prop-hub-tag-{index:02d}" for index in range(HUB_PROPERTY_COUNT - 1)],
     ]
-    assert len(result.property_assertions) == HUB_PROPERTY_COUNT
+    assert result.property_assertions[0].assertion_kind == "existence"
+    assert all(
+        row.assertion_kind == "property" for row in result.property_assertions[1:]
+    )
+    assert len(result.property_assertions) == 1 + HUB_PROPERTY_COUNT
     assert len(result.property_assertions) > 32
     assert projection.project_calls == 2
 
@@ -1421,6 +1459,78 @@ def test_complete_object_player_fails_closed_on_gm_only_material():
     assert keep.completeness.status == "complete"
     assert "rel:keep-secret" not in {rel.relationship_id for rel in keep.relationships}
     assert "obj:alpha-secret" not in {obj.object_id for obj in keep.related_objects}
+    assert [row.assertion_id for row in keep.property_assertions] == [
+        "asrt:alpha-keep",
+        "asrt:prop-keep-threat",
+    ]
+    assert [row.assertion_kind for row in keep.property_assertions] == [
+        "existence",
+        "property",
+    ]
+    assert "asrt:keep-alias-traitor" not in {
+        row.assertion_id for row in keep.property_assertions
+    }
+
+
+def test_complete_object_returns_all_selected_object_assertion_kinds():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, _ = _services(world_graph)
+
+    bounded = service.get_object(_world(), object_id="obj:world-tavern")
+    result = service.get_complete_object(_world(), object_id="obj:world-tavern")
+
+    assert [row.assertion_id for row in bounded.property_assertions] == [
+        "asrt:prop-tavern-population"
+    ]
+    assert [row.assertion_kind for row in bounded.property_assertions] == ["property"]
+    by_id = {row.assertion_id: row for row in result.property_assertions}
+    assert [row.assertion_id for row in result.property_assertions] == [
+        "asrt:world-tavern",
+        "asrt:tavern-alias-pony",
+        "asrt:tavern-alias-spot",
+        "asrt:world-tavern:summary",
+        "asrt:prop-tavern-population",
+    ]
+    assert [row.assertion_kind for row in result.property_assertions] == [
+        "existence",
+        "alias",
+        "alias",
+        "summary",
+        "property",
+    ]
+    for assertion_id in (
+        "asrt:world-tavern",
+        "asrt:tavern-alias-pony",
+        "asrt:tavern-alias-spot",
+        "asrt:world-tavern:summary",
+        "asrt:prop-tavern-population",
+    ):
+        row = by_id[assertion_id]
+        assert row.subject_object_id == "obj:world-tavern"
+        assert row.evidence_ref_ids == ("ev:world",)
+        assert row.assertion_metadata is not None
+        assert row.assertion_metadata.assertion_id == assertion_id
+        assert row.assertion_metadata.temporal_scope is not None
+    assert by_id["asrt:prop-tavern-population"].property_term == "dnd5e:population"
+    assert by_id["asrt:tavern-alias-pony"].alias == "The Prancing Pony"
+    assert by_id["asrt:tavern-alias-spot"].alias == "The Local Spot"
+    assert by_id["asrt:world-tavern:summary"].summary == (
+        "A bustling tavern at the crossroads."
+    )
+    supporting = {
+        assertion_id
+        for anchor in result.anchors
+        for assertion_id in anchor.supporting_assertion_ids
+    }
+    assert {
+        "asrt:world-tavern",
+        "asrt:tavern-alias-pony",
+        "asrt:tavern-alias-spot",
+        "asrt:world-tavern:summary",
+        "asrt:prop-tavern-population",
+    } <= supporting
+    assert result.completeness.status == "complete"
 
 
 def test_complete_object_preserves_temporal_metadata_unchanged():
