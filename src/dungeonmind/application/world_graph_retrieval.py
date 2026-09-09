@@ -12,10 +12,13 @@ Public ``project`` remains a compatibility wrapper over that context-producing
 seam. Retrieval reuses memoized evidence-chain resolution from the same
 context instead of recomputing projection facts.
 
-Five capabilities are owned here so product surfaces can retire their legacy
+Six capabilities are owned here so product surfaces can retire their legacy
 kernel reads:
 
 * exact object lookup by stable object ID (explicit miss, no search fallback);
+* complete selected-object one-hop lookup that returns every admitted touching
+  relationship, related endpoint, selected-object assertion, and valid anchor
+  without product ``RetrievalBounds`` caps defining object truth;
 * deterministic graph-only search / referent resolution over admitted IDs,
   labels, aliases, kinds, summaries, property term/value text, relationship
   predicates, and related-object labels — no vector store, semantic index,
@@ -93,6 +96,10 @@ _OBJECTS_LIMIT = 12
 _RELATIONSHIPS_LIMIT = 24
 _ASSERTIONS_LIMIT = 32
 _ANCHORS_LIMIT = 32
+
+_COMPLETE_OBJECT_PARTIAL_REASONS: frozenset[str] = frozenset(
+    {"missing_related_endpoint", "truncated_anchors"}
+)
 
 # Deterministic lexical ranking weights. Exact identity dominates phrasal
 # matches, which dominate per-token matches; an explicit exact seed dominates
@@ -246,6 +253,53 @@ class ObjectLookupResult:
     relationships: tuple[GraphRelationshipView, ...] = ()
     property_assertions: tuple[AdmittedAssertionValue, ...] = ()
     anchors: tuple[SourceAnchorMetadata, ...] = ()
+    coverage: RetrievalCoverage = field(default_factory=RetrievalCoverage)
+
+
+@dataclass(frozen=True)
+class SelectedObjectCompleteness:
+    """Explicit completeness for one selected-object one-hop read.
+
+    ``complete`` means every admitted required selected-object fact was
+    returned. ``partial`` is only for a named integrity/resource reason;
+    product ``RetrievalBounds`` never define completeness for this operation.
+    """
+
+    status: Literal["complete", "partial"]
+    reason: str | None = None
+    truncated_fields: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.status == "complete":
+            if self.reason is not None or self.truncated_fields:
+                raise ValueError(
+                    "complete selected-object results cannot name a partial reason"
+                )
+            return
+        if self.status != "partial":
+            raise ValueError(f"unknown selected-object completeness {self.status!r}")
+        if self.reason not in _COMPLETE_OBJECT_PARTIAL_REASONS:
+            raise ValueError(
+                "partial selected-object results must name a known reason"
+            )
+        if not self.truncated_fields:
+            raise ValueError(
+                "partial selected-object results must name truncated_fields"
+            )
+
+
+@dataclass(frozen=True)
+class CompleteObjectLookupResult:
+    snapshot: ProjectionSnapshotV2
+    found: bool
+    object: GraphObjectView | None
+    related_objects: tuple[GraphObjectView, ...] = ()
+    relationships: tuple[GraphRelationshipView, ...] = ()
+    property_assertions: tuple[AdmittedAssertionValue, ...] = ()
+    anchors: tuple[SourceAnchorMetadata, ...] = ()
+    completeness: SelectedObjectCompleteness = field(
+        default_factory=lambda: SelectedObjectCompleteness(status="complete")
+    )
     coverage: RetrievalCoverage = field(default_factory=RetrievalCoverage)
 
 
@@ -792,6 +846,121 @@ class WorldGraphRetrievalService:
             raise
         self._emit(self._object_observation(recorder, request, result, op_result))
         return op_result
+
+    def get_complete_object(
+        self,
+        request: WorldGraphProjectionRequestV2,
+        *,
+        object_id: str,
+    ) -> CompleteObjectLookupResult:
+        """Exact selected-object one-hop read, complete by contract.
+
+        Product ``RetrievalBounds`` do not apply. A miss is explicit and is
+        never reported as partial. Provenance rejections stay fail-closed
+        coverage gaps rather than manufactured anchors.
+        """
+        recorder = PhaseRecorder(self._read_clock)
+        projected: WorldGraphProjectionResult | None = None
+        try:
+            if not object_id.strip():
+                raise ValueError("object_id must be non-blank")
+            with recorder.phase("projection"):
+                result, context = self._establish(request)
+            projected = result
+            obj = result.graph.objects.get(object_id)
+            if obj is None:
+                gap_codes: tuple[str, ...] = ()
+                missing_ids: tuple[str, ...] = ()
+                exclusion = result.scoped_graph.object_exclusions.get(object_id)
+                if exclusion is not None:
+                    codes, missing = public_coverage_gaps_for_exclusion(exclusion)
+                    gap_codes = tuple(codes)
+                    missing_ids = tuple(missing)
+                op_result = CompleteObjectLookupResult(
+                    snapshot=result.snapshot,
+                    found=False,
+                    object=None,
+                    coverage=RetrievalCoverage(
+                        gap_codes=gap_codes,
+                        missing_ids=missing_ids,
+                    ),
+                )
+                self._emit(
+                    self._complete_object_observation(
+                        recorder, request, result, op_result
+                    )
+                )
+                return op_result
+            with recorder.phase("object_selection"):
+                relationships = tuple(self._relationships_touching(result, {object_id}))
+                assertions = tuple(_assertion_rows_for_object(obj))
+                related_objects, missing_endpoints = self._related_objects_for(
+                    result,
+                    object_id=object_id,
+                    relationships=relationships,
+                )
+            with recorder.phase("anchor_derivation"):
+                anchors, anchor_truncated, anchor_gaps = self._anchors_for(
+                    result,
+                    context=context,
+                    object_ids={object_id, *(item.object_id for item in related_objects)},
+                    relationship_ids={rel.relationship_id for rel in relationships},
+                    assertion_ids={row.assertion_id for row in assertions},
+                    max_anchors=None,
+                )
+            completeness = self._selected_object_completeness(
+                missing_endpoints=missing_endpoints,
+                anchor_truncated=anchor_truncated,
+            )
+            op_result = CompleteObjectLookupResult(
+                snapshot=result.snapshot,
+                found=True,
+                object=obj,
+                related_objects=related_objects,
+                relationships=relationships,
+                property_assertions=assertions,
+                anchors=anchors,
+                completeness=completeness,
+                coverage=RetrievalCoverage(
+                    truncated_fields=completeness.truncated_fields,
+                    gap_codes=anchor_gaps[0],
+                    missing_ids=anchor_gaps[1],
+                ),
+            )
+        except Exception as exc:
+            self._emit(
+                self._error_observation(
+                    recorder, request, "get_complete_object", exc, projected
+                )
+            )
+            raise
+        self._emit(self._complete_object_observation(recorder, request, result, op_result))
+        return op_result
+
+    def _complete_object_observation(
+        self,
+        recorder: PhaseRecorder,
+        request: WorldGraphProjectionRequestV2,
+        result: WorldGraphProjectionResult,
+        op_result: CompleteObjectLookupResult,
+    ) -> WorldGraphReadObservation:
+        result_object_count = 0
+        if op_result.found:
+            result_object_count = 1 + len(op_result.related_objects)
+        return WorldGraphReadObservation(
+            operation="get_complete_object",
+            outcome="success" if op_result.found else "miss",
+            duration_seconds=recorder.total_seconds(),
+            phase_durations=recorder.phases,
+            result_object_count=result_object_count,
+            result_relationship_count=len(op_result.relationships),
+            result_assertion_count=len(op_result.property_assertions),
+            result_anchor_count=len(op_result.anchors),
+            completeness_status=op_result.completeness.status,
+            **self._request_fields(request),
+            **self._graph_fields(result),
+            **self._coverage_fields(op_result.coverage),
+        )
 
     def _object_observation(
         self,
@@ -1488,6 +1657,56 @@ class WorldGraphRetrievalService:
         return tuple(anchors), False
 
     @staticmethod
+    def _related_objects_for(
+        result: WorldGraphProjectionResult,
+        *,
+        object_id: str,
+        relationships: tuple[GraphRelationshipView, ...],
+    ) -> tuple[tuple[GraphObjectView, ...], bool]:
+        """Collect opposite endpoints for one selected object.
+
+        Missing admitted endpoints are an integrity gap: the relationship is
+        returned, but completeness cannot be ``complete``.
+        """
+        related_ids: set[str] = set()
+        missing = False
+        for rel in relationships:
+            for endpoint in (rel.subject_object_id, rel.object_object_id):
+                if endpoint == object_id:
+                    continue
+                related_ids.add(endpoint)
+                if endpoint not in result.graph.objects:
+                    missing = True
+        related = tuple(
+            result.graph.objects[related_id]
+            for related_id in sorted(related_ids)
+            if related_id in result.graph.objects
+        )
+        return related, missing
+
+    @staticmethod
+    def _selected_object_completeness(
+        *,
+        missing_endpoints: bool,
+        anchor_truncated: bool,
+    ) -> SelectedObjectCompleteness:
+        truncated: list[str] = []
+        reasons: list[str] = []
+        if missing_endpoints:
+            truncated.append("related_objects")
+            reasons.append("missing_related_endpoint")
+        if anchor_truncated:
+            truncated.append("anchors")
+            reasons.append("truncated_anchors")
+        if not reasons:
+            return SelectedObjectCompleteness(status="complete")
+        return SelectedObjectCompleteness(
+            status="partial",
+            reason=reasons[0],
+            truncated_fields=tuple(truncated),
+        )
+
+    @staticmethod
     def _relationships_touching(
         result: WorldGraphProjectionResult,
         object_ids: set[str],
@@ -1519,6 +1738,7 @@ __all__ = [
     "SOURCE_ANCHOR_ID_PREFIX",
     "SOURCE_ANCHOR_SCHEMA",
     "AdmittedAssertionValue",
+    "CompleteObjectLookupResult",
     "EvidenceRetrievalResult",
     "EvidenceTarget",
     "GraphSearchResult",
@@ -1526,6 +1746,7 @@ __all__ = [
     "ObjectLookupResult",
     "RetrievalBounds",
     "RetrievalCoverage",
+    "SelectedObjectCompleteness",
     "SourceAnchorMetadata",
     "SourceAnchorResolution",
     "WorldGraphRetrievalService",

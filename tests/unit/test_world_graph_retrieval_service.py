@@ -21,6 +21,7 @@ from dungeonmind.application.world_graph_retrieval import (
     SOURCE_ANCHOR_ID_PREFIX,
     EvidenceTarget,
     RetrievalBounds,
+    SelectedObjectCompleteness,
     WorldGraphRetrievalService,
     derive_source_anchor_id,
 )
@@ -32,6 +33,7 @@ from dungeonmind.contracts.evidence import (
 )
 from dungeonmind.contracts.graph import PublishRevisionCommand
 from dungeonmind.contracts.identity import IdentityOutcome
+from dungeonmind.contracts.knowledge_assertion import TemporalScopeKind
 from dungeonmind.contracts.projection import Admissibility
 from dungeonmind.contracts.projection_v2 import ScopeModeV2, WorldGraphProjectionRequestV2
 from dungeonmind.contracts.vocabulary import Visibility
@@ -51,6 +53,17 @@ WORLD_ID = "world:test"
 CAMPAIGN_A = "camp:alpha"
 CAMPAIGN_B = "camp:beta"
 NOW = datetime(2026, 8, 22, 18, 0, tzinfo=UTC)
+HUB_OBJECT_ID = "obj:hub-plaza"
+ISOLATED_OBJECT_ID = "obj:isolated-well"
+HUB_DEGREE = 30
+HUB_PROPERTY_COUNT = 33
+HUB_OUTGOING = 15
+_HARD_RETRIEVAL_BOUNDS = RetrievalBounds(
+    max_objects=12,
+    max_relationships=24,
+    max_assertions=32,
+    max_anchors=32,
+)
 
 
 class _FixedClock:
@@ -88,6 +101,8 @@ def _meta(
     evidence: tuple[str, ...],
     visibility: str = "player",
     campaign_scope: str | None = None,
+    session_refs: list[str] | None = None,
+    temporal_scope: dict | None = None,
 ) -> dict:
     return {
         "schema_version": "dm_knowledge_assertion_metadata_v1",
@@ -97,8 +112,9 @@ def _meta(
         "epistemic_kind": "asserted",
         "canon_state": "canonical",
         "evidence_ref_ids": list(evidence),
-        "session_refs": [],
-        "temporal_scope": {"schema_version": "dm_temporal_scope_ref_v1", "kind": "unknown"},
+        "session_refs": list(session_refs or []),
+        "temporal_scope": temporal_scope
+        or {"schema_version": "dm_temporal_scope_ref_v1", "kind": "unknown"},
     }
 
 
@@ -196,6 +212,8 @@ def _relationship(
     evidence: str,
     visibility: str = "player",
     campaign_scope: str | None = None,
+    session_refs: list[str] | None = None,
+    temporal_scope: dict | None = None,
 ) -> dict:
     return {
         "relationship_id": relationship_id,
@@ -207,6 +225,8 @@ def _relationship(
             evidence=(evidence,),
             visibility=visibility,
             campaign_scope=campaign_scope,
+            session_refs=session_refs,
+            temporal_scope=temporal_scope,
         ),
     }
 
@@ -321,6 +341,111 @@ def _payload() -> dict:
             _evidence_row("ev:broken", "src:world-lore", "srcrev:missing-rev"),
         ],
     }
+
+
+def _complete_object_payload() -> dict:
+    payload = _payload()
+    payload["objects"].append(
+        _object(
+            ISOLATED_OBJECT_ID,
+            "Isolated Well",
+            assertion_id="asrt:isolated-well",
+            evidence="ev:world",
+            campaign_scope=None,
+            properties=[
+                ("dnd5e:depth", "shallow", "asrt:prop-isolated-depth", "player"),
+            ],
+        )
+    )
+    timeless = {
+        "schema_version": "dm_temporal_scope_ref_v1",
+        "kind": "world_timeless",
+    }
+    hub_properties: list[tuple[str, object, str, str]] = [
+        ("dnd5e:population", "crowded", "asrt:prop-hub-population", "player"),
+    ]
+    for index in range(HUB_PROPERTY_COUNT - 1):
+        hub_properties.append(
+            (
+                f"dnd5e:tag_{index:02d}",
+                f"v{index:02d}",
+                f"asrt:prop-hub-tag-{index:02d}",
+                "player",
+            )
+        )
+    payload["objects"].append(
+        _object(
+            HUB_OBJECT_ID,
+            "Hub Plaza",
+            assertion_id="asrt:hub-plaza",
+            evidence="ev:world",
+            campaign_scope=None,
+            properties=hub_properties,
+        )
+    )
+    # Override the first hub property's temporal scope after object build.
+    for prop in payload["objects"][-1]["properties"]:
+        if prop["property_term"] == "dnd5e:population":
+            prop["assertion_metadata"]["temporal_scope"] = timeless
+            prop["assertion_metadata"]["session_refs"] = ["sess:world-fair"]
+            break
+    for index in range(HUB_DEGREE):
+        leaf_id = f"obj:hub-leaf-{index:02d}"
+        payload["objects"].append(
+            _object(
+                leaf_id,
+                f"Spoke {index:02d}",
+                assertion_id=f"asrt:hub-leaf-{index:02d}",
+                evidence="ev:world",
+                campaign_scope=None,
+            )
+        )
+        if index < HUB_OUTGOING:
+            payload["relationships"].append(
+                _relationship(
+                    f"rel:hub-out-{index:02d}",
+                    HUB_OBJECT_ID,
+                    leaf_id,
+                    "dnd5e:near",
+                    assertion_id=f"asrt:rel-hub-out-{index:02d}",
+                    evidence="ev:world",
+                )
+            )
+        else:
+            inbound_index = index - HUB_OUTGOING
+            payload["relationships"].append(
+                _relationship(
+                    f"rel:hub-in-{inbound_index:02d}",
+                    leaf_id,
+                    HUB_OBJECT_ID,
+                    "dnd5e:connected_to",
+                    assertion_id=f"asrt:rel-hub-in-{inbound_index:02d}",
+                    evidence="ev:world",
+                )
+            )
+    payload["relationships"].append(
+        _relationship(
+            "rel:hub-keep-timed",
+            HUB_OBJECT_ID,
+            "obj:alpha-keep",
+            "dnd5e:located_in",
+            assertion_id="asrt:rel-hub-keep-timed",
+            evidence="ev:alpha",
+            campaign_scope=CAMPAIGN_A,
+            session_refs=["sess:alpha-12"],
+            temporal_scope={
+                "schema_version": "dm_temporal_scope_ref_v1",
+                "kind": "fictional_time_ref",
+                "fictional_time_ref": {
+                    "schema_version": "dm_fictional_time_anchor_ref_v1",
+                    "bundle_id": "ftb:alpha-siege",
+                    "campaign_id": CAMPAIGN_A,
+                    "anchor_id": "fta:siege-night",
+                },
+            },
+        )
+    )
+    return payload
 
 
 def _seed_sources() -> InMemorySourceRepository:
@@ -1045,3 +1170,261 @@ def test_anchor_metadata_carries_no_source_body_content():
     assert not hasattr(anchor, "content")
     assert not hasattr(anchor, "text")
     assert anchor.artifact.source_artifact_id == "src:world-lore"
+
+
+# ---------------------------------------------------------------------------
+# Complete selected-object one-hop read
+# ---------------------------------------------------------------------------
+
+
+def _endpoint_ids(result) -> set[str]:
+    ids = {result.object.object_id}
+    ids.update(obj.object_id for obj in result.related_objects)
+    return ids
+
+
+def test_complete_object_miss_is_explicit_and_not_partial():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, projection = _services(world_graph)
+
+    result = service.get_complete_object(_world(), object_id="obj:absent")
+
+    assert result.found is False
+    assert result.object is None
+    assert result.related_objects == ()
+    assert result.relationships == ()
+    assert result.completeness.status == "complete"
+    assert result.completeness.reason is None
+    assert result.coverage.truncated_fields == ()
+    assert projection.project_calls == 1
+
+
+def test_complete_object_out_of_scope_id_stays_silent():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, _ = _services(world_graph)
+
+    result = service.get_complete_object(_campaign_a(), object_id="obj:beta-crypt")
+    assert result.found is False
+    assert result.completeness.status == "complete"
+    assert result.coverage.gap_codes == ()
+    assert result.coverage.missing_ids == ()
+
+
+def test_complete_object_rejects_blank_id():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, _ = _services(world_graph)
+    with pytest.raises(ValueError, match="non-blank"):
+        service.get_complete_object(_world(), object_id="  ")
+
+
+def test_complete_object_zero_relationships_is_complete():
+    world_graph = InMemoryWorldGraphRepository()
+    revision = _publish(world_graph, _complete_object_payload())
+    service, _ = _services(world_graph)
+
+    result = service.get_complete_object(_world(), object_id=ISOLATED_OBJECT_ID)
+
+    assert result.found is True
+    assert result.object is not None
+    assert result.relationships == ()
+    assert result.related_objects == ()
+    assert [row.assertion_id for row in result.property_assertions] == [
+        "asrt:prop-isolated-depth"
+    ]
+    assert result.completeness.status == "complete"
+    assert result.coverage.truncated_fields == ()
+    assert result.snapshot.revision_id == revision.revision_id
+    assert result.snapshot.is_head is True
+
+
+def test_complete_object_returns_every_edge_when_degree_exceeds_bounded_cap():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph, _complete_object_payload())
+    service, projection = _services(world_graph)
+
+    capped = service.get_object(
+        _world(), object_id=HUB_OBJECT_ID, bounds=_HARD_RETRIEVAL_BOUNDS
+    )
+    assert "relationships" in capped.coverage.truncated_fields
+    assert len(capped.relationships) == 24
+
+    result = service.get_complete_object(_world(), object_id=HUB_OBJECT_ID)
+
+    assert result.found is True
+    assert result.completeness.status == "complete"
+    assert result.completeness.truncated_fields == ()
+    assert result.coverage.truncated_fields == ()
+    assert len(result.relationships) == HUB_DEGREE
+    assert len(result.related_objects) == HUB_DEGREE
+    outgoing = [
+        rel for rel in result.relationships if rel.subject_object_id == HUB_OBJECT_ID
+    ]
+    incoming = [
+        rel for rel in result.relationships if rel.object_object_id == HUB_OBJECT_ID
+    ]
+    assert len(outgoing) == HUB_OUTGOING
+    assert len(incoming) == HUB_DEGREE - HUB_OUTGOING
+    assert all(rel.predicate for rel in result.relationships)
+    related_ids = {obj.object_id for obj in result.related_objects}
+    assert related_ids == {f"obj:hub-leaf-{index:02d}" for index in range(HUB_DEGREE)}
+    for rel in result.relationships:
+        assert rel.subject_object_id in _endpoint_ids(result)
+        assert rel.object_object_id in _endpoint_ids(result)
+    assert [row.assertion_id for row in result.property_assertions] == [
+        "asrt:prop-hub-population",
+        *[f"asrt:prop-hub-tag-{index:02d}" for index in range(HUB_PROPERTY_COUNT - 1)],
+    ]
+    assert len(result.property_assertions) == HUB_PROPERTY_COUNT
+    assert len(result.property_assertions) > 32
+    assert projection.project_calls == 2
+
+
+def test_complete_object_ignores_retrieval_bounds_hard_caps():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph, _complete_object_payload())
+    service, _ = _services(world_graph)
+
+    first = service.get_complete_object(_world(), object_id=HUB_OBJECT_ID)
+    second = service.get_complete_object(_world(), object_id=HUB_OBJECT_ID)
+
+    assert first.completeness.status == "complete"
+    assert [rel.relationship_id for rel in first.relationships] == [
+        rel.relationship_id for rel in second.relationships
+    ]
+    assert [obj.object_id for obj in first.related_objects] == [
+        obj.object_id for obj in second.related_objects
+    ]
+    assert [row.assertion_id for row in first.property_assertions] == [
+        row.assertion_id for row in second.property_assertions
+    ]
+    assert [anchor.anchor_id for anchor in first.anchors] == [
+        anchor.anchor_id for anchor in second.anchors
+    ]
+    assert len(first.relationships) > _HARD_RETRIEVAL_BOUNDS.max_relationships
+    assert len(first.property_assertions) > _HARD_RETRIEVAL_BOUNDS.max_assertions
+
+
+def test_complete_object_world_scope_excludes_campaign_edges():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, _ = _services(world_graph)
+
+    world = service.get_complete_object(_world(), object_id="obj:world-tavern")
+    campaign = service.get_complete_object(_campaign_a(), object_id="obj:world-tavern")
+    cross = service.get_complete_object(_cross(), object_id="obj:alpha-keep")
+
+    assert [rel.relationship_id for rel in world.relationships] == ["rel:tavern-gate"]
+    assert {rel.relationship_id for rel in campaign.relationships} == {
+        "rel:tavern-gate",
+        "rel:tavern-keep",
+    }
+    assert world.completeness.status == campaign.completeness.status == "complete"
+    assert "rel:keep-crypt" in {rel.relationship_id for rel in cross.relationships}
+    assert "obj:beta-crypt" in {obj.object_id for obj in cross.related_objects}
+    keep_world = service.get_complete_object(_world(), object_id="obj:alpha-keep")
+    assert keep_world.found is False
+
+
+def test_complete_object_player_fails_closed_on_gm_only_material():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, _ = _services(world_graph)
+    player = _campaign_a(admissibility=Admissibility.PLAYER)
+
+    secret = service.get_complete_object(player, object_id="obj:alpha-secret")
+    keep = service.get_complete_object(player, object_id="obj:alpha-keep")
+
+    assert secret.found is False
+    assert secret.completeness.status == "complete"
+    assert keep.found is True
+    assert keep.completeness.status == "complete"
+    assert "rel:keep-secret" not in {rel.relationship_id for rel in keep.relationships}
+    assert "obj:alpha-secret" not in {obj.object_id for obj in keep.related_objects}
+
+
+def test_complete_object_preserves_temporal_metadata_unchanged():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph, _complete_object_payload())
+    service, _ = _services(world_graph)
+
+    world = service.get_complete_object(_world(), object_id=HUB_OBJECT_ID)
+    population = next(
+        row
+        for row in world.property_assertions
+        if row.assertion_id == "asrt:prop-hub-population"
+    )
+    assert population.assertion_metadata is not None
+    assert population.assertion_metadata.temporal_scope.kind is TemporalScopeKind.WORLD_TIMELESS
+    assert population.assertion_metadata.session_refs == ["sess:world-fair"]
+    assert "rel:hub-keep-timed" not in {
+        rel.relationship_id for rel in world.relationships
+    }
+
+    campaign = service.get_complete_object(_campaign_a(), object_id=HUB_OBJECT_ID)
+    timed = next(
+        rel
+        for rel in campaign.relationships
+        if rel.relationship_id == "rel:hub-keep-timed"
+    )
+    metadata = timed.assertion_metadata
+    assert metadata is not None
+    assert metadata.temporal_scope.kind is TemporalScopeKind.FICTIONAL_TIME_REF
+    assert metadata.temporal_scope.fictional_time_ref is not None
+    assert metadata.temporal_scope.fictional_time_ref.bundle_id == "ftb:alpha-siege"
+    assert metadata.temporal_scope.fictional_time_ref.campaign_id == CAMPAIGN_A
+    assert metadata.temporal_scope.fictional_time_ref.anchor_id == "fta:siege-night"
+    assert metadata.session_refs == ["sess:alpha-12"]
+    assert metadata.campaign_scope == CAMPAIGN_A
+    assert campaign.completeness.status == "complete"
+    assert "obj:alpha-keep" in {obj.object_id for obj in campaign.related_objects}
+    assert len(campaign.relationships) == HUB_DEGREE + 1
+
+
+def test_complete_object_anchors_fail_closed_without_invented_revisions():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, _ = _services(world_graph)
+
+    tavern = service.get_complete_object(_world(), object_id="obj:world-tavern")
+    assert tavern.found is True
+    assert tavern.completeness.status == "complete"
+    assert len(tavern.anchors) == 1
+    assert tavern.anchors[0].source_revision_id == "srcrev:world-lore-v1"
+    assert tavern.anchors[0].evidence_ref_id == "ev:world"
+
+    broken = service.get_complete_object(_world(), object_id="obj:broken-lore")
+    assert broken.found is False
+    assert broken.completeness.status == "complete"
+    assert broken.anchors == ()
+
+
+def test_complete_object_does_not_advance_world_head():
+    world_graph = InMemoryWorldGraphRepository()
+    published = _publish(world_graph, _complete_object_payload())
+    service, _ = _services(world_graph)
+    before = world_graph.get_head(WORLD_ID)
+    assert before is not None
+    assert before.head_revision_id == published.revision_id
+
+    result = service.get_complete_object(_world(), object_id=HUB_OBJECT_ID)
+    after = world_graph.get_head(WORLD_ID)
+
+    assert result.found is True
+    assert after is not None
+    assert after.head_revision_id == before.head_revision_id == published.revision_id
+    assert result.snapshot.head_revision_id == published.revision_id
+    assert result.snapshot.is_head is True
+
+
+def test_selected_object_completeness_rejects_unknown_partial_reason():
+    with pytest.raises(ValueError, match="known reason"):
+        SelectedObjectCompleteness(
+            status="partial",
+            reason="try_again_later",
+            truncated_fields=("relationships",),
+        )
+    with pytest.raises(ValueError, match="cannot name a partial reason"):
+        SelectedObjectCompleteness(status="complete", reason="missing_related_endpoint")

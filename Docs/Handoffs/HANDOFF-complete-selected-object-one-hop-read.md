@@ -1,7 +1,7 @@
 # HANDOFF — complete selected-object one-hop read
 
 **Created:** 2026-09-08
-**Status:** ACTIVE — DESIGN READY; implementation not started
+**Status:** ACTIVE — implementation complete on this branch; awaiting review
 **Repository / branch:** `Drakosfire/DungeonMind` / `retrieval/complete-selected-object-one-hop-v1`
 **Base:** `e82e790e011773369f07b1b431482d5026d4dd3e`
 **Predecessor:** DungeonMindBuddy PR #697 stop condition on full World-object projection

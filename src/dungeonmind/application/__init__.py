@@ -77,6 +77,7 @@ from .world_graph_projection import (
 from .world_graph_read_context import WorldGraphReadContext
 from .world_graph_retrieval import (
     AdmittedAssertionValue,
+    CompleteObjectLookupResult,
     EvidenceRetrievalResult,
     EvidenceTarget,
     GraphSearchResult,
@@ -84,6 +85,7 @@ from .world_graph_retrieval import (
     ObjectLookupResult,
     RetrievalBounds,
     RetrievalCoverage,
+    SelectedObjectCompleteness,
     SourceAnchorMetadata,
     SourceAnchorResolution,
     WorldGraphRetrievalService,
@@ -93,6 +95,7 @@ from .world_graph_retrieval import (
 __all__ = [
     "NOOP_READ_OBSERVER",
     "AdmittedAssertionValue",
+    "CompleteObjectLookupResult",
     "ContributionRepository",
     "ContributionReviewRepository",
     "EmbeddingRunRepository",
@@ -123,6 +126,7 @@ __all__ = [
     "RetrievalCoverage",
     "RetrievalSessionRepository",
     "ReviewedWorldInitializationRepository",
+    "SelectedObjectCompleteness",
     "SemanticDocumentRepository",
     "SemanticSearchPort",
     "SourceAnchorMetadata",

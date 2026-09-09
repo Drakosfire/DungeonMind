@@ -47,6 +47,9 @@ from tests.unit.null_reviewed_world_initialization import (
     NullReviewedWorldInitializationRepository,
 )
 from tests.unit.test_world_graph_retrieval_service import (
+    HUB_DEGREE,
+    HUB_OBJECT_ID,
+    _complete_object_payload,
     _FixedClock,
     _publish,
     _request,
@@ -287,6 +290,17 @@ def test_observation_vocabulary_is_closed_and_validated():
             pinned_read=False,
             scope_mode="world",
             admissibility="gm",
+        )
+    with pytest.raises(ValueError, match="unknown completeness status"):
+        WorldGraphReadObservation(
+            operation="get_complete_object",
+            outcome="success",
+            duration_seconds=0.0,
+            phase_durations=(),
+            pinned_read=False,
+            scope_mode="world",
+            admissibility="gm",
+            completeness_status="mostly",
         )
 
 
@@ -552,6 +566,57 @@ def test_get_object_miss_is_miss_outcome_not_error():
     outer = observer.observations[-1]
     assert outer.operation == "get_object"
     assert outer.outcome == "miss"
+    assert outer.result_object_count == 0
+    _assert_no_forbidden_tokens(outer)
+
+
+def test_get_complete_object_observation_reports_counts_and_completeness():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph, _complete_object_payload())
+    observer = _RecordingObserver()
+    retrieval, _ = _services(world_graph, observer=observer)
+
+    result = retrieval.get_complete_object(
+        _request(scope_mode=ScopeModeV2.WORLD), object_id=HUB_OBJECT_ID
+    )
+
+    assert result.found is True
+    assert result.completeness.status == "complete"
+    outer = observer.observations[-1]
+    assert outer.operation == "get_complete_object"
+    assert outer.outcome == "success"
+    assert outer.completeness_status == "complete"
+    assert outer.truncated_fields == ()
+    assert [p.phase for p in outer.phase_durations] == [
+        "projection",
+        "object_selection",
+        "anchor_derivation",
+    ]
+    assert all(p.duration_seconds >= 0 for p in outer.phase_durations)
+    assert outer.duration_seconds >= 0
+    assert outer.result_object_count == 1 + HUB_DEGREE
+    assert outer.result_relationship_count == HUB_DEGREE
+    assert outer.result_assertion_count == len(result.property_assertions)
+    assert outer.result_anchor_count == len(result.anchors)
+    _assert_no_forbidden_tokens(outer)
+
+
+def test_get_complete_object_miss_is_miss_outcome_not_partial():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    observer = _RecordingObserver()
+    retrieval, _ = _services(world_graph, observer=observer)
+
+    result = retrieval.get_complete_object(
+        _request(scope_mode=ScopeModeV2.WORLD), object_id="obj:absent"
+    )
+
+    assert result.found is False
+    assert result.completeness.status == "complete"
+    outer = observer.observations[-1]
+    assert outer.operation == "get_complete_object"
+    assert outer.outcome == "miss"
+    assert outer.completeness_status == "complete"
     assert outer.result_object_count == 0
     _assert_no_forbidden_tokens(outer)
 
