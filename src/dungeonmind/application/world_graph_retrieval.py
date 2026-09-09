@@ -68,12 +68,14 @@ from .graph_snapshot import (
 from .repositories import SourceRepository
 from .world_graph_observability import (
     NOOP_READ_OBSERVER,
+    READ_COMPLETENESS_REASONS,
     CoverageObservationFields,
     GraphObservationFields,
     PhaseRecorder,
     RequestObservationFields,
     SystemMonotonicReadClock,
     WorldGraphReadClock,
+    WorldGraphReadCompletenessReason,
     WorldGraphReadObservation,
     WorldGraphReadObserver,
     WorldGraphReadOperation,
@@ -96,10 +98,6 @@ _OBJECTS_LIMIT = 12
 _RELATIONSHIPS_LIMIT = 24
 _ASSERTIONS_LIMIT = 32
 _ANCHORS_LIMIT = 32
-
-_COMPLETE_OBJECT_PARTIAL_REASONS: frozenset[str] = frozenset(
-    {"missing_related_endpoint", "truncated_anchors"}
-)
 
 # Deterministic lexical ranking weights. Exact identity dominates phrasal
 # matches, which dominate per-token matches; an explicit exact seed dominates
@@ -266,7 +264,7 @@ class SelectedObjectCompleteness:
     """
 
     status: Literal["complete", "partial"]
-    reason: str | None = None
+    reason: WorldGraphReadCompletenessReason | None = None
     truncated_fields: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -278,7 +276,7 @@ class SelectedObjectCompleteness:
             return
         if self.status != "partial":
             raise ValueError(f"unknown selected-object completeness {self.status!r}")
-        if self.reason not in _COMPLETE_OBJECT_PARTIAL_REASONS:
+        if self.reason not in READ_COMPLETENESS_REASONS:
             raise ValueError(
                 "partial selected-object results must name a known reason"
             )
@@ -887,7 +885,7 @@ class WorldGraphRetrievalService:
                 )
                 self._emit(
                     self._complete_object_observation(
-                        recorder, request, result, op_result
+                        recorder, request, result, op_result, context=context
                     )
                 )
                 return op_result
@@ -934,7 +932,11 @@ class WorldGraphRetrievalService:
                 )
             )
             raise
-        self._emit(self._complete_object_observation(recorder, request, result, op_result))
+        self._emit(
+            self._complete_object_observation(
+                recorder, request, result, op_result, context=context
+            )
+        )
         return op_result
 
     def _complete_object_observation(
@@ -943,6 +945,8 @@ class WorldGraphRetrievalService:
         request: WorldGraphProjectionRequestV2,
         result: WorldGraphProjectionResult,
         op_result: CompleteObjectLookupResult,
+        *,
+        context: WorldGraphReadContext,
     ) -> WorldGraphReadObservation:
         result_object_count = 0
         if op_result.found:
@@ -957,6 +961,10 @@ class WorldGraphRetrievalService:
             result_assertion_count=len(op_result.property_assertions),
             result_anchor_count=len(op_result.anchors),
             completeness_status=op_result.completeness.status,
+            completeness_reason=op_result.completeness.reason,
+            parsed_revision_cache_hit=context.parsed_revision_cache_hit,
+            source_artifact_count=context.source_snapshot.artifact_count,
+            source_revision_count=context.source_snapshot.revision_count,
             **self._request_fields(request),
             **self._graph_fields(result),
             **self._coverage_fields(op_result.coverage),
@@ -1691,7 +1699,7 @@ class WorldGraphRetrievalService:
         anchor_truncated: bool,
     ) -> SelectedObjectCompleteness:
         truncated: list[str] = []
-        reasons: list[str] = []
+        reasons: list[WorldGraphReadCompletenessReason] = []
         if missing_endpoints:
             truncated.append("related_objects")
             reasons.append("missing_related_endpoint")

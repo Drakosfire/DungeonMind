@@ -1,7 +1,7 @@
 # HANDOFF — complete selected-object one-hop read
 
 **Created:** 2026-09-08
-**Status:** ACTIVE — implementation complete on this branch; awaiting review
+**Status:** ACTIVE — Cycle 1 HOLD repairs on this branch; awaiting Cycle 2
 **Repository / branch:** `Drakosfire/DungeonMind` / `retrieval/complete-selected-object-one-hop-v1`
 **Base:** `e82e790e011773369f07b1b431482d5026d4dd3e`
 **Predecessor:** DungeonMindBuddy PR #697 stop condition on full World-object projection
@@ -366,3 +366,17 @@ Return:
 - explicit statement that DungeonMindBuddy #697 may or may not resume CODE.
 
 Named successor after acceptance: **DungeonMindBuddy #697 surface-neutral complete World-object projection implementation.**
+
+---
+
+## Addendum — Review Cycle 1 HOLD (`5149552871` on `082f53ac`)
+
+The dispatch body above is unchanged. Cycle 1 required:
+
+1. **Partial reason in telemetry.** `WorldGraphReadObservation.completeness_reason` is a closed vocabulary (`missing_related_endpoint` | `truncated_anchors`). Partial status requires a reason; complete/miss/other operations leave it unset. `truncated_fields` remains a separate field.
+2. **>32 distinct anchors.** The high-degree fixture now admits 33 unique valid source anchors for the hub object. Bounded `get_object` still truncates at 32; `get_complete_object` returns all of them with `complete`.
+3. **Empirical Eldyrwild timing.** Characterization runner: `benchmarks/complete_object_live_eldyrwild.py`. Record cold/warm wall and phase timings, parse-cache hits, admitted graph size, returned counts, completeness, and World head before/after. If warm selected-object latency is materially poor, do not call the full scoped-projection cost acceptable.
+4. **PR body is the merge contract.** Update GitHub PR #52 after evidence is produced; do not leave “implementation has not started” in the description.
+
+Partial graph states (`missing_related_endpoint`, `truncated_anchors`) remain modeled and observed. The current projection excludes relationships whose endpoints are not admitted, and this operation passes `max_anchors=None`, so those partial reasons are not expected on a well-formed admitted graph. They still must survive into telemetry when produced.
+

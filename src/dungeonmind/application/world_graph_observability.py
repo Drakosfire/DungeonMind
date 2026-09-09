@@ -84,6 +84,12 @@ WorldGraphReadOperation = Literal[
 WorldGraphReadCompletenessStatus = Literal["complete", "partial"]
 """Closed completeness vocabulary for selected-object reads. Other operations leave this unset."""
 
+WorldGraphReadCompletenessReason = Literal[
+    "missing_related_endpoint",
+    "truncated_anchors",
+]
+"""Closed partial-reason vocabulary. Never free text, identity, or source prose."""
+
 WorldGraphReadOutcome = Literal["success", "miss", "error"]
 """Closed terminal outcome vocabulary for one operation invocation."""
 
@@ -118,6 +124,9 @@ READ_FAILURE_CODES: frozenset[str] = frozenset(WorldGraphReadFailureCode.__args_
 READ_PHASES: frozenset[str] = frozenset(WorldGraphReadPhase.__args__)
 READ_COMPLETENESS_STATUSES: frozenset[str] = frozenset(
     WorldGraphReadCompletenessStatus.__args__
+)
+READ_COMPLETENESS_REASONS: frozenset[str] = frozenset(
+    WorldGraphReadCompletenessReason.__args__
 )
 
 
@@ -192,6 +201,7 @@ class WorldGraphReadObservation:
     source_artifact_count: int | None = None
     source_revision_count: int | None = None
     completeness_status: WorldGraphReadCompletenessStatus | None = None
+    completeness_reason: WorldGraphReadCompletenessReason | None = None
 
     def __post_init__(self) -> None:
         if self.duration_seconds < 0:
@@ -211,6 +221,16 @@ class WorldGraphReadObservation:
             and self.completeness_status not in READ_COMPLETENESS_STATUSES
         ):
             raise ValueError(f"unknown completeness status {self.completeness_status!r}")
+        if (
+            self.completeness_reason is not None
+            and self.completeness_reason not in READ_COMPLETENESS_REASONS
+        ):
+            raise ValueError(f"unknown completeness reason {self.completeness_reason!r}")
+        if self.completeness_status == "partial":
+            if self.completeness_reason is None:
+                raise ValueError("partial completeness_status requires completeness_reason")
+        elif self.completeness_reason is not None:
+            raise ValueError("completeness_reason requires partial completeness_status")
 
 
 class WorldGraphReadObserver(Protocol):
@@ -306,6 +326,7 @@ class PhaseRecorder:
 
 __all__ = [
     "NOOP_READ_OBSERVER",
+    "READ_COMPLETENESS_REASONS",
     "READ_COMPLETENESS_STATUSES",
     "READ_FAILURE_CODES",
     "READ_OPERATIONS",
@@ -317,6 +338,7 @@ __all__ = [
     "RequestObservationFields",
     "SystemMonotonicReadClock",
     "WorldGraphReadClock",
+    "WorldGraphReadCompletenessReason",
     "WorldGraphReadCompletenessStatus",
     "WorldGraphReadFailureCode",
     "WorldGraphReadObservation",

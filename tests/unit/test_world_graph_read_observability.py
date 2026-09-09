@@ -27,8 +27,11 @@ from dungeonmind.application.world_graph_observability import (
 )
 from dungeonmind.application.world_graph_projection import WorldGraphProjectionService
 from dungeonmind.application.world_graph_retrieval import (
+    CompleteObjectLookupResult,
     EvidenceTarget,
     RetrievalBounds,
+    RetrievalCoverage,
+    SelectedObjectCompleteness,
     WorldGraphRetrievalService,
 )
 from dungeonmind.contracts.projection import Admissibility
@@ -50,6 +53,7 @@ from tests.unit.test_world_graph_retrieval_service import (
     HUB_DEGREE,
     HUB_OBJECT_ID,
     _complete_object_payload,
+    _complete_object_sources,
     _FixedClock,
     _publish,
     _request,
@@ -190,8 +194,9 @@ def _services(
     observer=None,
     projection_observer=None,
     read_clock=None,
+    sources=None,
 ):
-    sources = _seed_sources()
+    sources = sources if sources is not None else _seed_sources()
     projection = _CountingProjectionService(
         world_graph=world_graph,
         sources=sources,
@@ -301,6 +306,41 @@ def test_observation_vocabulary_is_closed_and_validated():
             scope_mode="world",
             admissibility="gm",
             completeness_status="mostly",
+        )
+    with pytest.raises(ValueError, match="unknown completeness reason"):
+        WorldGraphReadObservation(
+            operation="get_complete_object",
+            outcome="success",
+            duration_seconds=0.0,
+            phase_durations=(),
+            pinned_read=False,
+            scope_mode="world",
+            admissibility="gm",
+            completeness_status="partial",
+            completeness_reason="try_again_later",  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="requires completeness_reason"):
+        WorldGraphReadObservation(
+            operation="get_complete_object",
+            outcome="success",
+            duration_seconds=0.0,
+            phase_durations=(),
+            pinned_read=False,
+            scope_mode="world",
+            admissibility="gm",
+            completeness_status="partial",
+        )
+    with pytest.raises(ValueError, match="requires partial completeness_status"):
+        WorldGraphReadObservation(
+            operation="get_complete_object",
+            outcome="success",
+            duration_seconds=0.0,
+            phase_durations=(),
+            pinned_read=False,
+            scope_mode="world",
+            admissibility="gm",
+            completeness_status="complete",
+            completeness_reason="truncated_anchors",
         )
 
 
@@ -574,7 +614,9 @@ def test_get_complete_object_observation_reports_counts_and_completeness():
     world_graph = InMemoryWorldGraphRepository()
     _publish(world_graph, _complete_object_payload())
     observer = _RecordingObserver()
-    retrieval, _ = _services(world_graph, observer=observer)
+    retrieval, _ = _services(
+        world_graph, observer=observer, sources=_complete_object_sources()
+    )
 
     result = retrieval.get_complete_object(
         _request(scope_mode=ScopeModeV2.WORLD), object_id=HUB_OBJECT_ID
@@ -586,6 +628,7 @@ def test_get_complete_object_observation_reports_counts_and_completeness():
     assert outer.operation == "get_complete_object"
     assert outer.outcome == "success"
     assert outer.completeness_status == "complete"
+    assert outer.completeness_reason is None
     assert outer.truncated_fields == ()
     assert [p.phase for p in outer.phase_durations] == [
         "projection",
@@ -598,6 +641,7 @@ def test_get_complete_object_observation_reports_counts_and_completeness():
     assert outer.result_relationship_count == HUB_DEGREE
     assert outer.result_assertion_count == len(result.property_assertions)
     assert outer.result_anchor_count == len(result.anchors)
+    assert outer.result_anchor_count is not None and outer.result_anchor_count > 32
     _assert_no_forbidden_tokens(outer)
 
 
@@ -617,8 +661,48 @@ def test_get_complete_object_miss_is_miss_outcome_not_partial():
     assert outer.operation == "get_complete_object"
     assert outer.outcome == "miss"
     assert outer.completeness_status == "complete"
+    assert outer.completeness_reason is None
     assert outer.result_object_count == 0
     _assert_no_forbidden_tokens(outer)
+
+
+def test_complete_object_observation_emits_named_partial_reason():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    retrieval, _ = _services(world_graph)
+    request = _request(scope_mode=ScopeModeV2.WORLD)
+    hit = retrieval.get_complete_object(request, object_id="obj:world-tavern")
+    projected, context = retrieval._establish(request)
+    partial = CompleteObjectLookupResult(
+        snapshot=hit.snapshot,
+        found=True,
+        object=hit.object,
+        related_objects=hit.related_objects,
+        relationships=hit.relationships,
+        property_assertions=hit.property_assertions,
+        anchors=hit.anchors,
+        completeness=SelectedObjectCompleteness(
+            status="partial",
+            reason="truncated_anchors",
+            truncated_fields=("anchors",),
+        ),
+        coverage=RetrievalCoverage(truncated_fields=("anchors",)),
+    )
+
+    obs = retrieval._complete_object_observation(
+        PhaseRecorder(retrieval._read_clock),
+        request,
+        projected,
+        partial,
+        context=context,
+    )
+
+    assert obs.operation == "get_complete_object"
+    assert obs.outcome == "success"
+    assert obs.completeness_status == "partial"
+    assert obs.completeness_reason == "truncated_anchors"
+    assert obs.truncated_fields == ("anchors",)
+    _assert_no_forbidden_tokens(obs)
 
 
 def test_search_observation_success_miss_and_truncation():

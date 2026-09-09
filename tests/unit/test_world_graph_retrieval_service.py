@@ -57,6 +57,7 @@ HUB_OBJECT_ID = "obj:hub-plaza"
 ISOLATED_OBJECT_ID = "obj:isolated-well"
 HUB_DEGREE = 30
 HUB_PROPERTY_COUNT = 33
+HUB_ANCHOR_COUNT = 33
 HUB_OUTGOING = 15
 _HARD_RETRIEVAL_BOUNDS = RetrievalBounds(
     max_objects=12,
@@ -148,7 +149,8 @@ def _object(
     visibility: str = "player",
     aliases: list[tuple[str, str, str]] | None = None,
     summary: str | None = None,
-    properties: list[tuple[str, object, str, str]] | None = None,
+    properties: list[tuple[str, object, str, str] | tuple[str, object, str, str, str]]
+    | None = None,
 ) -> dict:
     return {
         "object_id": object_id,
@@ -187,16 +189,16 @@ def _object(
         ),
         "properties": [
             {
-                "property_term": term,
-                "value": value,
+                "property_term": item[0],
+                "value": item[1],
                 "assertion_metadata": _meta(
-                    prop_id,
-                    evidence=(evidence,),
-                    visibility=prop_visibility,
+                    item[2],
+                    evidence=(item[4] if len(item) > 4 else evidence,),
+                    visibility=item[3],
                     campaign_scope=campaign_scope,
                 ),
             }
-            for term, value, prop_id, prop_visibility in (properties or [])
+            for item in (properties or [])
         ],
         "aspects": [],
     }
@@ -361,8 +363,14 @@ def _complete_object_payload() -> dict:
         "schema_version": "dm_temporal_scope_ref_v1",
         "kind": "world_timeless",
     }
-    hub_properties: list[tuple[str, object, str, str]] = [
-        ("dnd5e:population", "crowded", "asrt:prop-hub-population", "player"),
+    hub_properties: list[tuple[str, object, str, str] | tuple[str, object, str, str, str]] = [
+        (
+            "dnd5e:population",
+            "crowded",
+            "asrt:prop-hub-population",
+            "player",
+            "ev:hub-anchor-00",
+        ),
     ]
     for index in range(HUB_PROPERTY_COUNT - 1):
         hub_properties.append(
@@ -371,6 +379,7 @@ def _complete_object_payload() -> dict:
                 f"v{index:02d}",
                 f"asrt:prop-hub-tag-{index:02d}",
                 "player",
+                f"ev:hub-anchor-{index + 1:02d}",
             )
         )
     payload["objects"].append(
@@ -445,7 +454,58 @@ def _complete_object_payload() -> dict:
             },
         )
     )
+    for index in range(HUB_ANCHOR_COUNT):
+        payload["evidence_refs"].append(
+            _evidence_row(
+                f"ev:hub-anchor-{index:02d}",
+                f"src:hub-anchor-{index:02d}",
+                f"srcrev:hub-anchor-{index:02d}",
+                span=f"span:hub-{index:02d}",
+            )
+        )
     return payload
+
+
+def _put_source(
+    sources: InMemorySourceRepository,
+    *,
+    artifact_id: str,
+    revision_id: str,
+    campaign_id: str | None,
+) -> None:
+    sources.put_artifact(
+        SourceArtifactV2(
+            source_artifact_id=artifact_id,
+            source_domain_key="buddy.worldbuilding",
+            source_domain=SourceDomain.WORLDBUILDING,
+            world_id=WORLD_ID,
+            campaign_id=campaign_id,
+            session_id=None,
+            uri=None,
+            current_revision_id=revision_id,
+            authority=None,
+            visibility=Visibility.PLAYER,
+            artifact_kind=None,
+            document_class=None,
+            review_state=None,
+            source_visibility_state=None,
+            workspace_document_ref=None,
+            lineage={},
+            status=SourceStatus.ACTIVE,
+            created_at=NOW,
+            updated_at=NOW,
+        )
+    )
+    sources.put_revision(
+        SourceRevision(
+            source_revision_id=revision_id,
+            source_artifact_id=artifact_id,
+            content_sha256="dd" * 32,
+            body_storage="external",
+            locator=f"fixture://{artifact_id}",
+            created_at=NOW,
+        )
+    )
 
 
 def _seed_sources() -> InMemorySourceRepository:
@@ -455,46 +515,32 @@ def _seed_sources() -> InMemorySourceRepository:
         ("src:alpha-notes", "srcrev:alpha-notes-v1", CAMPAIGN_A),
         ("src:beta-notes", "srcrev:beta-notes-v1", CAMPAIGN_B),
     ):
-        sources.put_artifact(
-            SourceArtifactV2(
-                source_artifact_id=artifact_id,
-                source_domain_key="buddy.worldbuilding",
-                source_domain=SourceDomain.WORLDBUILDING,
-                world_id=WORLD_ID,
-                campaign_id=campaign_id,
-                session_id=None,
-                uri=None,
-                current_revision_id=revision_id,
-                authority=None,
-                visibility=Visibility.PLAYER,
-                artifact_kind=None,
-                document_class=None,
-                review_state=None,
-                source_visibility_state=None,
-                workspace_document_ref=None,
-                lineage={},
-                status=SourceStatus.ACTIVE,
-                created_at=NOW,
-                updated_at=NOW,
-            )
+        _put_source(
+            sources,
+            artifact_id=artifact_id,
+            revision_id=revision_id,
+            campaign_id=campaign_id,
         )
-        sources.put_revision(
-            SourceRevision(
-                source_revision_id=revision_id,
-                source_artifact_id=artifact_id,
-                content_sha256="dd" * 32,
-                body_storage="external",
-                locator=f"fixture://{artifact_id}",
-                created_at=NOW,
-            )
+    return sources
+
+
+def _complete_object_sources() -> InMemorySourceRepository:
+    sources = _seed_sources()
+    for index in range(HUB_ANCHOR_COUNT):
+        _put_source(
+            sources,
+            artifact_id=f"src:hub-anchor-{index:02d}",
+            revision_id=f"srcrev:hub-anchor-{index:02d}",
+            campaign_id=None,
         )
     return sources
 
 
 def _services(
     world_graph: InMemoryWorldGraphRepository,
+    sources: InMemorySourceRepository | None = None,
 ) -> tuple[WorldGraphRetrievalService, _CountingProjectionService]:
-    sources = _seed_sources()
+    sources = sources if sources is not None else _seed_sources()
     projection = _CountingProjectionService(
         world_graph=world_graph,
         sources=sources,
@@ -505,6 +551,12 @@ def _services(
         clock=_FixedClock(),
     )
     return WorldGraphRetrievalService(projection=projection, sources=sources), projection
+
+
+def _complete_object_services(
+    world_graph: InMemoryWorldGraphRepository,
+) -> tuple[WorldGraphRetrievalService, _CountingProjectionService]:
+    return _services(world_graph, sources=_complete_object_sources())
 
 
 def _publish(
@@ -1223,7 +1275,7 @@ def test_complete_object_rejects_blank_id():
 def test_complete_object_zero_relationships_is_complete():
     world_graph = InMemoryWorldGraphRepository()
     revision = _publish(world_graph, _complete_object_payload())
-    service, _ = _services(world_graph)
+    service, _ = _complete_object_services(world_graph)
 
     result = service.get_complete_object(_world(), object_id=ISOLATED_OBJECT_ID)
 
@@ -1243,7 +1295,7 @@ def test_complete_object_zero_relationships_is_complete():
 def test_complete_object_returns_every_edge_when_degree_exceeds_bounded_cap():
     world_graph = InMemoryWorldGraphRepository()
     _publish(world_graph, _complete_object_payload())
-    service, projection = _services(world_graph)
+    service, projection = _complete_object_services(world_graph)
 
     capped = service.get_object(
         _world(), object_id=HUB_OBJECT_ID, bounds=_HARD_RETRIEVAL_BOUNDS
@@ -1285,7 +1337,7 @@ def test_complete_object_returns_every_edge_when_degree_exceeds_bounded_cap():
 def test_complete_object_ignores_retrieval_bounds_hard_caps():
     world_graph = InMemoryWorldGraphRepository()
     _publish(world_graph, _complete_object_payload())
-    service, _ = _services(world_graph)
+    service, _ = _complete_object_services(world_graph)
 
     first = service.get_complete_object(_world(), object_id=HUB_OBJECT_ID)
     second = service.get_complete_object(_world(), object_id=HUB_OBJECT_ID)
@@ -1305,6 +1357,32 @@ def test_complete_object_ignores_retrieval_bounds_hard_caps():
     ]
     assert len(first.relationships) > _HARD_RETRIEVAL_BOUNDS.max_relationships
     assert len(first.property_assertions) > _HARD_RETRIEVAL_BOUNDS.max_assertions
+    assert len(first.anchors) > _HARD_RETRIEVAL_BOUNDS.max_anchors
+
+
+def test_complete_object_returns_every_distinct_anchor_beyond_old_cap():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph, _complete_object_payload())
+    service, _ = _complete_object_services(world_graph)
+
+    capped = service.get_object(
+        _world(), object_id=HUB_OBJECT_ID, bounds=_HARD_RETRIEVAL_BOUNDS
+    )
+    assert "anchors" in capped.coverage.truncated_fields
+    assert len(capped.anchors) == _HARD_RETRIEVAL_BOUNDS.max_anchors
+
+    result = service.get_complete_object(_world(), object_id=HUB_OBJECT_ID)
+    anchor_ids = [anchor.anchor_id for anchor in result.anchors]
+    evidence_ids = {anchor.evidence_ref_id for anchor in result.anchors}
+
+    assert result.found is True
+    assert result.completeness.status == "complete"
+    assert result.completeness.reason is None
+    assert result.coverage.truncated_fields == ()
+    assert len(result.anchors) > 32
+    assert len(anchor_ids) == len(set(anchor_ids))
+    assert len(evidence_ids) > 32
+    assert {f"ev:hub-anchor-{index:02d}" for index in range(HUB_ANCHOR_COUNT)} <= evidence_ids
 
 
 def test_complete_object_world_scope_excludes_campaign_edges():
@@ -1348,7 +1426,7 @@ def test_complete_object_player_fails_closed_on_gm_only_material():
 def test_complete_object_preserves_temporal_metadata_unchanged():
     world_graph = InMemoryWorldGraphRepository()
     _publish(world_graph, _complete_object_payload())
-    service, _ = _services(world_graph)
+    service, _ = _complete_object_services(world_graph)
 
     world = service.get_complete_object(_world(), object_id=HUB_OBJECT_ID)
     population = next(
@@ -1404,7 +1482,7 @@ def test_complete_object_anchors_fail_closed_without_invented_revisions():
 def test_complete_object_does_not_advance_world_head():
     world_graph = InMemoryWorldGraphRepository()
     published = _publish(world_graph, _complete_object_payload())
-    service, _ = _services(world_graph)
+    service, _ = _complete_object_services(world_graph)
     before = world_graph.get_head(WORLD_ID)
     assert before is not None
     assert before.head_revision_id == published.revision_id
