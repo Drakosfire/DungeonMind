@@ -1,0 +1,71 @@
+{
+  "fixture_id": "dm_vnext_temporal_supersession_v1",
+  "family": "temporal_supersession",
+  "space_id": "space:org-memory",
+  "history": [
+    {
+      "revision_id": "rev:owner-priya",
+      "parent_revision_id": null,
+      "valid_as_of": "2026-06-01T00:00:00Z",
+      "owner_assertion_id": "asrt:priya-owns-retrieval-apr",
+      "owner_entity_id": "priya"
+    },
+    {
+      "revision_id": "rev:owner-marco",
+      "parent_revision_id": "rev:owner-priya",
+      "valid_as_of": "2026-09-08T00:00:00Z",
+      "owner_assertion_id": "asrt:marco-owns-retrieval-sep",
+      "owner_entity_id": "marco",
+      "supersedes_assertion_id": "asrt:priya-owns-retrieval-apr"
+    }
+  ],
+  "contribution": {
+    "schema_version": "dm_knowledge_contribution_v1",
+    "contribution_id": "contrib:ownership-transfer",
+    "space_id": "space:org-memory",
+    "producer": "reviewer:ops",
+    "produced_at": "2026-09-07T12:00:00Z",
+    "source_refs": ["src:ownership-document"],
+    "status": "finalized",
+    "supersedes_contribution_id": null,
+    "items": [
+      {
+        "kind": "supersede_assertion",
+        "item_id": "item:transfer-owner",
+        "target_assertion_id": "asrt:priya-owns-retrieval-apr",
+        "replacement_assertion": {
+          "schema_version": "dm_assertion_v1",
+          "assertion_id": "asrt:marco-owns-retrieval-sep",
+          "subject_entity_id": "marco",
+          "predicate": "organization:owns",
+          "value": {"kind": "entity_ref", "entity_id": "retrieval-evaluation"},
+          "metadata": {
+            "scope": [{"axis": "organization:project", "value": "retrieval"}],
+            "visibility": {"kind": "labels_any", "labels": ["organization:team"]},
+            "epistemic_basis": "asserted",
+            "claim_mode": "organization:fact",
+            "standing": "established",
+            "evidence_ref_ids": ["evidence:ownership-doc-2"],
+            "temporal_scope": {
+              "kind": "utc_interval",
+              "valid_from": "2026-09-07T00:00:00Z",
+              "valid_until": null
+            },
+            "domain_metadata": []
+          }
+        }
+      }
+    ],
+    "diagnostics": []
+  },
+  "dispositions": [
+    {
+      "schema_version": "dm_contribution_disposition_v1",
+      "item_id": "item:transfer-owner",
+      "disposition": "accepted",
+      "identity_decision_ids": [],
+      "reason_code": null,
+      "domain_metadata": []
+    }
+  ]
+}

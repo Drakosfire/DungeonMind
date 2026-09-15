@@ -5,10 +5,18 @@ from __future__ import annotations
 import json
 import math
 import re
+from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import Field, StringConstraints, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from ..base import DungeonMindModel
 
@@ -47,6 +55,12 @@ def _nonblank(value: str) -> str:
     return value
 
 
+def _sha256_hex(value: str) -> str:
+    if not isinstance(value, str) or _SHA.fullmatch(value) is None:
+        raise ValueError("must be a lowercase hex SHA-256 digest")
+    return value
+
+
 def _unique(values: list[str], field_name: str) -> list[str]:
     if len(values) != len(set(values)):
         raise ValueError(f"{field_name} must contain unique values")
@@ -56,6 +70,18 @@ def _unique(values: list[str], field_name: str) -> list[str]:
 QualifiedTerm = Annotated[
     str,
     StringConstraints(pattern=_TERM.pattern, min_length=3),
+]
+
+NonBlankId = Annotated[
+    str,
+    StringConstraints(min_length=1),
+    AfterValidator(_nonblank),
+]
+
+Sha256Hex = Annotated[
+    str,
+    StringConstraints(min_length=64, max_length=64, pattern=_SHA.pattern),
+    AfterValidator(_sha256_hex),
 ]
 
 
@@ -72,7 +98,9 @@ class EpistemicBasis(StrEnum):
 
 
 class DomainMetadataEntry(DungeonMindModel):
-    schema: QualifiedTerm
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, serialize_by_alias=True)
+
+    schema_term: QualifiedTerm = Field(alias="schema")
     payload: JsonValue
 
     _payload = field_validator("payload")(_json_value)
@@ -80,9 +108,7 @@ class DomainMetadataEntry(DungeonMindModel):
 
 class ScopeBinding(DungeonMindModel):
     axis: QualifiedTerm
-    value: str = Field(min_length=1)
-
-    _value = field_validator("value")(_nonblank)
+    value: NonBlankId
 
 
 class ScopeSelector(DungeonMindModel):
@@ -134,27 +160,23 @@ class TimelessTemporalScope(DungeonMindModel):
 
 class UtcIntervalTemporalScope(DungeonMindModel):
     kind: Literal["utc_interval"] = "utc_interval"
-    valid_from: Any | None = None
-    valid_until: Any | None = None
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
 
     @model_validator(mode="after")
     def _bounds(self) -> UtcIntervalTemporalScope:
-        from datetime import datetime
-
         if self.valid_from is None and self.valid_until is None:
             raise ValueError("utc_interval requires at least one bound")
-        if self.valid_from is not None and not isinstance(self.valid_from, datetime):
-            raise ValueError("valid_from must be a datetime")
-        if self.valid_until is not None and not isinstance(self.valid_until, datetime):
-            raise ValueError("valid_until must be a datetime")
         if self.valid_from and self.valid_until and self.valid_until < self.valid_from:
             raise ValueError("valid_until cannot precede valid_from")
         return self
 
 
 class DomainTemporalScope(DungeonMindModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, serialize_by_alias=True)
+
     kind: Literal["domain_ref"] = "domain_ref"
-    schema: QualifiedTerm
+    schema_term: QualifiedTerm = Field(alias="schema")
     payload: JsonValue
 
     _payload = field_validator("payload")(_json_value)

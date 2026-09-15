@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, field_validator, model_validator
 
 from ..base import DungeonMindModel
 from ..semantic_profile import SemanticProfileRef
-from .common import KnowledgeStanding, _unique
+from .common import KnowledgeStanding, NonBlankId, Sha256Hex, _json_value, _unique
 from .domain import DomainContractRef
 
 
@@ -30,35 +30,35 @@ class IdentityDecisionStatus(StrEnum):
 
 
 class MigrationOriginRef(DungeonMindModel):
-    source_system: str = Field(min_length=1)
-    source_root_id: str = Field(min_length=1)
-    source_revision_id: str = Field(min_length=1)
-    source_payload_sha256: str = Field(min_length=64, max_length=64)
-    migration_manifest_sha256: str = Field(min_length=64, max_length=64)
+    source_system: NonBlankId
+    source_root_id: NonBlankId
+    source_revision_id: NonBlankId
+    source_payload_sha256: Sha256Hex
+    migration_manifest_sha256: Sha256Hex
 
 
 class IdentityAlias(DungeonMindModel):
     schema_version: Literal["dm_identity_alias_v1"] = "dm_identity_alias_v1"
-    alias_id: str = Field(min_length=1)
-    entity_id: str = Field(min_length=1)
-    alias_text: str = Field(min_length=1)
-    evidence_ref_ids: list[str] = Field(default_factory=list)
+    alias_id: NonBlankId
+    entity_id: NonBlankId
+    alias_text: NonBlankId
+    evidence_ref_ids: list[NonBlankId] = Field(default_factory=list)
     standing: KnowledgeStanding
     _ids = field_validator("evidence_ref_ids")(_unique)
 
 
 class IdentityDecisionV3(DungeonMindModel):
     schema_version: Literal["dm_identity_decision_v3"] = "dm_identity_decision_v3"
-    decision_id: str = Field(min_length=1)
-    space_id: str = Field(min_length=1)
+    decision_id: NonBlankId
+    space_id: NonBlankId
     decision_kind: IdentityDecisionKind
-    subject_entity_ids: list[str] = Field(min_length=1)
-    target_entity_ids: list[str] = Field(default_factory=list)
-    alias: str | None = None
-    actor: str = "system"
+    subject_entity_ids: list[NonBlankId] = Field(min_length=1)
+    target_entity_ids: list[NonBlankId] = Field(default_factory=list)
+    alias: NonBlankId | None = None
+    actor: NonBlankId = "system"
     reason: str | None = None
     reversible: bool = True
-    supersedes_decision_ids: list[str] = Field(default_factory=list)
+    supersedes_decision_ids: list[NonBlankId] = Field(default_factory=list)
     status: IdentityDecisionStatus = IdentityDecisionStatus.ACTIVE
     created_at: datetime
 
@@ -81,13 +81,13 @@ class IdentityDecisionV3(DungeonMindModel):
 
 class KnowledgeRevision(DungeonMindModel):
     schema_version: Literal["dm_knowledge_revision_v1"] = "dm_knowledge_revision_v1"
-    space_id: str = Field(min_length=1)
-    revision_id: str = Field(min_length=1)
-    parent_revision_id: str | None = None
+    space_id: NonBlankId
+    revision_id: NonBlankId
+    parent_revision_id: NonBlankId | None = None
     created_at: datetime
-    operation_ids: list[str] = Field(min_length=1)
-    graph_schema: str = Field(min_length=1)
-    graph_payload_sha256: str = Field(min_length=64, max_length=64)
+    operation_ids: list[NonBlankId] = Field(min_length=1)
+    graph_schema: NonBlankId
+    graph_payload_sha256: Sha256Hex
     domain_contract_ref: DomainContractRef
     semantic_profile_ref: SemanticProfileRef
     migration_origin_ref: MigrationOriginRef | None = None
@@ -97,8 +97,8 @@ class KnowledgeRevision(DungeonMindModel):
 
 class KnowledgeHead(DungeonMindModel):
     schema_version: Literal["dm_knowledge_head_v1"] = "dm_knowledge_head_v1"
-    space_id: str = Field(min_length=1)
-    head_revision_id: str = Field(min_length=1)
+    space_id: NonBlankId
+    head_revision_id: NonBlankId
     updated_at: datetime
 
 
@@ -106,16 +106,19 @@ class PublishKnowledgeRevisionCommand(DungeonMindModel):
     schema_version: Literal["dm_publish_knowledge_revision_command_v1"] = (
         "dm_publish_knowledge_revision_command_v1"
     )
-    space_id: str = Field(min_length=1)
-    parent_revision_id: str | None = None
-    expected_parent_revision_id: str | None = None
-    operation_ids: list[str] = Field(default_factory=list)
-    graph_schema: str = Field(min_length=1)
-    graph_payload: dict[str, object]
+    space_id: NonBlankId
+    parent_revision_id: NonBlankId | None = None
+    expected_parent_revision_id: NonBlankId | None = None
+    operation_ids: list[NonBlankId] = Field(min_length=1)
+    graph_schema: NonBlankId
+    graph_payload: dict[str, Any]
     domain_contract_ref: DomainContractRef
     semantic_profile_ref: SemanticProfileRef
     migration_origin_ref: MigrationOriginRef | None = None
     created_at: datetime
+
+    _payload = field_validator("graph_payload")(_json_value)
+    _ops = field_validator("operation_ids")(_unique)
 
     @model_validator(mode="after")
     def _parent(self) -> PublishKnowledgeRevisionCommand:

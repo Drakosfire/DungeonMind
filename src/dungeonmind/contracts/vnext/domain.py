@@ -12,8 +12,10 @@ from .common import (
     EpistemicBasis,
     JsonValue,
     KnowledgeStanding,
+    NonBlankId,
     QualifiedTerm,
     ScopeBinding,
+    Sha256Hex,
     TemporalScope,
     VisibilityRequirement,
     _json_value,
@@ -23,22 +25,22 @@ from .common import (
 
 class DomainContractRef(DungeonMindModel):
     schema_version: Literal["dm_domain_contract_ref_v1"] = "dm_domain_contract_ref_v1"
-    domain_id: str = Field(min_length=1)
-    domain_revision: str = Field(min_length=1)
-    descriptor_sha256: str = Field(min_length=64, max_length=64)
+    domain_id: NonBlankId
+    domain_revision: NonBlankId
+    descriptor_sha256: Sha256Hex
 
 
 class DomainContractDescriptor(DungeonMindModel):
     schema_version: Literal["dm_domain_contract_v1"] = "dm_domain_contract_v1"
-    domain_id: str = Field(min_length=1)
-    domain_revision: str = Field(min_length=1)
+    domain_id: NonBlankId
+    domain_revision: NonBlankId
     scope_axes: list[QualifiedTerm] = Field(default_factory=list)
     visibility_labels: list[QualifiedTerm] = Field(default_factory=list)
     claim_modes: list[QualifiedTerm] = Field(default_factory=list)
     temporal_extension_schemas: list[QualifiedTerm] = Field(default_factory=list)
     domain_metadata_schemas: list[QualifiedTerm] = Field(default_factory=list)
     source_annotation_schemas: list[QualifiedTerm] = Field(default_factory=list)
-    admission_policy_id: str = Field(min_length=1)
+    admission_policy_id: NonBlankId
 
     @field_validator(
         "scope_axes",
@@ -68,8 +70,8 @@ class SemanticProfilePredicate(DungeonMindModel):
 
 class SemanticProfileDescriptorV2(DungeonMindModel):
     schema_version: Literal["dm_semantic_profile_v2"] = "dm_semantic_profile_v2"
-    profile_id: str = Field(min_length=1)
-    profile_revision: str = Field(min_length=1)
+    profile_id: NonBlankId
+    profile_revision: NonBlankId
     term_namespaces: list[str] = Field(min_length=1)
     predicates: list[SemanticProfilePredicate] = Field(default_factory=list)
     classification_terms: list[QualifiedTerm] = Field(default_factory=list)
@@ -92,12 +94,12 @@ class SemanticProfileDescriptorV2(DungeonMindModel):
 
 class Entity(DungeonMindModel):
     schema_version: Literal["dm_entity_v1"] = "dm_entity_v1"
-    entity_id: str = Field(min_length=1)
+    entity_id: NonBlankId
 
 
 class EntityRefValue(DungeonMindModel):
     kind: Literal["entity_ref"] = "entity_ref"
-    entity_id: str = Field(min_length=1)
+    entity_id: NonBlankId
 
 
 class LiteralValue(DungeonMindModel):
@@ -117,7 +119,7 @@ class AssertionMetadata(DungeonMindModel):
     epistemic_basis: EpistemicBasis
     claim_mode: QualifiedTerm
     standing: KnowledgeStanding
-    evidence_ref_ids: list[str] = Field(default_factory=list)
+    evidence_ref_ids: list[NonBlankId] = Field(default_factory=list)
     temporal_scope: TemporalScope = Field(discriminator="kind")
     domain_metadata: list[DomainMetadataEntry] = Field(default_factory=list)
 
@@ -129,8 +131,8 @@ class AssertionMetadata(DungeonMindModel):
 
 class Assertion(DungeonMindModel):
     schema_version: Literal["dm_assertion_v1"] = "dm_assertion_v1"
-    assertion_id: str = Field(min_length=1)
-    subject_entity_id: str = Field(min_length=1)
+    assertion_id: NonBlankId
+    subject_entity_id: NonBlankId
     predicate: QualifiedTerm
     value: EntityRefValue | LiteralValue | TermRefValue = Field(discriminator="kind")
     metadata: AssertionMetadata

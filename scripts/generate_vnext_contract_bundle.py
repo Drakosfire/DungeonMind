@@ -10,30 +10,19 @@ from typing import Any
 from dungeonmind.contracts import vnext
 from dungeonmind.contracts.vnext.common import canonical_json, sha256
 
-PUBLIC_TYPES = [
-    vnext.DomainContractRef,
-    vnext.DomainContractDescriptor,
-    vnext.SemanticProfileDescriptorV2,
-    vnext.Entity,
-    vnext.Assertion,
-    vnext.IdentityAlias,
-    vnext.IdentityDecisionV3,
-    vnext.SourceArtifactV3,
-    vnext.SourceRevisionV2,
-    vnext.EvidenceRefV3,
-    vnext.KnowledgeRevision,
-    vnext.KnowledgeHead,
-    vnext.PublishKnowledgeRevisionCommand,
-    vnext.KnowledgeContribution,
-    vnext.ContributionDisposition,
-    vnext.ProjectionRequest,
-    vnext.ProjectionSnapshot,
-]
+
+def public_contract_models() -> tuple[type, ...]:
+    models = vnext.PUBLIC_CONTRACT_MODELS
+    exported = set(vnext.__all__)
+    missing = [model.__name__ for model in models if model.__name__ not in exported]
+    if missing:
+        raise RuntimeError(f"PUBLIC_CONTRACT_MODELS not covered by vnext.__all__: {missing}")
+    return models
 
 
 def make_bundle() -> dict[str, Any]:
     contracts = []
-    for model in sorted(PUBLIC_TYPES, key=lambda item: item.__name__):
+    for model in sorted(public_contract_models(), key=lambda item: item.__name__):
         schema = model.model_json_schema(by_alias=True, ref_template="#/$defs/{model}")
         schema_bytes = canonical_json(schema)
         contracts.append(

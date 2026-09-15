@@ -1,0 +1,205 @@
+{
+  "fixture_id": "dm_vnext_adversarial_epistemic_identity_v1",
+  "family": "adversarial_epistemic_identity",
+  "space_id": "space:adversarial",
+  "entities": [
+    {"schema_version": "dm_entity_v1", "entity_id": "candidate-a"},
+    {"schema_version": "dm_entity_v1", "entity_id": "candidate-b"},
+    {"schema_version": "dm_entity_v1", "entity_id": "merged-person"},
+    {"schema_version": "dm_entity_v1", "entity_id": "project-alpha"}
+  ],
+  "assertions": [
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:belief-owns",
+      "subject_entity_id": "candidate-a",
+      "predicate": "organization:owns",
+      "value": {"kind": "entity_ref", "entity_id": "project-alpha"},
+      "metadata": {
+        "scope": [{"axis": "organization:project", "value": "alpha"}],
+        "visibility": {"kind": "labels_any", "labels": ["organization:leadership"]},
+        "epistemic_basis": "speculative",
+        "claim_mode": "organization:belief",
+        "standing": "provisional",
+        "evidence_ref_ids": ["evidence:rumor"],
+        "temporal_scope": {"kind": "unknown"},
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:fact-owns",
+      "subject_entity_id": "candidate-b",
+      "predicate": "organization:owns",
+      "value": {"kind": "entity_ref", "entity_id": "project-alpha"},
+      "metadata": {
+        "scope": [{"axis": "organization:project", "value": "alpha"}],
+        "visibility": {"kind": "public"},
+        "epistemic_basis": "asserted",
+        "claim_mode": "organization:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:ledger", "evidence:memo"],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:plan-transfer",
+      "subject_entity_id": "candidate-a",
+      "predicate": "organization:plans",
+      "value": {"kind": "literal", "value": {"action": "transfer_ownership"}},
+      "metadata": {
+        "scope": [{"axis": "organization:project", "value": "alpha"}],
+        "visibility": {"kind": "labels_all", "labels": ["organization:leadership"]},
+        "epistemic_basis": "inferred",
+        "claim_mode": "organization:plan",
+        "standing": "provisional",
+        "evidence_ref_ids": ["evidence:memo"],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:retracted-rumor",
+      "subject_entity_id": "candidate-a",
+      "predicate": "organization:rumored",
+      "value": {"kind": "term_ref", "term": "organization:saboteur"},
+      "metadata": {
+        "scope": [],
+        "visibility": {"kind": "labels_any", "labels": ["organization:leadership"]},
+        "epistemic_basis": "speculative",
+        "claim_mode": "organization:belief",
+        "standing": "retracted",
+        "evidence_ref_ids": ["evidence:rumor"],
+        "temporal_scope": {"kind": "unknown"},
+        "domain_metadata": []
+      }
+    }
+  ],
+  "identity_decisions": [
+    {
+      "schema_version": "dm_identity_decision_v3",
+      "decision_id": "iddec:mark-ambiguous",
+      "space_id": "space:adversarial",
+      "decision_kind": "mark_ambiguous",
+      "subject_entity_ids": ["candidate-a", "candidate-b"],
+      "target_entity_ids": [],
+      "alias": null,
+      "actor": "reviewer:identity",
+      "reason": "shared display name collision",
+      "reversible": true,
+      "supersedes_decision_ids": [],
+      "status": "active",
+      "created_at": "2026-09-01T00:00:00Z"
+    },
+    {
+      "schema_version": "dm_identity_decision_v3",
+      "decision_id": "iddec:reject-b",
+      "space_id": "space:adversarial",
+      "decision_kind": "reject_candidate",
+      "subject_entity_ids": ["candidate-b"],
+      "target_entity_ids": [],
+      "alias": null,
+      "actor": "reviewer:identity",
+      "reason": "insufficient evidence",
+      "reversible": true,
+      "supersedes_decision_ids": [],
+      "status": "active",
+      "created_at": "2026-09-02T00:00:00Z"
+    },
+    {
+      "schema_version": "dm_identity_decision_v3",
+      "decision_id": "iddec:merge",
+      "space_id": "space:adversarial",
+      "decision_kind": "merge",
+      "subject_entity_ids": ["candidate-a", "candidate-b"],
+      "target_entity_ids": ["merged-person"],
+      "alias": null,
+      "actor": "reviewer:identity",
+      "reason": "same person",
+      "reversible": true,
+      "supersedes_decision_ids": ["iddec:mark-ambiguous"],
+      "status": "active",
+      "created_at": "2026-09-03T00:00:00Z"
+    },
+    {
+      "schema_version": "dm_identity_decision_v3",
+      "decision_id": "iddec:unmerge",
+      "space_id": "space:adversarial",
+      "decision_kind": "unmerge",
+      "subject_entity_ids": ["merged-person"],
+      "target_entity_ids": ["candidate-a", "candidate-b"],
+      "alias": null,
+      "actor": "reviewer:identity",
+      "reason": "merge reversed after new evidence",
+      "reversible": true,
+      "supersedes_decision_ids": ["iddec:merge"],
+      "status": "active",
+      "created_at": "2026-09-04T00:00:00Z"
+    },
+    {
+      "schema_version": "dm_identity_decision_v3",
+      "decision_id": "iddec:split",
+      "space_id": "space:adversarial",
+      "decision_kind": "split",
+      "subject_entity_ids": ["merged-person"],
+      "target_entity_ids": ["candidate-a", "candidate-b"],
+      "alias": null,
+      "actor": "reviewer:identity",
+      "reason": "distinct people",
+      "reversible": true,
+      "supersedes_decision_ids": [],
+      "status": "active",
+      "created_at": "2026-09-05T00:00:00Z"
+    }
+  ],
+  "evidence": [
+    {
+      "schema_version": "dm_evidence_ref_v3",
+      "evidence_ref_id": "evidence:rumor",
+      "source_artifact_id": "src:slack-thread",
+      "source_revision_id": "srcrev:slack-1",
+      "evidence_role": "context",
+      "can_open_source": false,
+      "can_highlight_span": false,
+      "locator": null,
+      "uri": null,
+      "source_locator": null,
+      "line_ref": null,
+      "source_span_ref_id": null,
+      "domain_metadata": []
+    },
+    {
+      "schema_version": "dm_evidence_ref_v3",
+      "evidence_ref_id": "evidence:ledger",
+      "source_artifact_id": "src:hr-ledger",
+      "source_revision_id": "srcrev:ledger-1",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": true,
+      "locator": "row:42",
+      "uri": null,
+      "source_locator": null,
+      "line_ref": null,
+      "source_span_ref_id": null,
+      "domain_metadata": []
+    },
+    {
+      "schema_version": "dm_evidence_ref_v3",
+      "evidence_ref_id": "evidence:memo",
+      "source_artifact_id": "src:ops-memo",
+      "source_revision_id": "srcrev:memo-1",
+      "evidence_role": "support",
+      "can_open_source": true,
+      "can_highlight_span": false,
+      "locator": "§2",
+      "uri": null,
+      "source_locator": null,
+      "line_ref": null,
+      "source_span_ref_id": null,
+      "domain_metadata": []
+    }
+  ]
+}
