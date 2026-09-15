@@ -1,0 +1,8 @@
+{
+  "manifest_schema": "dm_vnext_fixture_digest_ledger_v1",
+  "fixtures": {
+    "organizational_memory_v1.json": "9b7dd16401472e3be7e2ec1b33c41f58aae4f981219bb6610a522822ca8bde57",
+    "temporal_supersession_v1.json": "1a177c74667b2ff0f6c71b66f867d80f302f65e526bee3c14b3971cefdebb1ba",
+    "adversarial_epistemic_identity_v1.json": "b419937b825fb203429b50bc1e2759b6a503605df52ffba5057e28f8eaac2146"
+  }
+}

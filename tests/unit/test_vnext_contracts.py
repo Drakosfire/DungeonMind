@@ -511,8 +511,17 @@ def test_organizational_memory_fixture_validates_and_has_stable_digest() -> None
     payload = _load("organizational_memory_v1.json")
     for entity in payload["entities"]:
         Entity.model_validate(entity)
-    for assertion in payload["assertions"]:
-        Assertion.model_validate(assertion)
+    assertions = [Assertion.model_validate(item) for item in payload["assertions"]]
+    predicates = {item.predicate for item in assertions}
+    assert "organization:title" in predicates
+    assert "organization:classification" in predicates
+    title = next(item for item in assertions if item.predicate == "organization:title")
+    classification = next(
+        item for item in assertions if item.predicate == "organization:classification"
+    )
+    assert title.value.kind == "literal"
+    assert classification.value.kind == "term_ref"
+    assert any(len(item.metadata.scope) == 0 for item in assertions)
     SourceArtifactV3.model_validate(payload["sources"]["artifact"])
     for revision in payload["sources"]["revisions"]:
         SourceRevisionV2.model_validate(revision)
@@ -520,8 +529,8 @@ def test_organizational_memory_fixture_validates_and_has_stable_digest() -> None
         EvidenceRefV3.model_validate(evidence)
     DomainContractDescriptor.model_validate(payload["domain_contract"])
     digest = sha256(canonical_json(payload))
-    assert digest == sha256(canonical_json(_load("organizational_memory_v1.json")))
-    assert len(digest) == 64
+    pinned = _load("FIXTURE_DIGESTS.json")["fixtures"]["organizational_memory_v1.json"]
+    assert digest == pinned
 
 
 def test_temporal_supersession_fixture_validates() -> None:
@@ -551,8 +560,9 @@ def test_adversarial_fixture_preserves_governance_axes() -> None:
     assert IdentityDecisionKind.REJECT_CANDIDATE in kinds
 
 
-def test_fixture_digest_ledger_is_stable() -> None:
-    ledger = {
+def test_fixture_digest_ledger_is_pinned() -> None:
+    pinned = _load("FIXTURE_DIGESTS.json")["fixtures"]
+    actual = {
         name: sha256(canonical_json(_load(name)))
         for name in (
             "organizational_memory_v1.json",
@@ -560,12 +570,7 @@ def test_fixture_digest_ledger_is_stable() -> None:
             "adversarial_epistemic_identity_v1.json",
         )
     }
-    assert all(len(digest) == 64 for digest in ledger.values())
-    # Recompute once more to prove stability within the suite.
-    assert ledger == {
-        name: sha256(canonical_json(_load(name)))
-        for name in ledger
-    }
+    assert actual == pinned
 
 
 def test_identity_alias_round_trip() -> None:

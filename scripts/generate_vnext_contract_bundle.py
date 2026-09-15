@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Generate/check the deterministic DungeonMind vNext JSON Schema bundle."""
+"""Generate/check the deterministic DungeonMind vNext contract bundle.
+
+Contract identity =
+  structural JSON Schema
+  + canonical semantic-invariant manifest
+"""
 
 from __future__ import annotations
 
@@ -9,6 +14,10 @@ from typing import Any
 
 from dungeonmind.contracts import vnext
 from dungeonmind.contracts.vnext.common import canonical_json, sha256
+from dungeonmind.contracts.vnext.invariants import (
+    assert_runtime_matches_manifest,
+    semantic_invariant_manifest,
+)
 
 
 def public_contract_models() -> tuple[type, ...]:
@@ -20,7 +29,13 @@ def public_contract_models() -> tuple[type, ...]:
     return models
 
 
-def make_bundle() -> dict[str, Any]:
+def make_bundle(
+    *,
+    invariants: tuple[dict[str, Any], ...] | None = None,
+    verify_runtime: bool = True,
+) -> dict[str, Any]:
+    if verify_runtime:
+        assert_runtime_matches_manifest(invariants=invariants)
     contracts = []
     for model in sorted(public_contract_models(), key=lambda item: item.__name__):
         schema = model.model_json_schema(by_alias=True, ref_template="#/$defs/{model}")
@@ -35,11 +50,13 @@ def make_bundle() -> dict[str, Any]:
                 "schema_sha256": sha256(schema_bytes),
             }
         )
+    manifest = semantic_invariant_manifest(invariants=invariants)
     bundle = {
         "bundle_schema": "dm_vnext_contract_bundle_v1",
         "contract_family": "dungeonmind-vnext",
         "contract_revision": "v1",
         "contracts": contracts,
+        "semantic_invariants": manifest,
     }
     bundle["aggregate_sha256"] = sha256(canonical_json(bundle))
     return bundle

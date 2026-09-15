@@ -97,6 +97,57 @@
         "temporal_scope": {"kind": "timeless"},
         "domain_metadata": []
       }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:priya-title",
+      "subject_entity_id": "priya",
+      "predicate": "organization:title",
+      "value": {"kind": "literal", "value": {"title": "Staff Engineer"}},
+      "metadata": {
+        "scope": [{"axis": "organization:team", "value": "research"}],
+        "visibility": {"kind": "public"},
+        "epistemic_basis": "asserted",
+        "claim_mode": "organization:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:ownership-doc-1"],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:retrieval-classification",
+      "subject_entity_id": "retrieval-evaluation",
+      "predicate": "organization:classification",
+      "value": {"kind": "term_ref", "term": "organization:project"},
+      "metadata": {
+        "scope": [{"axis": "organization:project", "value": "retrieval"}],
+        "visibility": {"kind": "public"},
+        "epistemic_basis": "asserted",
+        "claim_mode": "organization:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:ownership-doc-1"],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:org-charter-unscoped",
+      "subject_entity_id": "research-team",
+      "predicate": "organization:charter",
+      "value": {"kind": "literal", "value": "Advance retrieval evaluation quality."},
+      "metadata": {
+        "scope": [],
+        "visibility": {"kind": "public"},
+        "epistemic_basis": "asserted",
+        "claim_mode": "organization:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:ownership-doc-1"],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
     }
   ],
   "sources": {

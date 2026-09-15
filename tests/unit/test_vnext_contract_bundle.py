@@ -23,7 +23,12 @@ def test_checked_in_vnext_bundle_is_reproducible() -> None:
 
 
 def test_bundle_inventory_matches_public_contract_models() -> None:
-    bundle_names = {item["public_name"] for item in make_bundle()["contracts"]}
+    bundle = make_bundle()
+    bundle_names = {item["public_name"] for item in bundle["contracts"]}
     model_names = {model.__name__ for model in vnext.PUBLIC_CONTRACT_MODELS}
     assert bundle_names == model_names
     assert model_names <= set(vnext.__all__)
+    assert "semantic_invariants" in bundle
+    assert bundle["semantic_invariants"]["invariant_count"] == len(
+        bundle["semantic_invariants"]["invariants"]
+    )
