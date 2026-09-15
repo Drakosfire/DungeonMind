@@ -3,34 +3,18 @@
 **Created:** 2026-09-14  
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
-**Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54
-**Current main anchor:** `6d9a40f609530f4882470c5599b4914e2288b8d5` — merged PR #57
+**Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
+**Current main anchor:** `6c5e746d3fa3ffbbdb371ddb15d9c392ab3fd3a0` — merged PR #58  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
 **Read/performance architecture:** `Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`  
-**One-line mission:** Steward the deliberate V0–V11 transition from the current World-shaped DungeonMind implementation to a domain-agnostic governed knowledge library, preserving authority invariants, folding in the already-earned structural read optimizations, and keeping the roadmap, proof obligations, cross-repository contract, and next PR continuously coherent.
+**One-line mission:** Steward the deliberate V0–V11 transition from the current World-shaped DungeonMind implementation to a domain-agnostic governed knowledge library while preserving authority invariants, historical readability, semantic parity, and evidence-backed read-path performance.
 
 ---
 
 ## §1 Steward role
 
-This is not a one-PR implementation handoff.
-
-This is the durable control document for the agent responsible for **continuity of design and proof across the roadmap**.
-
-The Steward is expected to:
-
-- re-anchor against current checked-in truth before every decision;
-- understand the architectural destination and why it exists;
-- dispatch small implementation/design PRs that each answer one primary question;
-- review exact PR heads against the roadmap and architecture, not against memory;
-- distinguish semantic correctness, migration correctness, performance evidence, and product integration evidence;
-- preserve strict DungeonMind / DungeonMindBuddy ownership boundaries;
-- stop or rebrief when implementation evidence falsifies the planned shape;
-- update canonical architecture/roadmap documents when an accepted decision changes them;
-- **update this Steward handoff as the roadmap advances so a new Steward can resume from checked-in state without chat history.**
-
-The Steward does **not** exist to force implementation details that the architecture does not require.
+This is the durable control document for continuity of design and proof across the vNext roadmap.
 
 The Steward owns:
 
@@ -44,19 +28,26 @@ cross-repository contract alignment
 recording what was learned
 ```
 
-Implementation PRs own their bounded technical choices inside those constraints.
+The Steward must:
 
-A useful rule:
+- re-anchor against current checked-in truth before every decision;
+- dispatch small PRs with one primary question;
+- review exact heads, not branch names;
+- distinguish semantic, migration, performance, and consumer evidence;
+- preserve DungeonMind / DungeonMindBuddy ownership boundaries;
+- stop and rebrief when implementation evidence falsifies the planned shape;
+- update canonical architecture/roadmap documents when accepted decisions change them;
+- update this handoff after every roadmap merge before another roadmap PR merges.
 
-> The Steward should be strict about invariants and evidence, and flexible about implementation mechanisms that satisfy them cleanly.
+Implementation PRs own bounded technical choices inside these constraints.
+
+> **Be strict about invariants and evidence; be flexible about mechanisms that satisfy them cleanly.**
 
 ---
 
 ## §2 Current checkpoint
 
-At creation, the documentation/design foundation is complete enough to begin V0.
-
-### Merged architectural decisions
+### Completed architectural foundation
 
 PR #53 established the breaking semantic direction:
 
@@ -72,24 +63,42 @@ SemanticProfile
 Generic scope / visibility / standing / temporal contracts
 ```
 
-The Kernel owns governed knowledge mechanics. Domains own what assertions mean.
+PR #54 established the V0–V11 roadmap and read/performance architecture.
 
-PR #54 established the forward execution roadmap and read/performance architecture.
+PR #56 froze the generic vNext contract bundle at:
 
-PR #56 established and froze the generic vNext contract schemas, models, semantic invariants, and multi-domain fixtures (`fd04a904...`).
+```text
+fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
+```
 
-DungeonMindBuddy PR #719 established and merged the V0.2 consumer proof, confirming that Buddy's campaign/session scope, GM/player visibility, standing, fictional time, World-object representation, candidate governance, and all 11 source domains map losslessly into the generic vNext contract without Kernel modifications or production changes.
+DungeonMindBuddy PR #719 proved the frozen contract can represent the current DungeonBuddy World/TTRPG authority semantics without adding Buddy-only fields to the generic Kernel contract. Overall V0 disposition:
 
-DungeonMind PR #57 established and merged V1.1 (`6d9a40f...`), proving that generic vNext knowledge primitives can be normalized into an immutable serving model (`ParsedKnowledgeRevision`) with deterministic derived indexes, deep immutability against cache poisoning, and fail-closed structural integrity.
+```text
+VNEXT_CONTRACT_FROZEN
+```
+
+### V1 complete
+
+DungeonMind PR #57 established V1.1, the immutable generic `ParsedKnowledgeRevision` plus deterministic revision-local indexes.
+
+DungeonMind PR #58 established V1.2, the frozen v1–v6 compatibility codec and semantic parity proof.
+
+V1 final dispositions:
+
+```text
+V1_1_PARSED_KNOWLEDGE_REVISION_CORE_ACCEPTED
+V1_2_LEGACY_COMPATIBILITY_PARITY_ACCEPTED
+V1_IMMUTABLE_NORMALIZATION_COMPLETE
+```
 
 The canonical roadmap is now:
 
 ```text
-V0   Contract freeze (COMPLETE — VNEXT_CONTRACT_FROZEN)
-V1   Immutable normalized revision + revision-local indexes (ACTIVE: V1.1 COMPLETE, V1.2 ACTIVE)
-V2   Generic KnowledgeReadContext + candidate admission seam
+V0   Contract freeze                                      COMPLETE
+V1   Immutable normalized revision + revision indexes    COMPLETE
+V2   Generic KnowledgeReadContext + candidate admission  ACTIVE
 V3   Lazy exact / complete entity reads
-V4   Neighborhood + evidence + anchor + deterministic indexed search
+V4   Neighborhood + evidence + anchor + indexed search
 V5   Generic governed write contracts
 V6   DungeonBuddy domain implementation
 V7   Bridge-genesis migration
@@ -99,129 +108,56 @@ V10  Remove old current/public paths; quarantine compatibility
 V11  Deeper storage optimization only if evidence still demands it
 ```
 
-### Current next primary question
+### Current primary question
 
-**V1.2 — legacy v1–v6 compatibility decoder + semantic parity**
+**V2 — generic `KnowledgeReadContext` + candidate admission seam**
 
-> Can every frozen historical `dm_union_graph_v1` through `dm_union_graph_v6` stored revision be verified and decoded into the accepted immutable `ParsedKnowledgeRevision` with deterministic semantic parity to the current historical reader, without rewriting history, performing admission, or pretending legacy payloads are native vNext authority?
+> Can one exact `ParsedKnowledgeRevision` support coherent generic and pinned-domain admission over an arbitrary candidate slice, with targeted fresh source/provenance state, without pre-projecting the entire KnowledgeSpace or changing current World runtime behavior?
 
-### Parallel evidence lane
-
-The unfinished larger-scale K0.3 benchmark work remains useful, especially its planned World-like / Rules-like 100 / 1k / 10k / 50k / 100k characterization.
-
-It is **not** a gate in front of V0 or V1.
-
-R.2a and R.3a already earned the decision to remove whole-projection work from bounded reads. The large-scale lane should be harvested for V1–V4 measurement and V8 acceptance rather than used to delay contract work.
+V2 is a seam/proof phase. It is not permission to implement V3 entity retrieval early.
 
 ---
 
 ## §3 Authority and source precedence
 
-Read current checked-in sources. Never treat this handoff or chat history as higher authority than the repository.
+Current checked-in repository truth outranks this handoff. Chat/history is never authority.
 
-### Required read order for a fresh Steward
+Fresh Steward read order:
 
-1. **`Docs/Architecture/AUTHORITY.md`**
-   - source precedence;
-   - durable authority rules;
-   - source/evidence freshness;
-   - client boundary;
-   - governed-write authority.
+1. `Docs/Architecture/AUTHORITY.md`
+2. `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`
+3. `Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`
+4. `Docs/Roadmaps/ROADMAP.md`
+5. `CONTRIBUTING.md`
+6. `Docs/Architecture/ARCHITECTURE.md` for the current pre-cutover runtime
+7. relevant accepted ADRs
+8. current performance evidence
+9. this handoff
 
-2. **`Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`**
-   - the breaking semantic destination;
-   - KnowledgeSpace / Entity / Assertion / DomainContract design;
-   - generic scope, visibility, temporal, source, contribution, identity, and migration contracts;
-   - v1 → vNext break inventory;
-   - DungeonBuddy domain responsibility;
-   - bridge-genesis migration model.
+Frequently relevant ADRs remain:
 
-3. **`Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`**
-   - normalized immutable revision model;
-   - revision-local derived indexes;
-   - KnowledgeReadContext;
-   - candidate-local admission;
-   - targeted coherent provenance;
-   - full projection as explicit O(N);
-   - bounded-read/search/evidence/anchor optimization doctrine;
-   - durable storage redesign as a later evidence-gated decision.
+```text
+ADR-0010 expected-parent CAS publication
+ADR-0011 durable publication recovery
+ADR-0014 assertion-scoped World Graph v4
+ADR-0015 lossless source provenance v2
+ADR-0018 relationship endpoint aspects v6
+ADR-0019 existing-world adoption boundary
+ADR-0020 v6 governed review publication
+ADR-0021 existing-world adoption repair
+ADR-0022 independent library / agent-harness boundary
+ADR-0023 reviewed-first-world provenance compatibility
+```
 
-4. **`Docs/Roadmaps/ROADMAP.md`**
-   - current V0–V11 sequence;
-   - primary question and stop conditions for each phase;
-   - parallelism allowed between DungeonMind and DungeonBuddy work;
-   - final migration/cutover shape.
-
-5. **`CONTRIBUTING.md`**
-   - toolchain;
-   - import/layering rules;
-   - versioned durable-contract rules;
-   - data hygiene;
-   - PR discipline and handoff expectations.
-
-6. **`Docs/Architecture/ARCHITECTURE.md`**
-   - current pre-vNext implementation architecture;
-   - current public World read/write behavior;
-   - current ownership map;
-   - R.3a cache/provenance safety rule.
-
-   Treat this as the description of the **current implementation**, while the two vNext architecture documents describe the accepted destination.
-
-7. **Accepted ADRs in `Docs/Decisions/`**, especially when touching their owned invariants.
-
-   Frequently relevant:
-
-   ```text
-   ADR-0010 expected-parent CAS publication
-   ADR-0011 durable publication recovery
-   ADR-0014 assertion-scoped World Graph v4
-   ADR-0015 lossless source provenance v2
-   ADR-0018 relationship endpoint aspects v6
-   ADR-0019 existing-world adoption boundary
-   ADR-0020 v6 governed review publication
-   ADR-0021 existing-world adoption repair
-   ADR-0022 independent library / agent-harness boundary
-   ADR-0023 reviewed-first-world provenance compatibility
-   ```
-
-8. **Performance evidence**
-
-   ```text
-   Docs/Benchmarks/BASELINE-world-graph-reads-r2a.md
-   Docs/Benchmarks/BASELINE-world-graph-reads-r3a.md
-   Docs/Handoffs/HANDOFF-cutover-direct-read-optimization.md
-   Docs/Handoffs/HANDOFF-complete-selected-object-one-hop-read.md
-   ```
-
-9. **Architecture-fitness history**
-
-   ```text
-   Docs/Reports/REPORT-2026-08-23-independent-library-transition.md
-   ```
-
-   Deeper reconstruction evidence that did not land on main remains available on:
-
-   ```text
-   steward/post-cutover-library-critique
-   ```
-
-   including the K0 surface inventory, golden semantic witness, critique, and reconstruction roadmap. Use these as evidence when useful; do not let an archival branch outrank current main.
-
-### Chat/history rule
-
-If a conversation produces a real architectural decision, that decision is not durable until the appropriate checked-in architecture/roadmap/handoff is updated.
-
-This handoff should point to the checked-in decision rather than preserving a parallel private truth.
+If a conversation creates a real architectural decision, update the appropriate checked-in architecture/roadmap/ADR before treating it as durable.
 
 ---
 
 ## §4 Project mental model
 
-DungeonMind exists because the project discovered that persistent knowledge authority should not belong to the product surface that happens to consume it.
+DungeonMind owns knowledge authority mechanics, not product meaning.
 
-The current implementation was extracted from DungeonMindBuddy and proven against a real adopted campaign/world authority.
-
-The cutover earned several pieces of complexity:
+The following complexity is earned and survives vNext:
 
 ```text
 stable opaque identity
@@ -231,250 +167,282 @@ explicit mutable head
 expected-parent CAS
 canonical hashing
 fail-closed reads
-replay/idempotency/recovery
 governed publication
+replay/idempotency/recovery
 historical reconstructibility
 ```
 
-Those survive vNext.
-
-The breaking redesign exists because World-specific semantics leaked into supposedly generic contracts:
+World-specific semantics leave the generic Kernel:
 
 ```text
-world_id
-campaign scope
-GM / PLAYER
-canon
-session semantics
-fictional time
-World/Campaign/Cross-Campaign projection modes
+world_id vocabulary
+campaign modes
+GM / PLAYER enums
+canon vocabulary
+session authorization
+fictional-time ontology
+World/Campaign/Cross-Campaign projection enums
 ```
 
-The new boundary is intentionally simpler:
+The boundary remains:
 
 ```text
 DungeonMind knows
-  identity,
-  assertions,
-  evidence,
-  revisions,
-  governance,
-  generic admission,
-  retrieval.
+  identity
+  assertions
+  evidence
+  immutable revisions
+  generic governance/admission
+  retrieval mechanics
 
-DungeonBuddy knows
-  campaigns,
-  GM/player meaning,
-  TTRPG claim modes,
-  fictional time,
-  D&D vocabulary,
-  product authorization,
-  UI/agent workflows.
+Domains/clients know
+  what predicates and claim modes mean
+  domain scope labels
+  audience-role mapping
+  domain temporal meaning
+  product authorization
+  UI / agent workflows
 ```
-
-The genericization is not an excuse to weaken correctness.
-
-The design principle is:
 
 > **Make composition easy; make correctness non-configurable.**
 
 ---
 
-## §5 Performance mental model
+## §5 Read/performance mental model
 
-The performance roadmap is evidence-backed, not aesthetic.
-
-R.2a showed that the current bounded reads effectively do:
-
-```text
-load/parse full revision
-→ admit/project whole graph
-→ return one small answer
-```
-
-At 10k objects, exact object, neighborhood, evidence, search, and anchors were measured in seconds because whole projection was the structural floor.
-
-R.3a proved the first low-hanging correction:
-
-```text
-one coherent WorldGraphReadContext
-+ parsed immutable revision reuse
-+ one batched SourceProvenanceSnapshot
-+ per-context evidence memo
-```
-
-Live Eldyrwild projection improved from roughly 20.7 seconds to roughly 115 ms warm with semantic parity.
-
-The remaining structural target is:
+The target bounded-read shape is:
 
 ```text
 exact immutable revision
-→ immutable normalized revision model
-→ candidate/index lookup
-→ targeted coherent provenance
-→ generic admission
-→ domain admission
+→ immutable ParsedKnowledgeRevision
+→ revision-local candidate lookup
+→ targeted coherent provenance load
+→ generic standing/scope/visibility admission
+→ pinned pure domain admission
 → bounded result
 ```
 
-Binding safety rule:
+Full projection remains valid and explicit O(N). It must no longer be a compulsory precursor to bounded reads.
+
+Binding cache rule:
 
 ```text
 SAFE TO REUSE BY EXACT REVISION / COMPATIBILITY ID
-  parsed immutable revision
-  revision-local derived indexes
+  ParsedKnowledgeRevision
+  revision-local structural indexes
 
 NOT SAFE TO CACHE BY REVISION ALONE
   source-authority verdict
   scope/visibility verdict
-  admitted projection
-  domain-admission result
+  admitted candidate/projection
+  domain-admission verdict
 ```
 
-Source/provenance state can change while a knowledge revision remains immutable.
+Source/provenance state may change while the knowledge revision remains immutable.
 
-Optimization order remains:
+Optimization order:
 
 ```text
 1. avoid unnecessary work
 2. avoid loading unnecessary data
-3. avoid unnecessary copies/allocations
+3. avoid unnecessary copies / allocations
 4. add immutable derived indexes
-5. optimize serialization/hashing
-6. redesign durable storage only if the preceding work is insufficient
+5. optimize serialization / hashing
+6. redesign durable storage only if evidence still demands it
 ```
 
-The Steward must resist premature:
-
-```text
-Redis
-distributed caches
-Neo4j / graph-database migration
-event sourcing
-structural-sharing persistence
-vector-first retrieval
-cross-request authorization-result caches
-```
-
-unless a later measured phase explicitly earns them.
+Do not introduce Redis, distributed caches, graph-database migration, event sourcing, vector-first retrieval, or revision-only authorization caches without measured evidence and explicit roadmap authorization.
 
 ---
 
-## §6 Critical implementation locations
+## §6 V1 evidence now binding for V2
 
-Re-discover exact names at the current main before dispatching a PR; these paths describe the present architecture and likely transition seams.
-
-### Current contracts
+### PR #57 — immutable normalized model
 
 ```text
-src/dungeonmind/contracts/graph.py
-src/dungeonmind/contracts/contribution.py
-src/dungeonmind/contracts/knowledge_assertion.py
-src/dungeonmind/contracts/evidence.py
-src/dungeonmind/contracts/projection_v2.py
-src/dungeonmind/contracts/semantic_profile.py
-src/dungeonmind/contracts/identity.py
+merge: 6d9a40f609530f4882470c5599b4914e2288b8d5
+accepted head: 38d9eac3252ba911ff7565b930ce8b84aca0767b
+review cycles: 2
+final review: 5213422370
+disposition: V1_1_PARSED_KNOWLEDGE_REVISION_CORE_ACCEPTED
 ```
 
-These contain many of the v1 → vNext breaks.
+It established:
 
-### Current graph normalization/read path
+- immutable `ParsedKnowledgeRevision`;
+- fail-closed structural integrity;
+- exact revision-header preservation;
+- entity/assertion/evidence/alias lookup indexes;
+- subject, adjacency, evidence-support, literal, alias, and lexical indexes;
+- no scope/visibility admission in the parser;
+- no D&D dependency;
+- no frozen V0 contract change.
+
+10k characterization artifact:
+
+`Docs/Benchmarks/vnext_parsed_knowledge_revision_10k_v1.json`
+
+### PR #58 — legacy compatibility parity
 
 ```text
-src/dungeonmind/application/graph_snapshot.py
-src/dungeonmind/application/world_graph_read_context.py
-src/dungeonmind/application/world_graph_projection.py
-src/dungeonmind/application/world_graph_retrieval.py
-src/dungeonmind/application/graph_scope.py
-src/dungeonmind/application/source_provenance_snapshot.py
-src/dungeonmind/application/parsed_revision_cache.py
+merge: 6c5e746d3fa3ffbbdb371ddb15d9c392ab3fd3a0
+accepted head: b8ca0a579c00a6fde7f9ea51b6bad709cba1e71f
+review cycles: 4
+final PASS review: 5216431557
+dispositions:
+  V1_2_LEGACY_COMPATIBILITY_PARITY_ACCEPTED
+  V1_IMMUTABLE_NORMALIZATION_COMPLETE
 ```
 
-### Repository boundaries
+Compatibility identity:
 
 ```text
-src/dungeonmind/application/repositories.py
-src/dungeonmind/infrastructure/memory/
-src/dungeonmind/infrastructure/postgres/
+mapping revision: dm_legacy_world_compat_v1
+manifest sha256: f408ce73b8efb32a36e4fb29eb68e9242cb358a76c0c0b60eafdce5046abbe4f
+parity records digest: 733e1af301123c5de337bd8bb15241517b07c63bc6cf27eb2dec6e6ee21db139
 ```
 
-### Domain/profile boundary
+Canonical parity artifact:
+
+`Docs/Compatibility/legacy_v1_v6_parity_v1.json`
+
+All six frozen historical graph generations have exact historical-reader/compatibility-witness parity.
+
+The compatibility codec is **not migration**:
+
+- historical payloads are never rewritten;
+- no fake native-vNext parentage is created;
+- the current historical readers remain the semantic oracle until quarantine is explicitly proven later;
+- v1–v3 missing metadata remains compatibility-coarse rather than being filled with guessed permissive semantics;
+- `fact` is not silently mapped to `asserted`;
+- `source_derived_candidate` is not silently mapped to `inferred`;
+- v6 endpoint aspects survive losslessly;
+- scoped/GM aliases remain assertions rather than entering generic identity aliases;
+- compatibility implementation identity seals executable mapping semantics.
+
+10k v6-like compatibility characterization:
 
 ```text
-src/dungeonmind_dnd/
+artifact: Docs/Benchmarks/legacy_v6_compatibility_10k_v1.json
+entities: 3,000
+assertions: 16,000
+evidence: 1,500
+semantic digest: f48c400849b811bc03695c16072614ba87bc628a278894358329e5d099b1a688
+compatibility key: a62befb9ee50df5756b3ad56a1e796c655fc5dd35966a7e5748e3ef4fd9532f2
+peak traced memory: ~132.62 MiB
+compatibility decode/build: ~14.48 s
+normalized indexed lookups: microsecond-scale characterization
 ```
 
-The generic Kernel must not gain a dependency on the D&D package.
+This is characterization, not a V2 latency target.
 
-### Compatibility/history
+### V2 compatibility caution
 
-The current versioned graph readers, adoption/reviewed-initialization logic, and migration receipts remain required historical machinery until V10 proves they can be quarantined or physically removed.
-
-Do not delete historical readers because vNext has a cleaner current model.
+`dungeonmind.compat:*` fields created by the historical codec preserve legacy meaning. In particular, compatibility-coarse visibility is not a new generic authorization label that V2 may reinterpret as product authority. Native V2 generic admission must operate on the normalized metadata literally and fail closed when a context cannot establish admissibility.
 
 ---
 
-## §7 DungeonMindBuddy relationship
+## §7 V2 implementation boundary
 
-DungeonMindBuddy is the first real consumer and a critical acceptance witness.
+V2 owns the read/admission seam only.
 
-It is not DungeonMind semantic authority.
-
-Cross-repository rule:
-
-> Land separate PRs in separate repositories, but bind them to one exact contract identity when they participate in the same roadmap phase.
-
-The expected split is:
+Expected application-layer concepts:
 
 ```text
-DungeonMind
-  generic contracts
-  generic authority/read/write behavior
-  storage/adapters
-  contract fixtures
+KnowledgeReadContext
+  exact ParsedKnowledgeRevision
+  exact request/context identity
+  ScopeSelector
+  effective audience labels
+  standing selector
+  focus/domain context
+  pinned DomainContractDescriptor
+  pinned SemanticProfileDescriptorV2
+  source/provenance reader
+  per-context provenance/evidence memo
 
-DungeonMindBuddy
-  DungeonBuddy DomainContract
-  D&D semantic profile usage
-  campaign/session mapping
-  GM/player audience-label mapping
-  fictional-time adapter
-  product DTO mapping
-  product authorization
-  UI / agent / work-surface behavior
+CandidateAdmission
+  candidate assertion IDs
+  generic integrity / standing / scope / visibility
+  evidence/source integrity
+  pure pinned domain policy
+  admitted/excluded result
 ```
 
-V0 must make it possible for both sides to work without silently inventing their own interpretation.
+The exact class/module names are implementation choices; responsibilities are binding.
 
-V6 is the explicit Buddy domain implementation lane.
+V2 should introduce a generic vNext provenance read abstraction over:
 
-V8 is the joint acceptance lane.
+```text
+SourceArtifactV3
+SourceRevisionV2
+EvidenceRefV3 / ParsedEvidenceRef
+```
 
-V9 is the deliberate cutover.
+It may use an in-memory/fake adapter for proof. A PostgreSQL vNext storage migration is not required or authorized in this phase.
 
-Do not repin or cut Buddy over early merely because an intermediate DungeonMind implementation exists.
+### Domain policy runtime
+
+`DomainContractDescriptor` remains data-only.
+
+A runtime domain policy mechanism may be introduced only if it is:
+
+- explicitly registered by the embedding application/test harness;
+- resolved against the exact pinned `DomainContractRef` / descriptor identity;
+- pure and deterministic;
+- passed immutable candidate/context values only;
+- given no repository/network/clock/mutation capability;
+- able only to narrow Kernel-admissible knowledge;
+- fail-closed when absent, unknown, or mismatched.
+
+Do not dynamically import arbitrary code from `admission_policy_id`.
+
+### Candidate-local provenance
+
+For a bounded candidate slice:
+
+```text
+candidate assertion IDs
+→ evidence refs referenced by those assertions
+→ unique required source artifact/revision IDs
+→ one coherent targeted source snapshot
+→ provenance admission
+```
+
+Do not load provenance for the full revision merely because it is easier.
+
+Within one context, the source view must be coherent and memoized. A new context must observe changed live source authority even when the `ParsedKnowledgeRevision` object is reused.
 
 ---
 
-## §8 Stewarding one roadmap PR
+## §8 Explicitly not V2
 
-Each implementation PR should have one primary question copied or refined from the roadmap.
+Do not implement in this phase:
 
-Before dispatch:
+```text
+get_entity / get_complete_entity public reads
+neighborhood traversal API
+search API
+anchor resolution API
+full-space vNext projection API
+KnowledgeSpace/head repository migration
+native vNext publication/writes
+PostgreSQL vNext authority schema
+DungeonBuddy production domain policy
+DungeonBuddy dependency repin/cutover
+bridge-genesis migration
+World public-read replacement
+historical-reader deletion/quarantine
+storage-model redesign
+```
 
-1. Re-anchor `main` and relevant external consumer heads.
-2. Read the current version of this handoff, the roadmap phase, and binding architecture sections.
-3. Inspect the current code at the intended seam; do not dispatch based only on old reports.
-4. Define a narrow write lease.
-5. Name the semantic proof, performance proof, migration proof, or consumer proof required.
-6. Name explicit stop conditions.
-7. Record what is **not** being solved.
+V3 consumes the accepted V2 seam for exact/complete entity reads.
 
-Use `Docs/Handoffs/HANDOFF-TEMPLATE.md` for individual slices.
+---
 
-### PR description as merge contract
+## §9 Stewarding one roadmap PR
 
-The implementation PR description should state:
+Each implementation PR must state:
 
 ```text
 primary question
@@ -483,16 +451,12 @@ intended changed surface
 binding invariants
 required evidence
 actual evidence
-known failures / inherited red baselines
+known inherited failures
 what remains false
 named successor
 ```
 
-### Review discipline
-
-Review the exact head, not the branch name.
-
-Record:
+Review exact heads and record:
 
 ```text
 base SHA
@@ -504,341 +468,171 @@ verification evidence
 final disposition
 ```
 
-If self-review restrictions prevent an `APPROVE`, a review/comment body may still explicitly record `PASS — merge-ready`, but the exact head must be named.
-
-A docs-only bookkeeping commit after a substantive PASS does not require reopening the technical review unless it changes architecture, evidence, or behavior.
-
-### Merge discipline
-
 A PR merges only when its primary question has an evidence-backed answer.
 
-Do not merge because:
-
-```text
-CI is green but the claimed proof was not run;
-performance improved but semantic parity drifted;
-tests were changed to accept the new result without an explicit contract decision;
-the implementation is "close enough" and a future PR can repair the invariant;
-Buddy can work around a missing Kernel contract;
-```
+Do not merge because CI is green if the claimed authority proof is missing, and do not weaken tests to make a changed semantic result acceptable without an explicit contract/architecture decision.
 
 ---
 
-## §9 Steward handoff mutation protocol
+## §10 Steward mutation protocol
 
-**This document is intentionally mutable.**
+This document is intentionally mutable.
 
-It is not historical evidence that should remain frozen forever.
+After every roadmap PR merge, update this file before another roadmap PR merges.
 
-Its purpose is to describe the current stewardship state accurately enough that a new agent can resume immediately.
+Preferred sequence:
 
-### Mandatory update cadence
+1. successor branch first commit updates this handoff with the actual merge anchor and phase transition; or
+2. a tiny Steward sync PR lands before the next implementation slice.
 
-After every roadmap PR is merged, the Steward should update this file before another roadmap PR is allowed to merge.
-
-Preferred forms:
-
-1. **Immediate successor branch:** update this file as the first bookkeeping change when dispatching the next roadmap slice; or
-2. **Tiny stewardship sync PR:** if no successor begins immediately, land a docs-only checkpoint.
-
-Do not allow more than one roadmap merge to accumulate without a stewardship update.
-
-### What every update must record
-
-At minimum update:
+Every update records at minimum:
 
 ```text
-current main / accepted merge anchor
-current roadmap phase and disposition
+current main anchor
 last merged roadmap PR
-exact accepted implementation head if relevant
-review-cycle count / final PASS reference when useful
-new proof artifacts or benchmark baselines
-architecture decisions learned or changed
-new stop conditions / risks discovered
+accepted implementation head
+review-cycle count / final PASS reference
+new proof artifacts / benchmark baselines
+current phase/disposition
+new risks / stop conditions
 what remains false
 next primary question
-parallel work that is now safe
-parallel work that remains blocked
+parallel work posture
 ```
 
-### Keep this document useful, not archival
+Keep this useful rather than archival. Detailed review history belongs in PR history.
 
-Do not append an endless diary.
-
-Maintain:
-
-- a concise **Current checkpoint**;
-- the current resource map;
-- currently binding lessons;
-- the last few meaningful roadmap transitions where they help re-entry;
-- current next question and blockers.
-
-Move detailed history to PRs, ADRs, reports, or Git history.
-
-The Steward may rewrite obsolete sections of this handoff as the project changes.
-
-### When this handoff itself must trigger architecture docs
-
-This file may summarize and route decisions. It must not become a hidden architecture layer.
-
-If the Steward concludes that an accepted decision changes:
-
-```text
-semantic contracts
-ownership boundaries
-migration model
-read/performance architecture
-roadmap ordering / gates
-```
-
-update the relevant canonical architecture/roadmap document in the same docs change set.
-
-Then update this handoff to point to the new authority.
+If an update changes semantic contracts, ownership, migration model, read architecture, or roadmap ordering, update the canonical architecture/roadmap in the same change set.
 
 ---
 
-## §10 Invariants the Steward protects across the entire roadmap
+## §11 Invariants protected across the roadmap
 
-1. **Immutable published history is never rewritten.**
-2. **One explicit head selects current truth; timestamps do not.**
-3. **Expected-parent CAS remains the publication concurrency boundary.**
-4. **Evidence/source state participates in knowledge validity.**
-5. **Unknown or broken authority fails closed.**
-6. **Retrieval/ranking never manufactures authority.**
-7. **Stable IDs remain opaque and durable.**
-8. **Domain policy may narrow generic admission, never broaden rejected knowledge.**
-9. **DungeonMind does not become the product agent harness.**
-10. **DungeonBuddy is replaceable as a client and does not define generic Kernel vocabulary.**
-11. **Genericity does not mean untyped property-bag semantics.**
-12. **Derived indexes remain rebuildable and non-authoritative.**
-13. **Bounded reads must not require full-space projection by design in vNext.**
-14. **Source/provenance freshness is not hidden by revision-only authorization caching.**
-15. **Performance credit requires semantic parity first.**
-16. **Historical readability is preserved even when historical machinery leaves the hot path.**
-17. **Migration preserves durable IDs wherever the meaning is unchanged.**
-18. **No long-lived dual-write architecture is introduced merely to make cutover comfortable.**
-19. **Storage-model complexity remains evidence-gated until V11.**
-20. **One PR has one primary question.**
-
----
-
-## §11 Roadmap-specific stewardship expectations
-
-### V0 — contract freeze
-
-Steward focus:
-
-- exact type/schema decisions;
-- no fields invented independently by Buddy and DungeonMind;
-- distinguish DomainContract from SemanticProfile;
-- ensure bounded reads are possible without a precomputed full projection;
-- require the three acceptance fixture families.
-
-Exit disposition:
-
-```text
-VNEXT_CONTRACT_FROZEN
-```
-
-### V1 — normalized immutable revision
-
-Steward focus:
-
-- compatibility reader → one generic current model;
-- deterministic derived indexes;
-- immutability / mutation isolation;
-- no scope/visibility policy in the parser;
-- no persistence rewrite.
-
-### V2 — KnowledgeReadContext
-
-Steward focus:
-
-- candidate-local admission;
-- coherent targeted provenance;
-- generic scope / visibility / standing;
-- pure pinned domain admission;
-- source freshness across contexts.
-
-### V3 — exact / complete entity
-
-Steward focus:
-
-- selected entity completeness;
-- no ordinary caps defining truth;
-- no full projection in bounded read path;
-- >24-edge / >32-anchor witnesses;
-- structural work counts and 10k characterization.
-
-### V4 — neighborhood/evidence/anchor/search
-
-Steward focus:
-
-- adjacency/support indexes;
-- candidate generation before admission;
-- deterministic ranking;
-- no vector escalation without evidence.
-
-### V5 — governed writes
-
-Steward focus:
-
-- typed contribution union;
-- native JSON values;
-- exact parent/content binding;
-- replay/recovery;
-- benchmark large-parent + tiny-delta writes;
-- do not redesign durable revision storage yet.
-
-### V6 — Buddy domain
-
-Steward focus:
-
-- campaign/GM/player/fictional-time semantics move out of generic Kernel;
-- no authority bypass;
-- DungeonMind has no Buddy import.
-
-### V7 — bridge genesis
-
-Steward focus:
-
-- freeze exact legacy authority point;
-- deterministic migration manifest;
-- preserve IDs;
-- old history untouched;
-- no fake native parentage between v1 and vNext.
-
-### V8 — joint acceptance
-
-Steward focus:
-
-- exact commits/digests on both repositories;
-- DungeonBuddy preservation fixture;
-- organizational-memory non-TTRPG fixture;
-- adversarial epistemic/identity fixture;
-- semantic equality where meaning is intended to survive;
-- large-scale performance characterization;
-- explicit resource-limited cases.
-
-### V9 — cutover
-
-Steward focus:
-
-- freeze old writes;
-- atomic/admissible authority transition;
-- rollback/fix-forward plan;
-- Buddy exact contract pin;
-- no silent split-brain authority.
-
-### V10 — quarantine old current paths
-
-Steward focus:
-
-- current API no longer exposes World-era transports as first-class contracts;
-- historical readers remain where required;
-- no migration-history logic in normal vNext reads.
-
-### V11 — deeper storage optimization
-
-Steward focus:
-
-- begin only if V1–V8 measurements show the need;
-- preserve logical immutable revisions regardless of physical representation;
-- benchmark against the three useful baselines: old current path, normalized/indexed vNext path, and proposed storage change.
+1. Published history is never rewritten.
+2. One explicit head selects current truth; timestamps do not.
+3. Expected-parent CAS remains the publication concurrency boundary.
+4. Evidence/source state participates in knowledge validity.
+5. Unknown or broken authority fails closed.
+6. Retrieval/ranking never manufactures authority.
+7. Stable IDs remain opaque and durable.
+8. Domain policy may narrow generic admission; it may never recover rejected knowledge.
+9. DungeonMind does not become the product agent harness.
+10. DungeonBuddy remains a replaceable client and does not define Kernel vocabulary.
+11. Genericity does not mean untyped property bags.
+12. Derived indexes are rebuildable and non-authoritative.
+13. Bounded vNext reads must not require full-space projection.
+14. Source/provenance freshness must not be hidden by revision-only admission caches.
+15. Performance credit requires semantic parity first.
+16. Historical readability survives hot-path cleanup.
+17. Migration preserves durable IDs wherever meaning is unchanged.
+18. No long-lived dual-write architecture is introduced for cutover convenience.
+19. Physical storage complexity remains evidence-gated until V11.
+20. One PR has one primary question.
 
 ---
 
-## §12 Stop / rebrief conditions
+## §12 Current V2 proof obligations
 
-Stop and explicitly redesign rather than improvising if:
+The V2 implementation must prove at least:
 
-- the frozen contract cannot represent DungeonBuddy semantics without putting World vocabulary back into the Kernel;
-- a second non-TTRPG fixture requires changing generic contracts in ways the DomainContract boundary cannot explain;
-- candidate-local admission cannot preserve current fail-closed provenance semantics;
-- a bounded read can only be implemented by silently broadening scope/visibility;
-- historical v1-v6 state must be rewritten to create the vNext model;
-- stable identity would need to be discarded for convenience;
-- the proposed optimization requires caching mutable source-authority results without coherent state identity;
-- an implementation PR unexpectedly requires a durable schema/storage rewrite before V7/V11;
-- Buddy needs to reconstruct a foreign graph to compensate for an incomplete DungeonMind read contract;
-- test expectations need to be weakened without an explicit contract decision;
-- a migration requires long-lived dual writes with unclear authority;
-- the roadmap ordering itself is falsified by implementation evidence.
+- exact request/revision/contract/profile identity is pinned and mismatches fail closed;
+- candidate assertion IDs are resolved only from the exact parsed revision;
+- scope admission implements the frozen `ScopeSelector` semantics exactly;
+- visibility implements Public / LabelsAny / LabelsAll exactly;
+- undeclared/unknown audience labels or policy identity fail closed;
+- standing selection is explicit and deterministic;
+- evidence/source chains are validated from one coherent targeted snapshot;
+- missing/inactive sources and mismatched source revisions exclude candidate knowledge;
+- source visibility is evaluated before detailed lifecycle diagnostics are exposed;
+- domain policy receives only Kernel-admissible candidates and can only exclude;
+- a domain policy cannot re-admit a Kernel-rejected assertion;
+- focus/domain context does not silently become authorization;
+- DungeonBuddy-shaped campaign/GM/player behavior is reproducible using only opaque generic scopes/labels in fixtures;
+- an unrelated organizational-memory fixture uses the same admission engine;
+- changing source authority between contexts is visible even when the parsed revision instance is reused;
+- source changes during one context do not tear the read into inconsistent provenance views;
+- candidate-local provenance work counts scale with candidate support rather than full revision size;
+- the current World runtime and historical readers are untouched.
 
-Required response to a stop condition:
+The exact test count is not authority; these semantic obligations are.
+
+---
+
+## §13 Stop / rebrief conditions
+
+Stop rather than compensating locally if:
+
+- V2 requires changing the frozen V0 contract bundle;
+- candidate-local admission cannot preserve fail-closed provenance semantics;
+- a bounded candidate requires full-space projection for correctness;
+- a domain policy requires storage/network/clock access;
+- `admission_policy_id` would need arbitrary dynamic plugin execution;
+- domain policy needs to recover Kernel-rejected knowledge;
+- focus must become hidden authorization to reproduce required semantics;
+- source freshness requires a revision-only cache of mutable authority verdicts;
+- V2 requires a durable vNext database migration or bridge-genesis migration;
+- Buddy/TTRPG vocabulary must enter generic application code;
+- compatibility-coarse legacy metadata would need to be silently promoted into native authority semantics;
+- current public World readers must change to prove the seam;
+- tests must weaken fail-closed behavior to proceed.
+
+When a stop condition fires, record:
 
 ```text
 Stop condition:
 Roadmap phase:
 Observed evidence:
-Which current assumption failed:
+Which assumption failed:
 Affected authority/architecture document:
 Why the current PR cannot safely compensate:
 Proposed design decision / experiment:
-What remains safe to continue in parallel:
+What remains safe in parallel:
 ```
 
-Then update architecture/roadmap docs before resuming implementation if the decision is architectural.
+Then update canonical architecture/roadmap before implementation resumes if the decision is architectural.
 
 ---
 
-## §13 Current stewardship ledger
+## §14 Current stewardship ledger
 
-Keep this section short and current.
-
-### Last canonical roadmap change
+### Last merged roadmap PR
 
 ```text
-DungeonMind PR #57
-KERNEL: immutable ParsedKnowledgeRevision core and structural indexes
-merged: 6d9a40f609530f4882470c5599b4914e2288b8d5
-accepted implementation head: 38d9eac3252ba911ff7565b930ce8b84aca0767b
-review cycles: 2 (Cycle 1 f240b09, Cycle 2 38d9eac)
-final PASS review: 5213422370
-disposition: V1_1_PARSED_KNOWLEDGE_REVISION_CORE_ACCEPTED
-benchmark artifact: Docs/Benchmarks/vnext_parsed_knowledge_revision_10k_v1.json
-cardinalities:
-  assertions: 10,000
-  entities: 5,000
-  evidence refs: 2,500
-  aliases: 2,000
-build: ~7004.647 ms
-peak traced memory: ~48.53 MiB
-semantic digest: 8b51a341d7464710be1410421a843d31fa2e84e9387d0043e131575d44d2379d
-compatibility key: b795c672dbf87394b83ebaba42976b54994b257ed5beefa93b7cc184f82bc9e5
-indexed lookups: microsecond-scale characterization
-contract aggregate sha256: fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
+DungeonMind PR #58
+KERNEL: legacy v1–v6 compatibility decoder + semantic parity
+merged: 6c5e746d3fa3ffbbdb371ddb15d9c392ab3fd3a0
+accepted implementation head: b8ca0a579c00a6fde7f9ea51b6bad709cba1e71f
+review cycles: 4
+final PASS review: 5216431557
+disposition:
+  V1_2_LEGACY_COMPATIBILITY_PARITY_ACCEPTED
+  V1_IMMUTABLE_NORMALIZATION_COMPLETE
+manifest sha256: f408ce73b8efb32a36e4fb29eb68e9242cb358a76c0c0b60eafdce5046abbe4f
+parity records digest: 733e1af301123c5de337bd8bb15241517b07c63bc6cf27eb2dec6e6ee21db139
+frozen V0 aggregate: fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
 ```
 
-It established:
+Prior key anchors:
 
-- Application-layer vNext normalized model and builder in `src/dungeonmind/application/vnext/`;
-- Deep immutability via `FrozenDict` and `freeze_json_value`, with mutation attacks cleanly rejected;
-- Domain-agnostic, rebuildable structural indexes: `entities_by_id`, `assertions_by_id`, `aliases_by_id`, `evidence_by_id`, `assertions_by_subject`, `entity_adjacency` (incoming/outgoing/touching), `alias_exact_index`, `literal_exact_index`, and `lexical_candidate_index`;
-- Fail-closed structural integrity enforcement (`RevisionStructuralIntegrityError`) on duplicate IDs, missing assertion subjects, missing entity-ref targets, missing evidence refs, missing alias targets, and malformed visibility/temporal variants;
-- Exact revision-header identity preservation, including contract sequence of `operation_ids`;
-- Pinned compatibility key covering parser format version, graph schema, and complete pinned `DomainContractRef` and `SemanticProfileRef` identities;
-- Zero modifications to frozen V0 contract bundle (`fd04a904...`) and zero imports from `dungeonmind_dnd`.
-
-Prior roadmap baseline:
-- DungeonMindBuddy PR #719 (`c77056b0c909513cecd8b81f9e7fac22e02d339a`): V0.2 consumer proof (`VNEXT_CONTRACT_FROZEN`).
-- PR #56 (`63ec810a02f18c4e25af228f6fdb19d99d12579e`): V0.1 generic vNext schema surface (`fd04a904...`).
-- PR #54 (`22bf2e42686876e1c0f9750d1b346e4a6fffebc4`): canonized vNext execution and optimization roadmap.
+```text
+PR #57 merge 6d9a40f609530f4882470c5599b4914e2288b8d5 — V1.1
+DungeonMindBuddy PR #719 merge c77056b0c909513cecd8b81f9e7fac22e02d339a — V0.2 / VNEXT_CONTRACT_FROZEN
+PR #56 merge 63ec810a02f18c4e25af228f6fdb19d99d12579e — V0.1
+PR #54 merge 22bf2e42686876e1c0f9750d1b346e4a6fffebc4 — roadmap/read architecture
+```
 
 ### Current phase
 
 ```text
 V0 COMPLETE — VNEXT_CONTRACT_FROZEN
-V1 ACTIVE
-V1.1 COMPLETE
-V1.2 ACTIVE
+V1 COMPLETE — V1_IMMUTABLE_NORMALIZATION_COMPLETE
+V2 ACTIVE
 ```
 
 ### Next primary question
 
 ```text
-Can every frozen historical dm_union_graph_v1 through dm_union_graph_v6 stored revision be verified and decoded into the accepted immutable ParsedKnowledgeRevision with deterministic semantic parity to the current historical reader, without rewriting history, performing admission, or pretending legacy payloads are native vNext authority?
+Can one exact ParsedKnowledgeRevision support coherent generic and pinned-domain admission over an arbitrary candidate slice, with targeted fresh source/provenance state, without pre-projecting the entire KnowledgeSpace or changing current World runtime behavior?
 ```
 
 ### Parallel work posture
@@ -846,48 +640,47 @@ Can every frozen historical dm_union_graph_v1 through dm_union_graph_v6 stored r
 ```text
 safe / independent:
   larger-scale benchmark characterization
-  already-contract-frozen Buddy/domain work that does not depend on V2 runtime
+  contract-frozen Buddy/domain work that does not depend on V2 runtime
+  design work for V3 consuming the V2 seam, but not V3 merge
 
-still blocked by V1 completion:
-  V2 merge
-  V3+ Kernel read-path rollout
+blocked until V2 acceptance:
+  V3 merge
+  V4+ bounded read rollout
   bridge-genesis migration
   cutover
-  deletion/quarantine of current public historical readers
+  current-public-path quarantine/deletion
 ```
 
 ### What remains false
 
-At this checkpoint:
-
-- v1-v6 -> ParsedKnowledgeRevision compatibility parity is not yet proven (active slice V1.2);
-- overall V1 is not complete;
-- V2 is not yet active;
+- no generic `KnowledgeReadContext` exists yet;
+- no generic candidate-admission runtime exists yet;
+- no vNext source/provenance reader port or coherent targeted snapshot is accepted yet;
+- no pinned pure domain-policy runtime seam is accepted yet;
+- no native vNext `get_entity` / `get_complete_entity` runtime exists;
+- no `KnowledgeSpace` head/storage runtime exists;
 - current public World readers still use the historical path;
 - no bridge-genesis migration has occurred;
-- no vNext cutover has occurred;
-- no `KnowledgeReadContext` exists;
-- no `KnowledgeSpace` runtime exists;
-- bounded reads still run through the current World architecture;
-- DungeonBuddy has not yet implemented runtime World read/write cutover (V6);
 - no vNext authority has been published;
+- DungeonBuddy has not implemented runtime vNext World read/write semantics;
+- no cutover has occurred;
 - old World contracts remain current production contracts;
-- larger K0.3 50k/100k characterization is not complete;
+- larger 50k/100k K0.3 characterization remains incomplete;
 - deeper storage optimization is not authorized.
 
 ### Named next action
 
-Dispatch **V1.2: legacy v1–v6 compatibility decoder + semantic parity** from DungeonMind `main` anchor `6d9a40f609530f4882470c5599b4914e2288b8d5` (branch `kernel/v1-2-legacy-compatibility-parity`, handoff `Docs/Handoffs/HANDOFF-v1-2-legacy-compatibility-parity.md`).
+Dispatch V2 from DungeonMind `main` anchor `6c5e746d3fa3ffbbdb371ddb15d9c392ab3fd3a0` using the successor handoff on branch `handoff/v2-knowledge-read-context-admission`.
 
 ---
 
-## §14 Steward completion condition
+## §15 Steward completion condition
 
 This handoff remains `ACTIVE` through the roadmap.
 
-It may be marked `SUPERSEDED` only when one of the following is true:
+It may be superseded only when either:
 
 1. V10/V11 completes and a new steady-state stewardship model is checked in; or
-2. the roadmap is deliberately replaced by a new canonical program and a successor Steward handoff is merged.
+2. the roadmap is deliberately replaced by a new canonical program with a successor Steward handoff.
 
-Do not mark it `LANDED` merely because this file was merged. The file landing starts stewardship; it does not complete it.
+Landing this file does not complete stewardship.
