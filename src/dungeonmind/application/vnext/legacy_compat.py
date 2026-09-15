@@ -16,6 +16,7 @@ serving model with deterministic, bidirectional semantic parity.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -79,7 +80,7 @@ _PACKAGED_MANIFEST_RESOURCE = "dm_legacy_world_compat_v1.json"
 DOCS_MANIFEST_AUDIT_PATH = Path("Docs/Compatibility/dm_legacy_world_compat_v1.json")
 COMPATIBILITY_MAPPING_REVISION = "dm_legacy_world_compat_v1"
 COMPATIBILITY_MANIFEST_SHA256 = (
-    "4de99b3b29e986e8e3afaf0ebefa655f012e9aaa11ee3b7aa296e0a23ff7ea2a"
+    "f408ce73b8efb32a36e4fb29eb68e9242cb358a76c0c0b60eafdce5046abbe4f"
 )
 COMPATIBILITY_DOMAIN_CONTRACT_ID = "dungeonmind.compat.legacy_world"
 COMPATIBILITY_DOMAIN_CONTRACT_REVISION = "1"
@@ -292,6 +293,7 @@ def compute_legacy_compatibility_key(
     *,
     mapping_revision: str,
     mapping_manifest_sha256: str,
+    mapping_implementation_digest: str,
     graph_schema: str,
     historical_parse_compatibility_id: str,
     semantic_profile_ref: ParsedSemanticProfileRef,
@@ -303,6 +305,7 @@ def compute_legacy_compatibility_key(
         "kind": LEGACY_COMPATIBILITY_IDENTITY_KIND,
         "mapping_revision": mapping_revision,
         "mapping_manifest_sha256": mapping_manifest_sha256,
+        "mapping_implementation_digest": mapping_implementation_digest,
         "graph_schema": graph_schema,
         "historical_parse_compatibility_id": historical_parse_compatibility_id,
         "semantic_profile_ref": {
@@ -312,6 +315,33 @@ def compute_legacy_compatibility_key(
         },
         "parsed_format_version": parsed_format_version,
         "legacy_payload_sha256": legacy_payload_sha256,
+    }
+    return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+def compute_mapping_implementation_digest(
+    manifest: LegacyCompatibilityManifest,
+    *,
+    translator_sources: Mapping[str, str] | None = None,
+) -> str:
+    """Hash manifest semantics plus sealed translator implementations."""
+    if translator_sources is None:
+        sealed_sources: dict[str, str] = {
+            "_translate_assertion_metadata": inspect.getsource(
+                _translate_assertion_metadata
+            ),
+            "_synthetic_v1_alias_assertion_id": inspect.getsource(
+                _synthetic_v1_alias_assertion_id
+            ),
+            "_v1_alias_assertion_ids": inspect.getsource(_v1_alias_assertion_ids),
+        }
+    else:
+        sealed_sources = dict(translator_sources)
+
+    payload = {
+        "manifest_canonical": manifest.to_canonical_dict(),
+        "manifest_sha256": manifest.manifest_sha256,
+        "translator_sources": dict(sorted(sealed_sources.items())),
     }
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
@@ -328,6 +358,55 @@ def _synthetic_v1_alias_assertion_id(
         template.replace("{object_id}", object_id)
         .replace("{occurrence}", str(occurrence))
         .replace("{alias_sha256}", alias_sha256)
+    )
+
+
+def _v1_alias_assertion_ids(
+    object_id: str,
+    aliases: Sequence[str],
+    *,
+    template: str,
+) -> list[tuple[str, str]]:
+    """Assign alias assertion IDs with per-value occurrence ordinals (multiset-safe)."""
+    value_occurrence: dict[str, int] = {}
+    pairs: list[tuple[str, str]] = []
+    for alias_text in aliases:
+        occurrence = value_occurrence.get(alias_text, 0)
+        value_occurrence[alias_text] = occurrence + 1
+        assertion_id = _synthetic_v1_alias_assertion_id(
+            object_id,
+            occurrence=occurrence,
+            alias_text=alias_text,
+            template=template,
+        )
+        pairs.append((alias_text, assertion_id))
+    return pairs
+
+
+def _identity_alias_admitted_from_metadata(
+    meta: KnowledgeAssertionMetadataV1 | None,
+    *,
+    manifest: LegacyCompatibilityManifest,
+    coarse: bool,
+) -> bool:
+    rules = manifest.identity_alias_admission_rules
+    if coarse:
+        return bool(rules.get("v2_v3_coarse_aliases_enter_identity_aliases", True))
+    if meta is None:
+        return False
+    if (
+        bool(rules.get("require_no_campaign_scope", True))
+        and meta.campaign_scope is not None
+    ):
+        return False
+    if (
+        bool(rules.get("require_player_visibility", True))
+        and meta.visibility != Visibility.PLAYER
+    ):
+        return False
+    return not (
+        bool(rules.get("require_canonical_standing", True))
+        and meta.canon_state != CanonState.CANONICAL
     )
 
 
@@ -385,23 +464,45 @@ def validate_stored_legacy_graph_revision(
 def _translate_assertion_metadata(
     meta: KnowledgeAssertionMetadataV1 | None,
     *,
+    manifest: LegacyCompatibilityManifest,
     default_evidence_ids: Sequence[str],
     graph_schema: str,
     claim_mode: str,
 ) -> ParsedAssertionMetadata:
     """Translate legacy KnowledgeAssertionMetadataV1 or synthesize coarse metadata."""
+    scope_rules = manifest.scope_and_visibility_rules
+    campaign_axis = str(scope_rules["campaign_scope_axis"])
+    gm_label = str(scope_rules["gm_visibility_label"])
+    player_label = str(scope_rules["player_visibility_label"])
+
+    temporal_rules = manifest.temporal_translation_rules
+    fictional_time_schema = str(temporal_rules["fictional_time_ref_schema"])
+    session_refs_schema = str(temporal_rules["session_refs_schema"])
+
+    epistemic_rules = manifest.epistemic_translation_rules
+    epistemic_domain_schema = str(epistemic_rules["domain_metadata_schema"])
+
+    canon_rules = manifest.canon_state_translation_rules
+    canon_domain_schema = str(canon_rules["domain_metadata_schema"])
+
+    coarse_rules = manifest.v1_v3_coarse_metadata_rules
+    coarse_epistemic_basis = str(coarse_rules["epistemic_basis"])
+    coarse_standing = KnowledgeStanding(str(coarse_rules["standing"]))
+    coarse_visibility_labels = tuple(str(x) for x in coarse_rules["visibility_labels"])
+    coarse_domain_schema = str(coarse_rules["domain_metadata_schema"])
+
     if meta is not None:
         scope = (
-            (ParsedScopeBinding(axis="dungeonmind.compat:campaign", value=meta.campaign_scope),)
+            (ParsedScopeBinding(axis=campaign_axis, value=meta.campaign_scope),)
             if meta.campaign_scope is not None
             else ()
         )
 
         vis: ParsedVisibility
         if meta.visibility == Visibility.GM:
-            vis = ParsedLabelsAnyVisibility(labels=("audience:gm",))
+            vis = ParsedLabelsAnyVisibility(labels=(gm_label,))
         else:
-            vis = ParsedLabelsAnyVisibility(labels=("audience:player",))
+            vis = ParsedLabelsAnyVisibility(labels=(player_label,))
 
         temp_scope: ParsedTemporalScope
         if meta.temporal_scope.kind == TemporalScopeKind.UNKNOWN:
@@ -415,7 +516,7 @@ def _translate_assertion_metadata(
                     "fictional_time_ref temporal scope missing anchor ref"
                 )
             temp_scope = ParsedDomainTemporalScope(
-                schema_term="dungeonmind.compat:fictional_time_ref",
+                schema_term=fictional_time_schema,
                 payload=freeze_json_value({
                     "bundle_id": ref.bundle_id,
                     "campaign_id": ref.campaign_id,
@@ -427,28 +528,22 @@ def _translate_assertion_metadata(
                 f"unrecognized legacy temporal scope kind {meta.temporal_scope.kind!r}"
             )
 
-        standing_val = (
-            KnowledgeStanding.ESTABLISHED
-            if meta.canon_state == CanonState.CANONICAL
-            else KnowledgeStanding.PROVISIONAL
-            if meta.canon_state == CanonState.PROVISIONAL
-            else KnowledgeStanding.RETRACTED
-        )
+        standing_val = KnowledgeStanding(str(canon_rules[meta.canon_state.value]))
 
         domain_meta: list[ParsedDomainMetadataEntry] = [
             ParsedDomainMetadataEntry(
-                schema_term="dungeonmind.compat:legacy_epistemic_kind",
+                schema_term=epistemic_domain_schema,
                 payload=freeze_json_value({"epistemic_kind": meta.epistemic_kind.value}),
             ),
             ParsedDomainMetadataEntry(
-                schema_term="dungeonmind.compat:legacy_canon_state",
+                schema_term=canon_domain_schema,
                 payload=freeze_json_value({"canon_state": meta.canon_state.value}),
             ),
         ]
         if meta.session_refs:
             domain_meta.append(
                 ParsedDomainMetadataEntry(
-                    schema_term="dungeonmind.compat:session_refs",
+                    schema_term=session_refs_schema,
                     payload=freeze_json_value({"session_refs": list(meta.session_refs)}),
                 )
             )
@@ -467,17 +562,15 @@ def _translate_assertion_metadata(
     # v1-v3 coarse semantics: neutral, truth-preserving compatibility metadata
     return ParsedAssertionMetadata(
         scope=(),
-        visibility=ParsedLabelsAnyVisibility(
-            labels=("dungeonmind.compat:legacy_coarse_visibility",)
-        ),
-        epistemic_basis="dungeonmind.compat:legacy_unspecified",
+        visibility=ParsedLabelsAnyVisibility(labels=coarse_visibility_labels),
+        epistemic_basis=coarse_epistemic_basis,
         claim_mode=claim_mode,
-        standing=KnowledgeStanding.ESTABLISHED,
+        standing=coarse_standing,
         evidence_ref_ids=tuple(default_evidence_ids),
         temporal_scope=ParsedUnknownTemporalScope(),
         domain_metadata=(
             ParsedDomainMetadataEntry(
-                schema_term="dungeonmind.compat:legacy_coarse_metadata",
+                schema_term=coarse_domain_schema,
                 payload=freeze_json_value({"schema_generation": graph_schema}),
             ),
         ),
@@ -544,6 +637,18 @@ def decode_legacy_graph_revision(
         migration_origin_ref=None,
     )
 
+    evidence_rules = manifest_obj.evidence_translation_rules
+    v1_source_domain_schema = str(evidence_rules["v1_source_domain_schema"])
+    v2_extra_schema = str(evidence_rules["v2_extra_schema"])
+    rel_aspect_rules = manifest_obj.relationship_aspect_rules
+    relationship_domain_schema = str(
+        rel_aspect_rules["relationship_domain_metadata_schema"]
+    )
+    pred_map = manifest_obj.predicate_mappings
+    id_templates = manifest_obj.synthetic_assertion_id_templates
+    mapping_revision = manifest_obj.compatibility_mapping_revision
+    mapping_impl_digest = compute_mapping_implementation_digest(manifest_obj)
+
     # 1. Translate Evidence Ledger
     evidence_dict: dict[str, ParsedEvidenceRef] = {}
     for ev_id, rec in snapshot.evidence.items():
@@ -552,14 +657,14 @@ def decode_legacy_graph_revision(
         if isinstance(rec, GraphEvidenceRecord):
             domain_meta.append(
                 ParsedDomainMetadataEntry(
-                    schema_term="dungeonmind.compat:evidence_source_domain",
+                    schema_term=v1_source_domain_schema,
                     payload=freeze_json_value({"source_domain": rec.source_domain}),
                 )
             )
         else:  # EvidenceRefV2
             domain_meta.append(
                 ParsedDomainMetadataEntry(
-                    schema_term="dungeonmind.compat:evidence_v2_extra",
+                    schema_term=v2_extra_schema,
                     payload=freeze_json_value({
                         "source_domain_key": rec.source_domain_key,
                         "source_domain": rec.source_domain.value if rec.source_domain else None,
@@ -593,22 +698,37 @@ def decode_legacy_graph_revision(
 
         default_ev_ids = obj.core_evidence_ref_ids or obj.evidence_ref_ids
 
+        existence_predicate = pred_map["existence"]
+        kind_predicate = pred_map["kind"]
+        label_predicate = pred_map["label"]
+        summary_predicate = pred_map["summary"]
+        alias_predicate = pred_map["alias"]
+        aspect_predicate = pred_map["aspect"]
+        existence_claim_mode = existence_predicate
+        kind_claim_mode = kind_predicate
+        label_claim_mode = label_predicate
+        summary_claim_mode = summary_predicate
+        alias_claim_mode = alias_predicate
+        aspect_claim_mode = aspect_predicate
+
         # Existence assertion
         if obj.existence_assertion_metadata is not None:
             exist_id = obj.existence_assertion_metadata.assertion_id
             exist_meta = _translate_assertion_metadata(
                 obj.existence_assertion_metadata,
+                manifest=manifest_obj,
                 default_evidence_ids=default_ev_ids,
                 graph_schema=snapshot.graph_schema,
-                claim_mode="dungeonmind.compat:existence",
+                claim_mode=existence_claim_mode,
             )
         else:
-            exist_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:existence"
+            exist_id = id_templates["existence"].replace("{object_id}", obj_id)
             exist_meta = _translate_assertion_metadata(
                 None,
+                manifest=manifest_obj,
                 default_evidence_ids=default_ev_ids,
                 graph_schema=snapshot.graph_schema,
-                claim_mode="dungeonmind.compat:existence",
+                claim_mode=existence_claim_mode,
             )
 
         if exist_id in assertions_dict:
@@ -619,7 +739,7 @@ def decode_legacy_graph_revision(
         assertions_dict[exist_id] = ParsedAssertion(
             assertion_id=exist_id,
             subject_entity_id=obj_id,
-            predicate="dungeonmind.compat:existence",
+            predicate=existence_predicate,
             value=ParsedLiteralValue(
                 value=freeze_json_value(True),
                 canonical_json_text="true",
@@ -628,7 +748,7 @@ def decode_legacy_graph_revision(
         )
 
         # Kind assertion
-        kind_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:kind"
+        kind_id = id_templates["kind"].replace("{object_id}", obj_id)
         if kind_id in assertions_dict:
             raise LegacyCompatibilityIntegrityError(
                 f"duplicate assertion ID {kind_id!r}",
@@ -637,21 +757,22 @@ def decode_legacy_graph_revision(
         assertions_dict[kind_id] = ParsedAssertion(
             assertion_id=kind_id,
             subject_entity_id=obj_id,
-            predicate="dungeonmind.compat:kind",
+            predicate=kind_predicate,
             value=ParsedLiteralValue(
                 value=freeze_json_value(obj.kind),
                 canonical_json_text=canonical_json(obj.kind),
             ),
             metadata=_translate_assertion_metadata(
                 obj.existence_assertion_metadata,
+                manifest=manifest_obj,
                 default_evidence_ids=default_ev_ids,
                 graph_schema=snapshot.graph_schema,
-                claim_mode="dungeonmind.compat:kind",
+                claim_mode=kind_claim_mode,
             ),
         )
 
         # Label assertion
-        label_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:label"
+        label_id = id_templates["label"].replace("{object_id}", obj_id)
         if label_id in assertions_dict:
             raise LegacyCompatibilityIntegrityError(
                 f"duplicate assertion ID {label_id!r}",
@@ -660,16 +781,17 @@ def decode_legacy_graph_revision(
         assertions_dict[label_id] = ParsedAssertion(
             assertion_id=label_id,
             subject_entity_id=obj_id,
-            predicate="dungeonmind.compat:label",
+            predicate=label_predicate,
             value=ParsedLiteralValue(
                 value=freeze_json_value(obj.label),
                 canonical_json_text=canonical_json(obj.label),
             ),
             metadata=_translate_assertion_metadata(
                 obj.existence_assertion_metadata,
+                manifest=manifest_obj,
                 default_evidence_ids=default_ev_ids,
                 graph_schema=snapshot.graph_schema,
-                claim_mode="dungeonmind.compat:label",
+                claim_mode=label_claim_mode,
             ),
         )
 
@@ -680,18 +802,20 @@ def decode_legacy_graph_revision(
                 sum_ev_ids = obj.admitted_summary_assertion.evidence_ref_ids
                 sum_meta = _translate_assertion_metadata(
                     obj.admitted_summary_assertion.assertion_metadata,
+                    manifest=manifest_obj,
                     default_evidence_ids=sum_ev_ids,
                     graph_schema=snapshot.graph_schema,
-                    claim_mode="dungeonmind.compat:summary",
+                    claim_mode=summary_claim_mode,
                 )
             else:
-                sum_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:summary"
+                sum_id = id_templates["summary"].replace("{object_id}", obj_id)
                 sum_ev_ids = obj.evidence_ref_ids
                 sum_meta = _translate_assertion_metadata(
                     None,
+                    manifest=manifest_obj,
                     default_evidence_ids=sum_ev_ids,
                     graph_schema=snapshot.graph_schema,
-                    claim_mode="dungeonmind.compat:summary",
+                    claim_mode=summary_claim_mode,
                 )
 
             if sum_id in assertions_dict:
@@ -702,7 +826,7 @@ def decode_legacy_graph_revision(
             assertions_dict[sum_id] = ParsedAssertion(
                 assertion_id=sum_id,
                 subject_entity_id=obj_id,
-                predicate="dungeonmind.compat:summary",
+                predicate=summary_predicate,
                 value=ParsedLiteralValue(
                     value=freeze_json_value(obj.summary),
                     canonical_json_text=canonical_json(obj.summary),
@@ -720,14 +844,15 @@ def decode_legacy_graph_revision(
                     )
                 al_meta = _translate_assertion_metadata(
                     al.assertion_metadata,
+                    manifest=manifest_obj,
                     default_evidence_ids=al.evidence_ref_ids,
                     graph_schema=snapshot.graph_schema,
-                    claim_mode="dungeonmind.compat:alias",
+                    claim_mode=alias_claim_mode,
                 )
                 assertions_dict[al.assertion_id] = ParsedAssertion(
                     assertion_id=al.assertion_id,
                     subject_entity_id=obj_id,
-                    predicate="dungeonmind.compat:alias",
+                    predicate=alias_predicate,
                     value=ParsedLiteralValue(
                         value=freeze_json_value(al.alias),
                         canonical_json_text=canonical_json(al.alias),
@@ -735,23 +860,11 @@ def decode_legacy_graph_revision(
                     metadata=al_meta,
                 )
 
-                # Gate identity alias admission: only world-universal,
-                # player-visible, canonical aliases enter parsed identity aliases
-                if al.assertion_metadata is not None:
-                    if (
-                        al.assertion_metadata.campaign_scope is None
-                        and al.assertion_metadata.visibility == Visibility.PLAYER
-                        and al.assertion_metadata.canon_state == CanonState.CANONICAL
-                    ):
-                        aliases_dict[al.assertion_id] = ParsedIdentityAlias(
-                            alias_id=al.assertion_id,
-                            entity_id=obj_id,
-                            alias_text=al.alias,
-                            evidence_ref_ids=tuple(al.evidence_ref_ids),
-                            standing=KnowledgeStanding.ESTABLISHED,
-                        )
-                else:
-                    # v2-v3 coarse alias
+                if _identity_alias_admitted_from_metadata(
+                    al.assertion_metadata,
+                    manifest=manifest_obj,
+                    coarse=al.assertion_metadata is None,
+                ):
                     aliases_dict[al.assertion_id] = ParsedIdentityAlias(
                         alias_id=al.assertion_id,
                         entity_id=obj_id,
@@ -760,15 +873,20 @@ def decode_legacy_graph_revision(
                         standing=KnowledgeStanding.ESTABLISHED,
                     )
         else:
-            # v1 plain aliases — occurrence + full sha256 (multiplicity-safe)
-            alias_template = manifest_obj.synthetic_assertion_id_templates["alias"]
-            for occurrence, alias_text in enumerate(obj.aliases):
-                al_id = _synthetic_v1_alias_assertion_id(
-                    obj_id,
-                    occurrence=occurrence,
-                    alias_text=alias_text,
-                    template=alias_template,
+            # v1 plain aliases — value-group occurrence + full sha256 (multiset-safe)
+            alias_template = id_templates["alias"]
+            v1_alias_pairs = _v1_alias_assertion_ids(
+                obj_id,
+                obj.aliases,
+                template=alias_template,
+            )
+            v1_enter_identity = bool(
+                manifest_obj.identity_alias_admission_rules.get(
+                    "v1_plain_aliases_enter_identity_aliases",
+                    True,
                 )
+            )
+            for alias_text, al_id in v1_alias_pairs:
                 if al_id in assertions_dict:
                     raise LegacyCompatibilityIntegrityError(
                         f"duplicate alias assertion ID {al_id!r}",
@@ -776,27 +894,29 @@ def decode_legacy_graph_revision(
                     )
                 al_meta = _translate_assertion_metadata(
                     None,
+                    manifest=manifest_obj,
                     default_evidence_ids=obj.evidence_ref_ids,
                     graph_schema=snapshot.graph_schema,
-                    claim_mode="dungeonmind.compat:alias",
+                    claim_mode=alias_claim_mode,
                 )
                 assertions_dict[al_id] = ParsedAssertion(
                     assertion_id=al_id,
                     subject_entity_id=obj_id,
-                    predicate="dungeonmind.compat:alias",
+                    predicate=alias_predicate,
                     value=ParsedLiteralValue(
                         value=freeze_json_value(alias_text),
                         canonical_json_text=canonical_json(alias_text),
                     ),
                     metadata=al_meta,
                 )
-                aliases_dict[al_id] = ParsedIdentityAlias(
-                    alias_id=al_id,
-                    entity_id=obj_id,
-                    alias_text=alias_text,
-                    evidence_ref_ids=tuple(obj.evidence_ref_ids),
-                    standing=KnowledgeStanding.ESTABLISHED,
-                )
+                if v1_enter_identity:
+                    aliases_dict[al_id] = ParsedIdentityAlias(
+                        alias_id=al_id,
+                        entity_id=obj_id,
+                        alias_text=alias_text,
+                        evidence_ref_ids=tuple(obj.evidence_ref_ids),
+                        standing=KnowledgeStanding.ESTABLISHED,
+                    )
 
         # Property assertions (v4-v6)
         for prop in obj.admitted_property_assertions:
@@ -807,6 +927,7 @@ def decode_legacy_graph_revision(
                 )
             prop_meta = _translate_assertion_metadata(
                 prop.assertion_metadata,
+                manifest=manifest_obj,
                 default_evidence_ids=prop.evidence_ref_ids,
                 graph_schema=snapshot.graph_schema,
                 claim_mode="dungeonmind.compat:property",
@@ -831,15 +952,16 @@ def decode_legacy_graph_revision(
                 )
             aspect_meta = _translate_assertion_metadata(
                 aspect.assertion_metadata,
+                manifest=manifest_obj,
                 default_evidence_ids=aspect.evidence_ref_ids,
                 graph_schema=snapshot.graph_schema,
-                claim_mode="dungeonmind.compat:aspect",
+                claim_mode=aspect_claim_mode,
             )
             aspect_val = {"aspect_key": aspect.aspect_key, "kind": aspect.kind}
             assertions_dict[aspect.assertion_id] = ParsedAssertion(
                 assertion_id=aspect.assertion_id,
                 subject_entity_id=obj_id,
-                predicate="dungeonmind.compat:aspect",
+                predicate=aspect_predicate,
                 value=ParsedLiteralValue(
                     value=freeze_json_value(aspect_val),
                     canonical_json_text=canonical_json(aspect_val),
@@ -893,7 +1015,7 @@ def decode_legacy_graph_revision(
         rel_asrt_id = (
             rel.assertion_metadata.assertion_id
             if rel.assertion_metadata is not None
-            else f"asrt:compat:dm_legacy_world_compat_v1:rel:{rel_id}"
+            else id_templates["relationship"].replace("{relationship_id}", rel_id)
         )
 
         if rel_asrt_id in assertions_dict:
@@ -904,6 +1026,7 @@ def decode_legacy_graph_revision(
 
         base_meta = _translate_assertion_metadata(
             rel.assertion_metadata,
+            manifest=manifest_obj,
             default_evidence_ids=rel.evidence_ref_ids,
             graph_schema=snapshot.graph_schema,
             claim_mode="dungeonmind.compat:relationship",
@@ -911,7 +1034,7 @@ def decode_legacy_graph_revision(
 
         # Record relationship metadata for lossless reconstruction
         rel_extra_entry = ParsedDomainMetadataEntry(
-            schema_term="dungeonmind.compat:relationship",
+            schema_term=relationship_domain_schema,
             payload=freeze_json_value({
                 "relationship_id": rel_id,
                 "source_aspect_assertion_id": rel.source_aspect_assertion_id,
@@ -945,8 +1068,9 @@ def decode_legacy_graph_revision(
         evidence=evidence_dict,
     )
     legacy_key = compute_legacy_compatibility_key(
-        mapping_revision=manifest_obj.compatibility_mapping_revision,
+        mapping_revision=mapping_revision,
         mapping_manifest_sha256=manifest_obj.manifest_sha256,
+        mapping_implementation_digest=mapping_impl_digest,
         graph_schema=revision.graph_schema,
         historical_parse_compatibility_id=reader.parse_compatibility_id,
         semantic_profile_ref=semantic_profile_ref,
@@ -1093,6 +1217,9 @@ def _reconstruct_witness_metadata_from_parsed(
 
 def build_historical_semantic_witness(snapshot: ParsedGraphSnapshot) -> dict[str, Any]:
     """Extract canonical semantic witness directly from historical ParsedGraphSnapshot."""
+    manifest = load_legacy_world_compat_manifest()
+    id_templates = manifest.synthetic_assertion_id_templates
+
     # Semantic profile
     prof_dict = None
     if snapshot.semantic_profile_ref is not None:
@@ -1112,7 +1239,7 @@ def build_historical_semantic_witness(snapshot: ParsedGraphSnapshot) -> dict[str
             exist_id = obj.existence_assertion_metadata.assertion_id
             exist_meta = _serialize_witness_metadata(obj.existence_assertion_metadata)
         else:
-            exist_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:existence"
+            exist_id = id_templates["existence"].replace("{object_id}", obj_id)
             exist_meta = None
 
         # Summary
@@ -1130,7 +1257,7 @@ def build_historical_semantic_witness(snapshot: ParsedGraphSnapshot) -> dict[str
                 }
             else:
                 sum_dict = {
-                    "assertion_id": f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:summary",
+                    "assertion_id": id_templates["summary"].replace("{object_id}", obj_id),
                     "evidence_ref_ids": sorted(obj.evidence_ref_ids),
                     "metadata": None,
                     "summary": obj.summary,
@@ -1147,17 +1274,12 @@ def build_historical_semantic_witness(snapshot: ParsedGraphSnapshot) -> dict[str
                     "metadata": _serialize_witness_metadata(al.assertion_metadata),
                 })
         else:
-            alias_template = (
-                "asrt:compat:dm_legacy_world_compat_v1:"
-                "{object_id}:alias:{occurrence}:{alias_sha256}"
-            )
-            for occurrence, al_text in enumerate(obj.aliases):
-                syn_al_id = _synthetic_v1_alias_assertion_id(
-                    obj_id,
-                    occurrence=occurrence,
-                    alias_text=al_text,
-                    template=alias_template,
-                )
+            alias_template = id_templates["alias"]
+            for al_text, syn_al_id in _v1_alias_assertion_ids(
+                obj_id,
+                obj.aliases,
+                template=alias_template,
+            ):
                 alias_list.append({
                     "alias": al_text,
                     "assertion_id": syn_al_id,
@@ -1209,7 +1331,7 @@ def build_historical_semantic_witness(snapshot: ParsedGraphSnapshot) -> dict[str
         asrt_id = (
             rel.assertion_metadata.assertion_id
             if rel.assertion_metadata is not None
-            else f"asrt:compat:dm_legacy_world_compat_v1:rel:{rel_id}"
+            else id_templates["relationship"].replace("{relationship_id}", rel_id)
         )
         eff_src = effective_endpoint_kind(rel, endpoint="source", snapshot=snapshot)
         eff_tgt = effective_endpoint_kind(rel, endpoint="target", snapshot=snapshot)

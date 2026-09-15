@@ -84,6 +84,6 @@
     "require_canonical_standing": true,
     "v1_plain_aliases_enter_identity_aliases": true,
     "v2_v3_coarse_aliases_enter_identity_aliases": true,
-    "v1_alias_id_uses_occurrence_and_full_sha256": true
+    "v1_alias_id_uses_value_group_occurrence_and_full_sha256": true
   }
 }

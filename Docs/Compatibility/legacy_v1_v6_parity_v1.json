@@ -1,13 +1,13 @@
 {
   "artifact_schema": "dm_legacy_compatibility_parity_artifact_v1",
   "compatibility_mapping_revision": "dm_legacy_world_compat_v1",
-  "manifest_sha256": "4de99b3b29e986e8e3afaf0ebefa655f012e9aaa11ee3b7aa296e0a23ff7ea2a",
+  "manifest_sha256": "f408ce73b8efb32a36e4fb29eb68e9242cb358a76c0c0b60eafdce5046abbe4f",
   "records": [
     {
       "alias_assertion_count": 2,
       "assertion_count": 13,
       "compat_witness_sha256": "d462929da9fe9d4645fe8123c99a725b92fc3a3e4d61405dee22edec7ce1f453",
-      "compatibility_key": "cd0f623d29032a7c570a4a152626293bc66029ceb1e19f4c7f9bc81ad4b0afb9",
+      "compatibility_key": "6e627e775c3556de9f3c2feb020ca06e04a1a9486f9131c493419afdd6a4f52f",
       "entity_count": 3,
       "entity_ref_assertion_count": 2,
       "evidence_count": 5,
@@ -16,14 +16,14 @@
       "identity_alias_count": 2,
       "legacy_payload_sha256": "89228aad7fa09e1859d30d87f45f39ca68ec2c42a7ff1c6e266458e0dfcc38dd",
       "parity": "PASS",
-      "semantic_digest": "69ce406c51a0698169d451d6283ee2440b2077d7156d44af28f782c049d296bc",
+      "semantic_digest": "6e3bd47e81a1ad2b2b618d20d63816c294185e11bcd290e88d92fa46d9319c5f",
       "workload_identity": "canonical_fixture_v1"
     },
     {
       "alias_assertion_count": 2,
       "assertion_count": 6,
       "compat_witness_sha256": "7b09a660db9b60120ecbd4a4c1deeb949d69c35e2ff5ce90023fa49695f6999c",
-      "compatibility_key": "fe79d902711f285d2c7a98b7f62311ffc46a66813f235753653c9550f66e8fa6",
+      "compatibility_key": "f98bc1902f506653f1d1aa4ff851a4589a249827c39b74e44566b6fdda9d0d5a",
       "entity_count": 1,
       "entity_ref_assertion_count": 0,
       "evidence_count": 4,
@@ -32,14 +32,14 @@
       "identity_alias_count": 2,
       "legacy_payload_sha256": "f03402aebc8dd2640b93d19f184a480bee5b7b6ed6bf089d153d22d720be8652",
       "parity": "PASS",
-      "semantic_digest": "3e6570d132a5966e3e368057309956f78f2ea2f97fea4a9af223a0351c67d558",
+      "semantic_digest": "4e4d1b5421acdc0b577164378c720cc8ca7a28cf82e68600fa9b745f955ca438",
       "workload_identity": "canonical_fixture_v2"
     },
     {
       "alias_assertion_count": 1,
       "assertion_count": 9,
       "compat_witness_sha256": "c67414d0ac81c0e174136b9140133b8e9b57362e2ffeaa0c0a549a9180b81d85",
-      "compatibility_key": "e08419b5830fc891a09a7c616ff1ef8ef40a7eae91a41ba1ca7623b2412b0b60",
+      "compatibility_key": "5cdd4a8d28020ef00653ad25ace57b409021d85e0e0ff9ab3237c1eb5e30dea2",
       "entity_count": 2,
       "entity_ref_assertion_count": 1,
       "evidence_count": 5,
@@ -48,14 +48,14 @@
       "identity_alias_count": 1,
       "legacy_payload_sha256": "b351e5ea3470258fa4bbad88e5fc6597938eec11fc9949f8d84ec20de1658d0e",
       "parity": "PASS",
-      "semantic_digest": "406a303a61898faf23b904f46f75014efd4ad0e5bb01ca7e0d0774f5594e736a",
+      "semantic_digest": "a52f23db9f4c8b8a84689fdb20fcc98486392050e173c77105a6b193167bc830",
       "workload_identity": "canonical_fixture_v3"
     },
     {
       "alias_assertion_count": 4,
       "assertion_count": 27,
       "compat_witness_sha256": "7e62334d5afe7cf507a2d19c513f9b0e2f6f709f7e3aee328b0069105809148b",
-      "compatibility_key": "628d14fe14447e9a1e69bc2db874ef8ea49f509c2f191a80651abcce6c4e9fd0",
+      "compatibility_key": "868bb3696517d55b9789eb8082342842e71c5f2397c1a4389ffebb6dc18d5422",
       "entity_count": 5,
       "entity_ref_assertion_count": 3,
       "evidence_count": 3,
@@ -64,14 +64,14 @@
       "identity_alias_count": 0,
       "legacy_payload_sha256": "ecf8672767ea7c71b205b061437ae427b3d85c41b189e48db47b8dde102209cc",
       "parity": "PASS",
-      "semantic_digest": "0be9fbbd83a595ac6fb6f96e970c50c430faf1719266c69c7c4e9dc1b74c6875",
+      "semantic_digest": "5d782e8723d712cb017d25ff0e6724f1e8569d0baf004d4e0ba784ccbad5aca1",
       "workload_identity": "canonical_fixture_v4"
     },
     {
       "alias_assertion_count": 1,
       "assertion_count": 6,
       "compat_witness_sha256": "4f008b233e0cde0c07f13236aa8b670ee185aa3e4c5ec1d60fe2df3e5bad3061",
-      "compatibility_key": "c9fb30cf10ba7b70caf699d6db1e4cd691e7e50f2bb1b5c65489d4a62e83952e",
+      "compatibility_key": "713a7182598346ec91c9cc1e5576b49d6aa1fa7e9f7f241167460f69108d974c",
       "entity_count": 1,
       "entity_ref_assertion_count": 1,
       "evidence_count": 1,
@@ -80,14 +80,14 @@
       "identity_alias_count": 0,
       "legacy_payload_sha256": "55eea23e1ce209d41f2cbfe5da2a272ada97947ece9ff606b3237729403c8b66",
       "parity": "PASS",
-      "semantic_digest": "530b183bba062a0f4fab5a5ccb531f8ce6de85429261e05b818d097f38a02a8e",
+      "semantic_digest": "21c3f55657da0d94f399035d9300ad1eb6ea4072bd469c4fb8e9359a4b39f84d",
       "workload_identity": "canonical_fixture_v5"
     },
     {
       "alias_assertion_count": 0,
       "assertion_count": 13,
       "compat_witness_sha256": "b349c6faee752be9010ea4f9696c0061dee216542404c4d123da62e8f25749f2",
-      "compatibility_key": "6133685b97acd60bc33ec4116ebe5de14865d9bfb626870e3d9ed9dae095d356",
+      "compatibility_key": "6b4b98d8a19aa4dc0ff5f9ab80e6fc435d25b7ef68bc9af23fcf747980d57216",
       "entity_count": 3,
       "entity_ref_assertion_count": 2,
       "evidence_count": 1,
@@ -96,11 +96,11 @@
       "identity_alias_count": 0,
       "legacy_payload_sha256": "0e10e758e7cf55e25e56f1fe3c3e940b261846853c649c211d5b08e9db979651",
       "parity": "PASS",
-      "semantic_digest": "7ed539c2010ae0d3f975712acbfa4c9324ddb67474b1d2766fdc6e1ace051a18",
+      "semantic_digest": "168ed690537d4ca07c94d91c111fe31f6f63313347061a0611abc086527cd4b6",
       "workload_identity": "canonical_fixture_v6"
     }
   ],
   "records_count": 6,
-  "records_digest": "e4d70f26ca17274f85f1aab37b2fb282e836c1e51126fefafdc0604591f7a01e",
+  "records_digest": "9ec1cffb3ba8c36471e6cbcb3564b3f2be417546ec679cd92c2e6382f450c9c1",
   "vnext_format_version": "parsed_knowledge_revision_v1"
 }
