@@ -319,21 +319,31 @@ def compute_legacy_compatibility_key(
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
+_SEALED_COMPATIBILITY_SOURCE_NAMES: tuple[str, ...] = (
+    "_identity_alias_admitted_from_metadata",
+    "_synthetic_v1_alias_assertion_id",
+    "_translate_assertion_metadata",
+    "_v1_alias_assertion_ids",
+    "decode_legacy_graph_revision",
+)
+
+
 def compute_mapping_implementation_digest(
     manifest: LegacyCompatibilityManifest,
     *,
     translator_sources: Mapping[str, str] | None = None,
 ) -> str:
-    """Hash manifest semantics plus sealed translator implementations."""
+    """Hash manifest semantics plus the full sealed compatibility-codec surface.
+
+    The sealed set must include every function that can change normalized
+    compatibility meaning: metadata translation, synthetic alias identity,
+    identity-alias admission, and the decode entrypoint that performs
+    evidence/relationship/object mapping.
+    """
     if translator_sources is None:
         sealed_sources: dict[str, str] = {
-            "_translate_assertion_metadata": inspect.getsource(
-                _translate_assertion_metadata
-            ),
-            "_synthetic_v1_alias_assertion_id": inspect.getsource(
-                _synthetic_v1_alias_assertion_id
-            ),
-            "_v1_alias_assertion_ids": inspect.getsource(_v1_alias_assertion_ids),
+            name: inspect.getsource(globals()[name])
+            for name in _SEALED_COMPATIBILITY_SOURCE_NAMES
         }
     else:
         sealed_sources = dict(translator_sources)
@@ -344,6 +354,7 @@ def compute_mapping_implementation_digest(
         "translator_sources": dict(sorted(sealed_sources.items())),
     }
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+
 
 
 def _synthetic_v1_alias_assertion_id(

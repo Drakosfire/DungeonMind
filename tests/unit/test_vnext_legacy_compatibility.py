@@ -555,7 +555,9 @@ def test_17e_valid_v1_duplicate_aliases_decode_without_collision() -> None:
 def test_17f_mapping_implementation_digest_seals_translator_source() -> None:
     manifest = load_legacy_world_compat_manifest()
     baseline = compute_mapping_implementation_digest(manifest)
-    mutated = compute_mapping_implementation_digest(
+
+    # Partial sealed set (old Cycle 2 surface) must not equal the full sealed digest.
+    incomplete = compute_mapping_implementation_digest(
         manifest,
         translator_sources={
             "_translate_assertion_metadata": "# synthetic mutation for digest test\n",
@@ -563,7 +565,38 @@ def test_17f_mapping_implementation_digest_seals_translator_source() -> None:
             "_v1_alias_assertion_ids": "pass",
         },
     )
-    assert baseline != mutated
+    assert baseline != incomplete
+
+    # Mutating alias-admission source alone must change the sealed digest.
+    import inspect
+
+    from dungeonmind.application.vnext import legacy_compat as lc
+
+    full_sources = {
+        name: inspect.getsource(getattr(lc, name))
+        for name in lc._SEALED_COMPATIBILITY_SOURCE_NAMES
+    }
+    admission_mutated = dict(full_sources)
+    admission_mutated["_identity_alias_admitted_from_metadata"] = (
+        full_sources["_identity_alias_admitted_from_metadata"] + "\n# admit-mut\n"
+    )
+    assert baseline != compute_mapping_implementation_digest(
+        manifest, translator_sources=admission_mutated
+    )
+
+    # Mutating decode (evidence/relationship mapping body) alone must change digest.
+    decode_mutated = dict(full_sources)
+    decode_mutated["decode_legacy_graph_revision"] = (
+        full_sources["decode_legacy_graph_revision"] + "\n# evidence-rel-mut\n"
+    )
+    assert baseline != compute_mapping_implementation_digest(
+        manifest, translator_sources=decode_mutated
+    )
+
+    # Sealed set must include the review-required semantic functions.
+    assert "_identity_alias_admitted_from_metadata" in lc._SEALED_COMPATIBILITY_SOURCE_NAMES
+    assert "decode_legacy_graph_revision" in lc._SEALED_COMPATIBILITY_SOURCE_NAMES
+    assert set(full_sources) == set(lc._SEALED_COMPATIBILITY_SOURCE_NAMES)
 
 
 def test_17g_manifest_visibility_labels_drive_decode_and_key() -> None:
