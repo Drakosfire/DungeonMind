@@ -75,6 +75,8 @@ The Kernel owns governed knowledge mechanics. Domains own what assertions mean.
 
 PR #54 established the forward execution roadmap and read/performance architecture.
 
+PR #56 established and froze the generic vNext contract schemas, models, semantic invariants, and multi-domain fixtures (`fd04a904...`).
+
 The canonical roadmap is now:
 
 ```text
@@ -785,41 +787,48 @@ Keep this section short and current.
 ### Last canonical roadmap change
 
 ```text
-PR #54
-DOCUMENTS: canonize vNext execution and optimization roadmap
-merged: 22bf2e42686876e1c0f9750d1b346e4a6fffebc4
+PR #56
+CONTRACTS: V0.1 generic vNext schema surface
+merged: 63ec810a02f18c4e25af228f6fdb19d99d12579e
+accepted implementation head: ba2ec6dc16137b57aab4ca7544f00eb4a5802a15
+review cycles: 4 (Cycle 1 848d7b8, Cycle 2 ffe9faf, Cycle 3 9272b2e, Cycle 4 ba2ec6d)
+disposition: V0_1_DUNGEONMIND_CONTRACT_FROZEN
+contract aggregate sha256: fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
+bundle path: Docs/Contracts/vnext/dm_vnext_contract_v1.json
 ```
 
 It established:
 
-- V0–V11 as the current forward roadmap;
-- vNext read/performance architecture;
-- K0.3 large-scale benchmarking as parallel evidence rather than a V0 gate;
-- low-hanging bounded-read optimization as part of V1–V4;
-- durable-storage redesign deferred until evidence after the structural wins.
+- Frozen generic vNext contract schemas and Pydantic models in `src/dungeonmind/contracts/vnext/`;
+- Canonical semantic-invariant manifest binding custom validator semantics directly into the aggregate contract identity;
+- Three multi-domain acceptance fixture families (`adversarial_epistemic_identity_v1`, `organizational_memory_v1`, `temporal_supersession_v1`);
+- Pinned cross-repository contract identity `fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea` ready for DungeonMindBuddy V0.2 consumption.
+
+Prior roadmap baseline:
+- PR #54 (`22bf2e42686876e1c0f9750d1b346e4a6fffebc4`): canonized vNext execution and optimization roadmap.
 
 ### Current phase
 
 ```text
-PRE-V0 / READY TO DISPATCH V0
+V0 CONTRACT FREEZE / ACTIVE V0.2 BUDDY PROOF
 ```
 
 ### Next primary question
 
 ```text
-Can DungeonMind and DungeonMindBuddy implement one exact vNext contract independently without inventing fields or semantics on either side?
+Can DungeonMindBuddy prove that its TTRPG/campaign authority semantics map into the frozen generic vNext contract without inventing Kernel fields or modifying production behavior (PR #719 / V0.2)?
 ```
 
 ### What remains false
 
 At this checkpoint:
 
-- no vNext contract schema/types are frozen;
+- generic vNext contract schemas/types are frozen (V0.1 complete), but joint V0 freeze is pending Buddy V0.2 proof acceptance;
 - no `KnowledgeSpace` runtime exists;
 - no generic Entity/Assertion current graph implementation exists;
 - no `KnowledgeReadContext` exists;
 - bounded reads still run through the current World architecture;
-- DungeonBuddy has not implemented a DomainContract;
+- DungeonBuddy has not yet merged its DomainContract implementation;
 - no bridge-genesis migration has occurred;
 - no vNext authority has been published;
 - no Buddy cutover has happened;
@@ -829,9 +838,7 @@ At this checkpoint:
 
 ### Named next action
 
-Design and dispatch the **V0 contract-freeze PR handoff**.
-
-The V0 handoff should be substantially more exact than this Steward document: concrete files, exact contract shapes, fixture expectations, allowed implementation surface, acceptance commands, and stop conditions.
+Complete and merge **DungeonMindBuddy V0.2 domain proof (PR #719)**, mark V0 complete (`VNEXT_CONTRACT_FROZEN`), then design and dispatch the **V1 normalized immutable revision PR handoff**.
 
 ---
 
