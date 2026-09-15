@@ -3,7 +3,8 @@
 **Created:** 2026-09-14  
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
-**Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
+**Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54
+**Current main anchor:** `6d9a40f609530f4882470c5599b4914e2288b8d5` — merged PR #57
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
 **Read/performance architecture:** `Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`  
@@ -79,11 +80,13 @@ PR #56 established and froze the generic vNext contract schemas, models, semanti
 
 DungeonMindBuddy PR #719 established and merged the V0.2 consumer proof, confirming that Buddy's campaign/session scope, GM/player visibility, standing, fictional time, World-object representation, candidate governance, and all 11 source domains map losslessly into the generic vNext contract without Kernel modifications or production changes.
 
+DungeonMind PR #57 established and merged V1.1 (`6d9a40f...`), proving that generic vNext knowledge primitives can be normalized into an immutable serving model (`ParsedKnowledgeRevision`) with deterministic derived indexes, deep immutability against cache poisoning, and fail-closed structural integrity.
+
 The canonical roadmap is now:
 
 ```text
 V0   Contract freeze (COMPLETE — VNEXT_CONTRACT_FROZEN)
-V1   Immutable normalized revision + revision-local indexes (ACTIVE)
+V1   Immutable normalized revision + revision-local indexes (ACTIVE: V1.1 COMPLETE, V1.2 ACTIVE)
 V2   Generic KnowledgeReadContext + candidate admission seam
 V3   Lazy exact / complete entity reads
 V4   Neighborhood + evidence + anchor + deterministic indexed search
@@ -98,15 +101,15 @@ V11  Deeper storage optimization only if evidence still demands it
 
 ### Current next primary question
 
-**V1 — Immutable normalized revision + revision-local indexes**
+**V1.2 — legacy v1–v6 compatibility decoder + semantic parity**
 
-> Can already-decoded vNext knowledge primitives be normalized once into one immutable, deterministic, revision-local internal model whose structural indexes are rebuildable and semantically lossless, without performing scope/visibility/domain admission or introducing World/TTRPG meaning into the Kernel (Slice V1.1)?
+> Can every frozen historical `dm_union_graph_v1` through `dm_union_graph_v6` stored revision be verified and decoded into the accepted immutable `ParsedKnowledgeRevision` with deterministic semantic parity to the current historical reader, without rewriting history, performing admission, or pretending legacy payloads are native vNext authority?
 
 ### Parallel evidence lane
 
 The unfinished larger-scale K0.3 benchmark work remains useful, especially its planned World-like / Rules-like 100 / 1k / 10k / 50k / 100k characterization.
 
-It is **not** a gate in front of V0.
+It is **not** a gate in front of V0 or V1.
 
 R.2a and R.3a already earned the decision to remove whole-projection work from bounded reads. The large-scale lane should be harvested for V1–V4 measurement and V8 acceptance rather than used to delay contract work.
 
@@ -787,66 +790,94 @@ Keep this section short and current.
 ### Last canonical roadmap change
 
 ```text
-DungeonMindBuddy PR #719
-CONTRACTS: pin DungeonMind vNext and prove DungeonBuddy domain mapping
-merged: c77056b0c909513cecd8b81f9e7fac22e02d339a
-accepted implementation head: 2a17226b6b0b25a1084f404b6aca8bde442e4713
-review cycles: 3 (Cycle 1 6293a1e, Cycle 2 fc397da, Cycle 3 2a17226)
-disposition: V0_2_DUNGEONBUDDY_DOMAIN_PROOF_ACCEPTED
-Buddy base: 68a4abae9635211bc773d8480ec6ce46b10ada5e
+DungeonMind PR #57
+KERNEL: immutable ParsedKnowledgeRevision core and structural indexes
+merged: 6d9a40f609530f4882470c5599b4914e2288b8d5
+accepted implementation head: 38d9eac3252ba911ff7565b930ce8b84aca0767b
+review cycles: 2 (Cycle 1 f240b09, Cycle 2 38d9eac)
+final PASS review: 5213422370
+disposition: V1_1_PARSED_KNOWLEDGE_REVISION_CORE_ACCEPTED
+benchmark artifact: Docs/Benchmarks/vnext_parsed_knowledge_revision_10k_v1.json
+cardinalities:
+  assertions: 10,000
+  entities: 5,000
+  evidence refs: 2,500
+  aliases: 2,000
+build: ~7004.647 ms
+peak traced memory: ~48.53 MiB
+semantic digest: 8b51a341d7464710be1410421a843d31fa2e84e9387d0043e131575d44d2379d
+compatibility key: b795c672dbf87394b83ebaba42976b54994b257ed5beefa93b7cc184f82bc9e5
+indexed lookups: microsecond-scale characterization
 contract aggregate sha256: fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
-acceptance artifact: Docs/Contracts/vnext/dmb_v0_2_contract_acceptance_v1.json
 ```
 
 It established:
 
-- Pinned DungeonMind PR #56 dependency (`63ec810a...`) and vendored identical frozen vNext bundle (`fd04a904...`);
-- Pinned Buddy contract manifest at `Docs/Contracts/dungeonmind/dm_vnext_contract_pin_v1.json`;
-- DomainContract fixture (`dungeonbuddy.world`) with campaign as the sole authority scope axis;
-- SemanticProfile fixture (`dungeonbuddy.dnd5e`) declaring representative terms and predicates;
-- Preservation fixture proving campaign/session focus, GM/player visibility, standing, fictional time, World-object representation, candidate governance, and 100% `KNOWN_SOURCE_DOMAINS` mapping coverage;
-- Executable fail-closed mapping helper proving deterministic transformation of Buddy inputs into valid generic `ProjectionRequest`s;
-- Zero modifications to production read/write adapters, routes, DTOs, UI, migrations, or live authority;
-- Complete satisfaction of V0 Contract Freeze obligations across both repositories (`VNEXT_CONTRACT_FROZEN`).
+- Application-layer vNext normalized model and builder in `src/dungeonmind/application/vnext/`;
+- Deep immutability via `FrozenDict` and `freeze_json_value`, with mutation attacks cleanly rejected;
+- Domain-agnostic, rebuildable structural indexes: `entities_by_id`, `assertions_by_id`, `aliases_by_id`, `evidence_by_id`, `assertions_by_subject`, `entity_adjacency` (incoming/outgoing/touching), `alias_exact_index`, `literal_exact_index`, and `lexical_candidate_index`;
+- Fail-closed structural integrity enforcement (`RevisionStructuralIntegrityError`) on duplicate IDs, missing assertion subjects, missing entity-ref targets, missing evidence refs, missing alias targets, and malformed visibility/temporal variants;
+- Exact revision-header identity preservation, including contract sequence of `operation_ids`;
+- Pinned compatibility key covering parser format version, graph schema, and complete pinned `DomainContractRef` and `SemanticProfileRef` identities;
+- Zero modifications to frozen V0 contract bundle (`fd04a904...`) and zero imports from `dungeonmind_dnd`.
 
 Prior roadmap baseline:
+- DungeonMindBuddy PR #719 (`c77056b0c909513cecd8b81f9e7fac22e02d339a`): V0.2 consumer proof (`VNEXT_CONTRACT_FROZEN`).
 - PR #56 (`63ec810a02f18c4e25af228f6fdb19d99d12579e`): V0.1 generic vNext schema surface (`fd04a904...`).
 - PR #54 (`22bf2e42686876e1c0f9750d1b346e4a6fffebc4`): canonized vNext execution and optimization roadmap.
 
 ### Current phase
 
 ```text
-VNEXT_CONTRACT_FROZEN / ACTIVE V1.1 PARSED KNOWLEDGE REVISION CORE
+V0 COMPLETE — VNEXT_CONTRACT_FROZEN
+V1 ACTIVE
+V1.1 COMPLETE
+V1.2 ACTIVE
 ```
 
 ### Next primary question
 
 ```text
-Can already-decoded vNext knowledge primitives be normalized once into one immutable, deterministic, revision-local internal model whose structural indexes are rebuildable and semantically lossless, without performing scope/visibility/domain admission or introducing World/TTRPG meaning into the Kernel (Slice V1.1)?
+Can every frozen historical dm_union_graph_v1 through dm_union_graph_v6 stored revision be verified and decoded into the accepted immutable ParsedKnowledgeRevision with deterministic semantic parity to the current historical reader, without rewriting history, performing admission, or pretending legacy payloads are native vNext authority?
+```
+
+### Parallel work posture
+
+```text
+safe / independent:
+  larger-scale benchmark characterization
+  already-contract-frozen Buddy/domain work that does not depend on V2 runtime
+
+still blocked by V1 completion:
+  V2 merge
+  V3+ Kernel read-path rollout
+  bridge-genesis migration
+  cutover
+  deletion/quarantine of current public historical readers
 ```
 
 ### What remains false
 
 At this checkpoint:
 
-- generic vNext contract schemas/types are frozen (V0.1 complete) and proved by Buddy (V0.2 complete); VNEXT_CONTRACT_FROZEN is TRUE;
-- no `KnowledgeSpace` runtime exists;
-- no generic Entity/Assertion current graph implementation exists;
-- no `ParsedKnowledgeRevision` core or structural indexes exist (active slice V1.1);
-- no legacy graph v1-v6 compatibility decoder into ParsedKnowledgeRevision exists (slice V1.2);
+- v1-v6 -> ParsedKnowledgeRevision compatibility parity is not yet proven (active slice V1.2);
+- overall V1 is not complete;
+- V2 is not yet active;
+- current public World readers still use the historical path;
+- no bridge-genesis migration has occurred;
+- no vNext cutover has occurred;
 - no `KnowledgeReadContext` exists;
+- no `KnowledgeSpace` runtime exists;
 - bounded reads still run through the current World architecture;
 - DungeonBuddy has not yet implemented runtime World read/write cutover (V6);
-- no bridge-genesis migration has occurred;
 - no vNext authority has been published;
-- no Buddy cutover has happened;
 - old World contracts remain current production contracts;
 - larger K0.3 50k/100k characterization is not complete;
 - deeper storage optimization is not authorized.
 
 ### Named next action
 
-Dispatch **V1.1: immutable ParsedKnowledgeRevision core + deterministic indexes** from DungeonMind `main` (branch `kernel/v1-1-parsed-knowledge-revision`, handoff `Docs/Handoffs/HANDOFF-v1-1-parsed-knowledge-revision-core.md`).
+Dispatch **V1.2: legacy v1–v6 compatibility decoder + semantic parity** from DungeonMind `main` anchor `6d9a40f609530f4882470c5599b4914e2288b8d5` (branch `kernel/v1-2-legacy-compatibility-parity`, handoff `Docs/Handoffs/HANDOFF-v1-2-legacy-compatibility-parity.md`).
 
 ---
 
