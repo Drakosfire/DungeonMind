@@ -817,7 +817,7 @@ def _serialize_witness_metadata(
 def _reconstruct_witness_metadata_from_parsed(
     meta: ParsedAssertionMetadata,
 ) -> dict[str, Any] | None:
-    if meta.claim_mode == "dungeonmind.compat:legacy_coarse":
+    if meta.epistemic_basis == "dungeonmind.compat:legacy_unspecified":
         return None
 
     campaign_scope: str | None = None
