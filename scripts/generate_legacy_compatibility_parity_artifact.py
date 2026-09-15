@@ -11,10 +11,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 from dungeonmind.application.graph_snapshot import (
     GRAPH_SCHEMA_V1,
     GRAPH_SCHEMA_V2,
@@ -34,6 +30,10 @@ from dungeonmind.application.vnext.legacy_compat import (
 from dungeonmind.application.vnext.records import ParsedEntityRefValue
 from dungeonmind.contracts.graph import WorldGraphRevision
 from dungeonmind.domain.canonical import canonical_sha256
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 DEFAULT_OUTPUT_PATH = Path("Docs/Compatibility/legacy_v1_v6_parity_v1.json")
 
