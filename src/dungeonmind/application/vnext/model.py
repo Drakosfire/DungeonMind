@@ -289,11 +289,19 @@ def compute_semantic_digest(
 
 
 def compute_compatibility_key(identity: ParsedKnowledgeRevisionIdentity) -> str:
-    """Compute compatibility key covering format version, graph schema, and pinned refs."""
+    """Compute compatibility key covering format version, graph schema, and pinned ref IDs."""
     payload = {
         "format_version": PARSED_REVISION_FORMAT_VERSION,
         "graph_schema": identity.graph_schema,
-        "domain_contract_ref": identity.domain_contract_ref.descriptor_sha256,
-        "semantic_profile_ref": identity.semantic_profile_ref.descriptor_sha256,
+        "domain_contract_ref": {
+            "domain_id": identity.domain_contract_ref.domain_id,
+            "domain_revision": identity.domain_contract_ref.domain_revision,
+            "descriptor_sha256": identity.domain_contract_ref.descriptor_sha256,
+        },
+        "semantic_profile_ref": {
+            "profile_id": identity.semantic_profile_ref.profile_id,
+            "profile_revision": identity.semantic_profile_ref.profile_revision,
+            "descriptor_sha256": identity.semantic_profile_ref.descriptor_sha256,
+        },
     }
     return _sha256(canonical_json_bytes(payload))

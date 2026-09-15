@@ -254,7 +254,9 @@ def build_parsed_knowledge_revision(
         elif isinstance(vis, PublicVisibility):
             parsed_vis = ParsedPublicVisibility()
         else:
-            parsed_vis = ParsedPublicVisibility()
+            raise RevisionStructuralIntegrityError(
+                f"Assertion {aid!r} has invalid or unknown visibility variant: {vis!r}"
+            )
 
         temporal = meta.temporal_scope
         parsed_temporal: ParsedTemporalScope
@@ -273,7 +275,9 @@ def build_parsed_knowledge_revision(
         elif isinstance(temporal, TimelessTemporalScope):
             parsed_temporal = ParsedTimelessTemporalScope()
         else:
-            parsed_temporal = ParsedTimelessTemporalScope()
+            raise RevisionStructuralIntegrityError(
+                f"Assertion {aid!r} has invalid or unknown temporal scope variant: {temporal!r}"
+            )
 
         dm_entries = tuple(
             sorted(
@@ -395,7 +399,7 @@ def build_parsed_knowledge_revision(
         revision_id=str(revision.revision_id),
         parent_revision_id=parent_rev_id,
         created_at=revision.created_at,
-        operation_ids=tuple(sorted(str(op) for op in revision.operation_ids)),
+        operation_ids=tuple(str(op) for op in revision.operation_ids),
         graph_schema=str(revision.graph_schema),
         graph_payload_sha256=str(revision.graph_payload_sha256),
         domain_contract_ref=ParsedDomainContractRef(

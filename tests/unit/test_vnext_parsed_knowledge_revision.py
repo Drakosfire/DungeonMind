@@ -15,12 +15,16 @@ import pytest
 
 from dungeonmind.application.vnext import (
     PARSED_REVISION_FORMAT_VERSION,
+    ParsedDomainContractRef,
+    ParsedDomainTemporalScope,
     ParsedEntity,
     ParsedKnowledgeRevision,
     ParsedLiteralValue,
     ParsedScopeBinding,
+    ParsedSemanticProfileRef,
     RevisionStructuralIntegrityError,
     build_parsed_knowledge_revision,
+    compute_compatibility_key,
     thaw_json_value,
 )
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
@@ -259,12 +263,14 @@ def _build_standard_parsed() -> ParsedKnowledgeRevision:
 
 def test_01_exact_revision_identity_preserved() -> None:
     rev = _make_base_revision()
+    # Explicitly test with unsorted operation_ids to prove sequence preservation
+    rev.operation_ids = ["op:zulu", "op:alpha", "op:bravo"]
     parsed = build_parsed_knowledge_revision(revision=rev)
     assert parsed.space_id == "space:test-space"
     assert parsed.revision_id == "rev:test-0001"
     assert parsed.parent_revision_id == "rev:test-0000"
     assert parsed.created_at == rev.created_at
-    assert parsed.operation_ids == ("op:test-1", "op:test-2")
+    assert parsed.operation_ids == ("op:zulu", "op:alpha", "op:bravo")
     assert parsed.graph_schema == "dm_vnext_graph_v1"
     assert parsed.graph_payload_sha256 == "a" * 64
     assert parsed.format_version == PARSED_REVISION_FORMAT_VERSION
@@ -659,6 +665,7 @@ def test_32_mutation_of_original_nested_json_cannot_change_parsed_model() -> Non
 def test_33_exposed_parsed_mappings_cannot_be_mutated() -> None:
     parsed = _build_standard_parsed()
 
+    # Mapping interface mutation attempts
     with pytest.raises(TypeError):
         parsed.entities_by_id["ent:new"] = ParsedEntity(entity_id="ent:new")  # type: ignore
 
@@ -670,6 +677,47 @@ def test_33_exposed_parsed_mappings_cannot_be_mutated() -> None:
 
     with pytest.raises(AttributeError):
         parsed.entities_by_id.clear()  # type: ignore
+
+    # Backing-state escape / direct poison attempt regression
+    assert not hasattr(parsed.entities_by_id, "_data")
+    with pytest.raises(AttributeError):
+        _ = parsed.entities_by_id._data  # type: ignore
+
+    proxy = parsed.entities_by_id._proxy  # type: ignore
+    with pytest.raises(TypeError):
+        proxy["ent:poison"] = ParsedEntity(entity_id="ent:poison")
+
+    with pytest.raises(AttributeError):
+        proxy.clear()
+
+    with pytest.raises(AttributeError):
+        proxy.pop("ent:alice")
+
+    with pytest.raises(AttributeError):
+        proxy.update({})
+
+    # Attribute immutability on FrozenDict itself
+    with pytest.raises(TypeError):
+        parsed.entities_by_id._proxy = None  # type: ignore
+
+    with pytest.raises(TypeError):
+        parsed.entities_by_id._items = ()  # type: ignore
+
+    with pytest.raises(TypeError):
+        parsed.entities_by_id._hash = 0  # type: ignore
+
+    with pytest.raises(TypeError):
+        parsed.entities_by_id.new_attr = "poison"  # type: ignore
+
+    with pytest.raises(TypeError):
+        del parsed.entities_by_id._proxy  # type: ignore
+
+    with pytest.raises(TypeError):
+        del parsed.entities_by_id._hash  # type: ignore
+
+    # Hash consistency and resistance to stale hash poisoning
+    cached_hash = hash(parsed.entities_by_id)
+    assert hash(parsed.entities_by_id) == cached_hash
 
 
 def test_34_reordered_input_builds_same_semantic_digest() -> None:
@@ -839,16 +887,19 @@ def test_38_no_public_v0_contract_schema_changes() -> None:
 
 
 def test_39_v0_aggregate_remains_exact() -> None:
+    from scripts.generate_vnext_contract_bundle import make_bundle
+
     bundle_path = CONTRACTS_DIR / "dm_vnext_contract_v1.json"
     raw_bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     assert raw_bundle["aggregate_sha256"] == CANONICAL_V0_AGGREGATE
 
-    # Verify recomputation matches canonical aggregate
-    bundle_bytes = canonical_json(raw_bundle)
-    assert (
-        sha256(bundle_bytes) == CANONICAL_V0_AGGREGATE
-        or raw_bundle["aggregate_sha256"] == CANONICAL_V0_AGGREGATE
-    )
+    # Verify recomputation without aggregate_sha256 matches canonical aggregate
+    bundle_without_agg = {k: v for k, v in raw_bundle.items() if k != "aggregate_sha256"}
+    assert sha256(canonical_json(bundle_without_agg)) == CANONICAL_V0_AGGREGATE
+
+    # Verify freshly generated bundle matches canonical aggregate
+    generated = make_bundle()
+    assert generated["aggregate_sha256"] == CANONICAL_V0_AGGREGATE
 
 
 def test_40_10k_benchmark_artifact_validity() -> None:
@@ -877,3 +928,217 @@ def test_40_10k_benchmark_artifact_validity() -> None:
     ]:
         assert lane in data["lookup_latencies_us"]
         assert data["lookup_latencies_us"][lane]["p50_us"] > 0
+
+
+def test_41_deliberate_post_build_mutation_of_domain_metadata_and_temporal_payload() -> None:
+    rev = _make_base_revision()
+    dm_payload = {"policy_level": 4, "allowed_roles": ["admin", "audit"]}
+    temporal_payload = {"fiscal_year": 2026, "milestones": ["q1", "q2"]}
+    dm_list = [
+        DomainMetadataEntry(
+            schema="corp:policy",
+            payload=dm_payload,
+        )
+    ]
+    a = Assertion(
+        assertion_id="asrt:domain-meta-test",
+        subject_entity_id="ent:alice",
+        predicate="corp:role",
+        value=LiteralValue(value="admin"),
+        metadata=AssertionMetadata(
+            scope=[],
+            visibility=PublicVisibility(),
+            epistemic_basis=EpistemicBasis.ASSERTED,
+            claim_mode="corp:fact",
+            standing=KnowledgeStanding.ESTABLISHED,
+            evidence_ref_ids=[],
+            temporal_scope=DomainTemporalScope(
+                schema="corp:fiscal_calendar",
+                payload=temporal_payload,
+            ),
+            domain_metadata=dm_list,
+        ),
+    )
+    parsed = build_parsed_knowledge_revision(
+        revision=rev,
+        entities=[Entity(entity_id="ent:alice")],
+        assertions=[a],
+    )
+    digest_before = parsed.semantic_digest
+
+    # Deliberately mutate domain metadata payload in place
+    dm_payload["policy_level"] = 999
+    dm_payload["allowed_roles"].append("POISON")
+
+    # Deliberately mutate temporal scope payload in place
+    temporal_payload["fiscal_year"] = 1800
+    temporal_payload["milestones"].clear()
+
+    # Deliberately mutate caller's domain metadata list
+    dm_list.append(DomainMetadataEntry(schema="corp:extra", payload={}))
+
+    # Assert parsed model remained completely unchanged
+    parsed_asrt = parsed.get_assertion("asrt:domain-meta-test")
+    assert parsed_asrt is not None
+    assert len(parsed_asrt.metadata.domain_metadata) == 1
+    dm_entry = parsed_asrt.metadata.domain_metadata[0]
+    thawed_dm = thaw_json_value(dm_entry.payload)
+    assert thawed_dm["policy_level"] == 4
+    assert thawed_dm["allowed_roles"] == ["admin", "audit"]
+
+    assert isinstance(parsed_asrt.metadata.temporal_scope, ParsedDomainTemporalScope)
+    thawed_temporal = thaw_json_value(parsed_asrt.metadata.temporal_scope.payload)
+    assert thawed_temporal["fiscal_year"] == 2026
+    assert thawed_temporal["milestones"] == ["q1", "q2"]
+
+    assert parsed.semantic_digest == digest_before
+
+    # Attempt mutation on parsed domain metadata payload itself
+    with pytest.raises(TypeError):
+        dm_entry.payload["poison"] = "val"  # type: ignore[index]
+
+
+def test_42_fail_closed_on_malformed_visibility_variant() -> None:
+    rev = _make_base_revision()
+    a = Assertion(
+        assertion_id="asrt:malformed-vis",
+        subject_entity_id="ent:alice",
+        predicate="corp:role",
+        value=LiteralValue(value="admin"),
+        metadata=AssertionMetadata(
+            scope=[],
+            visibility=PublicVisibility(),
+            epistemic_basis=EpistemicBasis.ASSERTED,
+            claim_mode="corp:fact",
+            standing=KnowledgeStanding.ESTABLISHED,
+            evidence_ref_ids=[],
+            temporal_scope=TimelessTemporalScope(),
+            domain_metadata=[],
+        ),
+    )
+    # Deliberately mutate visibility to an unsupported object before build
+    a.metadata.visibility = "unsupported_public"  # type: ignore[assignment]
+    with pytest.raises(RevisionStructuralIntegrityError, match="visibility variant"):
+        build_parsed_knowledge_revision(
+            revision=rev,
+            entities=[Entity(entity_id="ent:alice")],
+            assertions=[a],
+        )
+
+
+def test_43_fail_closed_on_malformed_temporal_scope_variant() -> None:
+    rev = _make_base_revision()
+    a = Assertion(
+        assertion_id="asrt:malformed-temporal",
+        subject_entity_id="ent:alice",
+        predicate="corp:role",
+        value=LiteralValue(value="admin"),
+        metadata=AssertionMetadata(
+            scope=[],
+            visibility=PublicVisibility(),
+            epistemic_basis=EpistemicBasis.ASSERTED,
+            claim_mode="corp:fact",
+            standing=KnowledgeStanding.ESTABLISHED,
+            evidence_ref_ids=[],
+            temporal_scope=TimelessTemporalScope(),
+            domain_metadata=[],
+        ),
+    )
+    # Deliberately mutate temporal scope to an unsupported object before build
+    a.metadata.temporal_scope = "unsupported_timeless"  # type: ignore[assignment]
+    with pytest.raises(RevisionStructuralIntegrityError, match="temporal scope variant"):
+        build_parsed_knowledge_revision(
+            revision=rev,
+            entities=[Entity(entity_id="ent:alice")],
+            assertions=[a],
+        )
+
+
+def test_44_compatibility_key_covers_all_pinned_ref_identity_components() -> None:
+    parsed = _build_standard_parsed()
+    base_ident = parsed.identity
+    base_key = parsed.compatibility_key
+    assert compute_compatibility_key(base_ident) == base_key
+
+    # 1. Mutate graph_schema
+    ident_schema = copy.deepcopy(base_ident)
+    object.__setattr__(ident_schema, "graph_schema", "dm_vnext_graph_v2")
+    assert compute_compatibility_key(ident_schema) != base_key
+
+    # 2. Mutate domain_contract_ref.domain_id
+    ident_d_id = copy.deepcopy(base_ident)
+    object.__setattr__(
+        ident_d_id,
+        "domain_contract_ref",
+        ParsedDomainContractRef(
+            domain_id="mutated.domain",
+            domain_revision=base_ident.domain_contract_ref.domain_revision,
+            descriptor_sha256=base_ident.domain_contract_ref.descriptor_sha256,
+        ),
+    )
+    assert compute_compatibility_key(ident_d_id) != base_key
+
+    # 3. Mutate domain_contract_ref.domain_revision
+    ident_d_rev = copy.deepcopy(base_ident)
+    object.__setattr__(
+        ident_d_rev,
+        "domain_contract_ref",
+        ParsedDomainContractRef(
+            domain_id=base_ident.domain_contract_ref.domain_id,
+            domain_revision="99",
+            descriptor_sha256=base_ident.domain_contract_ref.descriptor_sha256,
+        ),
+    )
+    assert compute_compatibility_key(ident_d_rev) != base_key
+
+    # 4. Mutate domain_contract_ref.descriptor_sha256
+    ident_d_sha = copy.deepcopy(base_ident)
+    object.__setattr__(
+        ident_d_sha,
+        "domain_contract_ref",
+        ParsedDomainContractRef(
+            domain_id=base_ident.domain_contract_ref.domain_id,
+            domain_revision=base_ident.domain_contract_ref.domain_revision,
+            descriptor_sha256="0" * 64,
+        ),
+    )
+    assert compute_compatibility_key(ident_d_sha) != base_key
+
+    # 5. Mutate semantic_profile_ref.profile_id
+    ident_p_id = copy.deepcopy(base_ident)
+    object.__setattr__(
+        ident_p_id,
+        "semantic_profile_ref",
+        ParsedSemanticProfileRef(
+            profile_id="mutated.profile",
+            profile_revision=base_ident.semantic_profile_ref.profile_revision,
+            descriptor_sha256=base_ident.semantic_profile_ref.descriptor_sha256,
+        ),
+    )
+    assert compute_compatibility_key(ident_p_id) != base_key
+
+    # 6. Mutate semantic_profile_ref.profile_revision
+    ident_p_rev = copy.deepcopy(base_ident)
+    object.__setattr__(
+        ident_p_rev,
+        "semantic_profile_ref",
+        ParsedSemanticProfileRef(
+            profile_id=base_ident.semantic_profile_ref.profile_id,
+            profile_revision="99",
+            descriptor_sha256=base_ident.semantic_profile_ref.descriptor_sha256,
+        ),
+    )
+    assert compute_compatibility_key(ident_p_rev) != base_key
+
+    # 7. Mutate semantic_profile_ref.descriptor_sha256
+    ident_p_sha = copy.deepcopy(base_ident)
+    object.__setattr__(
+        ident_p_sha,
+        "semantic_profile_ref",
+        ParsedSemanticProfileRef(
+            profile_id=base_ident.semantic_profile_ref.profile_id,
+            profile_revision=base_ident.semantic_profile_ref.profile_revision,
+            descriptor_sha256="0" * 64,
+        ),
+    )
+    assert compute_compatibility_key(ident_p_sha) != base_key
