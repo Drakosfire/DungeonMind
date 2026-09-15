@@ -1,0 +1,1259 @@
+"""Legacy compatibility decoder and semantic parity codec for DungeonMind historical graphs.
+
+Supports exact stored revisions across all six historical schema generations:
+- ``dm_union_graph_v1``
+- ``dm_union_graph_v2``
+- ``dm_union_graph_v3``
+- ``dm_union_graph_v4``
+- ``dm_union_graph_v5``
+- ``dm_union_graph_v6``
+
+Delegates historical semantic interpretation to ``VersionedUnionGraphSnapshotReader``
+and maps the resulting historical graphs into the immutable ``ParsedKnowledgeRevision``
+serving model with deterministic, bidirectional semantic parity.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from ...contracts.graph import StoredGraphRevision, WorldGraphRevision
+from ...contracts.knowledge_assertion import (
+    CanonState,
+    KnowledgeAssertionMetadataV1,
+    TemporalScopeKind,
+    Visibility,
+)
+from ...contracts.vnext.common import KnowledgeStanding
+from ...domain.canonical import canonical_json, canonical_sha256
+from ...domain.errors import PersistenceIntegrityError
+from ..graph_snapshot import (
+    GRAPH_SCHEMA_V1,
+    GRAPH_SCHEMA_V2,
+    GRAPH_SCHEMA_V3,
+    GRAPH_SCHEMA_V4,
+    GRAPH_SCHEMA_V5,
+    GRAPH_SCHEMA_V6,
+    GraphEvidenceRecord,
+    ParsedGraphSnapshot,
+    SemanticProfileRegistry,
+    VersionedUnionGraphSnapshotReader,
+    effective_endpoint_kind,
+)
+from .builder import build_parsed_knowledge_revision_from_records
+from .errors import LegacyCompatibilityIntegrityError
+from .frozen_json import (
+    freeze_json_value,
+    thaw_json_value,
+)
+from .model import ParsedKnowledgeRevision
+from .records import (
+    ParsedAssertion,
+    ParsedAssertionMetadata,
+    ParsedDomainContractRef,
+    ParsedDomainMetadataEntry,
+    ParsedDomainTemporalScope,
+    ParsedEntity,
+    ParsedEntityRefValue,
+    ParsedEvidenceRef,
+    ParsedIdentityAlias,
+    ParsedKnowledgeRevisionIdentity,
+    ParsedLabelsAnyVisibility,
+    ParsedLiteralValue,
+    ParsedScopeBinding,
+    ParsedSemanticProfileRef,
+    ParsedTemporalScope,
+    ParsedTimelessTemporalScope,
+    ParsedUnknownTemporalScope,
+    ParsedVisibility,
+)
+
+# Manifest location and pinned identities
+MANIFEST_PATH = Path("Docs/Compatibility/dm_legacy_world_compat_v1.json")
+COMPATIBILITY_MAPPING_REVISION = "dm_legacy_world_compat_v1"
+COMPATIBILITY_MANIFEST_SHA256 = "f93d00e70b6587050bbf06d8a045bfa120ad2e01d01e9dcd36447e3fbb0c7ce6"
+COMPATIBILITY_DOMAIN_CONTRACT_ID = "dungeonmind.compat.legacy_world"
+COMPATIBILITY_DOMAIN_CONTRACT_REVISION = "1"
+UNPROFILED_SEMANTIC_PROFILE_ID = "legacy.unprofiled"
+UNPROFILED_SEMANTIC_PROFILE_REVISION = "none"
+UNPROFILED_DESCRIPTOR_SHA256 = "0" * 64
+
+SUPPORTED_HISTORICAL_SCHEMAS: frozenset[str] = frozenset([
+    GRAPH_SCHEMA_V1,
+    GRAPH_SCHEMA_V2,
+    GRAPH_SCHEMA_V3,
+    GRAPH_SCHEMA_V4,
+    GRAPH_SCHEMA_V5,
+    GRAPH_SCHEMA_V6,
+])
+
+
+@dataclass(frozen=True, slots=True)
+class LegacyCompatibilityManifest:
+    """Internal verified manifest defining legacy compatibility mapping rules."""
+
+    manifest_schema: str
+    compatibility_mapping_revision: str
+    vnext_format_version: str
+    domain_contract_id: str
+    domain_contract_revision: str
+    unprofiled_semantic_profile_id: str
+    unprofiled_semantic_profile_revision: str
+    supported_historical_schemas: tuple[str, ...]
+    manifest_sha256: str
+
+
+def load_legacy_world_compat_manifest(
+    path: Path | str = MANIFEST_PATH,
+) -> LegacyCompatibilityManifest:
+    """Load and verify the checked-in compatibility manifest."""
+    manifest_file = Path(path)
+    if not manifest_file.exists():
+        raise LegacyCompatibilityIntegrityError(
+            f"compatibility manifest not found at {manifest_file}",
+            details={"path": str(manifest_file)},
+        )
+    try:
+        raw_data = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise LegacyCompatibilityIntegrityError(
+            f"failed to parse compatibility manifest {manifest_file}: {exc}",
+            details={"path": str(manifest_file)},
+        ) from exc
+
+    computed_sha = canonical_sha256(raw_data)
+    if computed_sha != COMPATIBILITY_MANIFEST_SHA256:
+        raise LegacyCompatibilityIntegrityError(
+            "compatibility manifest digest mismatch: "
+            f"expected {COMPATIBILITY_MANIFEST_SHA256}, got {computed_sha}",
+            details={
+                "expected_sha256": COMPATIBILITY_MANIFEST_SHA256,
+                "computed_sha256": computed_sha,
+            },
+        )
+
+    return LegacyCompatibilityManifest(
+        manifest_schema=raw_data["manifest_schema"],
+        compatibility_mapping_revision=raw_data["compatibility_mapping_revision"],
+        vnext_format_version=raw_data["vnext_format_version"],
+        domain_contract_id=raw_data["domain_contract_id"],
+        domain_contract_revision=raw_data["domain_contract_revision"],
+        unprofiled_semantic_profile_id=raw_data["unprofiled_semantic_profile_id"],
+        unprofiled_semantic_profile_revision=raw_data["unprofiled_semantic_profile_revision"],
+        supported_historical_schemas=tuple(raw_data["supported_historical_schemas"]),
+        manifest_sha256=computed_sha,
+    )
+
+
+def validate_stored_legacy_graph_revision(
+    revision: WorldGraphRevision,
+    graph_payload: dict[str, Any],
+) -> None:
+    """Verify stored envelope and payload identity before compatibility decoding."""
+    if revision.schema_version != "dm_graph_revision_v1":
+        raise LegacyCompatibilityIntegrityError(
+            f"unsupported graph revision schema_version {revision.schema_version!r}",
+            details={"schema_version": revision.schema_version},
+        )
+
+    if revision.graph_schema not in SUPPORTED_HISTORICAL_SCHEMAS:
+        raise LegacyCompatibilityIntegrityError(
+            f"unsupported historical graph schema {revision.graph_schema!r}",
+            details={"graph_schema": revision.graph_schema},
+        )
+
+    if not isinstance(graph_payload, dict):
+        raise LegacyCompatibilityIntegrityError(
+            "graph_payload must be a JSON object",
+            details={"type": type(graph_payload).__name__},
+        )
+
+    payload_world_id = graph_payload.get("world_id")
+    if payload_world_id != revision.world_id:
+        raise LegacyCompatibilityIntegrityError(
+            f"payload world_id {payload_world_id!r} does not match revision world_id "
+            f"{revision.world_id!r}",
+            details={
+                "revision_world_id": revision.world_id,
+                "payload_world_id": payload_world_id,
+            },
+        )
+
+    computed_digest = canonical_sha256(graph_payload)
+    if computed_digest != revision.graph_payload_sha256:
+        raise LegacyCompatibilityIntegrityError(
+            f"payload digest mismatch for revision {revision.revision_id}",
+            details={
+                "expected_sha256": revision.graph_payload_sha256,
+                "computed_sha256": computed_digest,
+            },
+        )
+
+    if not revision.operation_ids:
+        raise LegacyCompatibilityIntegrityError(
+            f"revision {revision.revision_id} has empty operation_ids",
+            details={"revision_id": revision.revision_id},
+        )
+
+
+def _translate_assertion_metadata(
+    meta: KnowledgeAssertionMetadataV1 | None,
+    *,
+    default_evidence_ids: Sequence[str],
+    graph_schema: str,
+    claim_mode: str,
+) -> ParsedAssertionMetadata:
+    """Translate legacy KnowledgeAssertionMetadataV1 or synthesize coarse metadata."""
+    if meta is not None:
+        scope = (
+            (ParsedScopeBinding(axis="dungeonmind.compat:campaign", value=meta.campaign_scope),)
+            if meta.campaign_scope is not None
+            else ()
+        )
+
+        vis: ParsedVisibility
+        if meta.visibility == Visibility.GM:
+            vis = ParsedLabelsAnyVisibility(labels=("audience:gm",))
+        else:
+            vis = ParsedLabelsAnyVisibility(labels=("audience:player",))
+
+        temp_scope: ParsedTemporalScope
+        if meta.temporal_scope.kind == TemporalScopeKind.UNKNOWN:
+            temp_scope = ParsedUnknownTemporalScope()
+        elif meta.temporal_scope.kind == TemporalScopeKind.WORLD_TIMELESS:
+            temp_scope = ParsedTimelessTemporalScope()
+        elif meta.temporal_scope.kind == TemporalScopeKind.FICTIONAL_TIME_REF:
+            ref = meta.temporal_scope.fictional_time_ref
+            if ref is None:
+                raise LegacyCompatibilityIntegrityError(
+                    "fictional_time_ref temporal scope missing anchor ref"
+                )
+            temp_scope = ParsedDomainTemporalScope(
+                schema_term="dungeonmind.compat:fictional_time_ref",
+                payload=freeze_json_value({
+                    "bundle_id": ref.bundle_id,
+                    "campaign_id": ref.campaign_id,
+                    "anchor_id": ref.anchor_id,
+                }),
+            )
+        else:
+            raise LegacyCompatibilityIntegrityError(
+                f"unrecognized legacy temporal scope kind {meta.temporal_scope.kind!r}"
+            )
+
+        standing_val = (
+            KnowledgeStanding.ESTABLISHED
+            if meta.canon_state == CanonState.CANONICAL
+            else KnowledgeStanding.PROVISIONAL
+            if meta.canon_state == CanonState.PROVISIONAL
+            else KnowledgeStanding.RETRACTED
+        )
+
+        domain_meta: list[ParsedDomainMetadataEntry] = [
+            ParsedDomainMetadataEntry(
+                schema_term="dungeonmind.compat:legacy_epistemic_kind",
+                payload=freeze_json_value({"epistemic_kind": meta.epistemic_kind.value}),
+            ),
+            ParsedDomainMetadataEntry(
+                schema_term="dungeonmind.compat:legacy_canon_state",
+                payload=freeze_json_value({"canon_state": meta.canon_state.value}),
+            ),
+        ]
+        if meta.session_refs:
+            domain_meta.append(
+                ParsedDomainMetadataEntry(
+                    schema_term="dungeonmind.compat:session_refs",
+                    payload=freeze_json_value({"session_refs": list(meta.session_refs)}),
+                )
+            )
+
+        return ParsedAssertionMetadata(
+            scope=scope,
+            visibility=vis,
+            epistemic_basis=meta.epistemic_kind.value,
+            claim_mode=claim_mode,
+            standing=standing_val,
+            evidence_ref_ids=tuple(meta.evidence_ref_ids),
+            temporal_scope=temp_scope,
+            domain_metadata=tuple(domain_meta),
+        )
+
+    # v1-v3 coarse semantics: neutral, truth-preserving compatibility metadata
+    return ParsedAssertionMetadata(
+        scope=(),
+        visibility=ParsedLabelsAnyVisibility(
+            labels=("dungeonmind.compat:legacy_coarse_visibility",)
+        ),
+        epistemic_basis="dungeonmind.compat:legacy_unspecified",
+        claim_mode=claim_mode,
+        standing=KnowledgeStanding.ESTABLISHED,
+        evidence_ref_ids=tuple(default_evidence_ids),
+        temporal_scope=ParsedUnknownTemporalScope(),
+        domain_metadata=(
+            ParsedDomainMetadataEntry(
+                schema_term="dungeonmind.compat:legacy_coarse_metadata",
+                payload=freeze_json_value({"schema_generation": graph_schema}),
+            ),
+        ),
+    )
+
+
+def decode_legacy_graph_revision(
+    *,
+    revision: WorldGraphRevision,
+    graph_payload: dict[str, Any],
+    profile_registry: SemanticProfileRegistry | None = None,
+    manifest: LegacyCompatibilityManifest | None = None,
+) -> ParsedKnowledgeRevision:
+    """Decode a legacy stored revision into an immutable ParsedKnowledgeRevision."""
+    validate_stored_legacy_graph_revision(revision, graph_payload)
+
+    manifest_obj = manifest if manifest is not None else load_legacy_world_compat_manifest()
+
+    reader = VersionedUnionGraphSnapshotReader(profile_registry=profile_registry)
+    try:
+        snapshot = reader.parse(
+            graph_schema=revision.graph_schema,
+            graph_payload=graph_payload,
+        )
+    except PersistenceIntegrityError as exc:
+        raise LegacyCompatibilityIntegrityError(
+            f"historical reader failed to parse legacy payload: {exc}",
+            details={"revision_id": revision.revision_id, "graph_schema": revision.graph_schema},
+        ) from exc
+
+    # Pinned compatibility revision identity
+    domain_contract_ref = ParsedDomainContractRef(
+        domain_id=manifest_obj.domain_contract_id,
+        domain_revision=manifest_obj.domain_contract_revision,
+        descriptor_sha256=manifest_obj.manifest_sha256,
+    )
+
+    if snapshot.semantic_profile_ref is not None:
+        semantic_profile_ref = ParsedSemanticProfileRef(
+            profile_id=snapshot.semantic_profile_ref.profile_id,
+            profile_revision=snapshot.semantic_profile_ref.profile_revision,
+            descriptor_sha256=snapshot.semantic_profile_ref.descriptor_sha256,
+        )
+    else:
+        semantic_profile_ref = ParsedSemanticProfileRef(
+            profile_id=manifest_obj.unprofiled_semantic_profile_id,
+            profile_revision=manifest_obj.unprofiled_semantic_profile_revision,
+            descriptor_sha256=UNPROFILED_DESCRIPTOR_SHA256,
+        )
+
+    identity = ParsedKnowledgeRevisionIdentity(
+        space_id=revision.world_id,
+        revision_id=revision.revision_id,
+        parent_revision_id=revision.parent_revision_id,
+        created_at=revision.created_at,
+        operation_ids=tuple(revision.operation_ids),
+        graph_schema=revision.graph_schema,
+        graph_payload_sha256=revision.graph_payload_sha256,
+        domain_contract_ref=domain_contract_ref,
+        semantic_profile_ref=semantic_profile_ref,
+        migration_origin_ref=None,
+    )
+
+    # 1. Translate Evidence Ledger
+    evidence_dict: dict[str, ParsedEvidenceRef] = {}
+    for ev_id, rec in snapshot.evidence.items():
+        ev_role_str = str(getattr(rec.evidence_role, "value", rec.evidence_role))
+        domain_meta: list[ParsedDomainMetadataEntry] = []
+        if isinstance(rec, GraphEvidenceRecord):
+            domain_meta.append(
+                ParsedDomainMetadataEntry(
+                    schema_term="dungeonmind.compat:evidence_source_domain",
+                    payload=freeze_json_value({"source_domain": rec.source_domain}),
+                )
+            )
+        else:  # EvidenceRefV2
+            domain_meta.append(
+                ParsedDomainMetadataEntry(
+                    schema_term="dungeonmind.compat:evidence_v2_extra",
+                    payload=freeze_json_value({
+                        "source_domain_key": rec.source_domain_key,
+                        "source_domain": rec.source_domain.value if rec.source_domain else None,
+                        "session_id": rec.session_id,
+                    }),
+                )
+            )
+
+        evidence_dict[ev_id] = ParsedEvidenceRef(
+            evidence_ref_id=rec.evidence_ref_id,
+            source_artifact_id=rec.source_artifact_id,
+            source_revision_id=rec.source_revision_id,
+            evidence_role=ev_role_str,
+            can_open_source=rec.can_open_source,
+            can_highlight_span=rec.can_highlight_span,
+            locator=rec.locator,
+            uri=rec.uri,
+            source_locator=getattr(rec, "source_locator", None),
+            line_ref=getattr(rec, "line_ref", None),
+            source_span_ref_id=getattr(rec, "source_span_ref_id", None),
+            domain_metadata=tuple(domain_meta),
+        )
+
+    # 2. Translate Entities, Assertions, Aliases
+    entities_dict: dict[str, ParsedEntity] = {}
+    assertions_dict: dict[str, ParsedAssertion] = {}
+    aliases_dict: dict[str, ParsedIdentityAlias] = {}
+
+    for obj_id, obj in snapshot.objects.items():
+        entities_dict[obj_id] = ParsedEntity(entity_id=obj_id)
+
+        default_ev_ids = obj.core_evidence_ref_ids or obj.evidence_ref_ids
+
+        # Existence assertion
+        if obj.existence_assertion_metadata is not None:
+            exist_id = obj.existence_assertion_metadata.assertion_id
+            exist_meta = _translate_assertion_metadata(
+                obj.existence_assertion_metadata,
+                default_evidence_ids=default_ev_ids,
+                graph_schema=snapshot.graph_schema,
+                claim_mode="dungeonmind.compat:existence",
+            )
+        else:
+            exist_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:existence"
+            exist_meta = _translate_assertion_metadata(
+                None,
+                default_evidence_ids=default_ev_ids,
+                graph_schema=snapshot.graph_schema,
+                claim_mode="dungeonmind.compat:existence",
+            )
+
+        if exist_id in assertions_dict:
+            raise LegacyCompatibilityIntegrityError(
+                f"duplicate assertion ID {exist_id!r}",
+                details={"assertion_id": exist_id, "object_id": obj_id},
+            )
+        assertions_dict[exist_id] = ParsedAssertion(
+            assertion_id=exist_id,
+            subject_entity_id=obj_id,
+            predicate="dungeonmind.compat:existence",
+            value=ParsedLiteralValue(
+                value=freeze_json_value(True),
+                canonical_json_text="true",
+            ),
+            metadata=exist_meta,
+        )
+
+        # Kind assertion
+        kind_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:kind"
+        if kind_id in assertions_dict:
+            raise LegacyCompatibilityIntegrityError(
+                f"duplicate assertion ID {kind_id!r}",
+                details={"assertion_id": kind_id, "object_id": obj_id},
+            )
+        assertions_dict[kind_id] = ParsedAssertion(
+            assertion_id=kind_id,
+            subject_entity_id=obj_id,
+            predicate="dungeonmind.compat:kind",
+            value=ParsedLiteralValue(
+                value=freeze_json_value(obj.kind),
+                canonical_json_text=canonical_json(obj.kind),
+            ),
+            metadata=_translate_assertion_metadata(
+                obj.existence_assertion_metadata,
+                default_evidence_ids=default_ev_ids,
+                graph_schema=snapshot.graph_schema,
+                claim_mode="dungeonmind.compat:kind",
+            ),
+        )
+
+        # Label assertion
+        label_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:label"
+        if label_id in assertions_dict:
+            raise LegacyCompatibilityIntegrityError(
+                f"duplicate assertion ID {label_id!r}",
+                details={"assertion_id": label_id, "object_id": obj_id},
+            )
+        assertions_dict[label_id] = ParsedAssertion(
+            assertion_id=label_id,
+            subject_entity_id=obj_id,
+            predicate="dungeonmind.compat:label",
+            value=ParsedLiteralValue(
+                value=freeze_json_value(obj.label),
+                canonical_json_text=canonical_json(obj.label),
+            ),
+            metadata=_translate_assertion_metadata(
+                obj.existence_assertion_metadata,
+                default_evidence_ids=default_ev_ids,
+                graph_schema=snapshot.graph_schema,
+                claim_mode="dungeonmind.compat:label",
+            ),
+        )
+
+        # Summary assertion
+        if obj.summary is not None:
+            if obj.admitted_summary_assertion is not None:
+                sum_id = obj.admitted_summary_assertion.assertion_id
+                sum_ev_ids = obj.admitted_summary_assertion.evidence_ref_ids
+                sum_meta = _translate_assertion_metadata(
+                    obj.admitted_summary_assertion.assertion_metadata,
+                    default_evidence_ids=sum_ev_ids,
+                    graph_schema=snapshot.graph_schema,
+                    claim_mode="dungeonmind.compat:summary",
+                )
+            else:
+                sum_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:summary"
+                sum_ev_ids = obj.evidence_ref_ids
+                sum_meta = _translate_assertion_metadata(
+                    None,
+                    default_evidence_ids=sum_ev_ids,
+                    graph_schema=snapshot.graph_schema,
+                    claim_mode="dungeonmind.compat:summary",
+                )
+
+            if sum_id in assertions_dict:
+                raise LegacyCompatibilityIntegrityError(
+                    f"duplicate assertion ID {sum_id!r}",
+                    details={"assertion_id": sum_id, "object_id": obj_id},
+                )
+            assertions_dict[sum_id] = ParsedAssertion(
+                assertion_id=sum_id,
+                subject_entity_id=obj_id,
+                predicate="dungeonmind.compat:summary",
+                value=ParsedLiteralValue(
+                    value=freeze_json_value(obj.summary),
+                    canonical_json_text=canonical_json(obj.summary),
+                ),
+                metadata=sum_meta,
+            )
+
+        # Alias assertions and safe identity aliases
+        if obj.admitted_alias_assertions:
+            for al in obj.admitted_alias_assertions:
+                if al.assertion_id in assertions_dict:
+                    raise LegacyCompatibilityIntegrityError(
+                        f"duplicate assertion ID {al.assertion_id!r}",
+                        details={"assertion_id": al.assertion_id, "object_id": obj_id},
+                    )
+                al_meta = _translate_assertion_metadata(
+                    al.assertion_metadata,
+                    default_evidence_ids=al.evidence_ref_ids,
+                    graph_schema=snapshot.graph_schema,
+                    claim_mode="dungeonmind.compat:alias",
+                )
+                assertions_dict[al.assertion_id] = ParsedAssertion(
+                    assertion_id=al.assertion_id,
+                    subject_entity_id=obj_id,
+                    predicate="dungeonmind.compat:alias",
+                    value=ParsedLiteralValue(
+                        value=freeze_json_value(al.alias),
+                        canonical_json_text=canonical_json(al.alias),
+                    ),
+                    metadata=al_meta,
+                )
+
+                # Gate identity alias admission: only world-universal,
+                # player-visible, canonical aliases enter parsed identity aliases
+                if al.assertion_metadata is not None:
+                    if (
+                        al.assertion_metadata.campaign_scope is None
+                        and al.assertion_metadata.visibility == Visibility.PLAYER
+                        and al.assertion_metadata.canon_state == CanonState.CANONICAL
+                    ):
+                        aliases_dict[al.assertion_id] = ParsedIdentityAlias(
+                            alias_id=al.assertion_id,
+                            entity_id=obj_id,
+                            alias_text=al.alias,
+                            evidence_ref_ids=tuple(al.evidence_ref_ids),
+                            standing=KnowledgeStanding.ESTABLISHED,
+                        )
+                else:
+                    # v2-v3 coarse alias
+                    aliases_dict[al.assertion_id] = ParsedIdentityAlias(
+                        alias_id=al.assertion_id,
+                        entity_id=obj_id,
+                        alias_text=al.alias,
+                        evidence_ref_ids=tuple(al.evidence_ref_ids),
+                        standing=KnowledgeStanding.ESTABLISHED,
+                    )
+        else:
+            # v1 plain aliases
+            for alias_text in obj.aliases:
+                alias_hash = hashlib.sha256(alias_text.encode("utf-8")).hexdigest()[:16]
+                al_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:alias:{alias_hash}"
+                if al_id in assertions_dict:
+                    raise LegacyCompatibilityIntegrityError(
+                        f"duplicate alias assertion ID {al_id!r}",
+                        details={"assertion_id": al_id, "object_id": obj_id},
+                    )
+                al_meta = _translate_assertion_metadata(
+                    None,
+                    default_evidence_ids=obj.evidence_ref_ids,
+                    graph_schema=snapshot.graph_schema,
+                    claim_mode="dungeonmind.compat:alias",
+                )
+                assertions_dict[al_id] = ParsedAssertion(
+                    assertion_id=al_id,
+                    subject_entity_id=obj_id,
+                    predicate="dungeonmind.compat:alias",
+                    value=ParsedLiteralValue(
+                        value=freeze_json_value(alias_text),
+                        canonical_json_text=canonical_json(alias_text),
+                    ),
+                    metadata=al_meta,
+                )
+                aliases_dict[al_id] = ParsedIdentityAlias(
+                    alias_id=al_id,
+                    entity_id=obj_id,
+                    alias_text=alias_text,
+                    evidence_ref_ids=tuple(obj.evidence_ref_ids),
+                    standing=KnowledgeStanding.ESTABLISHED,
+                )
+
+        # Property assertions (v4-v6)
+        for prop in obj.admitted_property_assertions:
+            if prop.assertion_id in assertions_dict:
+                raise LegacyCompatibilityIntegrityError(
+                    f"duplicate property assertion ID {prop.assertion_id!r}",
+                    details={"assertion_id": prop.assertion_id, "object_id": obj_id},
+                )
+            prop_meta = _translate_assertion_metadata(
+                prop.assertion_metadata,
+                default_evidence_ids=prop.evidence_ref_ids,
+                graph_schema=snapshot.graph_schema,
+                claim_mode="dungeonmind.compat:property",
+            )
+            assertions_dict[prop.assertion_id] = ParsedAssertion(
+                assertion_id=prop.assertion_id,
+                subject_entity_id=obj_id,
+                predicate=prop.property_term,
+                value=ParsedLiteralValue(
+                    value=freeze_json_value(prop.value),
+                    canonical_json_text=canonical_json(prop.value),
+                ),
+                metadata=prop_meta,
+            )
+
+        # Aspect assertions (v6)
+        for aspect in obj.admitted_aspect_assertions:
+            if aspect.assertion_id in assertions_dict:
+                raise LegacyCompatibilityIntegrityError(
+                    f"duplicate aspect assertion ID {aspect.assertion_id!r}",
+                    details={"assertion_id": aspect.assertion_id, "object_id": obj_id},
+                )
+            aspect_meta = _translate_assertion_metadata(
+                aspect.assertion_metadata,
+                default_evidence_ids=aspect.evidence_ref_ids,
+                graph_schema=snapshot.graph_schema,
+                claim_mode="dungeonmind.compat:aspect",
+            )
+            aspect_val = {"aspect_key": aspect.aspect_key, "kind": aspect.kind}
+            assertions_dict[aspect.assertion_id] = ParsedAssertion(
+                assertion_id=aspect.assertion_id,
+                subject_entity_id=obj_id,
+                predicate="dungeonmind.compat:aspect",
+                value=ParsedLiteralValue(
+                    value=freeze_json_value(aspect_val),
+                    canonical_json_text=canonical_json(aspect_val),
+                ),
+                metadata=aspect_meta,
+            )
+
+    # 3. Translate Relationships
+    for rel_id, rel in snapshot.relationships.items():
+        if rel.subject_object_id not in entities_dict:
+            raise LegacyCompatibilityIntegrityError(
+                f"relationship {rel_id} references missing subject entity {rel.subject_object_id}",
+                details={"relationship_id": rel_id, "subject_entity_id": rel.subject_object_id},
+            )
+        if rel.object_object_id not in entities_dict:
+            raise LegacyCompatibilityIntegrityError(
+                f"relationship {rel_id} references missing object entity {rel.object_object_id}",
+                details={"relationship_id": rel_id, "object_entity_id": rel.object_object_id},
+            )
+
+        # Verify v6 endpoint aspect integrity
+        if rel.source_aspect_assertion_id:
+            src_obj = snapshot.objects[rel.subject_object_id]
+            if not any(
+                a.assertion_id == rel.source_aspect_assertion_id
+                for a in src_obj.admitted_aspect_assertions
+            ):
+                raise LegacyCompatibilityIntegrityError(
+                    f"relationship {rel_id} source aspect {rel.source_aspect_assertion_id} "
+                    f"is not admitted on {rel.subject_object_id}",
+                    details={
+                        "relationship_id": rel_id,
+                        "source_aspect_assertion_id": rel.source_aspect_assertion_id,
+                    },
+                )
+        if rel.target_aspect_assertion_id:
+            tgt_obj = snapshot.objects[rel.object_object_id]
+            if not any(
+                a.assertion_id == rel.target_aspect_assertion_id
+                for a in tgt_obj.admitted_aspect_assertions
+            ):
+                raise LegacyCompatibilityIntegrityError(
+                    f"relationship {rel_id} target aspect {rel.target_aspect_assertion_id} "
+                    f"is not admitted on {rel.object_object_id}",
+                    details={
+                        "relationship_id": rel_id,
+                        "target_aspect_assertion_id": rel.target_aspect_assertion_id,
+                    },
+                )
+
+        rel_asrt_id = (
+            rel.assertion_metadata.assertion_id
+            if rel.assertion_metadata is not None
+            else f"asrt:compat:dm_legacy_world_compat_v1:rel:{rel_id}"
+        )
+
+        if rel_asrt_id in assertions_dict:
+            raise LegacyCompatibilityIntegrityError(
+                f"duplicate relationship assertion ID {rel_asrt_id!r}",
+                details={"assertion_id": rel_asrt_id, "relationship_id": rel_id},
+            )
+
+        base_meta = _translate_assertion_metadata(
+            rel.assertion_metadata,
+            default_evidence_ids=rel.evidence_ref_ids,
+            graph_schema=snapshot.graph_schema,
+            claim_mode="dungeonmind.compat:relationship",
+        )
+
+        # Record relationship metadata for lossless reconstruction
+        rel_extra_entry = ParsedDomainMetadataEntry(
+            schema_term="dungeonmind.compat:relationship",
+            payload=freeze_json_value({
+                "relationship_id": rel_id,
+                "source_aspect_assertion_id": rel.source_aspect_assertion_id,
+                "target_aspect_assertion_id": rel.target_aspect_assertion_id,
+            }),
+        )
+        combined_meta = ParsedAssertionMetadata(
+            scope=base_meta.scope,
+            visibility=base_meta.visibility,
+            epistemic_basis=base_meta.epistemic_basis,
+            claim_mode=base_meta.claim_mode,
+            standing=base_meta.standing,
+            evidence_ref_ids=base_meta.evidence_ref_ids,
+            temporal_scope=base_meta.temporal_scope,
+            domain_metadata=(*base_meta.domain_metadata, rel_extra_entry),
+        )
+
+        assertions_dict[rel_asrt_id] = ParsedAssertion(
+            assertion_id=rel_asrt_id,
+            subject_entity_id=rel.subject_object_id,
+            predicate=rel.predicate,
+            value=ParsedEntityRefValue(entity_id=rel.object_object_id),
+            metadata=combined_meta,
+        )
+
+    return build_parsed_knowledge_revision_from_records(
+        identity=identity,
+        entities=entities_dict,
+        assertions=assertions_dict,
+        aliases=aliases_dict,
+        evidence=evidence_dict,
+    )
+
+
+def decode_legacy_stored_graph_revision(
+    stored_revision: StoredGraphRevision,
+    *,
+    profile_registry: SemanticProfileRegistry | None = None,
+    manifest: LegacyCompatibilityManifest | None = None,
+) -> ParsedKnowledgeRevision:
+    """Decode a StoredGraphRevision through the historical compatibility decoder."""
+    return decode_legacy_graph_revision(
+        revision=stored_revision.revision,
+        graph_payload=stored_revision.graph_payload,
+        profile_registry=profile_registry,
+        manifest=manifest,
+    )
+
+
+# --- Canonical Semantic Witness Generators (§8) ---
+
+def _serialize_witness_metadata(
+    meta: KnowledgeAssertionMetadataV1 | None,
+) -> dict[str, Any] | None:
+    if meta is None:
+        return None
+
+    temp_dict: dict[str, Any]
+    if meta.temporal_scope.kind == TemporalScopeKind.UNKNOWN:
+        temp_dict = {"kind": "unknown"}
+    elif meta.temporal_scope.kind == TemporalScopeKind.WORLD_TIMELESS:
+        temp_dict = {"kind": "world_timeless"}
+    elif meta.temporal_scope.kind == TemporalScopeKind.FICTIONAL_TIME_REF:
+        ref = meta.temporal_scope.fictional_time_ref
+        temp_dict = {
+            "anchor_id": ref.anchor_id if ref else None,
+            "bundle_id": ref.bundle_id if ref else None,
+            "campaign_id": ref.campaign_id if ref else None,
+            "kind": "fictional_time_ref",
+        }
+    else:
+        temp_dict = {"kind": meta.temporal_scope.kind.value}
+
+    c_state = meta.canon_state
+    c_state_str = c_state.value if hasattr(c_state, "value") else str(c_state)
+    e_kind = meta.epistemic_kind
+    e_kind_str = e_kind.value if hasattr(e_kind, "value") else str(e_kind)
+    vis = meta.visibility
+    vis_str = vis.value if hasattr(vis, "value") else str(vis)
+
+    return {
+        "campaign_scope": meta.campaign_scope,
+        "canon_state": c_state_str,
+        "epistemic_kind": e_kind_str,
+        "evidence_ref_ids": sorted(meta.evidence_ref_ids),
+        "session_refs": sorted(meta.session_refs),
+        "temporal_scope": temp_dict,
+        "visibility": vis_str,
+    }
+
+
+def _reconstruct_witness_metadata_from_parsed(
+    meta: ParsedAssertionMetadata,
+) -> dict[str, Any] | None:
+    if meta.claim_mode == "dungeonmind.compat:legacy_coarse":
+        return None
+
+    campaign_scope: str | None = None
+    for b in meta.scope:
+        if b.axis == "dungeonmind.compat:campaign":
+            campaign_scope = b.value
+            break
+
+    # Visibility
+    vis_str = "player"
+    if (
+        isinstance(meta.visibility, ParsedLabelsAnyVisibility)
+        and "audience:gm" in meta.visibility.labels
+    ):
+        vis_str = "gm"
+
+    # Epistemic kind
+    epistemic_kind = meta.epistemic_basis
+    for dm in meta.domain_metadata:
+        if dm.schema_term == "dungeonmind.compat:legacy_epistemic_kind":
+            thawed = thaw_json_value(dm.payload)
+            if isinstance(thawed, dict) and "epistemic_kind" in thawed:
+                epistemic_kind = thawed["epistemic_kind"]
+
+    # Canon state
+    canon_state = (
+        "canonical"
+        if meta.standing == "established"
+        else "provisional"
+        if meta.standing == "provisional"
+        else "retracted"
+    )
+    for dm in meta.domain_metadata:
+        if dm.schema_term == "dungeonmind.compat:legacy_canon_state":
+            thawed = thaw_json_value(dm.payload)
+            if isinstance(thawed, dict) and "canon_state" in thawed:
+                canon_state = thawed["canon_state"]
+
+    # Session refs
+    session_refs: list[str] = []
+    for dm in meta.domain_metadata:
+        if dm.schema_term == "dungeonmind.compat:session_refs":
+            thawed = thaw_json_value(dm.payload)
+            if isinstance(thawed, dict) and "session_refs" in thawed:
+                session_refs = list(thawed["session_refs"])
+
+    # Temporal scope
+    temp_dict: dict[str, Any]
+    if isinstance(meta.temporal_scope, ParsedUnknownTemporalScope):
+        temp_dict = {"kind": "unknown"}
+    elif isinstance(meta.temporal_scope, ParsedTimelessTemporalScope):
+        temp_dict = {"kind": "world_timeless"}
+    elif isinstance(meta.temporal_scope, ParsedDomainTemporalScope):
+        thawed_t = thaw_json_value(meta.temporal_scope.payload)
+        temp_dict = {
+            "anchor_id": thawed_t.get("anchor_id"),
+            "bundle_id": thawed_t.get("bundle_id"),
+            "campaign_id": thawed_t.get("campaign_id"),
+            "kind": "fictional_time_ref",
+        }
+    else:
+        temp_dict = {"kind": meta.temporal_scope.kind}
+
+    return {
+        "campaign_scope": campaign_scope,
+        "canon_state": canon_state,
+        "epistemic_kind": epistemic_kind,
+        "evidence_ref_ids": sorted(meta.evidence_ref_ids),
+        "session_refs": sorted(session_refs),
+        "temporal_scope": temp_dict,
+        "visibility": vis_str,
+    }
+
+
+def build_historical_semantic_witness(snapshot: ParsedGraphSnapshot) -> dict[str, Any]:
+    """Extract canonical semantic witness directly from historical ParsedGraphSnapshot."""
+    # Semantic profile
+    prof_dict = None
+    if snapshot.semantic_profile_ref is not None:
+        prof_dict = {
+            "descriptor_sha256": snapshot.semantic_profile_ref.descriptor_sha256,
+            "profile_id": snapshot.semantic_profile_ref.profile_id,
+            "profile_revision": snapshot.semantic_profile_ref.profile_revision,
+        }
+
+    # Objects
+    witness_objects = []
+    for obj_id in sorted(snapshot.objects.keys()):
+        obj = snapshot.objects[obj_id]
+
+        # Existence
+        if obj.existence_assertion_metadata is not None:
+            exist_id = obj.existence_assertion_metadata.assertion_id
+            exist_meta = _serialize_witness_metadata(obj.existence_assertion_metadata)
+        else:
+            exist_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:existence"
+            exist_meta = None
+
+        # Summary
+        sum_dict = None
+        if obj.summary is not None:
+            if obj.admitted_summary_assertion is not None:
+                sum_meta = _serialize_witness_metadata(
+                    obj.admitted_summary_assertion.assertion_metadata
+                )
+                sum_dict = {
+                    "assertion_id": obj.admitted_summary_assertion.assertion_id,
+                    "evidence_ref_ids": sorted(obj.admitted_summary_assertion.evidence_ref_ids),
+                    "metadata": sum_meta,
+                    "summary": obj.summary,
+                }
+            else:
+                sum_dict = {
+                    "assertion_id": f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:summary",
+                    "evidence_ref_ids": sorted(obj.evidence_ref_ids),
+                    "metadata": None,
+                    "summary": obj.summary,
+                }
+
+        # Aliases
+        alias_list = []
+        if obj.admitted_alias_assertions:
+            for al in sorted(obj.admitted_alias_assertions, key=lambda x: x.assertion_id):
+                alias_list.append({
+                    "alias": al.alias,
+                    "assertion_id": al.assertion_id,
+                    "evidence_ref_ids": sorted(al.evidence_ref_ids),
+                    "metadata": _serialize_witness_metadata(al.assertion_metadata),
+                })
+        else:
+            for al_text in sorted(obj.aliases):
+                al_hash = hashlib.sha256(al_text.encode("utf-8")).hexdigest()[:16]
+                syn_al_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:alias:{al_hash}"
+                alias_list.append({
+                    "alias": al_text,
+                    "assertion_id": syn_al_id,
+                    "evidence_ref_ids": sorted(obj.evidence_ref_ids),
+                    "metadata": None,
+                })
+
+        # Properties
+        prop_list = []
+        for prop in sorted(obj.admitted_property_assertions, key=lambda x: x.assertion_id):
+            prop_list.append({
+                "assertion_id": prop.assertion_id,
+                "evidence_ref_ids": sorted(prop.evidence_ref_ids),
+                "metadata": _serialize_witness_metadata(prop.assertion_metadata),
+                "property_term": prop.property_term,
+                "value": prop.value,
+            })
+
+        # Aspects
+        aspect_list = []
+        for aspect in sorted(obj.admitted_aspect_assertions, key=lambda x: x.assertion_id):
+            aspect_list.append({
+                "aspect_key": aspect.aspect_key,
+                "assertion_id": aspect.assertion_id,
+                "evidence_ref_ids": sorted(aspect.evidence_ref_ids),
+                "kind": aspect.kind,
+                "metadata": _serialize_witness_metadata(aspect.assertion_metadata),
+            })
+
+        witness_objects.append({
+            "alias_assertions": alias_list,
+            "aspect_assertions": aspect_list,
+            "existence_assertion": {
+                "assertion_id": exist_id,
+                "metadata": exist_meta,
+            },
+            "kind": obj.kind,
+            "label": obj.label,
+            "object_id": obj_id,
+            "property_assertions": prop_list,
+            "summary_assertion": sum_dict,
+        })
+
+    # Relationships
+    witness_relationships = []
+    for rel_id in sorted(snapshot.relationships.keys()):
+        rel = snapshot.relationships[rel_id]
+        asrt_id = (
+            rel.assertion_metadata.assertion_id
+            if rel.assertion_metadata is not None
+            else f"asrt:compat:dm_legacy_world_compat_v1:rel:{rel_id}"
+        )
+        eff_src = effective_endpoint_kind(rel, endpoint="source", snapshot=snapshot)
+        eff_tgt = effective_endpoint_kind(rel, endpoint="target", snapshot=snapshot)
+        witness_relationships.append({
+            "assertion_id": asrt_id,
+            "effective_source_kind": eff_src,
+            "effective_target_kind": eff_tgt,
+            "evidence_ref_ids": sorted(rel.evidence_ref_ids),
+            "metadata": _serialize_witness_metadata(rel.assertion_metadata),
+            "object_object_id": rel.object_object_id,
+            "predicate": rel.predicate,
+            "relationship_id": rel.relationship_id,
+            "source_aspect_assertion_id": rel.source_aspect_assertion_id,
+            "subject_object_id": rel.subject_object_id,
+            "target_aspect_assertion_id": rel.target_aspect_assertion_id,
+        })
+
+    # Evidence
+    witness_evidence = []
+    for ev_id in sorted(snapshot.evidence.keys()):
+        ev = snapshot.evidence[ev_id]
+        ev_role_str = str(getattr(ev.evidence_role, "value", ev.evidence_role))
+        src_domain = None
+        sd = getattr(ev, "source_domain", None)
+        if sd is not None:
+            src_domain = str(getattr(sd, "value", sd))
+        witness_evidence.append({
+            "can_highlight_span": ev.can_highlight_span,
+            "can_open_source": ev.can_open_source,
+            "evidence_ref_id": ev.evidence_ref_id,
+            "evidence_role": ev_role_str,
+            "line_ref": getattr(ev, "line_ref", None),
+            "locator": ev.locator,
+            "session_id": getattr(ev, "session_id", None),
+            "source_artifact_id": ev.source_artifact_id,
+            "source_domain": src_domain,
+            "source_locator": getattr(ev, "source_locator", None),
+            "source_revision_id": ev.source_revision_id,
+            "source_span_ref_id": getattr(ev, "source_span_ref_id", None),
+            "uri": ev.uri,
+        })
+
+    return {
+        "evidence": witness_evidence,
+        "graph_schema": snapshot.graph_schema,
+        "objects": witness_objects,
+        "relationships": witness_relationships,
+        "semantic_profile": prof_dict,
+        "world_id": snapshot.world_id,
+    }
+
+
+def build_parsed_revision_semantic_witness(
+    parsed: ParsedKnowledgeRevision,
+) -> dict[str, Any]:
+    """Reconstruct canonical semantic witness from compatibility-normalized revision."""
+    # Semantic profile
+    prof_dict = None
+    if parsed.semantic_profile_ref.profile_id != UNPROFILED_SEMANTIC_PROFILE_ID:
+        prof_dict = {
+            "descriptor_sha256": parsed.semantic_profile_ref.descriptor_sha256,
+            "profile_id": parsed.semantic_profile_ref.profile_id,
+            "profile_revision": parsed.semantic_profile_ref.profile_revision,
+        }
+
+    # Group assertions by subject and predicate/role
+    objects_dict: dict[str, dict[str, Any]] = {}
+    relationship_assertions: list[ParsedAssertion] = []
+
+    for ent_id in sorted(parsed.entities_by_id.keys()):
+        objects_dict[ent_id] = {
+            "alias_assertions": [],
+            "aspect_assertions": [],
+            "existence_assertion": None,
+            "kind": "",
+            "label": "",
+            "object_id": ent_id,
+            "property_assertions": [],
+            "summary_assertion": None,
+        }
+
+    for asrt_id in sorted(parsed.assertions_by_id.keys()):
+        asrt = parsed.assertions_by_id[asrt_id]
+        subj = asrt.subject_entity_id
+
+        if isinstance(asrt.value, ParsedEntityRefValue):
+            relationship_assertions.append(asrt)
+            continue
+
+        obj_record = objects_dict.get(subj)
+        if obj_record is None:
+            continue
+
+        pred = asrt.predicate
+        if isinstance(asrt.value, ParsedLiteralValue):
+            val_payload = thaw_json_value(asrt.value.value)
+        else:
+            val_payload = None
+
+        if pred == "dungeonmind.compat:existence":
+            obj_record["existence_assertion"] = {
+                "assertion_id": asrt.assertion_id,
+                "metadata": _reconstruct_witness_metadata_from_parsed(asrt.metadata),
+            }
+        elif pred == "dungeonmind.compat:kind":
+            obj_record["kind"] = val_payload or ""
+        elif pred == "dungeonmind.compat:label":
+            obj_record["label"] = val_payload or ""
+        elif pred == "dungeonmind.compat:summary":
+            obj_record["summary_assertion"] = {
+                "assertion_id": asrt.assertion_id,
+                "evidence_ref_ids": sorted(asrt.metadata.evidence_ref_ids),
+                "metadata": _reconstruct_witness_metadata_from_parsed(asrt.metadata),
+                "summary": val_payload,
+            }
+        elif pred == "dungeonmind.compat:alias":
+            obj_record["alias_assertions"].append({
+                "alias": val_payload,
+                "assertion_id": asrt.assertion_id,
+                "evidence_ref_ids": sorted(asrt.metadata.evidence_ref_ids),
+                "metadata": _reconstruct_witness_metadata_from_parsed(asrt.metadata),
+            })
+        elif pred == "dungeonmind.compat:aspect":
+            aspect_dict = val_payload if isinstance(val_payload, dict) else {}
+            obj_record["aspect_assertions"].append({
+                "aspect_key": aspect_dict.get("aspect_key", ""),
+                "assertion_id": asrt.assertion_id,
+                "evidence_ref_ids": sorted(asrt.metadata.evidence_ref_ids),
+                "kind": aspect_dict.get("kind", ""),
+                "metadata": _reconstruct_witness_metadata_from_parsed(asrt.metadata),
+            })
+        else:  # Custom property assertion
+            obj_record["property_assertions"].append({
+                "assertion_id": asrt.assertion_id,
+                "evidence_ref_ids": sorted(asrt.metadata.evidence_ref_ids),
+                "metadata": _reconstruct_witness_metadata_from_parsed(asrt.metadata),
+                "property_term": pred,
+                "value": val_payload,
+            })
+
+    # Sort inner assertion collections
+    witness_objects = []
+    for ent_id in sorted(objects_dict.keys()):
+        rec = objects_dict[ent_id]
+        rec["alias_assertions"].sort(key=lambda x: x["assertion_id"])
+        rec["aspect_assertions"].sort(key=lambda x: x["assertion_id"])
+        rec["property_assertions"].sort(key=lambda x: x["assertion_id"])
+        witness_objects.append(rec)
+
+    # Reconstruct Relationships
+    witness_relationships = []
+    for asrt in relationship_assertions:
+        rel_id = asrt.assertion_id
+        src_aspect_id = None
+        tgt_aspect_id = None
+        for dm in asrt.metadata.domain_metadata:
+            if dm.schema_term == "dungeonmind.compat:relationship":
+                thawed_r = thaw_json_value(dm.payload)
+                if isinstance(thawed_r, dict):
+                    rel_id = thawed_r.get("relationship_id", rel_id)
+                    src_aspect_id = thawed_r.get("source_aspect_assertion_id")
+                    tgt_aspect_id = thawed_r.get("target_aspect_assertion_id")
+
+        subj_obj_id = asrt.subject_entity_id
+        if isinstance(asrt.value, ParsedEntityRefValue):
+            target_entity_id = asrt.value.entity_id
+        else:
+            target_entity_id = ""
+
+        # Compute effective endpoint kinds
+        eff_src = objects_dict[subj_obj_id]["kind"]
+        if src_aspect_id:
+            for asp in objects_dict[subj_obj_id]["aspect_assertions"]:
+                if asp["assertion_id"] == src_aspect_id:
+                    eff_src = asp["kind"]
+                    break
+
+        eff_tgt = objects_dict[target_entity_id]["kind"]
+        if tgt_aspect_id:
+            for asp in objects_dict[target_entity_id]["aspect_assertions"]:
+                if asp["assertion_id"] == tgt_aspect_id:
+                    eff_tgt = asp["kind"]
+                    break
+
+        witness_relationships.append({
+            "assertion_id": asrt.assertion_id,
+            "effective_source_kind": eff_src,
+            "effective_target_kind": eff_tgt,
+            "evidence_ref_ids": sorted(asrt.metadata.evidence_ref_ids),
+            "metadata": _reconstruct_witness_metadata_from_parsed(asrt.metadata),
+            "object_object_id": target_entity_id,
+            "predicate": asrt.predicate,
+            "relationship_id": rel_id,
+            "source_aspect_assertion_id": src_aspect_id,
+            "subject_object_id": subj_obj_id,
+            "target_aspect_assertion_id": tgt_aspect_id,
+        })
+
+    witness_relationships.sort(key=lambda x: x["relationship_id"])
+
+    # Reconstruct Evidence
+    witness_evidence = []
+    for ev_id in sorted(parsed.evidence_by_id.keys()):
+        ev = parsed.evidence_by_id[ev_id]
+        src_domain = None
+        session_id = None
+        for dm in ev.domain_metadata:
+            if dm.schema_term == "dungeonmind.compat:evidence_source_domain":
+                thawed_d = thaw_json_value(dm.payload)
+                if isinstance(thawed_d, dict):
+                    src_domain = thawed_d.get("source_domain")
+            elif dm.schema_term == "dungeonmind.compat:evidence_v2_extra":
+                thawed_d = thaw_json_value(dm.payload)
+                if isinstance(thawed_d, dict):
+                    src_domain = thawed_d.get("source_domain")
+                    session_id = thawed_d.get("session_id")
+
+        witness_evidence.append({
+            "can_highlight_span": ev.can_highlight_span,
+            "can_open_source": ev.can_open_source,
+            "evidence_ref_id": ev.evidence_ref_id,
+            "evidence_role": ev.evidence_role,
+            "line_ref": ev.line_ref,
+            "locator": ev.locator,
+            "session_id": session_id,
+            "source_artifact_id": ev.source_artifact_id,
+            "source_domain": src_domain,
+            "source_locator": ev.source_locator,
+            "source_revision_id": ev.source_revision_id,
+            "source_span_ref_id": ev.source_span_ref_id,
+            "uri": ev.uri,
+        })
+
+    return {
+        "evidence": witness_evidence,
+        "graph_schema": parsed.graph_schema,
+        "objects": witness_objects,
+        "relationships": witness_relationships,
+        "semantic_profile": prof_dict,
+        "world_id": parsed.space_id,
+    }
+
+
+def verify_historical_semantic_parity(
+    snapshot: ParsedGraphSnapshot,
+    parsed: ParsedKnowledgeRevision,
+) -> tuple[bool, str, str]:
+    """Verify exact canonical semantic parity between historical snapshot and parsed revision."""
+    hist_witness = build_historical_semantic_witness(snapshot)
+    parsed_witness = build_parsed_revision_semantic_witness(parsed)
+
+    hist_sha = canonical_sha256(hist_witness)
+    parsed_sha = canonical_sha256(parsed_witness)
+
+    return hist_sha == parsed_sha, hist_sha, parsed_sha

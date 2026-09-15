@@ -23,6 +23,20 @@ from .frozen_json import (
     freeze_json_value,
     thaw_json_value,
 )
+from .legacy_compat import (
+    COMPATIBILITY_DOMAIN_CONTRACT_ID,
+    COMPATIBILITY_DOMAIN_CONTRACT_REVISION,
+    COMPATIBILITY_MANIFEST_SHA256,
+    COMPATIBILITY_MAPPING_REVISION,
+    LegacyCompatibilityManifest,
+    build_historical_semantic_witness,
+    build_parsed_revision_semantic_witness,
+    decode_legacy_graph_revision,
+    decode_legacy_stored_graph_revision,
+    load_legacy_world_compat_manifest,
+    validate_stored_legacy_graph_revision,
+    verify_historical_semantic_parity,
+)
 from .model import (
     PARSED_REVISION_FORMAT_VERSION,
     ParsedKnowledgeRevision,
@@ -57,11 +71,16 @@ from .records import (
 )
 
 __all__ = [
+    "COMPATIBILITY_DOMAIN_CONTRACT_ID",
+    "COMPATIBILITY_DOMAIN_CONTRACT_REVISION",
+    "COMPATIBILITY_MANIFEST_SHA256",
+    "COMPATIBILITY_MAPPING_REVISION",
     "PARSED_REVISION_FORMAT_VERSION",
     "DecodedKnowledgeContent",
     "FrozenDict",
     "FrozenJsonValue",
     "LegacyCompatibilityIntegrityError",
+    "LegacyCompatibilityManifest",
     "ParsedAssertion",
     "ParsedAssertionMetadata",
     "ParsedAssertionValue",
@@ -88,12 +107,19 @@ __all__ = [
     "ParsedUtcIntervalTemporalScope",
     "ParsedVisibility",
     "RevisionStructuralIntegrityError",
+    "build_historical_semantic_witness",
     "build_parsed_knowledge_revision",
     "build_parsed_knowledge_revision_from_records",
+    "build_parsed_revision_semantic_witness",
     "canonical_json_bytes",
     "canonical_json_text",
     "compute_compatibility_key",
     "compute_semantic_digest",
+    "decode_legacy_graph_revision",
+    "decode_legacy_stored_graph_revision",
     "freeze_json_value",
+    "load_legacy_world_compat_manifest",
     "thaw_json_value",
+    "validate_stored_legacy_graph_revision",
+    "verify_historical_semantic_parity",
 ]
