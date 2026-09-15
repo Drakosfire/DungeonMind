@@ -1,0 +1,69 @@
+{
+  "benchmark_schema": "vnext_parsed_revision_benchmark_v1",
+  "build_elapsed_ms": 7004.647,
+  "cardinalities": {
+    "alias_count": 2000,
+    "assertion_count": 10000,
+    "entity_count": 5000,
+    "evidence_count": 2500,
+    "unique_alias_keys_indexed": 396,
+    "unique_lexical_tokens_indexed": 61,
+    "unique_literal_keys_indexed": 5069,
+    "unique_subjects_indexed": 5000
+  },
+  "compatibility_key": "b795c672dbf87394b83ebaba42976b54994b257ed5beefa93b7cc184f82bc9e5",
+  "format_version": "vnext_parsed_revision_v1",
+  "lookup_latencies_us": {
+    "adjacency_lookup": {
+      "p50_us": 0.425,
+      "p95_us": 0.861,
+      "samples": 1000
+    },
+    "alias_exact_lookup": {
+      "p50_us": 0.484,
+      "p95_us": 0.769,
+      "samples": 1000
+    },
+    "evidence_supporter_lookup": {
+      "p50_us": 4.713,
+      "p95_us": 6.919,
+      "samples": 1000
+    },
+    "exact_entity_lookup": {
+      "p50_us": 0.462,
+      "p95_us": 0.92,
+      "samples": 1000
+    },
+    "lexical_candidate_lookup": {
+      "p50_us": 0.49,
+      "p95_us": 0.952,
+      "samples": 61
+    },
+    "literal_exact_lookup": {
+      "p50_us": 0.484,
+      "p95_us": 0.829,
+      "samples": 1000
+    },
+    "subject_assertion_lookup": {
+      "p50_us": 2.335,
+      "p95_us": 3.672,
+      "samples": 1000
+    }
+  },
+  "peak_traced_memory_bytes": 50888916,
+  "peak_traced_memory_mb": 48.53,
+  "semantic_digest": "8b51a341d7464710be1410421a843d31fa2e84e9387d0043e131575d44d2379d",
+  "timestamp_utc": "2026-09-15T17:00:07.229647+00:00",
+  "workload": {
+    "alias_count": 2000,
+    "assertion_count": 10000,
+    "entity_count": 5000,
+    "entity_ref_assertion_count": 2959,
+    "evidence_count": 2500,
+    "seed": 42,
+    "size": 10000,
+    "workload_digest": "294965feb5dce50c6ee421a0493e082f626e07eca3b2d4931efc8846cc38a12a",
+    "workload_name": "vnext_parsed_revision_synthetic_characterization",
+    "workload_version": "v1"
+  }
+}
