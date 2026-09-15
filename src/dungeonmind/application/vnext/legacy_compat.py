@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -51,7 +52,7 @@ from .frozen_json import (
     freeze_json_value,
     thaw_json_value,
 )
-from .model import ParsedKnowledgeRevision
+from .model import PARSED_REVISION_FORMAT_VERSION, ParsedKnowledgeRevision
 from .records import (
     ParsedAssertion,
     ParsedAssertionMetadata,
@@ -73,15 +74,19 @@ from .records import (
     ParsedVisibility,
 )
 
-# Manifest location and pinned identities
-MANIFEST_PATH = Path("Docs/Compatibility/dm_legacy_world_compat_v1.json")
+# Packaged resource (library-safe) + audit Docs copy path
+_PACKAGED_MANIFEST_RESOURCE = "dm_legacy_world_compat_v1.json"
+DOCS_MANIFEST_AUDIT_PATH = Path("Docs/Compatibility/dm_legacy_world_compat_v1.json")
 COMPATIBILITY_MAPPING_REVISION = "dm_legacy_world_compat_v1"
-COMPATIBILITY_MANIFEST_SHA256 = "f93d00e70b6587050bbf06d8a045bfa120ad2e01d01e9dcd36447e3fbb0c7ce6"
+COMPATIBILITY_MANIFEST_SHA256 = (
+    "4de99b3b29e986e8e3afaf0ebefa655f012e9aaa11ee3b7aa296e0a23ff7ea2a"
+)
 COMPATIBILITY_DOMAIN_CONTRACT_ID = "dungeonmind.compat.legacy_world"
 COMPATIBILITY_DOMAIN_CONTRACT_REVISION = "1"
 UNPROFILED_SEMANTIC_PROFILE_ID = "legacy.unprofiled"
 UNPROFILED_SEMANTIC_PROFILE_REVISION = "none"
 UNPROFILED_DESCRIPTOR_SHA256 = "0" * 64
+LEGACY_COMPATIBILITY_IDENTITY_KIND = "dm_legacy_world_compat_identity_v1"
 
 SUPPORTED_HISTORICAL_SCHEMAS: frozenset[str] = frozenset([
     GRAPH_SCHEMA_V1,
@@ -92,61 +97,237 @@ SUPPORTED_HISTORICAL_SCHEMAS: frozenset[str] = frozenset([
     GRAPH_SCHEMA_V6,
 ])
 
+_MANIFEST_TOP_LEVEL_KEYS: tuple[str, ...] = (
+    "manifest_schema",
+    "compatibility_mapping_revision",
+    "vnext_format_version",
+    "parsed_format_version",
+    "domain_contract_id",
+    "domain_contract_revision",
+    "unprofiled_semantic_profile_id",
+    "unprofiled_semantic_profile_revision",
+    "unprofiled_descriptor_sha256",
+    "supported_historical_schemas",
+    "synthetic_assertion_id_templates",
+    "predicate_mappings",
+    "scope_and_visibility_rules",
+    "v1_v3_coarse_metadata_rules",
+    "epistemic_translation_rules",
+    "canon_state_translation_rules",
+    "temporal_translation_rules",
+    "evidence_translation_rules",
+    "relationship_aspect_rules",
+    "identity_alias_admission_rules",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class LegacyCompatibilityManifest:
-    """Internal verified manifest defining legacy compatibility mapping rules."""
+    """Verified compatibility mapping identity + executable mapping semantics."""
 
     manifest_schema: str
     compatibility_mapping_revision: str
     vnext_format_version: str
+    parsed_format_version: str
     domain_contract_id: str
     domain_contract_revision: str
     unprofiled_semantic_profile_id: str
     unprofiled_semantic_profile_revision: str
+    unprofiled_descriptor_sha256: str
     supported_historical_schemas: tuple[str, ...]
+    synthetic_assertion_id_templates: Mapping[str, str]
+    predicate_mappings: Mapping[str, str]
+    scope_and_visibility_rules: Mapping[str, Any]
+    v1_v3_coarse_metadata_rules: Mapping[str, Any]
+    epistemic_translation_rules: Mapping[str, Any]
+    canon_state_translation_rules: Mapping[str, Any]
+    temporal_translation_rules: Mapping[str, Any]
+    evidence_translation_rules: Mapping[str, Any]
+    relationship_aspect_rules: Mapping[str, Any]
+    identity_alias_admission_rules: Mapping[str, Any]
     manifest_sha256: str
+
+    def to_canonical_dict(self) -> dict[str, Any]:
+        """Reconstruct the canonical manifest document for digest verification."""
+        return {
+            "manifest_schema": self.manifest_schema,
+            "compatibility_mapping_revision": self.compatibility_mapping_revision,
+            "vnext_format_version": self.vnext_format_version,
+            "parsed_format_version": self.parsed_format_version,
+            "domain_contract_id": self.domain_contract_id,
+            "domain_contract_revision": self.domain_contract_revision,
+            "unprofiled_semantic_profile_id": self.unprofiled_semantic_profile_id,
+            "unprofiled_semantic_profile_revision": (
+                self.unprofiled_semantic_profile_revision
+            ),
+            "unprofiled_descriptor_sha256": self.unprofiled_descriptor_sha256,
+            "supported_historical_schemas": list(self.supported_historical_schemas),
+            "synthetic_assertion_id_templates": dict(
+                self.synthetic_assertion_id_templates
+            ),
+            "predicate_mappings": dict(self.predicate_mappings),
+            "scope_and_visibility_rules": dict(self.scope_and_visibility_rules),
+            "v1_v3_coarse_metadata_rules": dict(self.v1_v3_coarse_metadata_rules),
+            "epistemic_translation_rules": dict(self.epistemic_translation_rules),
+            "canon_state_translation_rules": dict(self.canon_state_translation_rules),
+            "temporal_translation_rules": dict(self.temporal_translation_rules),
+            "evidence_translation_rules": dict(self.evidence_translation_rules),
+            "relationship_aspect_rules": dict(self.relationship_aspect_rules),
+            "identity_alias_admission_rules": dict(
+                self.identity_alias_admission_rules
+            ),
+        }
+
+
+def _read_packaged_manifest_bytes() -> bytes:
+    package = resources.files("dungeonmind.application.vnext.data")
+    resource = package.joinpath(_PACKAGED_MANIFEST_RESOURCE)
+    with resources.as_file(resource) as path:
+        return path.read_bytes()
+
+
+def _manifest_from_raw(raw_data: dict[str, Any]) -> LegacyCompatibilityManifest:
+    missing = [k for k in _MANIFEST_TOP_LEVEL_KEYS if k not in raw_data]
+    if missing:
+        raise LegacyCompatibilityIntegrityError(
+            f"compatibility manifest missing required keys: {missing}",
+            details={"missing_keys": missing},
+        )
+    return LegacyCompatibilityManifest(
+        manifest_schema=str(raw_data["manifest_schema"]),
+        compatibility_mapping_revision=str(raw_data["compatibility_mapping_revision"]),
+        vnext_format_version=str(raw_data["vnext_format_version"]),
+        parsed_format_version=str(raw_data["parsed_format_version"]),
+        domain_contract_id=str(raw_data["domain_contract_id"]),
+        domain_contract_revision=str(raw_data["domain_contract_revision"]),
+        unprofiled_semantic_profile_id=str(raw_data["unprofiled_semantic_profile_id"]),
+        unprofiled_semantic_profile_revision=str(
+            raw_data["unprofiled_semantic_profile_revision"]
+        ),
+        unprofiled_descriptor_sha256=str(raw_data["unprofiled_descriptor_sha256"]),
+        supported_historical_schemas=tuple(raw_data["supported_historical_schemas"]),
+        synthetic_assertion_id_templates=dict(
+            raw_data["synthetic_assertion_id_templates"]
+        ),
+        predicate_mappings=dict(raw_data["predicate_mappings"]),
+        scope_and_visibility_rules=dict(raw_data["scope_and_visibility_rules"]),
+        v1_v3_coarse_metadata_rules=dict(raw_data["v1_v3_coarse_metadata_rules"]),
+        epistemic_translation_rules=dict(raw_data["epistemic_translation_rules"]),
+        canon_state_translation_rules=dict(raw_data["canon_state_translation_rules"]),
+        temporal_translation_rules=dict(raw_data["temporal_translation_rules"]),
+        evidence_translation_rules=dict(raw_data["evidence_translation_rules"]),
+        relationship_aspect_rules=dict(raw_data["relationship_aspect_rules"]),
+        identity_alias_admission_rules=dict(
+            raw_data["identity_alias_admission_rules"]
+        ),
+        manifest_sha256=canonical_sha256(raw_data),
+    )
+
+
+def verify_legacy_compatibility_manifest(
+    manifest: LegacyCompatibilityManifest,
+) -> LegacyCompatibilityManifest:
+    """Fail closed unless the manifest's declared digest matches its content."""
+    computed = canonical_sha256(manifest.to_canonical_dict())
+    if computed != manifest.manifest_sha256:
+        raise LegacyCompatibilityIntegrityError(
+            "injected compatibility manifest digest mismatch: "
+            f"declared {manifest.manifest_sha256}, computed {computed}",
+            details={
+                "declared_sha256": manifest.manifest_sha256,
+                "computed_sha256": computed,
+            },
+        )
+    return manifest
 
 
 def load_legacy_world_compat_manifest(
-    path: Path | str = MANIFEST_PATH,
+    path: Path | str | None = None,
 ) -> LegacyCompatibilityManifest:
-    """Load and verify the checked-in compatibility manifest."""
-    manifest_file = Path(path)
-    if not manifest_file.exists():
-        raise LegacyCompatibilityIntegrityError(
-            f"compatibility manifest not found at {manifest_file}",
-            details={"path": str(manifest_file)},
-        )
-    try:
-        raw_data = json.loads(manifest_file.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise LegacyCompatibilityIntegrityError(
-            f"failed to parse compatibility manifest {manifest_file}: {exc}",
-            details={"path": str(manifest_file)},
-        ) from exc
+    """Load and verify the packaged (or explicit audit-path) compatibility manifest."""
+    if path is None:
+        try:
+            raw_bytes = _read_packaged_manifest_bytes()
+            raw_data = json.loads(raw_bytes.decode("utf-8"))
+        except Exception as exc:
+            raise LegacyCompatibilityIntegrityError(
+                f"failed to load packaged compatibility manifest: {exc}",
+                details={"resource": _PACKAGED_MANIFEST_RESOURCE},
+            ) from exc
+    else:
+        manifest_file = Path(path)
+        if not manifest_file.exists():
+            raise LegacyCompatibilityIntegrityError(
+                f"compatibility manifest not found at {manifest_file}",
+                details={"path": str(manifest_file)},
+            )
+        try:
+            raw_data = json.loads(manifest_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise LegacyCompatibilityIntegrityError(
+                f"failed to parse compatibility manifest {manifest_file}: {exc}",
+                details={"path": str(manifest_file)},
+            ) from exc
 
-    computed_sha = canonical_sha256(raw_data)
-    if computed_sha != COMPATIBILITY_MANIFEST_SHA256:
+    if not isinstance(raw_data, dict):
+        raise LegacyCompatibilityIntegrityError(
+            "compatibility manifest must be a JSON object",
+            details={"type": type(raw_data).__name__},
+        )
+
+    manifest = _manifest_from_raw(raw_data)
+    if path is None and manifest.manifest_sha256 != COMPATIBILITY_MANIFEST_SHA256:
         raise LegacyCompatibilityIntegrityError(
             "compatibility manifest digest mismatch: "
-            f"expected {COMPATIBILITY_MANIFEST_SHA256}, got {computed_sha}",
+            f"expected {COMPATIBILITY_MANIFEST_SHA256}, got {manifest.manifest_sha256}",
             details={
                 "expected_sha256": COMPATIBILITY_MANIFEST_SHA256,
-                "computed_sha256": computed_sha,
+                "computed_sha256": manifest.manifest_sha256,
             },
         )
+    return verify_legacy_compatibility_manifest(manifest)
 
-    return LegacyCompatibilityManifest(
-        manifest_schema=raw_data["manifest_schema"],
-        compatibility_mapping_revision=raw_data["compatibility_mapping_revision"],
-        vnext_format_version=raw_data["vnext_format_version"],
-        domain_contract_id=raw_data["domain_contract_id"],
-        domain_contract_revision=raw_data["domain_contract_revision"],
-        unprofiled_semantic_profile_id=raw_data["unprofiled_semantic_profile_id"],
-        unprofiled_semantic_profile_revision=raw_data["unprofiled_semantic_profile_revision"],
-        supported_historical_schemas=tuple(raw_data["supported_historical_schemas"]),
-        manifest_sha256=computed_sha,
+
+def compute_legacy_compatibility_key(
+    *,
+    mapping_revision: str,
+    mapping_manifest_sha256: str,
+    graph_schema: str,
+    historical_parse_compatibility_id: str,
+    semantic_profile_ref: ParsedSemanticProfileRef,
+    parsed_format_version: str,
+    legacy_payload_sha256: str,
+) -> str:
+    """Legacy-specific compatibility identity (does not alter native V1.1 keys)."""
+    payload = {
+        "kind": LEGACY_COMPATIBILITY_IDENTITY_KIND,
+        "mapping_revision": mapping_revision,
+        "mapping_manifest_sha256": mapping_manifest_sha256,
+        "graph_schema": graph_schema,
+        "historical_parse_compatibility_id": historical_parse_compatibility_id,
+        "semantic_profile_ref": {
+            "profile_id": semantic_profile_ref.profile_id,
+            "profile_revision": semantic_profile_ref.profile_revision,
+            "descriptor_sha256": semantic_profile_ref.descriptor_sha256,
+        },
+        "parsed_format_version": parsed_format_version,
+        "legacy_payload_sha256": legacy_payload_sha256,
+    }
+    return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+def _synthetic_v1_alias_assertion_id(
+    object_id: str,
+    *,
+    occurrence: int,
+    alias_text: str,
+    template: str,
+) -> str:
+    alias_sha256 = hashlib.sha256(alias_text.encode("utf-8")).hexdigest()
+    return (
+        template.replace("{object_id}", object_id)
+        .replace("{occurrence}", str(occurrence))
+        .replace("{alias_sha256}", alias_sha256)
     )
 
 
@@ -313,7 +494,10 @@ def decode_legacy_graph_revision(
     """Decode a legacy stored revision into an immutable ParsedKnowledgeRevision."""
     validate_stored_legacy_graph_revision(revision, graph_payload)
 
-    manifest_obj = manifest if manifest is not None else load_legacy_world_compat_manifest()
+    if manifest is None:
+        manifest_obj = load_legacy_world_compat_manifest()
+    else:
+        manifest_obj = verify_legacy_compatibility_manifest(manifest)
 
     reader = VersionedUnionGraphSnapshotReader(profile_registry=profile_registry)
     try:
@@ -344,7 +528,7 @@ def decode_legacy_graph_revision(
         semantic_profile_ref = ParsedSemanticProfileRef(
             profile_id=manifest_obj.unprofiled_semantic_profile_id,
             profile_revision=manifest_obj.unprofiled_semantic_profile_revision,
-            descriptor_sha256=UNPROFILED_DESCRIPTOR_SHA256,
+            descriptor_sha256=manifest_obj.unprofiled_descriptor_sha256,
         )
 
     identity = ParsedKnowledgeRevisionIdentity(
@@ -576,10 +760,15 @@ def decode_legacy_graph_revision(
                         standing=KnowledgeStanding.ESTABLISHED,
                     )
         else:
-            # v1 plain aliases
-            for alias_text in obj.aliases:
-                alias_hash = hashlib.sha256(alias_text.encode("utf-8")).hexdigest()[:16]
-                al_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:alias:{alias_hash}"
+            # v1 plain aliases — occurrence + full sha256 (multiplicity-safe)
+            alias_template = manifest_obj.synthetic_assertion_id_templates["alias"]
+            for occurrence, alias_text in enumerate(obj.aliases):
+                al_id = _synthetic_v1_alias_assertion_id(
+                    obj_id,
+                    occurrence=occurrence,
+                    alias_text=alias_text,
+                    template=alias_template,
+                )
                 if al_id in assertions_dict:
                     raise LegacyCompatibilityIntegrityError(
                         f"duplicate alias assertion ID {al_id!r}",
@@ -748,13 +937,23 @@ def decode_legacy_graph_revision(
             metadata=combined_meta,
         )
 
-    return build_parsed_knowledge_revision_from_records(
+    parsed = build_parsed_knowledge_revision_from_records(
         identity=identity,
         entities=entities_dict,
         assertions=assertions_dict,
         aliases=aliases_dict,
         evidence=evidence_dict,
     )
+    legacy_key = compute_legacy_compatibility_key(
+        mapping_revision=manifest_obj.compatibility_mapping_revision,
+        mapping_manifest_sha256=manifest_obj.manifest_sha256,
+        graph_schema=revision.graph_schema,
+        historical_parse_compatibility_id=reader.parse_compatibility_id,
+        semantic_profile_ref=semantic_profile_ref,
+        parsed_format_version=PARSED_REVISION_FORMAT_VERSION,
+        legacy_payload_sha256=revision.graph_payload_sha256,
+    )
+    return replace(parsed, compatibility_key=legacy_key)
 
 
 def decode_legacy_stored_graph_revision(
@@ -948,15 +1147,24 @@ def build_historical_semantic_witness(snapshot: ParsedGraphSnapshot) -> dict[str
                     "metadata": _serialize_witness_metadata(al.assertion_metadata),
                 })
         else:
-            for al_text in sorted(obj.aliases):
-                al_hash = hashlib.sha256(al_text.encode("utf-8")).hexdigest()[:16]
-                syn_al_id = f"asrt:compat:dm_legacy_world_compat_v1:{obj_id}:alias:{al_hash}"
+            alias_template = (
+                "asrt:compat:dm_legacy_world_compat_v1:"
+                "{object_id}:alias:{occurrence}:{alias_sha256}"
+            )
+            for occurrence, al_text in enumerate(obj.aliases):
+                syn_al_id = _synthetic_v1_alias_assertion_id(
+                    obj_id,
+                    occurrence=occurrence,
+                    alias_text=al_text,
+                    template=alias_template,
+                )
                 alias_list.append({
                     "alias": al_text,
                     "assertion_id": syn_al_id,
                     "evidence_ref_ids": sorted(obj.evidence_ref_ids),
                     "metadata": None,
                 })
+            alias_list.sort(key=lambda item: item["assertion_id"])
 
         # Properties
         prop_list = []

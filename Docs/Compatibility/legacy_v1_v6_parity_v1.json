@@ -1,29 +1,29 @@
 {
   "artifact_schema": "dm_legacy_compatibility_parity_artifact_v1",
   "compatibility_mapping_revision": "dm_legacy_world_compat_v1",
-  "manifest_sha256": "f93d00e70b6587050bbf06d8a045bfa120ad2e01d01e9dcd36447e3fbb0c7ce6",
+  "manifest_sha256": "4de99b3b29e986e8e3afaf0ebefa655f012e9aaa11ee3b7aa296e0a23ff7ea2a",
   "records": [
     {
       "alias_assertion_count": 2,
       "assertion_count": 13,
-      "compat_witness_sha256": "634f47869ec03ab68a11465f46cc0f28795f1dbaafb02470090d7c3459f266d1",
-      "compatibility_key": "c081001ed6eaf076624930ec7598711ff7447efe2b601410661ea5414f55b2fc",
+      "compat_witness_sha256": "d462929da9fe9d4645fe8123c99a725b92fc3a3e4d61405dee22edec7ce1f453",
+      "compatibility_key": "cd0f623d29032a7c570a4a152626293bc66029ceb1e19f4c7f9bc81ad4b0afb9",
       "entity_count": 3,
       "entity_ref_assertion_count": 2,
       "evidence_count": 5,
       "graph_schema": "dm_union_graph_v1",
-      "historical_witness_sha256": "634f47869ec03ab68a11465f46cc0f28795f1dbaafb02470090d7c3459f266d1",
+      "historical_witness_sha256": "d462929da9fe9d4645fe8123c99a725b92fc3a3e4d61405dee22edec7ce1f453",
       "identity_alias_count": 2,
       "legacy_payload_sha256": "89228aad7fa09e1859d30d87f45f39ca68ec2c42a7ff1c6e266458e0dfcc38dd",
       "parity": "PASS",
-      "semantic_digest": "324770b589e3924d8944fa7904c2d8b07d8f93b143df55472f2d5f2acd6b1e23",
+      "semantic_digest": "69ce406c51a0698169d451d6283ee2440b2077d7156d44af28f782c049d296bc",
       "workload_identity": "canonical_fixture_v1"
     },
     {
       "alias_assertion_count": 2,
       "assertion_count": 6,
       "compat_witness_sha256": "7b09a660db9b60120ecbd4a4c1deeb949d69c35e2ff5ce90023fa49695f6999c",
-      "compatibility_key": "01db81ba504a6ead46b323572228f06ae8eab446c8edf9479a230b7158411f54",
+      "compatibility_key": "fe79d902711f285d2c7a98b7f62311ffc46a66813f235753653c9550f66e8fa6",
       "entity_count": 1,
       "entity_ref_assertion_count": 0,
       "evidence_count": 4,
@@ -32,14 +32,14 @@
       "identity_alias_count": 2,
       "legacy_payload_sha256": "f03402aebc8dd2640b93d19f184a480bee5b7b6ed6bf089d153d22d720be8652",
       "parity": "PASS",
-      "semantic_digest": "38b3a5467ac0ed940d431e544e9c0d90e94497c5af732623256f862925baf247",
+      "semantic_digest": "3e6570d132a5966e3e368057309956f78f2ea2f97fea4a9af223a0351c67d558",
       "workload_identity": "canonical_fixture_v2"
     },
     {
       "alias_assertion_count": 1,
       "assertion_count": 9,
       "compat_witness_sha256": "c67414d0ac81c0e174136b9140133b8e9b57362e2ffeaa0c0a549a9180b81d85",
-      "compatibility_key": "f0ea10035555631e103d80f2212bc98de14c565d99a0d2cc67c51a98a48f0e2c",
+      "compatibility_key": "e08419b5830fc891a09a7c616ff1ef8ef40a7eae91a41ba1ca7623b2412b0b60",
       "entity_count": 2,
       "entity_ref_assertion_count": 1,
       "evidence_count": 5,
@@ -48,14 +48,14 @@
       "identity_alias_count": 1,
       "legacy_payload_sha256": "b351e5ea3470258fa4bbad88e5fc6597938eec11fc9949f8d84ec20de1658d0e",
       "parity": "PASS",
-      "semantic_digest": "926e6ae2c6858f14483cd016c16e57c425df5ad858bd503e3cec99e0ffc150e9",
+      "semantic_digest": "406a303a61898faf23b904f46f75014efd4ad0e5bb01ca7e0d0774f5594e736a",
       "workload_identity": "canonical_fixture_v3"
     },
     {
       "alias_assertion_count": 4,
       "assertion_count": 27,
       "compat_witness_sha256": "7e62334d5afe7cf507a2d19c513f9b0e2f6f709f7e3aee328b0069105809148b",
-      "compatibility_key": "9931a43731afff9ab1d0d46467473c8b04e127210e64ffc208f692800fc13bfb",
+      "compatibility_key": "628d14fe14447e9a1e69bc2db874ef8ea49f509c2f191a80651abcce6c4e9fd0",
       "entity_count": 5,
       "entity_ref_assertion_count": 3,
       "evidence_count": 3,
@@ -64,14 +64,14 @@
       "identity_alias_count": 0,
       "legacy_payload_sha256": "ecf8672767ea7c71b205b061437ae427b3d85c41b189e48db47b8dde102209cc",
       "parity": "PASS",
-      "semantic_digest": "a4411edfa640dffccaba2be472aa7b6ef6b85c4c84292c7326ca0278a09f1ebd",
+      "semantic_digest": "0be9fbbd83a595ac6fb6f96e970c50c430faf1719266c69c7c4e9dc1b74c6875",
       "workload_identity": "canonical_fixture_v4"
     },
     {
       "alias_assertion_count": 1,
       "assertion_count": 6,
       "compat_witness_sha256": "4f008b233e0cde0c07f13236aa8b670ee185aa3e4c5ec1d60fe2df3e5bad3061",
-      "compatibility_key": "4c5b7f37e88f022a98aa54d2b761675e3655329fc151fcd50b1b3250566ff9ec",
+      "compatibility_key": "c9fb30cf10ba7b70caf699d6db1e4cd691e7e50f2bb1b5c65489d4a62e83952e",
       "entity_count": 1,
       "entity_ref_assertion_count": 1,
       "evidence_count": 1,
@@ -80,14 +80,14 @@
       "identity_alias_count": 0,
       "legacy_payload_sha256": "55eea23e1ce209d41f2cbfe5da2a272ada97947ece9ff606b3237729403c8b66",
       "parity": "PASS",
-      "semantic_digest": "4d34439069b70f16b9ad052e27b8ea0d4491f94359f935925e5647f3876425f1",
+      "semantic_digest": "530b183bba062a0f4fab5a5ccb531f8ce6de85429261e05b818d097f38a02a8e",
       "workload_identity": "canonical_fixture_v5"
     },
     {
       "alias_assertion_count": 0,
       "assertion_count": 13,
       "compat_witness_sha256": "b349c6faee752be9010ea4f9696c0061dee216542404c4d123da62e8f25749f2",
-      "compatibility_key": "346cf7383251290eca1b55bc47b49e6be38f8f09692a61abf1689010a123e5ee",
+      "compatibility_key": "6133685b97acd60bc33ec4116ebe5de14865d9bfb626870e3d9ed9dae095d356",
       "entity_count": 3,
       "entity_ref_assertion_count": 2,
       "evidence_count": 1,
@@ -96,11 +96,11 @@
       "identity_alias_count": 0,
       "legacy_payload_sha256": "0e10e758e7cf55e25e56f1fe3c3e940b261846853c649c211d5b08e9db979651",
       "parity": "PASS",
-      "semantic_digest": "d2d2b091213d881b963a1991702960be662cdacb389c3cf2021cd184228506aa",
+      "semantic_digest": "7ed539c2010ae0d3f975712acbfa4c9324ddb67474b1d2766fdc6e1ace051a18",
       "workload_identity": "canonical_fixture_v6"
     }
   ],
   "records_count": 6,
-  "records_digest": "f64b85c2c1b3f566a499ca0699e2480256394e81a407acade626c683a54df73c",
+  "records_digest": "e4d70f26ca17274f85f1aab37b2fb282e836c1e51126fefafdc0604591f7a01e",
   "vnext_format_version": "parsed_knowledge_revision_v1"
 }

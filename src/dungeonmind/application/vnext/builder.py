@@ -368,6 +368,11 @@ def build_parsed_knowledge_revision_from_records(
     """
     if isinstance(entities, Mapping):
         entities_dict = dict(entities)
+        for key, ent in entities_dict.items():
+            if key != ent.entity_id:
+                raise RevisionStructuralIntegrityError(
+                    f"Entity mapping key {key!r} does not match entity_id {ent.entity_id!r}"
+                )
     else:
         entities_dict = {}
         for ent in entities:
@@ -378,6 +383,12 @@ def build_parsed_knowledge_revision_from_records(
 
     if isinstance(evidence, Mapping):
         evidence_dict = dict(evidence)
+        for key, ev in evidence_dict.items():
+            if key != ev.evidence_ref_id:
+                raise RevisionStructuralIntegrityError(
+                    "Evidence mapping key "
+                    f"{key!r} does not match evidence_ref_id {ev.evidence_ref_id!r}"
+                )
     else:
         evidence_dict = {}
         for ev in evidence:
@@ -388,6 +399,11 @@ def build_parsed_knowledge_revision_from_records(
 
     if isinstance(aliases, Mapping):
         aliases_dict = dict(aliases)
+        for key, al in aliases_dict.items():
+            if key != al.alias_id:
+                raise RevisionStructuralIntegrityError(
+                    f"Alias mapping key {key!r} does not match alias_id {al.alias_id!r}"
+                )
     else:
         aliases_dict = {}
         for al in aliases:
@@ -410,6 +426,12 @@ def build_parsed_knowledge_revision_from_records(
 
     if isinstance(assertions, Mapping):
         assertions_dict = dict(assertions)
+        for key, asrt in assertions_dict.items():
+            if key != asrt.assertion_id:
+                raise RevisionStructuralIntegrityError(
+                    "Assertion mapping key "
+                    f"{key!r} does not match assertion_id {asrt.assertion_id!r}"
+                )
     else:
         assertions_dict = {}
         for asrt in assertions:

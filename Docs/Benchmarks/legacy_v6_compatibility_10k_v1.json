@@ -10,56 +10,58 @@
     "unique_literal_keys_indexed": 4011,
     "unique_subjects_indexed": 3000
   },
-  "compatibility_key": "346cf7383251290eca1b55bc47b49e6be38f8f09692a61abf1689010a123e5ee",
+  "compatibility_key": "6db0b751ae5d3fbc185f15e4c31607f0051cb0a98010fc4561db4ac18e9e02f3",
   "compatibility_mapping_revision": "dm_legacy_world_compat_v1",
   "graph_schema": "dm_union_graph_v6",
+  "historical_parse_compatibility_id": "VersionedUnionGraphSnapshotReader:f3c645fddca5dcd17b906ac8df892e217c42cccdc1e19e1ab56a55d286029e56",
+  "legacy_payload_sha256": "8a341cdf959d59952b10f710113698d6961772205455934993fa3c6472db588a",
   "lookup_latencies_us": {
     "adjacency_lookup": {
-      "p50_us": 0.504,
-      "p95_us": 0.989,
+      "p50_us": 0.688,
+      "p95_us": 1.25,
       "samples": 200
     },
     "evidence_lookup": {
-      "p50_us": 0.423,
-      "p95_us": 0.873,
+      "p50_us": 0.602,
+      "p95_us": 0.957,
       "samples": 200
     },
     "exact_entity_lookup": {
-      "p50_us": 0.546,
-      "p95_us": 1.003,
+      "p50_us": 0.794,
+      "p95_us": 1.292,
       "samples": 200
     },
     "lexical_candidate_lookup": {
-      "p50_us": 0.535,
-      "p95_us": 1.037,
+      "p50_us": 0.735,
+      "p95_us": 1.301,
       "samples": 200
     },
     "literal_exact_lookup": {
-      "p50_us": 0.463,
-      "p95_us": 0.851,
+      "p50_us": 0.63,
+      "p95_us": 1.13,
       "samples": 200
     },
     "subject_assertion_lookup": {
-      "p50_us": 0.515,
-      "p95_us": 0.994,
+      "p50_us": 0.673,
+      "p95_us": 1.207,
       "samples": 200
     }
   },
-  "manifest_sha256": "f93d00e70b6587050bbf06d8a045bfa120ad2e01d01e9dcd36447e3fbb0c7ce6",
+  "manifest_sha256": "4de99b3b29e986e8e3afaf0ebefa655f012e9aaa11ee3b7aa296e0a23ff7ea2a",
   "parity_verification": {
     "compat_witness_sha256": "1961f5c8e81c25e59d5f222acb58551b9caf289481b7190d8d95ad1849585c0a",
     "historical_witness_sha256": "1961f5c8e81c25e59d5f222acb58551b9caf289481b7190d8d95ad1849585c0a",
     "parity": "PASS",
-    "parity_verification_ms": 719.498
+    "parity_verification_ms": 882.487
   },
   "performance": {
-    "compatibility_decode_build_ms": 11670.967,
-    "historical_reader_parse_ms": 350.792,
-    "peak_traced_memory_bytes": 138101830,
-    "peak_traced_memory_mb": 131.7
+    "compatibility_decode_build_ms": 16779.827,
+    "historical_reader_parse_ms": 474.937,
+    "peak_traced_memory_bytes": 138154648,
+    "peak_traced_memory_mb": 131.75
   },
-  "semantic_digest": "593cfe35e87110894f7f5f045d0309b8d83b2a4b90ae23c150738af04933e7e3",
-  "timestamp_utc": "2026-09-15T18:12:33.313615+00:00",
+  "semantic_digest": "b745582f78c9e660c30cdf49c924baed45d623c13c6a505818ecd284478c0a36",
+  "timestamp_utc": "2026-09-15T22:00:31.423746+00:00",
   "workload": {
     "legacy_payload_sha256": "8a341cdf959d59952b10f710113698d6961772205455934993fa3c6472db588a",
     "sample_size": 200,

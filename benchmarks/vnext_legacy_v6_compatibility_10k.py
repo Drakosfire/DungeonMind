@@ -388,6 +388,8 @@ def run_benchmark(
         "graph_schema": GRAPH_SCHEMA_V6,
         "compatibility_mapping_revision": COMPATIBILITY_MAPPING_REVISION,
         "manifest_sha256": COMPATIBILITY_MANIFEST_SHA256,
+        "legacy_payload_sha256": rev.graph_payload_sha256,
+        "historical_parse_compatibility_id": reader.parse_compatibility_id,
         "workload": {
             "target_size": size,
             "seed": seed,

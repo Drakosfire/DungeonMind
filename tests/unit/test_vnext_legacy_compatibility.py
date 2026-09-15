@@ -40,12 +40,16 @@ from dungeonmind.application.vnext.errors import (
 )
 from dungeonmind.application.vnext.frozen_json import FrozenDict
 from dungeonmind.application.vnext.legacy_compat import (
+    COMPATIBILITY_MANIFEST_SHA256,
+    DOCS_MANIFEST_AUDIT_PATH,
     LegacyCompatibilityManifest,
+    compute_legacy_compatibility_key,
     decode_legacy_graph_revision,
     load_legacy_world_compat_manifest,
     validate_stored_legacy_graph_revision,
     verify_historical_semantic_parity,
 )
+from dungeonmind.application.vnext.model import PARSED_REVISION_FORMAT_VERSION
 from dungeonmind.application.vnext.records import (
     ParsedDomainTemporalScope,
     ParsedEntityRefValue,
@@ -326,13 +330,25 @@ def test_15_v3_v6_historical_profile_in_compatibility_identity() -> None:
     payload = tsp._v3_payload()
     rev = _make_rev(GRAPH_SCHEMA_V3, payload)
     registry = tsp._narrative_registry()
+    reader = VersionedUnionGraphSnapshotReader(profile_registry=registry)
     parsed = decode_legacy_graph_revision(
         revision=rev, graph_payload=payload, profile_registry=registry
     )
     assert parsed.semantic_profile_ref.profile_id == "test.narrative"
     assert parsed.semantic_profile_ref.profile_revision == "narrative-profile-v1"
     assert len(parsed.semantic_profile_ref.descriptor_sha256) == 64
-    assert parsed.compatibility_key == compute_compatibility_key(parsed.identity)
+    expected = compute_legacy_compatibility_key(
+        mapping_revision=load_legacy_world_compat_manifest().compatibility_mapping_revision,
+        mapping_manifest_sha256=COMPATIBILITY_MANIFEST_SHA256,
+        graph_schema=GRAPH_SCHEMA_V3,
+        historical_parse_compatibility_id=reader.parse_compatibility_id,
+        semantic_profile_ref=parsed.semantic_profile_ref,
+        parsed_format_version=PARSED_REVISION_FORMAT_VERSION,
+        legacy_payload_sha256=rev.graph_payload_sha256,
+    )
+    assert parsed.compatibility_key == expected
+    # Native V1.1 key remains a distinct function and must not equal legacy key.
+    assert parsed.compatibility_key != compute_compatibility_key(parsed.identity)
 
 
 # 16. v1-v2 unprofiled compatibility identity is deterministic and explicit
@@ -352,23 +368,180 @@ def test_17_manifest_or_version_changes_compatibility_key() -> None:
     rev = _make_rev(GRAPH_SCHEMA_V1, payload)
     parsed1 = decode_legacy_graph_revision(revision=rev, graph_payload=payload)
 
-    # Decode with a mutated manifest
     manifest = load_legacy_world_compat_manifest()
+    mutated_content = manifest.to_canonical_dict()
+    mutated_content["compatibility_mapping_revision"] = "dm_legacy_world_compat_v2_mutated"
+    mutated_content["domain_contract_revision"] = "2"
+    mutated_content["epistemic_translation_rules"] = {
+        **mutated_content["epistemic_translation_rules"],
+        "fact_is_not_asserted": False,
+    }
+    mutated_sha = canonical_sha256(mutated_content)
     mutated_manifest = LegacyCompatibilityManifest(
-        manifest_schema=manifest.manifest_schema,
-        compatibility_mapping_revision="dm_legacy_world_compat_v2_mutated",
-        vnext_format_version=manifest.vnext_format_version,
-        domain_contract_id=manifest.domain_contract_id,
-        domain_contract_revision="2",  # changed
-        unprofiled_semantic_profile_id=manifest.unprofiled_semantic_profile_id,
-        unprofiled_semantic_profile_revision=manifest.unprofiled_semantic_profile_revision,
-        supported_historical_schemas=manifest.supported_historical_schemas,
-        manifest_sha256="0" * 64,
+        manifest_schema=str(mutated_content["manifest_schema"]),
+        compatibility_mapping_revision=str(
+            mutated_content["compatibility_mapping_revision"]
+        ),
+        vnext_format_version=str(mutated_content["vnext_format_version"]),
+        parsed_format_version=str(mutated_content["parsed_format_version"]),
+        domain_contract_id=str(mutated_content["domain_contract_id"]),
+        domain_contract_revision=str(mutated_content["domain_contract_revision"]),
+        unprofiled_semantic_profile_id=str(
+            mutated_content["unprofiled_semantic_profile_id"]
+        ),
+        unprofiled_semantic_profile_revision=str(
+            mutated_content["unprofiled_semantic_profile_revision"]
+        ),
+        unprofiled_descriptor_sha256=str(
+            mutated_content["unprofiled_descriptor_sha256"]
+        ),
+        supported_historical_schemas=tuple(
+            mutated_content["supported_historical_schemas"]
+        ),
+        synthetic_assertion_id_templates=dict(
+            mutated_content["synthetic_assertion_id_templates"]
+        ),
+        predicate_mappings=dict(mutated_content["predicate_mappings"]),
+        scope_and_visibility_rules=dict(mutated_content["scope_and_visibility_rules"]),
+        v1_v3_coarse_metadata_rules=dict(mutated_content["v1_v3_coarse_metadata_rules"]),
+        epistemic_translation_rules=dict(mutated_content["epistemic_translation_rules"]),
+        canon_state_translation_rules=dict(
+            mutated_content["canon_state_translation_rules"]
+        ),
+        temporal_translation_rules=dict(mutated_content["temporal_translation_rules"]),
+        evidence_translation_rules=dict(mutated_content["evidence_translation_rules"]),
+        relationship_aspect_rules=dict(mutated_content["relationship_aspect_rules"]),
+        identity_alias_admission_rules=dict(
+            mutated_content["identity_alias_admission_rules"]
+        ),
+        manifest_sha256=mutated_sha,
     )
     parsed2 = decode_legacy_graph_revision(
         revision=rev, graph_payload=payload, manifest=mutated_manifest
     )
     assert parsed1.compatibility_key != parsed2.compatibility_key
+
+
+def test_17b_legacy_payload_digest_and_parse_id_change_compatibility_key() -> None:
+    payload_a = copy.deepcopy(tr._payload())
+    payload_b = copy.deepcopy(tr._payload())
+    nodes_b = payload_b.get("nodes", [])
+    assert isinstance(nodes_b, list)
+    nodes_b[0]["label"] = f"{nodes_b[0]['label']}-mutated-for-key"
+
+    rev_a = _make_rev(GRAPH_SCHEMA_V1, payload_a, rev_id="rev:key-a")
+    rev_b = _make_rev(GRAPH_SCHEMA_V1, payload_b, rev_id="rev:key-b")
+    parsed_a = decode_legacy_graph_revision(revision=rev_a, graph_payload=payload_a)
+    parsed_b = decode_legacy_graph_revision(revision=rev_b, graph_payload=payload_b)
+    assert rev_a.graph_payload_sha256 != rev_b.graph_payload_sha256
+    assert parsed_a.compatibility_key != parsed_b.compatibility_key
+
+    payload_v3 = tsp._v3_payload()
+    rev_v3 = _make_rev(GRAPH_SCHEMA_V3, payload_v3)
+    registry = tsp._narrative_registry()
+    parsed_with = decode_legacy_graph_revision(
+        revision=rev_v3, graph_payload=payload_v3, profile_registry=registry
+    )
+    mapping_revision = load_legacy_world_compat_manifest().compatibility_mapping_revision
+    key_base = compute_legacy_compatibility_key(
+        mapping_revision=mapping_revision,
+        mapping_manifest_sha256=COMPATIBILITY_MANIFEST_SHA256,
+        graph_schema=GRAPH_SCHEMA_V3,
+        historical_parse_compatibility_id="VersionedUnionGraphSnapshotReader:registry-a",
+        semantic_profile_ref=parsed_with.semantic_profile_ref,
+        parsed_format_version=PARSED_REVISION_FORMAT_VERSION,
+        legacy_payload_sha256=rev_v3.graph_payload_sha256,
+    )
+    key_other = compute_legacy_compatibility_key(
+        mapping_revision=mapping_revision,
+        mapping_manifest_sha256=COMPATIBILITY_MANIFEST_SHA256,
+        graph_schema=GRAPH_SCHEMA_V3,
+        historical_parse_compatibility_id="VersionedUnionGraphSnapshotReader:registry-b",
+        semantic_profile_ref=parsed_with.semantic_profile_ref,
+        parsed_format_version=PARSED_REVISION_FORMAT_VERSION,
+        legacy_payload_sha256=rev_v3.graph_payload_sha256,
+    )
+    assert key_base != key_other
+
+
+def test_17c_unverified_injected_manifest_fails_closed() -> None:
+    payload = tr._payload()
+    rev = _make_rev(GRAPH_SCHEMA_V1, payload)
+    manifest = load_legacy_world_compat_manifest()
+    bad = LegacyCompatibilityManifest(
+        manifest_schema=manifest.manifest_schema,
+        compatibility_mapping_revision=manifest.compatibility_mapping_revision,
+        vnext_format_version=manifest.vnext_format_version,
+        parsed_format_version=manifest.parsed_format_version,
+        domain_contract_id=manifest.domain_contract_id,
+        domain_contract_revision=manifest.domain_contract_revision,
+        unprofiled_semantic_profile_id=manifest.unprofiled_semantic_profile_id,
+        unprofiled_semantic_profile_revision=(
+            manifest.unprofiled_semantic_profile_revision
+        ),
+        unprofiled_descriptor_sha256=manifest.unprofiled_descriptor_sha256,
+        supported_historical_schemas=manifest.supported_historical_schemas,
+        synthetic_assertion_id_templates=dict(
+            manifest.synthetic_assertion_id_templates
+        ),
+        predicate_mappings=dict(manifest.predicate_mappings),
+        scope_and_visibility_rules=dict(manifest.scope_and_visibility_rules),
+        v1_v3_coarse_metadata_rules=dict(manifest.v1_v3_coarse_metadata_rules),
+        epistemic_translation_rules=dict(manifest.epistemic_translation_rules),
+        canon_state_translation_rules=dict(manifest.canon_state_translation_rules),
+        temporal_translation_rules=dict(manifest.temporal_translation_rules),
+        evidence_translation_rules=dict(manifest.evidence_translation_rules),
+        relationship_aspect_rules=dict(manifest.relationship_aspect_rules),
+        identity_alias_admission_rules=dict(manifest.identity_alias_admission_rules),
+        manifest_sha256="0" * 64,
+    )
+    with pytest.raises(LegacyCompatibilityIntegrityError, match="digest mismatch"):
+        decode_legacy_graph_revision(revision=rev, graph_payload=payload, manifest=bad)
+
+
+def test_17d_packaged_manifest_loads_independent_of_cwd(tmp_path: Path) -> None:
+    import os
+
+    original = Path.cwd()
+    try:
+        os.chdir(tmp_path)
+        assert not (tmp_path / "Docs").exists()
+        manifest = load_legacy_world_compat_manifest()
+        assert manifest.manifest_sha256 == COMPATIBILITY_MANIFEST_SHA256
+        assert manifest.compatibility_mapping_revision == "dm_legacy_world_compat_v1"
+    finally:
+        os.chdir(original)
+
+    audit = load_legacy_world_compat_manifest(DOCS_MANIFEST_AUDIT_PATH)
+    assert audit.manifest_sha256 == COMPATIBILITY_MANIFEST_SHA256
+
+
+def test_17e_valid_v1_duplicate_aliases_decode_without_collision() -> None:
+    payload = copy.deepcopy(tr._payload())
+    nodes = payload.get("nodes", [])
+    assert isinstance(nodes, list)
+    nodes[0]["aliases"] = ["Mere Astor", "Mere Astor", "Astor"]
+    rev = _make_rev(GRAPH_SCHEMA_V1, payload)
+    parsed = decode_legacy_graph_revision(revision=rev, graph_payload=payload)
+    alias_assertions = [
+        a
+        for a in parsed.assertions_by_id.values()
+        if a.predicate == "dungeonmind.compat:alias"
+        and a.subject_entity_id == nodes[0]["object_id"]
+    ]
+    assert len(alias_assertions) == 3
+    assert len({a.assertion_id for a in alias_assertions}) == 3
+    texts = [
+        a.value.value
+        for a in alias_assertions
+        if isinstance(a.value, ParsedLiteralValue)
+    ]
+    assert texts.count("Mere Astor") == 2
+    assert "Astor" in texts
+    reader = VersionedUnionGraphSnapshotReader()
+    hist = reader.parse(graph_schema=GRAPH_SCHEMA_V1, graph_payload=payload)
+    ok, _, _ = verify_historical_semantic_parity(hist, parsed)
+    assert ok is True
 
 
 # 18. Object IDs become entity IDs without re-ID
@@ -837,7 +1010,7 @@ def test_42_boundary_guards_no_dnd_imports_in_vnext() -> None:
                 )
 
 
-# 43. Historical reader files remain untouched
+# 43. Historical reader files remain untouched vs PR base anchor
 def test_43_historical_reader_files_remain_untouched() -> None:
     historical_files = [
         "src/dungeonmind/application/graph_snapshot.py",
@@ -846,9 +1019,15 @@ def test_43_historical_reader_files_remain_untouched() -> None:
         "src/dungeonmind/application/graph_snapshot_v6.py",
         "src/dungeonmind/application/graph_scope.py",
     ]
+    base = subprocess.check_output(
+        ["git", "merge-base", "HEAD", "origin/main"],
+        text=True,
+    ).strip()
     for rel_path in historical_files:
         proc = subprocess.run(
-            ["git", "diff", "--quiet", "HEAD", "--", rel_path],
+            ["git", "diff", "--quiet", base, "HEAD", "--", rel_path],
             capture_output=True,
         )
-        assert proc.returncode == 0, f"Historical file {rel_path} was modified!"
+        assert proc.returncode == 0, (
+            f"Historical file {rel_path} changed between {base[:12]} and HEAD"
+        )

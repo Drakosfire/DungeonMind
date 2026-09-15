@@ -31,11 +31,13 @@ from .legacy_compat import (
     LegacyCompatibilityManifest,
     build_historical_semantic_witness,
     build_parsed_revision_semantic_witness,
+    compute_legacy_compatibility_key,
     decode_legacy_graph_revision,
     decode_legacy_stored_graph_revision,
     load_legacy_world_compat_manifest,
     validate_stored_legacy_graph_revision,
     verify_historical_semantic_parity,
+    verify_legacy_compatibility_manifest,
 )
 from .model import (
     PARSED_REVISION_FORMAT_VERSION,
@@ -114,6 +116,7 @@ __all__ = [
     "canonical_json_bytes",
     "canonical_json_text",
     "compute_compatibility_key",
+    "compute_legacy_compatibility_key",
     "compute_semantic_digest",
     "decode_legacy_graph_revision",
     "decode_legacy_stored_graph_revision",
@@ -122,4 +125,5 @@ __all__ = [
     "thaw_json_value",
     "validate_stored_legacy_graph_revision",
     "verify_historical_semantic_parity",
+    "verify_legacy_compatibility_manifest",
 ]
