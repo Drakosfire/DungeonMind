@@ -1,0 +1,171 @@
+{
+  "fixture_id": "dm_vnext_buddy_shaped_admission_v1",
+  "family": "buddy_shaped_opaque",
+  "space_id": "space:buddy-shaped",
+  "domain_contract": {
+    "schema_version": "dm_domain_contract_v1",
+    "domain_id": "dungeonbuddy.world",
+    "domain_revision": "1",
+    "scope_axes": ["dungeonbuddy.scope:campaign"],
+    "visibility_labels": [
+      "dungeonbuddy.visibility:player",
+      "dungeonbuddy.visibility:gm"
+    ],
+    "claim_modes": [
+      "dungeonbuddy:fact",
+      "dungeonbuddy:belief",
+      "dungeonbuddy:rumor",
+      "dungeonbuddy:plan",
+      "dungeonbuddy:observed_event"
+    ],
+    "temporal_extension_schemas": [],
+    "domain_metadata_schemas": [],
+    "source_annotation_schemas": [],
+    "admission_policy_id": "dungeonbuddy.admit.v1"
+  },
+  "entities": [
+    {"schema_version": "dm_entity_v1", "entity_id": "npc:hero"},
+    {"schema_version": "dm_entity_v1", "entity_id": "loc:tavern"}
+  ],
+  "assertions": [
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:c2-player-fact",
+      "subject_entity_id": "npc:hero",
+      "predicate": "dungeonbuddy:located_at",
+      "value": {"kind": "entity_ref", "entity_id": "loc:tavern"},
+      "metadata": {
+        "scope": [{"axis": "dungeonbuddy.scope:campaign", "value": "C2"}],
+        "visibility": {
+          "kind": "labels_any",
+          "labels": ["dungeonbuddy.visibility:player"]
+        },
+        "epistemic_basis": "asserted",
+        "claim_mode": "dungeonbuddy:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:c2-doc"],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:c3-gm-secret",
+      "subject_entity_id": "npc:hero",
+      "predicate": "dungeonbuddy:located_at",
+      "value": {"kind": "entity_ref", "entity_id": "loc:tavern"},
+      "metadata": {
+        "scope": [{"axis": "dungeonbuddy.scope:campaign", "value": "C3"}],
+        "visibility": {
+          "kind": "labels_all",
+          "labels": ["dungeonbuddy.visibility:gm"]
+        },
+        "epistemic_basis": "asserted",
+        "claim_mode": "dungeonbuddy:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:c3-doc"],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:unscoped-rumor",
+      "subject_entity_id": "npc:hero",
+      "predicate": "dungeonbuddy:located_at",
+      "value": {"kind": "entity_ref", "entity_id": "loc:tavern"},
+      "metadata": {
+        "scope": [],
+        "visibility": {
+          "kind": "labels_any",
+          "labels": ["dungeonbuddy.visibility:player"]
+        },
+        "epistemic_basis": "speculative",
+        "claim_mode": "dungeonbuddy:rumor",
+        "standing": "provisional",
+        "evidence_ref_ids": [],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:c2-gm-only",
+      "subject_entity_id": "npc:hero",
+      "predicate": "dungeonbuddy:located_at",
+      "value": {"kind": "entity_ref", "entity_id": "loc:tavern"},
+      "metadata": {
+        "scope": [{"axis": "dungeonbuddy.scope:campaign", "value": "C2"}],
+        "visibility": {
+          "kind": "labels_all",
+          "labels": ["dungeonbuddy.visibility:gm"]
+        },
+        "epistemic_basis": "asserted",
+        "claim_mode": "dungeonbuddy:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:c2-doc"],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
+    }
+  ],
+  "sources": {
+    "artifact": {
+      "schema_version": "dm_source_artifact_v3",
+      "source_artifact_id": "src:c2-session-notes",
+      "source_classification": "dungeonbuddy:session_notes",
+      "current_revision_id": "srcrev:c2-v1",
+      "authority": "primary",
+      "visibility": {"kind": "public"},
+      "status": "active",
+      "uri": "doc://c2",
+      "foreign_refs": [],
+      "domain_metadata": [],
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z"
+    },
+    "revisions": [
+      {
+        "schema_version": "dm_source_revision_v2",
+        "source_revision_id": "srcrev:c2-v1",
+        "source_artifact_id": "src:c2-session-notes",
+        "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "body_storage": "inline",
+        "locator": "doc://c2#v1",
+        "created_at": "2026-01-01T00:00:00Z"
+      }
+    ],
+    "evidence": [
+      {
+        "schema_version": "dm_evidence_ref_v3",
+        "evidence_ref_id": "evidence:c2-doc",
+        "source_artifact_id": "src:c2-session-notes",
+        "source_revision_id": "srcrev:c2-v1",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": false,
+        "locator": "p1",
+        "uri": null,
+        "source_locator": null,
+        "line_ref": null,
+        "source_span_ref_id": null,
+        "domain_metadata": []
+      },
+      {
+        "schema_version": "dm_evidence_ref_v3",
+        "evidence_ref_id": "evidence:c3-doc",
+        "source_artifact_id": "src:c2-session-notes",
+        "source_revision_id": "srcrev:c2-v1",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": false,
+        "locator": "p2",
+        "uri": null,
+        "source_locator": null,
+        "line_ref": null,
+        "source_span_ref_id": null,
+        "domain_metadata": []
+      }
+    ]
+  }
+}

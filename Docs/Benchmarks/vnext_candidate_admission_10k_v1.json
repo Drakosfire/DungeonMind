@@ -1,0 +1,40 @@
+{
+  "assertion_count": 10000,
+  "parsed_semantic_digest": "552ecc3eb8f2af6de1969e6793ef286b02ed4af264eaa9313ee9ff283a02a4ac",
+  "runs": {
+    "batch_10": {
+      "admitted_count": 10,
+      "artifact_ids_requested": 10,
+      "candidate_count": 10,
+      "elapsed_ms": 1.8397429994365666,
+      "evidence_ids_resolved": 10,
+      "provenance_snapshot_calls": 1,
+      "revision_ids_requested": 10
+    },
+    "batch_100": {
+      "admitted_count": 100,
+      "artifact_ids_requested": 100,
+      "candidate_count": 100,
+      "elapsed_ms": 13.100847998430254,
+      "evidence_ids_resolved": 100,
+      "provenance_snapshot_calls": 1,
+      "revision_ids_requested": 100
+    },
+    "single_candidate": {
+      "admitted_count": 1,
+      "artifact_ids_requested": 1,
+      "candidate_count": 1,
+      "elapsed_ms": 0.7038839976303279,
+      "evidence_ids_resolved": 1,
+      "provenance_snapshot_calls": 1,
+      "revision_ids_requested": 1
+    }
+  },
+  "schema_version": "vnext_candidate_admission_10k_v1",
+  "structural_gate": {
+    "observed_single_candidate_artifact_ids_requested": 1,
+    "passes": true,
+    "single_candidate_max_artifact_ids_requested": 1
+  },
+  "workload_digest": "b24e120121a7af7352e726050a472e9920d1cf4f00d880cb39bc21c6450bfc55"
+}
