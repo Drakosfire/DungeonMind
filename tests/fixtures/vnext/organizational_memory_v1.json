@@ -1,0 +1,221 @@
+{
+  "fixture_id": "dm_vnext_organizational_memory_v1",
+  "family": "organizational_memory",
+  "space_id": "space:org-memory",
+  "domain_contract": {
+    "schema_version": "dm_domain_contract_v1",
+    "domain_id": "organization.memory",
+    "domain_revision": "1",
+    "scope_axes": ["organization:project", "organization:team"],
+    "visibility_labels": ["organization:team", "organization:leadership"],
+    "claim_modes": ["organization:fact", "organization:belief", "organization:plan"],
+    "temporal_extension_schemas": [],
+    "domain_metadata_schemas": [],
+    "source_annotation_schemas": [],
+    "admission_policy_id": "organization.memory.admit.v1"
+  },
+  "entities": [
+    {"schema_version": "dm_entity_v1", "entity_id": "priya"},
+    {"schema_version": "dm_entity_v1", "entity_id": "marco"},
+    {"schema_version": "dm_entity_v1", "entity_id": "retrieval-evaluation"},
+    {"schema_version": "dm_entity_v1", "entity_id": "research-team"},
+    {"schema_version": "dm_entity_v1", "entity_id": "ownership-document"}
+  ],
+  "assertions": [
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:priya-owns-retrieval-apr",
+      "subject_entity_id": "priya",
+      "predicate": "organization:owns",
+      "value": {"kind": "entity_ref", "entity_id": "retrieval-evaluation"},
+      "metadata": {
+        "scope": [{"axis": "organization:project", "value": "retrieval"}],
+        "visibility": {"kind": "labels_any", "labels": ["organization:team"]},
+        "epistemic_basis": "asserted",
+        "claim_mode": "organization:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:ownership-doc-1"],
+        "temporal_scope": {
+          "kind": "utc_interval",
+          "valid_from": "2026-04-01T00:00:00Z",
+          "valid_until": "2026-09-07T00:00:00Z"
+        },
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:marco-owns-retrieval-sep",
+      "subject_entity_id": "marco",
+      "predicate": "organization:owns",
+      "value": {"kind": "entity_ref", "entity_id": "retrieval-evaluation"},
+      "metadata": {
+        "scope": [{"axis": "organization:project", "value": "retrieval"}],
+        "visibility": {"kind": "labels_any", "labels": ["organization:team"]},
+        "epistemic_basis": "asserted",
+        "claim_mode": "organization:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:ownership-doc-2"],
+        "temporal_scope": {
+          "kind": "utc_interval",
+          "valid_from": "2026-09-07T00:00:00Z",
+          "valid_until": null
+        },
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:priya-member-research",
+      "subject_entity_id": "priya",
+      "predicate": "organization:member_of",
+      "value": {"kind": "entity_ref", "entity_id": "research-team"},
+      "metadata": {
+        "scope": [{"axis": "organization:team", "value": "research"}],
+        "visibility": {"kind": "public"},
+        "epistemic_basis": "asserted",
+        "claim_mode": "organization:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:ownership-doc-1"],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:marco-member-research",
+      "subject_entity_id": "marco",
+      "predicate": "organization:member_of",
+      "value": {"kind": "entity_ref", "entity_id": "research-team"},
+      "metadata": {
+        "scope": [{"axis": "organization:team", "value": "research"}],
+        "visibility": {"kind": "public"},
+        "epistemic_basis": "asserted",
+        "claim_mode": "organization:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:ownership-doc-2"],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:priya-title",
+      "subject_entity_id": "priya",
+      "predicate": "organization:title",
+      "value": {"kind": "literal", "value": {"title": "Staff Engineer"}},
+      "metadata": {
+        "scope": [{"axis": "organization:team", "value": "research"}],
+        "visibility": {"kind": "public"},
+        "epistemic_basis": "asserted",
+        "claim_mode": "organization:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:ownership-doc-1"],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:retrieval-classification",
+      "subject_entity_id": "retrieval-evaluation",
+      "predicate": "organization:classification",
+      "value": {"kind": "term_ref", "term": "organization:project"},
+      "metadata": {
+        "scope": [{"axis": "organization:project", "value": "retrieval"}],
+        "visibility": {"kind": "public"},
+        "epistemic_basis": "asserted",
+        "claim_mode": "organization:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:ownership-doc-1"],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
+    },
+    {
+      "schema_version": "dm_assertion_v1",
+      "assertion_id": "asrt:org-charter-unscoped",
+      "subject_entity_id": "research-team",
+      "predicate": "organization:charter",
+      "value": {"kind": "literal", "value": "Advance retrieval evaluation quality."},
+      "metadata": {
+        "scope": [],
+        "visibility": {"kind": "public"},
+        "epistemic_basis": "asserted",
+        "claim_mode": "organization:fact",
+        "standing": "established",
+        "evidence_ref_ids": ["evidence:ownership-doc-1"],
+        "temporal_scope": {"kind": "timeless"},
+        "domain_metadata": []
+      }
+    }
+  ],
+  "sources": {
+    "artifact": {
+      "schema_version": "dm_source_artifact_v3",
+      "source_artifact_id": "src:ownership-document",
+      "source_classification": "organization:document",
+      "current_revision_id": "srcrev:ownership-document-v2",
+      "authority": "primary",
+      "visibility": {"kind": "labels_all", "labels": ["organization:team"]},
+      "status": "active",
+      "uri": "doc://ownership",
+      "foreign_refs": [],
+      "domain_metadata": [],
+      "created_at": "2026-04-01T00:00:00Z",
+      "updated_at": "2026-09-07T00:00:00Z"
+    },
+    "revisions": [
+      {
+        "schema_version": "dm_source_revision_v2",
+        "source_revision_id": "srcrev:ownership-document-v1",
+        "source_artifact_id": "src:ownership-document",
+        "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "body_storage": "inline",
+        "locator": "doc://ownership#v1",
+        "created_at": "2026-04-01T00:00:00Z"
+      },
+      {
+        "schema_version": "dm_source_revision_v2",
+        "source_revision_id": "srcrev:ownership-document-v2",
+        "source_artifact_id": "src:ownership-document",
+        "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "body_storage": "inline",
+        "locator": "doc://ownership#v2",
+        "created_at": "2026-09-07T00:00:00Z"
+      }
+    ],
+    "evidence": [
+      {
+        "schema_version": "dm_evidence_ref_v3",
+        "evidence_ref_id": "evidence:ownership-doc-1",
+        "source_artifact_id": "src:ownership-document",
+        "source_revision_id": "srcrev:ownership-document-v1",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": true,
+        "locator": "§ownership",
+        "uri": null,
+        "source_locator": null,
+        "line_ref": null,
+        "source_span_ref_id": null,
+        "domain_metadata": []
+      },
+      {
+        "schema_version": "dm_evidence_ref_v3",
+        "evidence_ref_id": "evidence:ownership-doc-2",
+        "source_artifact_id": "src:ownership-document",
+        "source_revision_id": "srcrev:ownership-document-v2",
+        "evidence_role": "support",
+        "can_open_source": true,
+        "can_highlight_span": true,
+        "locator": "§ownership",
+        "uri": null,
+        "source_locator": null,
+        "line_ref": null,
+        "source_span_ref_id": null,
+        "domain_metadata": []
+      }
+    ]
+  }
+}
