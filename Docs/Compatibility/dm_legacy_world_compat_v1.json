@@ -1,0 +1,39 @@
+{
+  "manifest_schema": "dm_legacy_world_compat_manifest_v1",
+  "compatibility_mapping_revision": "dm_legacy_world_compat_v1",
+  "vnext_format_version": "parsed_knowledge_revision_v1",
+  "domain_contract_id": "dungeonmind.compat.legacy_world",
+  "domain_contract_revision": "1",
+  "unprofiled_semantic_profile_id": "legacy.unprofiled",
+  "unprofiled_semantic_profile_revision": "none",
+  "supported_historical_schemas": [
+    "dm_union_graph_v1",
+    "dm_union_graph_v2",
+    "dm_union_graph_v3",
+    "dm_union_graph_v4",
+    "dm_union_graph_v5",
+    "dm_union_graph_v6"
+  ],
+  "synthetic_assertion_id_prefixes": {
+    "alias": "asrt:compat:dm_legacy_world_compat_v1:{object_id}:alias:{alias_hash}",
+    "existence": "asrt:compat:dm_legacy_world_compat_v1:{object_id}:existence",
+    "kind": "asrt:compat:dm_legacy_world_compat_v1:{object_id}:kind",
+    "label": "asrt:compat:dm_legacy_world_compat_v1:{object_id}:label",
+    "relationship": "asrt:compat:dm_legacy_world_compat_v1:rel:{relationship_id}",
+    "summary": "asrt:compat:dm_legacy_world_compat_v1:{object_id}:summary"
+  },
+  "predicate_mappings": {
+    "alias": "dungeonmind.compat:alias",
+    "aspect": "dungeonmind.compat:aspect",
+    "existence": "dungeonmind.compat:existence",
+    "kind": "dungeonmind.compat:kind",
+    "label": "dungeonmind.compat:label",
+    "summary": "dungeonmind.compat:summary"
+  },
+  "scope_and_visibility_rules": {
+    "campaign_scope_axis": "dungeonmind.compat:campaign",
+    "gm_visibility_label": "audience:gm",
+    "player_visibility_label": "audience:player",
+    "unscoped_alias_admission_rule": "only world-universal player-visible canonical aliases enter parsed identity_aliases; all scoped or GM aliases remain assertions only"
+  }
+}
