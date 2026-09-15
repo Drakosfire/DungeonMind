@@ -6,8 +6,15 @@ and deterministic structural graph indexes over already-decoded vNext knowledge 
 
 from __future__ import annotations
 
-from .builder import DecodedKnowledgeContent, build_parsed_knowledge_revision
-from .errors import RevisionStructuralIntegrityError
+from .builder import (
+    DecodedKnowledgeContent,
+    build_parsed_knowledge_revision,
+    build_parsed_knowledge_revision_from_records,
+)
+from .errors import (
+    LegacyCompatibilityIntegrityError,
+    RevisionStructuralIntegrityError,
+)
 from .frozen_json import (
     FrozenDict,
     FrozenJsonValue,
@@ -54,6 +61,7 @@ __all__ = [
     "DecodedKnowledgeContent",
     "FrozenDict",
     "FrozenJsonValue",
+    "LegacyCompatibilityIntegrityError",
     "ParsedAssertion",
     "ParsedAssertionMetadata",
     "ParsedAssertionValue",
@@ -81,6 +89,7 @@ __all__ = [
     "ParsedVisibility",
     "RevisionStructuralIntegrityError",
     "build_parsed_knowledge_revision",
+    "build_parsed_knowledge_revision_from_records",
     "canonical_json_bytes",
     "canonical_json_text",
     "compute_compatibility_key",

@@ -65,7 +65,12 @@ def make_bundle(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--check", type=Path)
+    parser.add_argument(
+        "--check",
+        type=Path,
+        nargs="?",
+        const=Path("Docs/Contracts/vnext/dm_vnext_contract_v1.json"),
+    )
     args = parser.parse_args()
     if bool(args.output) == bool(args.check):
         parser.error("provide exactly one of --output or --check")
