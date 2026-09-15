@@ -19,3 +19,9 @@ class RevisionStructuralIntegrityError(PersistenceIntegrityError):
     """
 
     code = "revision_structural_integrity_error"
+
+
+class LegacyCompatibilityIntegrityError(RevisionStructuralIntegrityError):
+    """Raised when a legacy stored revision fails compatibility verification or decoding."""
+
+    code = "legacy_compatibility_integrity_error"

@@ -1,0 +1,89 @@
+{
+  "manifest_schema": "dm_legacy_world_compat_manifest_v1",
+  "compatibility_mapping_revision": "dm_legacy_world_compat_v1",
+  "vnext_format_version": "parsed_knowledge_revision_v1",
+  "parsed_format_version": "vnext_parsed_revision_v1",
+  "domain_contract_id": "dungeonmind.compat.legacy_world",
+  "domain_contract_revision": "1",
+  "unprofiled_semantic_profile_id": "legacy.unprofiled",
+  "unprofiled_semantic_profile_revision": "none",
+  "unprofiled_descriptor_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "supported_historical_schemas": [
+    "dm_union_graph_v1",
+    "dm_union_graph_v2",
+    "dm_union_graph_v3",
+    "dm_union_graph_v4",
+    "dm_union_graph_v5",
+    "dm_union_graph_v6"
+  ],
+  "synthetic_assertion_id_templates": {
+    "alias": "asrt:compat:dm_legacy_world_compat_v1:{object_id}:alias:{occurrence}:{alias_sha256}",
+    "existence": "asrt:compat:dm_legacy_world_compat_v1:{object_id}:existence",
+    "kind": "asrt:compat:dm_legacy_world_compat_v1:{object_id}:kind",
+    "label": "asrt:compat:dm_legacy_world_compat_v1:{object_id}:label",
+    "relationship": "asrt:compat:dm_legacy_world_compat_v1:rel:{relationship_id}",
+    "summary": "asrt:compat:dm_legacy_world_compat_v1:{object_id}:summary"
+  },
+  "predicate_mappings": {
+    "alias": "dungeonmind.compat:alias",
+    "aspect": "dungeonmind.compat:aspect",
+    "existence": "dungeonmind.compat:existence",
+    "kind": "dungeonmind.compat:kind",
+    "label": "dungeonmind.compat:label",
+    "summary": "dungeonmind.compat:summary"
+  },
+  "scope_and_visibility_rules": {
+    "campaign_scope_axis": "dungeonmind.compat:campaign",
+    "gm_visibility_label": "audience:gm",
+    "player_visibility_label": "audience:player",
+    "unscoped_alias_admission_rule": "only world-universal player-visible canonical aliases enter parsed identity_aliases; all scoped or GM aliases remain assertions only"
+  },
+  "v1_v3_coarse_metadata_rules": {
+    "claim_mode_uses_caller_claim_mode": true,
+    "epistemic_basis": "dungeonmind.compat:legacy_unspecified",
+    "standing": "established",
+    "temporal_scope": "unknown",
+    "visibility_kind": "labels_any",
+    "visibility_labels": [
+      "dungeonmind.compat:legacy_coarse_visibility"
+    ],
+    "domain_metadata_schema": "dungeonmind.compat:legacy_coarse_metadata",
+    "legacy_coarse_visibility_rationale": "Compatibility-only neutral label for missing v1-v3 assertion metadata. It must not become a V2 admission requirement; it only marks that historical metadata was unspecified rather than guessing public/timeless."
+  },
+  "epistemic_translation_rules": {
+    "preserve_exact_legacy_epistemic_kind_string": true,
+    "fact_is_not_asserted": true,
+    "source_derived_candidate_is_not_inferred": true,
+    "domain_metadata_schema": "dungeonmind.compat:legacy_epistemic_kind"
+  },
+  "canon_state_translation_rules": {
+    "canonical": "established",
+    "provisional": "provisional",
+    "retracted": "retracted",
+    "domain_metadata_schema": "dungeonmind.compat:legacy_canon_state"
+  },
+  "temporal_translation_rules": {
+    "unknown": "unknown",
+    "world_timeless": "timeless",
+    "fictional_time_ref_schema": "dungeonmind.compat:fictional_time_ref",
+    "session_refs_schema": "dungeonmind.compat:session_refs",
+    "session_refs_do_not_become_scope_or_time": true
+  },
+  "evidence_translation_rules": {
+    "preserve_evidence_ref_id": true,
+    "v1_source_domain_schema": "dungeonmind.compat:evidence_source_domain",
+    "v2_extra_schema": "dungeonmind.compat:evidence_v2_extra"
+  },
+  "relationship_aspect_rules": {
+    "relationship_domain_metadata_schema": "dungeonmind.compat:relationship",
+    "preserve_source_target_aspect_assertion_ids": true
+  },
+  "identity_alias_admission_rules": {
+    "require_no_campaign_scope": true,
+    "require_player_visibility": true,
+    "require_canonical_standing": true,
+    "v1_plain_aliases_enter_identity_aliases": true,
+    "v2_v3_coarse_aliases_enter_identity_aliases": true,
+    "v1_alias_id_uses_value_group_occurrence_and_full_sha256": true
+  }
+}

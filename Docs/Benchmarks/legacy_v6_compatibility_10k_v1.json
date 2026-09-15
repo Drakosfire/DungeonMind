@@ -1,0 +1,71 @@
+{
+  "benchmark_schema": "legacy_v6_compatibility_benchmark_v1",
+  "cardinalities": {
+    "assertion_count": 16000,
+    "entity_count": 3000,
+    "entity_ref_assertion_count": 5000,
+    "evidence_count": 1500,
+    "identity_alias_count": 83,
+    "unique_lexical_tokens_indexed": 3011,
+    "unique_literal_keys_indexed": 4011,
+    "unique_subjects_indexed": 3000
+  },
+  "compatibility_key": "a62befb9ee50df5756b3ad56a1e796c655fc5dd35966a7e5748e3ef4fd9532f2",
+  "compatibility_mapping_revision": "dm_legacy_world_compat_v1",
+  "graph_schema": "dm_union_graph_v6",
+  "historical_parse_compatibility_id": "VersionedUnionGraphSnapshotReader:f3c645fddca5dcd17b906ac8df892e217c42cccdc1e19e1ab56a55d286029e56",
+  "legacy_payload_sha256": "8a341cdf959d59952b10f710113698d6961772205455934993fa3c6472db588a",
+  "lookup_latencies_us": {
+    "adjacency_lookup": {
+      "p50_us": 0.492,
+      "p95_us": 1.093,
+      "samples": 200
+    },
+    "evidence_lookup": {
+      "p50_us": 0.394,
+      "p95_us": 0.741,
+      "samples": 200
+    },
+    "exact_entity_lookup": {
+      "p50_us": 0.543,
+      "p95_us": 0.982,
+      "samples": 200
+    },
+    "lexical_candidate_lookup": {
+      "p50_us": 0.496,
+      "p95_us": 0.956,
+      "samples": 200
+    },
+    "literal_exact_lookup": {
+      "p50_us": 0.441,
+      "p95_us": 0.96,
+      "samples": 200
+    },
+    "subject_assertion_lookup": {
+      "p50_us": 0.478,
+      "p95_us": 0.958,
+      "samples": 200
+    }
+  },
+  "manifest_sha256": "f408ce73b8efb32a36e4fb29eb68e9242cb358a76c0c0b60eafdce5046abbe4f",
+  "parity_verification": {
+    "compat_witness_sha256": "1961f5c8e81c25e59d5f222acb58551b9caf289481b7190d8d95ad1849585c0a",
+    "historical_witness_sha256": "1961f5c8e81c25e59d5f222acb58551b9caf289481b7190d8d95ad1849585c0a",
+    "parity": "PASS",
+    "parity_verification_ms": 733.133
+  },
+  "performance": {
+    "compatibility_decode_build_ms": 14483.068,
+    "historical_reader_parse_ms": 627.171,
+    "peak_traced_memory_bytes": 139061763,
+    "peak_traced_memory_mb": 132.62
+  },
+  "semantic_digest": "f48c400849b811bc03695c16072614ba87bc628a278894358329e5d099b1a688",
+  "timestamp_utc": "2026-09-15T22:22:23.655011+00:00",
+  "workload": {
+    "legacy_payload_sha256": "8a341cdf959d59952b10f710113698d6961772205455934993fa3c6472db588a",
+    "sample_size": 200,
+    "seed": 42,
+    "target_size": 10000
+  }
+}

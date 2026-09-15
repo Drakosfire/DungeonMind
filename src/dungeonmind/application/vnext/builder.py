@@ -7,7 +7,7 @@ without performing scope/visibility/domain admission or introducing domain/TTRPG
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from dungeonmind.contracts.vnext.common import (
@@ -311,7 +311,155 @@ def build_parsed_knowledge_revision(
             metadata=parsed_metadata,
         )
 
-    # --- 5. Structural Indexes ---
+    # --- 5. Identity ---
+    parent_rev_id = (
+        str(revision.parent_revision_id) if revision.parent_revision_id else None
+    )
+    identity = ParsedKnowledgeRevisionIdentity(
+        space_id=str(revision.space_id),
+        revision_id=str(revision.revision_id),
+        parent_revision_id=parent_rev_id,
+        created_at=revision.created_at,
+        operation_ids=tuple(str(op) for op in revision.operation_ids),
+        graph_schema=str(revision.graph_schema),
+        graph_payload_sha256=str(revision.graph_payload_sha256),
+        domain_contract_ref=ParsedDomainContractRef(
+            domain_id=str(revision.domain_contract_ref.domain_id),
+            domain_revision=str(revision.domain_contract_ref.domain_revision),
+            descriptor_sha256=str(revision.domain_contract_ref.descriptor_sha256),
+        ),
+        semantic_profile_ref=ParsedSemanticProfileRef(
+            profile_id=str(revision.semantic_profile_ref.profile_id),
+            profile_revision=str(revision.semantic_profile_ref.profile_revision),
+            descriptor_sha256=str(revision.semantic_profile_ref.descriptor_sha256),
+        ),
+        migration_origin_ref=ParsedMigrationOriginRef(
+            source_system=str(revision.migration_origin_ref.source_system),
+            source_root_id=str(revision.migration_origin_ref.source_root_id),
+            source_revision_id=str(revision.migration_origin_ref.source_revision_id),
+            source_payload_sha256=str(revision.migration_origin_ref.source_payload_sha256),
+            migration_manifest_sha256=str(revision.migration_origin_ref.migration_manifest_sha256),
+        )
+        if revision.migration_origin_ref
+        else None,
+    )
+
+    return build_parsed_knowledge_revision_from_records(
+        identity=identity,
+        entities=entities_dict,
+        assertions=assertions_dict,
+        aliases=aliases_dict,
+        evidence=evidence_dict,
+    )
+
+
+def build_parsed_knowledge_revision_from_records(
+    identity: ParsedKnowledgeRevisionIdentity,
+    *,
+    entities: Mapping[str, ParsedEntity] | Sequence[ParsedEntity] = (),
+    assertions: Mapping[str, ParsedAssertion] | Sequence[ParsedAssertion] = (),
+    aliases: Mapping[str, ParsedIdentityAlias] | Sequence[ParsedIdentityAlias] = (),
+    evidence: Mapping[str, ParsedEvidenceRef] | Sequence[ParsedEvidenceRef] = (),
+) -> ParsedKnowledgeRevision:
+    """Build a deterministic, immutable ParsedKnowledgeRevision from internal immutable records.
+
+    Raises:
+        RevisionStructuralIntegrityError: if duplicate IDs exist or referential integrity fails.
+    """
+    if isinstance(entities, Mapping):
+        entities_dict = dict(entities)
+        for key, ent in entities_dict.items():
+            if key != ent.entity_id:
+                raise RevisionStructuralIntegrityError(
+                    f"Entity mapping key {key!r} does not match entity_id {ent.entity_id!r}"
+                )
+    else:
+        entities_dict = {}
+        for ent in entities:
+            eid = ent.entity_id
+            if eid in entities_dict:
+                raise RevisionStructuralIntegrityError(f"Duplicate entity_id: {eid!r}")
+            entities_dict[eid] = ent
+
+    if isinstance(evidence, Mapping):
+        evidence_dict = dict(evidence)
+        for key, ev in evidence_dict.items():
+            if key != ev.evidence_ref_id:
+                raise RevisionStructuralIntegrityError(
+                    "Evidence mapping key "
+                    f"{key!r} does not match evidence_ref_id {ev.evidence_ref_id!r}"
+                )
+    else:
+        evidence_dict = {}
+        for ev in evidence:
+            evid = ev.evidence_ref_id
+            if evid in evidence_dict:
+                raise RevisionStructuralIntegrityError(f"Duplicate evidence_ref_id: {evid!r}")
+            evidence_dict[evid] = ev
+
+    if isinstance(aliases, Mapping):
+        aliases_dict = dict(aliases)
+        for key, al in aliases_dict.items():
+            if key != al.alias_id:
+                raise RevisionStructuralIntegrityError(
+                    f"Alias mapping key {key!r} does not match alias_id {al.alias_id!r}"
+                )
+    else:
+        aliases_dict = {}
+        for al in aliases:
+            alid = al.alias_id
+            if alid in aliases_dict:
+                raise RevisionStructuralIntegrityError(f"Duplicate alias_id: {alid!r}")
+            aliases_dict[alid] = al
+
+    # Validate aliases referential integrity
+    for al_id, al in aliases_dict.items():
+        if al.entity_id not in entities_dict:
+            raise RevisionStructuralIntegrityError(
+                f"Alias {al_id!r} references missing entity {al.entity_id!r}"
+            )
+        for ev_id in al.evidence_ref_ids:
+            if ev_id not in evidence_dict:
+                raise RevisionStructuralIntegrityError(
+                    f"Alias {al_id!r} references missing evidence {ev_id!r}"
+                )
+
+    if isinstance(assertions, Mapping):
+        assertions_dict = dict(assertions)
+        for key, asrt in assertions_dict.items():
+            if key != asrt.assertion_id:
+                raise RevisionStructuralIntegrityError(
+                    "Assertion mapping key "
+                    f"{key!r} does not match assertion_id {asrt.assertion_id!r}"
+                )
+    else:
+        assertions_dict = {}
+        for asrt in assertions:
+            aid = asrt.assertion_id
+            if aid in assertions_dict:
+                raise RevisionStructuralIntegrityError(f"Duplicate assertion_id: {aid!r}")
+            assertions_dict[aid] = asrt
+
+    # Validate assertions referential integrity
+    for aid, asrt in assertions_dict.items():
+        if asrt.subject_entity_id not in entities_dict:
+            raise RevisionStructuralIntegrityError(
+                f"Assertion {aid!r} references missing subject entity {asrt.subject_entity_id!r}"
+            )
+        if (
+            isinstance(asrt.value, ParsedEntityRefValue)
+            and asrt.value.entity_id not in entities_dict
+        ):
+            raise RevisionStructuralIntegrityError(
+                f"Assertion {aid!r} references missing target entity {asrt.value.entity_id!r}"
+            )
+        for ev_id in asrt.metadata.evidence_ref_ids:
+            if ev_id not in evidence_dict:
+                raise RevisionStructuralIntegrityError(
+                    f"Assertion {aid!r} references missing evidence {ev_id!r}"
+                )
+
+    # --- Structural Indexes ---
     assertions_by_subject_builder: dict[str, list[str]] = {eid: [] for eid in entities_dict}
     entity_ref_outgoing_builder: dict[str, set[str]] = {eid: set() for eid in entities_dict}
     entity_ref_incoming_builder: dict[str, set[str]] = {eid: set() for eid in entities_dict}
@@ -389,39 +537,6 @@ def build_parsed_knowledge_revision(
     lexical_candidate_index = FrozenDict({
         tok: tuple(sorted(eids)) for tok, eids in lexical_candidate_builder.items()
     })
-
-    # --- 6. Identity ---
-    parent_rev_id = (
-        str(revision.parent_revision_id) if revision.parent_revision_id else None
-    )
-    identity = ParsedKnowledgeRevisionIdentity(
-        space_id=str(revision.space_id),
-        revision_id=str(revision.revision_id),
-        parent_revision_id=parent_rev_id,
-        created_at=revision.created_at,
-        operation_ids=tuple(str(op) for op in revision.operation_ids),
-        graph_schema=str(revision.graph_schema),
-        graph_payload_sha256=str(revision.graph_payload_sha256),
-        domain_contract_ref=ParsedDomainContractRef(
-            domain_id=str(revision.domain_contract_ref.domain_id),
-            domain_revision=str(revision.domain_contract_ref.domain_revision),
-            descriptor_sha256=str(revision.domain_contract_ref.descriptor_sha256),
-        ),
-        semantic_profile_ref=ParsedSemanticProfileRef(
-            profile_id=str(revision.semantic_profile_ref.profile_id),
-            profile_revision=str(revision.semantic_profile_ref.profile_revision),
-            descriptor_sha256=str(revision.semantic_profile_ref.descriptor_sha256),
-        ),
-        migration_origin_ref=ParsedMigrationOriginRef(
-            source_system=str(revision.migration_origin_ref.source_system),
-            source_root_id=str(revision.migration_origin_ref.source_root_id),
-            source_revision_id=str(revision.migration_origin_ref.source_revision_id),
-            source_payload_sha256=str(revision.migration_origin_ref.source_payload_sha256),
-            migration_manifest_sha256=str(revision.migration_origin_ref.migration_manifest_sha256),
-        )
-        if revision.migration_origin_ref
-        else None,
-    )
 
     semantic_digest = compute_semantic_digest(
         identity,
