@@ -77,11 +77,13 @@ PR #54 established the forward execution roadmap and read/performance architectu
 
 PR #56 established and froze the generic vNext contract schemas, models, semantic invariants, and multi-domain fixtures (`fd04a904...`).
 
+DungeonMindBuddy PR #719 established and merged the V0.2 consumer proof, confirming that Buddy's campaign/session scope, GM/player visibility, standing, fictional time, World-object representation, candidate governance, and all 11 source domains map losslessly into the generic vNext contract without Kernel modifications or production changes.
+
 The canonical roadmap is now:
 
 ```text
-V0   Contract freeze
-V1   Immutable normalized revision + revision-local indexes
+V0   Contract freeze (COMPLETE — VNEXT_CONTRACT_FROZEN)
+V1   Immutable normalized revision + revision-local indexes (ACTIVE)
 V2   Generic KnowledgeReadContext + candidate admission seam
 V3   Lazy exact / complete entity reads
 V4   Neighborhood + evidence + anchor + deterministic indexed search
@@ -96,11 +98,9 @@ V11  Deeper storage optimization only if evidence still demands it
 
 ### Current next primary question
 
-**V0 — Contract freeze**
+**V1 — Immutable normalized revision + revision-local indexes**
 
-> Can DungeonMind and DungeonMindBuddy independently implement one exact breaking contract without inventing fields or semantics on either side?
-
-Do not begin V1/V2 implementation by guessing the contract.
+> Can already-decoded vNext knowledge primitives be normalized once into one immutable, deterministic, revision-local internal model whose structural indexes are rebuildable and semantically lossless, without performing scope/visibility/domain admission or introducing World/TTRPG meaning into the Kernel (Slice V1.1)?
 
 ### Parallel evidence lane
 
@@ -787,48 +787,56 @@ Keep this section short and current.
 ### Last canonical roadmap change
 
 ```text
-PR #56
-CONTRACTS: V0.1 generic vNext schema surface
-merged: 63ec810a02f18c4e25af228f6fdb19d99d12579e
-accepted implementation head: ba2ec6dc16137b57aab4ca7544f00eb4a5802a15
-review cycles: 4 (Cycle 1 848d7b8, Cycle 2 ffe9faf, Cycle 3 9272b2e, Cycle 4 ba2ec6d)
-disposition: V0_1_DUNGEONMIND_CONTRACT_FROZEN
+DungeonMindBuddy PR #719
+CONTRACTS: pin DungeonMind vNext and prove DungeonBuddy domain mapping
+merged: c77056b0c909513cecd8b81f9e7fac22e02d339a
+accepted implementation head: 2a17226b6b0b25a1084f404b6aca8bde442e4713
+review cycles: 3 (Cycle 1 6293a1e, Cycle 2 fc397da, Cycle 3 2a17226)
+disposition: V0_2_DUNGEONBUDDY_DOMAIN_PROOF_ACCEPTED
+Buddy base: 68a4abae9635211bc773d8480ec6ce46b10ada5e
 contract aggregate sha256: fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
-bundle path: Docs/Contracts/vnext/dm_vnext_contract_v1.json
+acceptance artifact: Docs/Contracts/vnext/dmb_v0_2_contract_acceptance_v1.json
 ```
 
 It established:
 
-- Frozen generic vNext contract schemas and Pydantic models in `src/dungeonmind/contracts/vnext/`;
-- Canonical semantic-invariant manifest binding custom validator semantics directly into the aggregate contract identity;
-- Three multi-domain acceptance fixture families (`adversarial_epistemic_identity_v1`, `organizational_memory_v1`, `temporal_supersession_v1`);
-- Pinned cross-repository contract identity `fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea` ready for DungeonMindBuddy V0.2 consumption.
+- Pinned DungeonMind PR #56 dependency (`63ec810a...`) and vendored identical frozen vNext bundle (`fd04a904...`);
+- Pinned Buddy contract manifest at `Docs/Contracts/dungeonmind/dm_vnext_contract_pin_v1.json`;
+- DomainContract fixture (`dungeonbuddy.world`) with campaign as the sole authority scope axis;
+- SemanticProfile fixture (`dungeonbuddy.dnd5e`) declaring representative terms and predicates;
+- Preservation fixture proving campaign/session focus, GM/player visibility, standing, fictional time, World-object representation, candidate governance, and 100% `KNOWN_SOURCE_DOMAINS` mapping coverage;
+- Executable fail-closed mapping helper proving deterministic transformation of Buddy inputs into valid generic `ProjectionRequest`s;
+- Zero modifications to production read/write adapters, routes, DTOs, UI, migrations, or live authority;
+- Complete satisfaction of V0 Contract Freeze obligations across both repositories (`VNEXT_CONTRACT_FROZEN`).
 
 Prior roadmap baseline:
+- PR #56 (`63ec810a02f18c4e25af228f6fdb19d99d12579e`): V0.1 generic vNext schema surface (`fd04a904...`).
 - PR #54 (`22bf2e42686876e1c0f9750d1b346e4a6fffebc4`): canonized vNext execution and optimization roadmap.
 
 ### Current phase
 
 ```text
-V0 CONTRACT FREEZE / ACTIVE V0.2 BUDDY PROOF
+VNEXT_CONTRACT_FROZEN / ACTIVE V1.1 PARSED KNOWLEDGE REVISION CORE
 ```
 
 ### Next primary question
 
 ```text
-Can DungeonMindBuddy prove that its TTRPG/campaign authority semantics map into the frozen generic vNext contract without inventing Kernel fields or modifying production behavior (PR #719 / V0.2)?
+Can already-decoded vNext knowledge primitives be normalized once into one immutable, deterministic, revision-local internal model whose structural indexes are rebuildable and semantically lossless, without performing scope/visibility/domain admission or introducing World/TTRPG meaning into the Kernel (Slice V1.1)?
 ```
 
 ### What remains false
 
 At this checkpoint:
 
-- generic vNext contract schemas/types are frozen (V0.1 complete), but joint V0 freeze is pending Buddy V0.2 proof acceptance;
+- generic vNext contract schemas/types are frozen (V0.1 complete) and proved by Buddy (V0.2 complete); VNEXT_CONTRACT_FROZEN is TRUE;
 - no `KnowledgeSpace` runtime exists;
 - no generic Entity/Assertion current graph implementation exists;
+- no `ParsedKnowledgeRevision` core or structural indexes exist (active slice V1.1);
+- no legacy graph v1-v6 compatibility decoder into ParsedKnowledgeRevision exists (slice V1.2);
 - no `KnowledgeReadContext` exists;
 - bounded reads still run through the current World architecture;
-- DungeonBuddy has not yet merged its DomainContract implementation;
+- DungeonBuddy has not yet implemented runtime World read/write cutover (V6);
 - no bridge-genesis migration has occurred;
 - no vNext authority has been published;
 - no Buddy cutover has happened;
@@ -838,7 +846,7 @@ At this checkpoint:
 
 ### Named next action
 
-Complete and merge **DungeonMindBuddy V0.2 domain proof (PR #719)**, mark V0 complete (`VNEXT_CONTRACT_FROZEN`), then design and dispatch the **V1 normalized immutable revision PR handoff**.
+Dispatch **V1.1: immutable ParsedKnowledgeRevision core + deterministic indexes** from DungeonMind `main` (branch `kernel/v1-1-parsed-knowledge-revision`, handoff `Docs/Handoffs/HANDOFF-v1-1-parsed-knowledge-revision-core.md`).
 
 ---
 
