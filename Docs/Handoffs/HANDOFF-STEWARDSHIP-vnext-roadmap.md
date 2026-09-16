@@ -4,7 +4,8 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `6c5e746d3fa3ffbbdb371ddb15d9c392ab3fd3a0` — merged PR #58  
+**Current main anchor:** `d409a2000e4608208cb8cfeed0c6907f3568abe2` — merged PR #61 (V3 PRE-DISPATCH handoff; this sync records the post-#60/#61 truth)  
+**Last merged V2 implementation:** `8af28bf359fa2044dbda23e674653edc9ebe3e6d` — merged PR #60  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
 **Read/performance architecture:** `Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`  
@@ -91,13 +92,23 @@ V1_2_LEGACY_COMPATIBILITY_PARITY_ACCEPTED
 V1_IMMUTABLE_NORMALIZATION_COMPLETE
 ```
 
+### V2 complete
+
+DungeonMind PR #60 established V2, the generic `KnowledgeReadContext` and candidate-admission seam.
+
+V2 final disposition:
+
+```text
+V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
+```
+
 The canonical roadmap is now:
 
 ```text
 V0   Contract freeze                                      COMPLETE
 V1   Immutable normalized revision + revision indexes    COMPLETE
-V2   Generic KnowledgeReadContext + candidate admission  ACTIVE
-V3   Lazy exact / complete entity reads
+V2   Generic KnowledgeReadContext + candidate admission  COMPLETE
+V3   Lazy exact / complete entity reads                  ACTIVE
 V4   Neighborhood + evidence + anchor + indexed search
 V5   Generic governed write contracts
 V6   DungeonBuddy domain implementation
@@ -110,11 +121,11 @@ V11  Deeper storage optimization only if evidence still demands it
 
 ### Current primary question
 
-**V2 — generic `KnowledgeReadContext` + candidate admission seam**
+**V3 — lazy exact / complete entity reads**
 
-> Can one exact `ParsedKnowledgeRevision` support coherent generic and pinned-domain admission over an arbitrary candidate slice, with targeted fresh source/provenance state, without pre-projecting the entire KnowledgeSpace or changing current World runtime behavior?
+> Can exact and complete entity truth be assembled from one exact `ParsedKnowledgeRevision` using only revision-local lookup/adjacency indexes plus the accepted V2 admission seam, with work proportional to the selected entity and its direct support rather than the whole KnowledgeSpace?
 
-V2 is a seam/proof phase. It is not permission to implement V3 entity retrieval early.
+V3 is a bounded exact-ID read phase. It is not permission to implement V4 neighborhood/evidence/anchor/search APIs early.
 
 ---
 
@@ -335,6 +346,51 @@ normalized indexed lookups: microsecond-scale characterization
 ```
 
 This is characterization, not a V2 latency target.
+
+### PR #59 — V2 implementation handoff
+
+Docs-only dispatch of `HANDOFF-v2-knowledge-read-context-admission.md`.
+
+```text
+merge: 48c5eba1b47f3e3d410ca824f47ae19b4ee41ed3
+```
+
+### PR #60 — generic KnowledgeReadContext + candidate admission
+
+```text
+merge: 8af28bf359fa2044dbda23e674653edc9ebe3e6d
+accepted head: 121419e9d0823533306d6a9ca6586c769d82f6b0
+review cycles: 5
+final PASS review: 5217813591
+disposition: V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
+```
+
+It established:
+
+- immutable `KnowledgeReadContext` with sealed request/descriptor dumps;
+- candidate-local coherent provenance views (epoch pin, no whole-source preload);
+- generic Kernel admission plus registry-injected pure narrowing policy;
+- fail-closed source identity and candidate-bound `requested_*` validation;
+- organizational-memory and Buddy-shaped opaque-domain witnesses.
+
+10k characterization artifact:
+
+```text
+artifact: Docs/Benchmarks/vnext_candidate_admission_10k_v1.json
+artifact exact substantive head: b88a7b6ebc03f5a227d599222e3f25075566382d
+parsed semantic digest: 552ecc3eb8f2af6de1969e6793ef286b02ed4af264eaa9313ee9ff283a02a4ac
+structural gate: PASS — candidate-local source/provenance work
+```
+
+### PR #61 — V3 implementation handoff
+
+Docs-only landing of `HANDOFF-v3-lazy-exact-complete-entity-reads.md` (PRE-DISPATCH at merge; activated by the successor Steward sync).
+
+```text
+merge: d409a2000e4608208cb8cfeed0c6907f3568abe2
+accepted head: b40ac47bd8836501dfc736ea2fc7bdb8b4572d0a
+post-merge audit: DISPATCH HOLD 5218033391 — Steward/V3 header sync required before V3 code
+```
 
 ### V2 compatibility caution
 
@@ -598,23 +654,32 @@ Then update canonical architecture/roadmap before implementation resumes if the 
 ### Last merged roadmap PR
 
 ```text
-DungeonMind PR #58
-KERNEL: legacy v1–v6 compatibility decoder + semantic parity
-merged: 6c5e746d3fa3ffbbdb371ddb15d9c392ab3fd3a0
-accepted implementation head: b8ca0a579c00a6fde7f9ea51b6bad709cba1e71f
-review cycles: 4
-final PASS review: 5216431557
+DungeonMind PR #60
+KERNEL: V2 KnowledgeReadContext + candidate admission
+merged: 8af28bf359fa2044dbda23e674653edc9ebe3e6d
+accepted implementation head: 121419e9d0823533306d6a9ca6586c769d82f6b0
+review cycles: 5
+final PASS review: 5217813591
 disposition:
-  V1_2_LEGACY_COMPATIBILITY_PARITY_ACCEPTED
-  V1_IMMUTABLE_NORMALIZATION_COMPLETE
-manifest sha256: f408ce73b8efb32a36e4fb29eb68e9242cb358a76c0c0b60eafdce5046abbe4f
-parity records digest: 733e1af301123c5de337bd8bb15241517b07c63bc6cf27eb2dec6e6ee21db139
+  V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
+artifact: Docs/Benchmarks/vnext_candidate_admission_10k_v1.json
+artifact exact substantive head: b88a7b6ebc03f5a227d599222e3f25075566382d
+parsed semantic digest: 552ecc3eb8f2af6de1969e6793ef286b02ed4af264eaa9313ee9ff283a02a4ac
 frozen V0 aggregate: fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
+```
+
+Current `main` after the V3 handoff merge (PR #61), before this activation sync:
+
+```text
+d409a2000e4608208cb8cfeed0c6907f3568abe2
 ```
 
 Prior key anchors:
 
 ```text
+PR #61 merge d409a2000e4608208cb8cfeed0c6907f3568abe2 — V3 PRE-DISPATCH handoff
+PR #59 merge 48c5eba1b47f3e3d410ca824f47ae19b4ee41ed3 — V2 handoff
+PR #58 merge 6c5e746d3fa3ffbbdb371ddb15d9c392ab3fd3a0 — V1.2
 PR #57 merge 6d9a40f609530f4882470c5599b4914e2288b8d5 — V1.1
 DungeonMindBuddy PR #719 merge c77056b0c909513cecd8b81f9e7fac22e02d339a — V0.2 / VNEXT_CONTRACT_FROZEN
 PR #56 merge 63ec810a02f18c4e25af228f6fdb19d99d12579e — V0.1
@@ -626,13 +691,14 @@ PR #54 merge 22bf2e42686876e1c0f9750d1b346e4a6fffebc4 — roadmap/read architect
 ```text
 V0 COMPLETE — VNEXT_CONTRACT_FROZEN
 V1 COMPLETE — V1_IMMUTABLE_NORMALIZATION_COMPLETE
-V2 ACTIVE
+V2 COMPLETE — V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
+V3 ACTIVE
 ```
 
 ### Next primary question
 
 ```text
-Can one exact ParsedKnowledgeRevision support coherent generic and pinned-domain admission over an arbitrary candidate slice, with targeted fresh source/provenance state, without pre-projecting the entire KnowledgeSpace or changing current World runtime behavior?
+Can exact and complete entity truth be assembled from one exact ParsedKnowledgeRevision using only revision-local lookup/adjacency indexes plus the accepted V2 admission seam, with work proportional to the selected entity and its direct support rather than the whole KnowledgeSpace?
 ```
 
 ### Parallel work posture
@@ -640,12 +706,12 @@ Can one exact ParsedKnowledgeRevision support coherent generic and pinned-domain
 ```text
 safe / independent:
   larger-scale benchmark characterization
-  contract-frozen Buddy/domain work that does not depend on V2 runtime
-  design work for V3 consuming the V2 seam, but not V3 merge
+  contract-frozen Buddy/domain work that does not depend on V3 runtime
+  design work for V4 consuming the V3 exact-ID reads, but not V4 merge
 
-blocked until V2 acceptance:
-  V3 merge
-  V4+ bounded read rollout
+blocked until V3 acceptance:
+  V4 merge
+  V5+ governed writes / Buddy runtime
   bridge-genesis migration
   cutover
   current-public-path quarantine/deletion
@@ -653,24 +719,21 @@ blocked until V2 acceptance:
 
 ### What remains false
 
-- no generic `KnowledgeReadContext` exists yet;
-- no generic candidate-admission runtime exists yet;
-- no vNext source/provenance reader port or coherent targeted snapshot is accepted yet;
-- no pinned pure domain-policy runtime seam is accepted yet;
-- no native vNext `get_entity` / `get_complete_entity` runtime exists;
-- no `KnowledgeSpace` head/storage runtime exists;
-- current public World readers still use the historical path;
-- no bridge-genesis migration has occurred;
-- no vNext authority has been published;
-- DungeonBuddy has not implemented runtime vNext World read/write semantics;
-- no cutover has occurred;
-- old World contracts remain current production contracts;
+- no native vNext `get_entity` is accepted yet;
+- no native vNext `get_complete_entity` is accepted yet;
+- no V4 neighborhood/evidence/anchor/search API is active;
+- no vNext KnowledgeSpace/head storage runtime exists;
+- no native vNext governed write path exists;
+- no bridge-genesis migration exists;
+- no current public World read cutover has occurred;
+- no historical-reader quarantine/deletion is authorized;
+- no DungeonBuddy runtime repin/cutover has occurred;
 - larger 50k/100k K0.3 characterization remains incomplete;
 - deeper storage optimization is not authorized.
 
 ### Named next action
 
-Dispatch V2 from DungeonMind `main` anchor `6c5e746d3fa3ffbbdb371ddb15d9c392ab3fd3a0` using the successor handoff on branch `handoff/v2-knowledge-read-context-admission`.
+After this Steward/V3-header sync merges, dispatch V3 from the then-current DungeonMind `main` using `Docs/Handoffs/HANDOFF-v3-lazy-exact-complete-entity-reads.md` (`Status: ACTIVE`) on branch `kernel/v3-lazy-exact-complete-entity-reads`. Do not dispatch from the historical PRE-DISPATCH handoff branch.
 
 ---
 

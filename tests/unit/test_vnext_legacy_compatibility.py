@@ -83,8 +83,8 @@ def _make_rev(
     )
 
 
-# 1. Steward handoff update (post-PR #59: V1 complete, V2 active)
-def test_01_steward_handoff_records_pr58_merge_and_v1_complete() -> None:
+# 1. Steward handoff update (post-PR #60/#61: V2 complete, V3 active)
+def test_01_steward_handoff_records_pr60_merge_and_v2_complete() -> None:
     path = Path("Docs/Handoffs/HANDOFF-STEWARDSHIP-vnext-roadmap.md")
     assert path.exists()
     content = path.read_text(encoding="utf-8")
@@ -93,7 +93,14 @@ def test_01_steward_handoff_records_pr58_merge_and_v1_complete() -> None:
     assert "5216431557" in content
     assert "V1_2_LEGACY_COMPATIBILITY_PARITY_ACCEPTED" in content
     assert "V1_IMMUTABLE_NORMALIZATION_COMPLETE" in content
-    assert "V2   Generic KnowledgeReadContext + candidate admission  ACTIVE" in content
+    assert "8af28bf359fa2044dbda23e674653edc9ebe3e6d" in content
+    assert "121419e9d0823533306d6a9ca6586c769d82f6b0" in content
+    assert "5217813591" in content
+    assert "V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED" in content
+    assert "b88a7b6ebc03f5a227d599222e3f25075566382d" in content
+    assert "d409a2000e4608208cb8cfeed0c6907f3568abe2" in content
+    assert "V2 COMPLETE — V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED" in content
+    assert "V3 ACTIVE" in content
 
 
 # 2. v1 stored revision decodes and has semantic parity

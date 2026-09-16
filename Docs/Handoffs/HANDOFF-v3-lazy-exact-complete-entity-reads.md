@@ -1,7 +1,7 @@
 # HANDOFF — V3 lazy exact and complete entity reads
 
 **Created:** 2026-09-15  
-**Status:** PRE-DISPATCH — V2 is Steward-accepted but PR #60 is not yet merged; V3 implementation must not begin until the actual V2 merge and mandatory Steward transition are checked in  
+**Status:** ACTIVE — predecessor merge and Steward transition are checked in; V3 implementation may be dispatched from current `main`  
 **Repository / handoff branch:** `Drakosfire/DungeonMind` / `handoff/v3-lazy-exact-complete-entity-reads`  
 **Suggested implementation branch:** `kernel/v3-lazy-exact-complete-entity-reads`  
 **Predecessor:** PR #60 — `KERNEL: V2 KnowledgeReadContext + candidate admission`  
@@ -9,41 +9,40 @@
 **Predecessor final Steward review:** `5217813591`  
 **Predecessor logical review cycles:** `5`  
 **Predecessor disposition:** `V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED`  
-**Predecessor merge:** **PENDING at handoff creation — do not invent this SHA**  
-**Current `main` while authored:** `48c5eba1b47f3e3d410ca824f47ae19b4ee41ed3` — merged PR #59, the V2 handoff  
+**Predecessor merge:** `8af28bf359fa2044dbda23e674653edc9ebe3e6d`  
+**Handoff merge:** `d409a2000e4608208cb8cfeed0c6907f3568abe2` — PR #61  
+**Current `main` at activation sync:** `d409a2000e4608208cb8cfeed0c6907f3568abe2`  
 **Handoff branch base:** exact accepted V2 head `121419e9d0823533306d6a9ca6586c769d82f6b0`  
 **Frozen vNext contract aggregate:** `fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea`  
-**Roadmap phase:** V3 — lazy exact / complete entity reads  
+**Roadmap phase:** V3 — lazy exact / complete entity reads — ACTIVE  
 **Successor:** V4 — neighborhood + evidence + anchor + deterministic indexed search  
 **One-line mission:** Turn the accepted V1 revision-local indexes and V2 candidate-admission seam into exact-ID entity reads whose structural and provenance work is proportional to the selected entity and its support, while preserving complete one-hop truth, fail-closed admission, source freshness, and current World-runtime behavior.
 
 ---
 
-## §0 Dispatch gate — mandatory predecessor merge and Steward transition
+## §0 Dispatch gate — predecessor merge and Steward transition
 
-This handoff is intentionally written before PR #60 has merged so design work can continue without pretending a merge already happened.
+This handoff was authored before PR #60 merged. The activation facts below are now checked in and must not be re-invented.
 
-**Do not dispatch V3 implementation from this handoff branch and do not start V3 code while PR #60 remains unmerged.**
+**Do not dispatch V3 implementation from the historical PRE-DISPATCH handoff branch.**
 
-Before any V3 production code is written:
-
-1. merge PR #60 at the exact Steward-accepted head or re-review any changed head;
-2. record the actual PR #60 merge SHA;
-3. create the V3 implementation branch from the then-current `main` after that merge;
-4. make the **first V3 implementation commit** a Steward bookkeeping mutation of:
-
-   `Docs/Handoffs/HANDOFF-STEWARDSHIP-vnext-roadmap.md`
-
-5. only after that first commit begin V3 implementation.
-
-The first V3 commit must record at minimum:
+Dispatch V3 only when all of the following are true on `main`:
 
 ```text
-last merged roadmap PR:
+ACTIVE
++ durably checked into main
++ Steward records V2 COMPLETE / V3 ACTIVE
++ implementation branch is created from then-current main after this activation sync
+```
+
+Recorded predecessor / activation facts:
+
+```text
+last merged V2 implementation PR:
   PR #60 — KERNEL: V2 KnowledgeReadContext + candidate admission
 
 actual merge SHA:
-  <fill from merged PR #60; do not guess>
+  8af28bf359fa2044dbda23e674653edc9ebe3e6d
 
 accepted implementation head:
   121419e9d0823533306d6a9ca6586c769d82f6b0
@@ -56,9 +55,15 @@ final PASS review:
 
 final disposition:
   V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
+
+V3 handoff merge (PR #61):
+  d409a2000e4608208cb8cfeed0c6907f3568abe2
+
+current main at activation sync:
+  d409a2000e4608208cb8cfeed0c6907f3568abe2
 ```
 
-It must also record V2's accepted structural characterization:
+V2 accepted structural characterization:
 
 ```text
 artifact:
@@ -96,7 +101,7 @@ structural gate:
   PASS — candidate-local source/provenance work
 ```
 
-The Steward phase after that mutation must read:
+Steward phase after the activation sync:
 
 ```text
 V0 COMPLETE — VNEXT_CONTRACT_FROZEN
@@ -119,7 +124,9 @@ The Steward must also make explicit that all of the following remain false:
 
 ### Review gate
 
-If the implementation branch history does not contain this Steward transition as its first successor commit, return the PR for bookkeeping repair before accepting V3.
+If `main` does not record the PR #60 merge SHA, accepted V2 head, 5 review cycles, review `5217813591`, and `V2 COMPLETE` / `V3 ACTIVE` on the Steward handoff, return the implementation PR for bookkeeping repair before accepting V3.
+
+The Steward transition for V2→V3 is this activation sync, not a first implementation commit. Do not require the V3 implementation PR to rewrite Steward again unless a later merge/review fact changes.
 
 After V3 eventually merges, the V4 successor must again update the Steward handoff first with the actual V3 merge SHA, accepted head, review-cycle count, benchmark artifact, V3 disposition, and `V4 ACTIVE`.
 
