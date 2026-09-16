@@ -1,0 +1,49 @@
+{
+  "assertion_count": 10000,
+  "characterization_only": true,
+  "exact_base": "48c5eba1b47f3e3d410ca824f47ae19b4ee41ed3",
+  "exact_head": "b88a7b6ebc03f5a227d599222e3f25075566382d",
+  "parsed_semantic_digest": "552ecc3eb8f2af6de1969e6793ef286b02ed4af264eaa9313ee9ff283a02a4ac",
+  "runs": {
+    "batch_10": {
+      "admitted_count": 10,
+      "artifact_ids_requested": 10,
+      "assertions_evaluated": 10,
+      "candidate_count": 10,
+      "elapsed_ms": 12.708717000350589,
+      "evidence_ids_resolved": 10,
+      "policy_evaluations": 10,
+      "provenance_snapshot_calls": 1,
+      "revision_ids_requested": 10
+    },
+    "batch_100": {
+      "admitted_count": 100,
+      "artifact_ids_requested": 100,
+      "assertions_evaluated": 100,
+      "candidate_count": 100,
+      "elapsed_ms": 117.37326300135464,
+      "evidence_ids_resolved": 100,
+      "policy_evaluations": 100,
+      "provenance_snapshot_calls": 1,
+      "revision_ids_requested": 100
+    },
+    "single_candidate": {
+      "admitted_count": 1,
+      "artifact_ids_requested": 1,
+      "assertions_evaluated": 1,
+      "candidate_count": 1,
+      "elapsed_ms": 2.791909999359632,
+      "evidence_ids_resolved": 1,
+      "policy_evaluations": 1,
+      "provenance_snapshot_calls": 1,
+      "revision_ids_requested": 1
+    }
+  },
+  "schema_version": "vnext_candidate_admission_10k_v1",
+  "structural_gate": {
+    "observed_single_candidate_artifact_ids_requested": 1,
+    "passes": true,
+    "single_candidate_max_artifact_ids_requested": 1
+  },
+  "workload_digest": "d66073459f1e37f0205bcaba0f2f9e90cf5cef40695002ae2bf768d1f0aa25f3"
+}

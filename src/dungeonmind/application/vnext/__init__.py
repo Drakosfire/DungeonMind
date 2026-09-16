@@ -6,12 +6,23 @@ and deterministic structural graph indexes over already-decoded vNext knowledge 
 
 from __future__ import annotations
 
+from .admission import (
+    AdmissionWorkCounts,
+    AlwaysAdmitPolicy,
+    CandidateAdmissionResult,
+    CandidateExclusion,
+    ClaimModeFilterPolicy,
+    DomainAdmissionPolicyRegistry,
+    ExcludeByAssertionIdPolicy,
+)
 from .builder import (
     DecodedKnowledgeContent,
     build_parsed_knowledge_revision,
     build_parsed_knowledge_revision_from_records,
 )
 from .errors import (
+    CandidateAdmissionIntegrityError,
+    KnowledgeReadContextIntegrityError,
     LegacyCompatibilityIntegrityError,
     RevisionStructuralIntegrityError,
 )
@@ -46,6 +57,8 @@ from .model import (
     compute_compatibility_key,
     compute_semantic_digest,
 )
+from .provenance import InMemoryKnowledgeSourceReader, KnowledgeProvenanceSnapshot
+from .read_context import KnowledgeReadContext
 from .records import (
     ParsedAssertion,
     ParsedAssertionMetadata,
@@ -79,9 +92,21 @@ __all__ = [
     "COMPATIBILITY_MANIFEST_SHA256",
     "COMPATIBILITY_MAPPING_REVISION",
     "PARSED_REVISION_FORMAT_VERSION",
+    "AdmissionWorkCounts",
+    "AlwaysAdmitPolicy",
+    "CandidateAdmissionIntegrityError",
+    "CandidateAdmissionResult",
+    "CandidateExclusion",
+    "ClaimModeFilterPolicy",
     "DecodedKnowledgeContent",
+    "DomainAdmissionPolicyRegistry",
+    "ExcludeByAssertionIdPolicy",
     "FrozenDict",
     "FrozenJsonValue",
+    "InMemoryKnowledgeSourceReader",
+    "KnowledgeProvenanceSnapshot",
+    "KnowledgeReadContext",
+    "KnowledgeReadContextIntegrityError",
     "LegacyCompatibilityIntegrityError",
     "LegacyCompatibilityManifest",
     "ParsedAssertion",

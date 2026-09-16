@@ -25,3 +25,15 @@ class LegacyCompatibilityIntegrityError(RevisionStructuralIntegrityError):
     """Raised when a legacy stored revision fails compatibility verification or decoding."""
 
     code = "legacy_compatibility_integrity_error"
+
+
+class KnowledgeReadContextIntegrityError(PersistenceIntegrityError):
+    """Fail-closed error when read context identity or pinning checks fail."""
+
+    code = "knowledge_read_context_integrity_error"
+
+
+class CandidateAdmissionIntegrityError(PersistenceIntegrityError):
+    """Fail-closed error when candidate admission preconditions are violated."""
+
+    code = "candidate_admission_integrity_error"
