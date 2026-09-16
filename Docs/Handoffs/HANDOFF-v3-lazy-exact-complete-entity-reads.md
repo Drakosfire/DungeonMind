@@ -855,7 +855,7 @@ returned evidence/support identity and locator content
 completeness status/reason
 ```
 
-If the result includes mutable source metadata whose content may change while the knowledge revision remains fixed, include only the **returned** source artifact/revision identity in the result digest. Do not bind the fingerprint of the whole candidate provenance snapshot. Hidden/excluded candidate provenance must not change a visible result digest.
+If the result includes mutable source metadata whose content may change while the knowledge revision remains fixed, include the **returned** source artifact/revision fields in the result digest (`source_artifact_id`, `status`, `current_revision_id`, `source_classification`, `authority`, and returned revision `content_sha256`). Do not bind the fingerprint of the whole candidate provenance snapshot. Hidden/excluded candidate provenance must not change a visible result digest.
 
 Work counts and elapsed timing should not affect the semantic digest.
 

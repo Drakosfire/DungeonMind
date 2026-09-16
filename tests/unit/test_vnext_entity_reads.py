@@ -584,6 +584,119 @@ def _incoming_neighbor_heavy_lab(*, neighbor_subject_count: int) -> KnowledgeRea
     return context
 
 
+def _rebind_lab_context(
+    context: KnowledgeReadContext,
+    reader: InMemoryKnowledgeSourceReader,
+) -> KnowledgeReadContext:
+    return KnowledgeReadContext(
+        parsed=context.parsed,
+        request=context.request,
+        domain_contract=context.domain_contract,
+        semantic_profile=context.semantic_profile,
+        domain_policy=context.domain_policy,
+        source_reader=reader,
+    )
+
+
+def _excluded_incoming_source_lab() -> tuple[KnowledgeReadContext, InMemoryKnowledgeSourceReader]:
+    artifacts = {
+        "src:visible": SourceArtifactV3(
+            source_artifact_id="src:visible",
+            source_classification="test:doc",
+            current_revision_id="srcrev:visible",
+            authority="primary",
+            visibility=PublicVisibility(),
+            status="active",
+        ),
+        "src:hidden": SourceArtifactV3(
+            source_artifact_id="src:hidden",
+            source_classification="test:doc",
+            current_revision_id="srcrev:hidden",
+            authority="primary",
+            visibility=PublicVisibility(),
+            status="active",
+        ),
+    }
+    revisions = {
+        "srcrev:visible": SourceRevisionV2(
+            source_revision_id="srcrev:visible",
+            source_artifact_id="src:visible",
+            content_sha256="1" * 64,
+            body_storage="inline",
+            created_at=datetime(2026, 9, 15, tzinfo=UTC),
+        ),
+        "srcrev:hidden": SourceRevisionV2(
+            source_revision_id="srcrev:hidden",
+            source_artifact_id="src:hidden",
+            content_sha256="2" * 64,
+            body_storage="inline",
+            created_at=datetime(2026, 9, 15, tzinfo=UTC),
+        ),
+    }
+    entities = [Entity(entity_id="ent:selected"), Entity(entity_id="ent:neighbor")]
+    assertions = [
+        Assertion(
+            assertion_id="asrt:visible-subject",
+            subject_entity_id="ent:selected",
+            predicate="test:title",
+            value=LiteralValue(value={"role": "selected"}),
+            metadata=AssertionMetadata(
+                scope=[ScopeBinding(axis="test:scope", value="one")],
+                visibility=PublicVisibility(),
+                epistemic_basis=EpistemicBasis.ASSERTED,
+                claim_mode="test:fact",
+                standing=KnowledgeStanding.ESTABLISHED,
+                evidence_ref_ids=["evidence:visible"],
+                temporal_scope=TimelessTemporalScope(),
+            ),
+        ),
+        Assertion(
+            assertion_id="asrt:hidden-incoming",
+            subject_entity_id="ent:neighbor",
+            predicate="test:relates",
+            value=EntityRefValue(entity_id="ent:selected"),
+            metadata=AssertionMetadata(
+                scope=[ScopeBinding(axis="test:scope", value="one")],
+                visibility=PublicVisibility(),
+                epistemic_basis=EpistemicBasis.ASSERTED,
+                claim_mode="test:fact",
+                standing=KnowledgeStanding.ESTABLISHED,
+                evidence_ref_ids=["evidence:hidden"],
+                temporal_scope=TimelessTemporalScope(),
+            ),
+        ),
+    ]
+    evidence = [
+        EvidenceRefV3(
+            evidence_ref_id="evidence:visible",
+            source_artifact_id="src:visible",
+            source_revision_id="srcrev:visible",
+            evidence_role="support",
+            can_open_source=True,
+            can_highlight_span=False,
+        ),
+        EvidenceRefV3(
+            evidence_ref_id="evidence:hidden",
+            source_artifact_id="src:hidden",
+            source_revision_id="srcrev:hidden",
+            evidence_role="support",
+            can_open_source=True,
+            can_highlight_span=False,
+        ),
+    ]
+    return _lab_context(
+        entities=entities,
+        assertions=assertions,
+        evidence=evidence,
+        artifacts=artifacts,
+        revisions=revisions,
+        policy=ExcludeByAssertionIdPolicy(
+            policy_id="test.always",
+            excluded_assertion_ids=frozenset({"asrt:hidden-incoming"}),
+        ),
+    )
+
+
 @pytest.fixture(name="org_context")
 def fixture_org_context() -> tuple[KnowledgeReadContext, InMemoryKnowledgeSourceReader]:
     return _build_from_fixture(
@@ -1469,128 +1582,39 @@ def test_73_result_digest_changes_with_semantic_provenance_state(
 
 
 def test_73b_result_digest_ignores_excluded_candidate_provenance() -> None:
-    artifacts = {
-        "src:visible": SourceArtifactV3(
-            source_artifact_id="src:visible",
-            source_classification="test:doc",
-            current_revision_id="srcrev:visible",
-            authority="primary",
-            visibility=PublicVisibility(),
-            status="active",
-        ),
-        "src:hidden": SourceArtifactV3(
-            source_artifact_id="src:hidden",
-            source_classification="test:doc",
-            current_revision_id="srcrev:hidden",
-            authority="primary",
-            visibility=PublicVisibility(),
-            status="active",
-        ),
-    }
-    revisions = {
-        "srcrev:visible": SourceRevisionV2(
-            source_revision_id="srcrev:visible",
-            source_artifact_id="src:visible",
-            content_sha256="1" * 64,
-            body_storage="inline",
-            created_at=datetime(2026, 9, 15, tzinfo=UTC),
-        ),
-        "srcrev:hidden": SourceRevisionV2(
-            source_revision_id="srcrev:hidden",
-            source_artifact_id="src:hidden",
-            content_sha256="2" * 64,
-            body_storage="inline",
-            created_at=datetime(2026, 9, 15, tzinfo=UTC),
-        ),
-    }
-    entities = [Entity(entity_id="ent:selected"), Entity(entity_id="ent:neighbor")]
-    assertions = [
-        Assertion(
-            assertion_id="asrt:visible-subject",
-            subject_entity_id="ent:selected",
-            predicate="test:title",
-            value=LiteralValue(value={"role": "selected"}),
-            metadata=AssertionMetadata(
-                scope=[ScopeBinding(axis="test:scope", value="one")],
-                visibility=PublicVisibility(),
-                epistemic_basis=EpistemicBasis.ASSERTED,
-                claim_mode="test:fact",
-                standing=KnowledgeStanding.ESTABLISHED,
-                evidence_ref_ids=["evidence:visible"],
-                temporal_scope=TimelessTemporalScope(),
-            ),
-        ),
-        Assertion(
-            assertion_id="asrt:hidden-incoming",
-            subject_entity_id="ent:neighbor",
-            predicate="test:relates",
-            value=EntityRefValue(entity_id="ent:selected"),
-            metadata=AssertionMetadata(
-                scope=[ScopeBinding(axis="test:scope", value="one")],
-                visibility=PublicVisibility(),
-                epistemic_basis=EpistemicBasis.ASSERTED,
-                claim_mode="test:fact",
-                standing=KnowledgeStanding.ESTABLISHED,
-                evidence_ref_ids=["evidence:hidden"],
-                temporal_scope=TimelessTemporalScope(),
-            ),
-        ),
-    ]
-    evidence = [
-        EvidenceRefV3(
-            evidence_ref_id="evidence:visible",
-            source_artifact_id="src:visible",
-            source_revision_id="srcrev:visible",
-            evidence_role="support",
-            can_open_source=True,
-            can_highlight_span=False,
-        ),
-        EvidenceRefV3(
-            evidence_ref_id="evidence:hidden",
-            source_artifact_id="src:hidden",
-            source_revision_id="srcrev:hidden",
-            evidence_role="support",
-            can_open_source=True,
-            can_highlight_span=False,
-        ),
-    ]
-    context, reader = _lab_context(
-        entities=entities,
-        assertions=assertions,
-        evidence=evidence,
-        artifacts=artifacts,
-        revisions=revisions,
-        policy=ExcludeByAssertionIdPolicy(
-            policy_id="test.always",
-            excluded_assertion_ids=frozenset({"asrt:hidden-incoming"}),
-        ),
-    )
+    context, reader = _excluded_incoming_source_lab()
     first = _SVC.get_complete_entity(context, "ent:selected")
     assert {item.assertion_id for item in first.assertions} == {"asrt:visible-subject"}
     hidden = reader._revisions["srcrev:hidden"]
     reader._revisions["srcrev:hidden"] = hidden.model_copy(update={"content_sha256": "f" * 64})
-    second_context = KnowledgeReadContext(
-        parsed=context.parsed,
-        request=context.request,
-        domain_contract=context.domain_contract,
-        semantic_profile=context.semantic_profile,
-        domain_policy=context.domain_policy,
-        source_reader=reader,
-    )
-    second = _SVC.get_complete_entity(second_context, "ent:selected")
+    second = _SVC.get_complete_entity(_rebind_lab_context(context, reader), "ent:selected")
     assert first.result_digest == second.result_digest
     visible = reader._revisions["srcrev:visible"]
     reader._revisions["srcrev:visible"] = visible.model_copy(update={"content_sha256": "a" * 64})
-    third_context = KnowledgeReadContext(
-        parsed=context.parsed,
-        request=context.request,
-        domain_contract=context.domain_contract,
-        semantic_profile=context.semantic_profile,
-        domain_policy=context.domain_policy,
-        source_reader=reader,
-    )
-    third = _SVC.get_complete_entity(third_context, "ent:selected")
+    third = _SVC.get_complete_entity(_rebind_lab_context(context, reader), "ent:selected")
     assert third.result_digest != first.result_digest
+
+
+def test_73c_result_digest_binds_returned_source_artifact_metadata() -> None:
+    context, reader = _excluded_incoming_source_lab()
+    first = _SVC.get_complete_entity(context, "ent:selected")
+    assert {item.source_artifact_id for item in first.source_artifacts} == {"src:visible"}
+    hidden = reader._artifacts["src:hidden"]
+    reader._artifacts["src:hidden"] = hidden.model_copy(
+        update={"authority": "derived", "source_classification": "test:hidden"}
+    )
+    second = _SVC.get_complete_entity(_rebind_lab_context(context, reader), "ent:selected")
+    assert first.result_digest == second.result_digest
+    visible = reader._artifacts["src:visible"]
+    reader._artifacts["src:visible"] = visible.model_copy(update={"authority": "derived"})
+    third = _SVC.get_complete_entity(_rebind_lab_context(context, reader), "ent:selected")
+    assert third.result_digest != first.result_digest
+    reader._artifacts["src:visible"] = visible.model_copy(
+        update={"source_classification": "test:note"}
+    )
+    fourth = _SVC.get_complete_entity(_rebind_lab_context(context, reader), "ent:selected")
+    assert fourth.result_digest != first.result_digest
+    assert fourth.result_digest != third.result_digest
 
 
 def test_74_result_digest_independent_of_work_counters(

@@ -170,6 +170,8 @@ def _compute_result_digest(
                     "source_artifact_id": item.source_artifact_id,
                     "status": item.status,
                     "current_revision_id": item.current_revision_id,
+                    "source_classification": item.source_classification,
+                    "authority": item.authority,
                 }
                 for item in source_artifacts
             ],
