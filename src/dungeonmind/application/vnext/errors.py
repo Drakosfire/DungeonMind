@@ -37,3 +37,9 @@ class CandidateAdmissionIntegrityError(PersistenceIntegrityError):
     """Fail-closed error when candidate admission preconditions are violated."""
 
     code = "candidate_admission_integrity_error"
+
+
+class EntityReadIntegrityError(PersistenceIntegrityError):
+    """Fail-closed error when exact/complete entity assembly cannot complete safely."""
+
+    code = "entity_read_integrity_error"

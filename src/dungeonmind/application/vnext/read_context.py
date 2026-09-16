@@ -30,7 +30,7 @@ from .errors import CandidateAdmissionIntegrityError, KnowledgeReadContextIntegr
 from .frozen_json import FrozenJsonValue, freeze_json_value, thaw_json_value
 from .model import ParsedKnowledgeRevision
 from .ports import KnowledgeSourceReader
-from .provenance import validate_provenance_snapshot_integrity
+from .provenance import KnowledgeProvenanceSnapshot, validate_provenance_snapshot_integrity
 
 
 class _EvidenceMemoBox:
@@ -145,6 +145,17 @@ class KnowledgeReadContext:
         )
 
     def admit_candidates(self, candidate_assertion_ids: Sequence[str]) -> CandidateAdmissionResult:
+        result, _provenance = self.evaluate_candidates(candidate_assertion_ids)
+        return result
+
+    def evaluate_candidates(
+        self, candidate_assertion_ids: Sequence[str]
+    ) -> tuple[CandidateAdmissionResult, KnowledgeProvenanceSnapshot]:
+        """Admit candidates and retain the sealed provenance snapshot for V3 assembly.
+
+        Public ``admit_candidates`` remains the V2 contract and ignores the snapshot.
+        """
+
         self._evidence_memo.store.clear()
         request = self.request
         domain_contract = self.domain_contract
@@ -257,9 +268,12 @@ class KnowledgeReadContext:
             admitted_assertion_ids=admitted_sorted,
             excluded=excluded_sorted,
         )
-        return CandidateAdmissionResult(
-            admitted_assertion_ids=admitted_sorted,
-            excluded=excluded_sorted,
-            work=work,
-            result_digest=digest,
+        return (
+            CandidateAdmissionResult(
+                admitted_assertion_ids=admitted_sorted,
+                excluded=excluded_sorted,
+                work=work,
+                result_digest=digest,
+            ),
+            provenance,
         )
