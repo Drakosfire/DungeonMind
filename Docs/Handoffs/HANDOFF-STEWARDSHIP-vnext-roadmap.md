@@ -4,8 +4,8 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `d409a2000e4608208cb8cfeed0c6907f3568abe2` — merged PR #61 (V3 PRE-DISPATCH handoff; this sync records the post-#60/#61 truth)  
-**Last merged V2 implementation:** `8af28bf359fa2044dbda23e674653edc9ebe3e6d` — merged PR #60  
+**Current main anchor:** `c12bf89ea54af1112a0e98163aa224eb89b11c22` — merged PR #63, V3 accepted  
+**Last merged roadmap implementation:** PR #63 — `KERNEL: V3 lazy exact and complete entity reads`  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
 **Read/performance architecture:** `Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`  
@@ -48,68 +48,17 @@ Implementation PRs own bounded technical choices inside these constraints.
 
 ## §2 Current checkpoint
 
-### Completed architectural foundation
-
-PR #53 established the breaking semantic direction:
-
-```text
-KnowledgeSpace
-immutable KnowledgeRevision lineage
-Entity + Assertion graph
-EvidenceRef
-KnowledgeContribution
-IdentityDecision
-DomainContract
-SemanticProfile
-Generic scope / visibility / standing / temporal contracts
-```
-
-PR #54 established the V0–V11 roadmap and read/performance architecture.
-
-PR #56 froze the generic vNext contract bundle at:
-
-```text
-fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
-```
-
-DungeonMindBuddy PR #719 proved the frozen contract can represent the current DungeonBuddy World/TTRPG authority semantics without adding Buddy-only fields to the generic Kernel contract. Overall V0 disposition:
-
-```text
-VNEXT_CONTRACT_FROZEN
-```
-
-### V1 complete
-
-DungeonMind PR #57 established V1.1, the immutable generic `ParsedKnowledgeRevision` plus deterministic revision-local indexes.
-
-DungeonMind PR #58 established V1.2, the frozen v1–v6 compatibility codec and semantic parity proof.
-
-V1 final dispositions:
-
-```text
-V1_1_PARSED_KNOWLEDGE_REVISION_CORE_ACCEPTED
-V1_2_LEGACY_COMPATIBILITY_PARITY_ACCEPTED
-V1_IMMUTABLE_NORMALIZATION_COMPLETE
-```
-
-### V2 complete
-
-DungeonMind PR #60 established V2, the generic `KnowledgeReadContext` and candidate-admission seam.
-
-V2 final disposition:
-
-```text
-V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
-```
-
 The canonical roadmap is now:
 
 ```text
 V0   Contract freeze                                      COMPLETE
 V1   Immutable normalized revision + revision indexes    COMPLETE
 V2   Generic KnowledgeReadContext + candidate admission  COMPLETE
-V3   Lazy exact / complete entity reads                  ACTIVE
-V4   Neighborhood + evidence + anchor + indexed search
+V3   Lazy exact / complete entity reads                  COMPLETE
+V4   Neighborhood + evidence + anchor + indexed search   ACTIVE
+  V4.1 Bounded neighborhood                              ACTIVE
+  V4.2 Evidence + anchor support                         BLOCKED ON V4.1 ACCEPTANCE
+  V4.3 Deterministic indexed search                      BLOCKED ON V4.2 ACCEPTANCE
 V5   Generic governed write contracts
 V6   DungeonBuddy domain implementation
 V7   Bridge-genesis migration
@@ -119,13 +68,24 @@ V10  Remove old current/public paths; quarantine compatibility
 V11  Deeper storage optimization only if evidence still demands it
 ```
 
+Current dispositions:
+
+```text
+V0 COMPLETE — VNEXT_CONTRACT_FROZEN
+V1 COMPLETE — V1_IMMUTABLE_NORMALIZATION_COMPLETE
+V2 COMPLETE — V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
+V3 COMPLETE — V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED
+V4 ACTIVE
+V4.1 ACTIVE
+```
+
 ### Current primary question
 
-**V3 — lazy exact / complete entity reads**
+**V4.1 — bounded neighborhood**
 
-> Can exact and complete entity truth be assembled from one exact `ParsedKnowledgeRevision` using only revision-local lookup/adjacency indexes plus the accepted V2 admission seam, with work proportional to the selected entity and its direct support rather than the whole KnowledgeSpace?
+> Can depth-1 and depth-2 neighborhood traversal discover and admit only the assertions needed for the visited frontier, with structural/provenance work proportional to visited neighborhood support rather than the whole KnowledgeSpace?
 
-V3 is a bounded exact-ID read phase. It is not permission to implement V4 neighborhood/evidence/anchor/search APIs early.
+V4.1 is traversal only. It is not permission to implement standalone evidence/anchor APIs or deterministic search early.
 
 ---
 
@@ -142,7 +102,7 @@ Fresh Steward read order:
 5. `CONTRIBUTING.md`
 6. `Docs/Architecture/ARCHITECTURE.md` for the current pre-cutover runtime
 7. relevant accepted ADRs
-8. current performance evidence
+8. current semantic/performance evidence
 9. this handoff
 
 Frequently relevant ADRs remain:
@@ -266,11 +226,26 @@ Do not introduce Redis, distributed caches, graph-database migration, event sour
 
 ---
 
-## §6 V1 evidence now binding for V2
+## §6 Accepted roadmap evidence
 
-### PR #57 — immutable normalized model
+### V0 — contract freeze
+
+PR #56 froze the generic vNext contract bundle at:
 
 ```text
+fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
+```
+
+DungeonMindBuddy PR #719 proved the contract can represent current World/TTRPG authority semantics without adding Buddy-only Kernel fields.
+
+```text
+VNEXT_CONTRACT_FROZEN
+```
+
+### V1.1 — immutable normalized model
+
+```text
+PR #57
 merge: 6d9a40f609530f4882470c5599b4914e2288b8d5
 accepted head: 38d9eac3252ba911ff7565b930ce8b84aca0767b
 review cycles: 2
@@ -278,24 +253,12 @@ final review: 5213422370
 disposition: V1_1_PARSED_KNOWLEDGE_REVISION_CORE_ACCEPTED
 ```
 
-It established:
+Established immutable `ParsedKnowledgeRevision`, deterministic revision-local indexes, fail-closed structural integrity, genericity, and rebuildable derived state.
 
-- immutable `ParsedKnowledgeRevision`;
-- fail-closed structural integrity;
-- exact revision-header preservation;
-- entity/assertion/evidence/alias lookup indexes;
-- subject, adjacency, evidence-support, literal, alias, and lexical indexes;
-- no scope/visibility admission in the parser;
-- no D&D dependency;
-- no frozen V0 contract change.
-
-10k characterization artifact:
-
-`Docs/Benchmarks/vnext_parsed_knowledge_revision_10k_v1.json`
-
-### PR #58 — legacy compatibility parity
+### V1.2 — legacy compatibility parity
 
 ```text
+PR #58
 merge: 6c5e746d3fa3ffbbdb371ddb15d9c392ab3fd3a0
 accepted head: b8ca0a579c00a6fde7f9ea51b6bad709cba1e71f
 review cycles: 4
@@ -303,61 +266,16 @@ final PASS review: 5216431557
 dispositions:
   V1_2_LEGACY_COMPATIBILITY_PARITY_ACCEPTED
   V1_IMMUTABLE_NORMALIZATION_COMPLETE
-```
-
-Compatibility identity:
-
-```text
-mapping revision: dm_legacy_world_compat_v1
 manifest sha256: f408ce73b8efb32a36e4fb29eb68e9242cb358a76c0c0b60eafdce5046abbe4f
 parity records digest: 733e1af301123c5de337bd8bb15241517b07c63bc6cf27eb2dec6e6ee21db139
 ```
 
-Canonical parity artifact:
+Historical v1–v6 compatibility remains a codec, not migration.
 
-`Docs/Compatibility/legacy_v1_v6_parity_v1.json`
-
-All six frozen historical graph generations have exact historical-reader/compatibility-witness parity.
-
-The compatibility codec is **not migration**:
-
-- historical payloads are never rewritten;
-- no fake native-vNext parentage is created;
-- the current historical readers remain the semantic oracle until quarantine is explicitly proven later;
-- v1–v3 missing metadata remains compatibility-coarse rather than being filled with guessed permissive semantics;
-- `fact` is not silently mapped to `asserted`;
-- `source_derived_candidate` is not silently mapped to `inferred`;
-- v6 endpoint aspects survive losslessly;
-- scoped/GM aliases remain assertions rather than entering generic identity aliases;
-- compatibility implementation identity seals executable mapping semantics.
-
-10k v6-like compatibility characterization:
+### V2 — KnowledgeReadContext + candidate admission
 
 ```text
-artifact: Docs/Benchmarks/legacy_v6_compatibility_10k_v1.json
-entities: 3,000
-assertions: 16,000
-evidence: 1,500
-semantic digest: f48c400849b811bc03695c16072614ba87bc628a278894358329e5d099b1a688
-compatibility key: a62befb9ee50df5756b3ad56a1e796c655fc5dd35966a7e5748e3ef4fd9532f2
-peak traced memory: ~132.62 MiB
-compatibility decode/build: ~14.48 s
-normalized indexed lookups: microsecond-scale characterization
-```
-
-This is characterization, not a V2 latency target.
-
-### PR #59 — V2 implementation handoff
-
-Docs-only dispatch of `HANDOFF-v2-knowledge-read-context-admission.md`.
-
-```text
-merge: 48c5eba1b47f3e3d410ca824f47ae19b4ee41ed3
-```
-
-### PR #60 — generic KnowledgeReadContext + candidate admission
-
-```text
+PR #60
 merge: 8af28bf359fa2044dbda23e674653edc9ebe3e6d
 accepted head: 121419e9d0823533306d6a9ca6586c769d82f6b0
 review cycles: 5
@@ -365,15 +283,7 @@ final PASS review: 5217813591
 disposition: V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
 ```
 
-It established:
-
-- immutable `KnowledgeReadContext` with sealed request/descriptor dumps;
-- candidate-local coherent provenance views (epoch pin, no whole-source preload);
-- generic Kernel admission plus registry-injected pure narrowing policy;
-- fail-closed source identity and candidate-bound `requested_*` validation;
-- organizational-memory and Buddy-shaped opaque-domain witnesses.
-
-10k characterization artifact:
+Accepted structural characterization:
 
 ```text
 artifact: Docs/Benchmarks/vnext_candidate_admission_10k_v1.json
@@ -382,117 +292,155 @@ parsed semantic digest: 552ecc3eb8f2af6de1969e6793ef286b02ed4af264eaa9313ee9ff28
 structural gate: PASS — candidate-local source/provenance work
 ```
 
-### PR #61 — V3 implementation handoff
+Established immutable pinned read context, candidate-local coherent provenance, generic fail-closed admission, and pure domain-policy narrowing.
 
-Docs-only landing of `HANDOFF-v3-lazy-exact-complete-entity-reads.md` (PRE-DISPATCH at merge; activated by the successor Steward sync).
+The exact historical phase line remains:
 
 ```text
-merge: d409a2000e4608208cb8cfeed0c6907f3568abe2
-accepted head: b40ac47bd8836501dfc736ea2fc7bdb8b4572d0a
-post-merge audit: DISPATCH HOLD 5218033391 — Steward/V3 header sync required before V3 code
+V2 COMPLETE — V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
 ```
 
-### V2 compatibility caution
+### V3 handoff activation
 
-`dungeonmind.compat:*` fields created by the historical codec preserve legacy meaning. In particular, compatibility-coarse visibility is not a new generic authorization label that V2 may reinterpret as product authority. Native V2 generic admission must operate on the normalized metadata literally and fail closed when a context cannot establish admissibility.
+```text
+PR #61 handoff merge: d409a2000e4608208cb8cfeed0c6907f3568abe2
+PR #62 activation sync: 8a68894e40a56a115b2f44ad5410bec28fc81d3e
+```
+
+PR #61 post-merge audit found the missing Steward transition; PR #62 repaired it before V3 implementation. This is why every successor handoff now owns bookkeeping explicitly.
+
+### V3 — lazy exact / complete entity reads
+
+```text
+PR #63 — KERNEL: V3 lazy exact and complete entity reads
+merge: c12bf89ea54af1112a0e98163aa224eb89b11c22
+accepted head: 6c8adb474d84df6dc6e1d55cec6bedb2380e100b
+logical review cycles: 3
+final PASS review: 5224138590
+disposition: V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED
+```
+
+Accepted implementation proof:
+
+- exact structural entity identity is O(1)-style revision-local lookup;
+- subject assertions use `assertions_by_subject`;
+- complete reads use assertion-level incoming/outgoing entity-ref indexes rather than scanning neighbor subject sets;
+- all candidates pass through the accepted V2 admission seam;
+- hidden/excluded touching assertions do not leak opposite endpoints;
+- complete reads do not use ordinary relationship/evidence caps to define truth;
+- returned provenance participates in result digests without hidden/excluded provenance perturbing visible digests;
+- current World runtime remains untouched.
+
+Accepted 10k structural characterization:
+
+```text
+artifact: Docs/Benchmarks/vnext_entity_reads_10k_v1.json
+artifact exact substantive head: 7a28a406904ea81bddd6c5021fc35086f04bff82
+artifact refresh head / accepted PR head: 6c8adb474d84df6dc6e1d55cec6bedb2380e100b
+structural gate: PASS
+incoming-heavy 10k complete read:
+  incoming assertion candidates: 1
+  assertions evaluated: 1
+  artifact IDs requested: 1
+  provenance snapshots: 1
+  p95 characterization: ~1.86 ms
+high-degree 10k complete read:
+  touching assertions returned/evaluated: 30
+  p95 characterization: ~51.93 ms
+```
+
+The directional exact-read target is evidence, not a correctness gate. Structural work shape is the accepted proof.
 
 ---
 
-## §7 V2 implementation boundary
+## §7 V4.1 implementation boundary
 
-V2 owns the read/admission seam only.
+V4.1 owns only bounded depth-1/depth-2 neighborhood traversal over one already-pinned `KnowledgeReadContext`.
 
-Expected application-layer concepts:
-
-```text
-KnowledgeReadContext
-  exact ParsedKnowledgeRevision
-  exact request/context identity
-  ScopeSelector
-  effective audience labels
-  standing selector
-  focus/domain context
-  pinned DomainContractDescriptor
-  pinned SemanticProfileDescriptorV2
-  source/provenance reader
-  per-context provenance/evidence memo
-
-CandidateAdmission
-  candidate assertion IDs
-  generic integrity / standing / scope / visibility
-  evidence/source integrity
-  pure pinned domain policy
-  admitted/excluded result
-```
-
-The exact class/module names are implementation choices; responsibilities are binding.
-
-V2 should introduce a generic vNext provenance read abstraction over:
+Preferred conceptual operation:
 
 ```text
-SourceArtifactV3
-SourceRevisionV2
-EvidenceRefV3 / ParsedEvidenceRef
+get_neighborhood(context, seed_entity_ids, depth)
 ```
 
-It may use an in-memory/fake adapter for proof. A PostgreSQL vNext storage migration is not required or authorized in this phase.
+The exact public name is implementation latitude; semantics are binding.
 
-### Domain policy runtime
-
-`DomainContractDescriptor` remains data-only.
-
-A runtime domain policy mechanism may be introduced only if it is:
-
-- explicitly registered by the embedding application/test harness;
-- resolved against the exact pinned `DomainContractRef` / descriptor identity;
-- pure and deterministic;
-- passed immutable candidate/context values only;
-- given no repository/network/clock/mutation capability;
-- able only to narrow Kernel-admissible knowledge;
-- fail-closed when absent, unknown, or mismatched.
-
-Do not dynamically import arbitrary code from `admission_policy_id`.
-
-### Candidate-local provenance
-
-For a bounded candidate slice:
+V4.1 should consume accepted immutable structures such as:
 
 ```text
-candidate assertion IDs
-→ evidence refs referenced by those assertions
-→ unique required source artifact/revision IDs
-→ one coherent targeted source snapshot
-→ provenance admission
+entities_by_id
+entity_ref_outgoing_assertions
+entity_ref_incoming_assertions
+assertions_by_id
 ```
 
-Do not load provenance for the full revision merely because it is easier.
+`entity_adjacency` may be used as a structural convenience, but raw adjacency alone cannot authorize traversal. An endpoint becomes traversable only through an admitted entity-ref assertion.
 
-Within one context, the source view must be coherent and memoized. A new context must observe changed live source authority even when the `ParsedKnowledgeRevision` object is reused.
+Traversal must reuse the V2 admission seam and the V3 entity/ref semantics. It must not build or depend on a full admitted projection.
+
+### Frontier rule
+
+For each BFS frontier:
+
+```text
+frontier entity IDs
+→ touching entity-ref assertion IDs from revision-local assertion indexes
+→ deterministic dedupe of assertion IDs not already evaluated
+→ candidate-local V2 admission
+→ admitted touching assertions
+→ exact opposite endpoint entities
+→ next frontier
+```
+
+A hidden, out-of-scope, inactive-source, or domain-excluded edge is not a traversal edge and must not disclose its opposite endpoint.
+
+Depth means shortest admitted path distance from a returned seed:
+
+```text
+seed = depth 0
+one admitted edge away = depth 1
+two admitted edges away = depth 2
+```
+
+V4.1 does not recursively expand arbitrary facts about every neighbor. It returns the visited structural entities and admitted traversal assertions required to explain the neighborhood. Standalone evidence/anchor lookup belongs to V4.2.
+
+### Multi-seed posture
+
+Multiple exact opaque seeds may be supported if the implementation keeps the proof simple and deterministic. If supported:
+
+- exact missing seeds are reported explicitly;
+- returned depth for an entity is the minimum admitted distance from any returned seed;
+- duplicated paths/edges are emitted once;
+- seed ordering does not change semantic results.
+
+Do not add lexical/alias fallback for seeds.
 
 ---
 
-## §8 Explicitly not V2
+## §8 Explicitly not V4.1
 
-Do not implement in this phase:
+Do not implement in this slice:
 
 ```text
-get_entity / get_complete_entity public reads
-neighborhood traversal API
-search API
-anchor resolution API
-full-space vNext projection API
-KnowledgeSpace/head repository migration
-native vNext publication/writes
-PostgreSQL vNext authority schema
-DungeonBuddy production domain policy
-DungeonBuddy dependency repin/cutover
+standalone evidence lookup
+source-anchor creation / resolution / revalidation
+search / lexical ranking API
+alias search
+vector retrieval
+full-space projection
+KnowledgeSpace/head storage runtime
+native vNext writes/publication
+PostgreSQL vNext authority migration
 bridge-genesis migration
-World public-read replacement
-historical-reader deletion/quarantine
-storage-model redesign
+DungeonBuddy production domain policy
+DungeonBuddy repin/cutover
+current World reader replacement
+historical-reader quarantine/deletion
+new distributed cache
+new graph database
 ```
 
-V3 consumes the accepted V2 seam for exact/complete entity reads.
+V4.2 owns evidence + anchor support. V4.3 owns deterministic indexed search.
 
 ---
 
@@ -526,8 +474,6 @@ final disposition
 
 A PR merges only when its primary question has an evidence-backed answer.
 
-Do not merge because CI is green if the claimed authority proof is missing, and do not weaken tests to make a changed semantic result acceptable without an explicit contract/architecture decision.
-
 ---
 
 ## §10 Steward mutation protocol
@@ -538,8 +484,10 @@ After every roadmap PR merge, update this file before another roadmap PR merges.
 
 Preferred sequence:
 
-1. successor branch first commit updates this handoff with the actual merge anchor and phase transition; or
-2. a tiny Steward sync PR lands before the next implementation slice.
+1. the successor handoff/bookkeeping PR updates this handoff with the actual predecessor merge anchor and phase transition;
+2. after that PR merges, the successor implementation branch is created from that exact merge SHA;
+3. the implementation branch's **first commit** records that handoff/bookkeeping merge SHA as the new current `main` anchor before production code;
+4. then implementation proceeds.
 
 Every update records at minimum:
 
@@ -556,9 +504,9 @@ next primary question
 parallel work posture
 ```
 
-Keep this useful rather than archival. Detailed review history belongs in PR history.
+Detailed review history belongs in PR history.
 
-If an update changes semantic contracts, ownership, migration model, read architecture, or roadmap ordering, update the canonical architecture/roadmap in the same change set.
+If an update changes semantic contracts, ownership, migration model, read architecture, or roadmap ordering, update canonical architecture/roadmap in the same change set.
 
 ---
 
@@ -583,34 +531,49 @@ If an update changes semantic contracts, ownership, migration model, read archit
 17. Migration preserves durable IDs wherever meaning is unchanged.
 18. No long-lived dual-write architecture is introduced for cutover convenience.
 19. Physical storage complexity remains evidence-gated until V11.
-20. One PR has one primary question.
+20. One implementation PR has one primary question.
+21. Raw structural adjacency never broadens admitted graph traversal.
 
 ---
 
-## §12 Current V2 proof obligations
+## §12 Current V4.1 proof obligations
 
-The V2 implementation must prove at least:
+The V4.1 implementation must prove at least:
 
-- exact request/revision/contract/profile identity is pinned and mismatches fail closed;
-- candidate assertion IDs are resolved only from the exact parsed revision;
-- scope admission implements the frozen `ScopeSelector` semantics exactly;
-- visibility implements Public / LabelsAny / LabelsAll exactly;
-- undeclared/unknown audience labels or policy identity fail closed;
-- standing selection is explicit and deterministic;
-- evidence/source chains are validated from one coherent targeted snapshot;
-- missing/inactive sources and mismatched source revisions exclude candidate knowledge;
-- source visibility is evaluated before detailed lifecycle diagnostics are exposed;
-- domain policy receives only Kernel-admissible candidates and can only exclude;
-- a domain policy cannot re-admit a Kernel-rejected assertion;
-- focus/domain context does not silently become authorization;
-- DungeonBuddy-shaped campaign/GM/player behavior is reproducible using only opaque generic scopes/labels in fixtures;
-- an unrelated organizational-memory fixture uses the same admission engine;
-- changing source authority between contexts is visible even when the parsed revision instance is reused;
-- source changes during one context do not tear the read into inconsistent provenance views;
-- candidate-local provenance work counts scale with candidate support rather than full revision size;
-- the current World runtime and historical readers are untouched.
+- exact seed IDs only; no lexical/alias fallback;
+- explicit missing-seed behavior;
+- depth restricted to the intended bounded surface (depth 1 and 2);
+- seed entities are depth 0;
+- traversal uses revision-local touching-assertion indexes rather than scanning all assertions;
+- candidate assertion IDs are deduplicated and evaluated at most once per operation;
+- only admitted entity-ref assertions create traversable edges;
+- hidden/out-of-scope/domain-excluded/source-invalid edges do not leak opposite endpoints;
+- source-authority changes are visible in a newly constructed context and coherent in the existing context;
+- cycles and self-loops terminate deterministically;
+- converging paths deduplicate entities and edges and choose minimum depth;
+- deterministic ordering and semantic digest are independent of input construction order;
+- returned result is deeply immutable / mutation cannot poison later reads;
+- unrelated graph growth does not expand candidates, evaluated assertions, or requested sources for the same bounded neighborhood;
+- an adversarial high-degree off-path entity does not cause its unrelated assertion set to be scanned;
+- a depth-2 witness touches only depth-0/depth-1 frontier support and does not expand depth-2 entities to depth 3;
+- organizational-memory and Buddy-shaped opaque-domain fixtures use the same engine;
+- current World runtime and historical compatibility readers remain unchanged;
+- relevant 10k semantic/performance characterization is recorded.
 
-The exact test count is not authority; these semantic obligations are.
+Suggested accepted artifact name:
+
+```text
+Docs/Benchmarks/vnext_neighborhood_10k_v1.json
+```
+
+Directional target from the canonical read/performance architecture:
+
+```text
+10k depth-1 p95 < 50 ms
+100k depth-1 p95 < 100 ms
+```
+
+The timing target is not permission to weaken semantics. Structural work shape and semantic digest come first.
 
 ---
 
@@ -618,18 +581,16 @@ The exact test count is not authority; these semantic obligations are.
 
 Stop rather than compensating locally if:
 
-- V2 requires changing the frozen V0 contract bundle;
-- candidate-local admission cannot preserve fail-closed provenance semantics;
-- a bounded candidate requires full-space projection for correctness;
-- a domain policy requires storage/network/clock access;
-- `admission_policy_id` would need arbitrary dynamic plugin execution;
-- domain policy needs to recover Kernel-rejected knowledge;
-- focus must become hidden authorization to reproduce required semantics;
-- source freshness requires a revision-only cache of mutable authority verdicts;
-- V2 requires a durable vNext database migration or bridge-genesis migration;
+- V4.1 requires changing the frozen V0 contract bundle;
+- correct traversal requires full-space projection;
+- raw adjacency must be treated as admitted authority;
+- hidden/excluded edges must disclose endpoints to continue traversal;
+- candidate-local admission cannot preserve source coherence across frontier batches;
+- traversal correctness requires a revision-only cache of mutable admission/source verdicts;
+- a domain policy needs storage/network/clock access;
+- V4.1 requires standalone anchor/search semantics to function;
 - Buddy/TTRPG vocabulary must enter generic application code;
-- compatibility-coarse legacy metadata would need to be silently promoted into native authority semantics;
-- current public World readers must change to prove the seam;
+- current public World readers must change to prove the generic traversal seam;
 - tests must weaken fail-closed behavior to proceed.
 
 When a stop condition fires, record:
@@ -645,45 +606,45 @@ Proposed design decision / experiment:
 What remains safe in parallel:
 ```
 
-Then update canonical architecture/roadmap before implementation resumes if the decision is architectural.
-
 ---
 
 ## §14 Current stewardship ledger
 
-### Last merged roadmap PR
+### Last merged roadmap implementation
 
 ```text
-DungeonMind PR #60
-KERNEL: V2 KnowledgeReadContext + candidate admission
-merged: 8af28bf359fa2044dbda23e674653edc9ebe3e6d
-accepted implementation head: 121419e9d0823533306d6a9ca6586c769d82f6b0
-review cycles: 5
-final PASS review: 5217813591
+DungeonMind PR #63
+KERNEL: V3 lazy exact and complete entity reads
+merged: c12bf89ea54af1112a0e98163aa224eb89b11c22
+accepted implementation head: 6c8adb474d84df6dc6e1d55cec6bedb2380e100b
+review cycles: 3
+final PASS review: 5224138590
 disposition:
-  V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
-artifact: Docs/Benchmarks/vnext_candidate_admission_10k_v1.json
-artifact exact substantive head: b88a7b6ebc03f5a227d599222e3f25075566382d
-parsed semantic digest: 552ecc3eb8f2af6de1969e6793ef286b02ed4af264eaa9313ee9ff283a02a4ac
+  V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED
+artifact: Docs/Benchmarks/vnext_entity_reads_10k_v1.json
+artifact exact substantive head: 7a28a406904ea81bddd6c5021fc35086f04bff82
+structural gate: PASS
 frozen V0 aggregate: fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
 ```
 
-Current `main` after the V3 handoff merge (PR #61), before this activation sync:
+Current `main` after PR #63:
 
 ```text
-d409a2000e4608208cb8cfeed0c6907f3568abe2
+c12bf89ea54af1112a0e98163aa224eb89b11c22
 ```
 
 Prior key anchors:
 
 ```text
-PR #61 merge d409a2000e4608208cb8cfeed0c6907f3568abe2 — V3 PRE-DISPATCH handoff
-PR #59 merge 48c5eba1b47f3e3d410ca824f47ae19b4ee41ed3 — V2 handoff
-PR #58 merge 6c5e746d3fa3ffbbdb371ddb15d9c392ab3fd3a0 — V1.2
-PR #57 merge 6d9a40f609530f4882470c5599b4914e2288b8d5 — V1.1
-DungeonMindBuddy PR #719 merge c77056b0c909513cecd8b81f9e7fac22e02d339a — V0.2 / VNEXT_CONTRACT_FROZEN
-PR #56 merge 63ec810a02f18c4e25af228f6fdb19d99d12579e — V0.1
-PR #54 merge 22bf2e42686876e1c0f9750d1b346e4a6fffebc4 — roadmap/read architecture
+PR #62 8a68894e40a56a115b2f44ad5410bec28fc81d3e — V3 activation sync
+PR #61 d409a2000e4608208cb8cfeed0c6907f3568abe2 — V3 handoff
+PR #60 8af28bf359fa2044dbda23e674653edc9ebe3e6d — V2 implementation
+PR #59 48c5eba1b47f3e3d410ca824f47ae19b4ee41ed3 — V2 handoff
+PR #58 6c5e746d3fa3ffbbdb371ddb15d9c392ab3fd3a0 — V1.2
+PR #57 6d9a40f609530f4882470c5599b4914e2288b8d5 — V1.1
+DungeonMindBuddy PR #719 c77056b0c909513cecd8b81f9e7fac22e02d339a — V0.2
+PR #56 63ec810a02f18c4e25af228f6fdb19d99d12579e — V0.1
+PR #54 22bf2e42686876e1c0f9750d1b346e4a6fffebc4 — roadmap/read architecture
 ```
 
 ### Current phase
@@ -692,13 +653,15 @@ PR #54 merge 22bf2e42686876e1c0f9750d1b346e4a6fffebc4 — roadmap/read architect
 V0 COMPLETE — VNEXT_CONTRACT_FROZEN
 V1 COMPLETE — V1_IMMUTABLE_NORMALIZATION_COMPLETE
 V2 COMPLETE — V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
-V3 ACTIVE
+V3 COMPLETE — V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED
+V4 ACTIVE
+V4.1 ACTIVE
 ```
 
 ### Next primary question
 
 ```text
-Can exact and complete entity truth be assembled from one exact ParsedKnowledgeRevision using only revision-local lookup/adjacency indexes plus the accepted V2 admission seam, with work proportional to the selected entity and its direct support rather than the whole KnowledgeSpace?
+Can depth-1 and depth-2 neighborhood traversal discover and admit only the assertions needed for the visited frontier, with structural/provenance work proportional to visited neighborhood support rather than the whole KnowledgeSpace?
 ```
 
 ### Parallel work posture
@@ -706,12 +669,19 @@ Can exact and complete entity truth be assembled from one exact ParsedKnowledgeR
 ```text
 safe / independent:
   larger-scale benchmark characterization
-  contract-frozen Buddy/domain work that does not depend on V3 runtime
-  design work for V4 consuming the V3 exact-ID reads, but not V4 merge
+  contract-frozen Buddy/domain work that does not depend on V4 runtime
+  design work for V4.2/V4.3 that does not merge early
 
-blocked until V3 acceptance:
-  V4 merge
-  V5+ governed writes / Buddy runtime
+blocked until V4.1 acceptance:
+  V4.2 merge
+
+blocked until V4.2 acceptance:
+  V4.3 merge
+
+blocked until V4.3 acceptance:
+  V5+ governed-write implementation merge
+
+blocked until later accepted predecessors:
   bridge-genesis migration
   cutover
   current-public-path quarantine/deletion
@@ -719,21 +689,22 @@ blocked until V3 acceptance:
 
 ### What remains false
 
-- no native vNext `get_entity` is accepted yet;
-- no native vNext `get_complete_entity` is accepted yet;
-- no V4 neighborhood/evidence/anchor/search API is active;
+- no native vNext bounded neighborhood API is accepted yet;
+- no standalone vNext evidence retrieval API is accepted yet;
+- no standalone source-anchor creation/resolution API is accepted yet;
+- no native vNext deterministic search API is accepted yet;
 - no vNext KnowledgeSpace/head storage runtime exists;
 - no native vNext governed write path exists;
 - no bridge-genesis migration exists;
 - no current public World read cutover has occurred;
 - no historical-reader quarantine/deletion is authorized;
 - no DungeonBuddy runtime repin/cutover has occurred;
-- larger 50k/100k K0.3 characterization remains incomplete;
+- larger 50k/100k characterization remains incomplete;
 - deeper storage optimization is not authorized.
 
 ### Named next action
 
-After this Steward/V3-header sync merges, dispatch V3 from the then-current DungeonMind `main` using `Docs/Handoffs/HANDOFF-v3-lazy-exact-complete-entity-reads.md` (`Status: ACTIVE`) on branch `kernel/v3-lazy-exact-complete-entity-reads`. Do not dispatch from the historical PRE-DISPATCH handoff branch.
+Merge the V4.1 handoff/bookkeeping PR. Then create `kernel/v4-1-bounded-neighborhood` from that exact merge SHA. The implementation branch's first commit must record that actual PR #64 merge SHA as the new current `main` anchor before production code. Then implement only the bounded neighborhood question. V4.1 acceptance unblocks V4.2 only. Do not begin V4.2 evidence/anchor APIs, V4.3 search, or V5 writes in the same implementation PR.
 
 ---
 
