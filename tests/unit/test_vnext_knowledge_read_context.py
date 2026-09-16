@@ -56,6 +56,7 @@ from dungeonmind.contracts.vnext.domain import (
 from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
 from dungeonmind.contracts.vnext.projection import FocusRef, ProjectionRequest
 from dungeonmind.contracts.vnext.source import EvidenceRefV3, SourceArtifactV3, SourceRevisionV2
+from dungeonmind.domain.canonical import canonical_sha256
 
 CANONICAL_V0_AGGREGATE = "fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea"
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "vnext"
@@ -937,10 +938,24 @@ def test_35_no_invented_literal_schema_semantics() -> None:
     assert all(item.literal_schema is None for item in profile.predicates)
 
 
+def _refresh_org_context(
+    context: KnowledgeReadContext, reader: InMemoryKnowledgeSourceReader
+) -> KnowledgeReadContext:
+    return KnowledgeReadContext(
+        parsed=context.parsed,
+        request=context.request,
+        domain_contract=context.domain_contract,
+        semantic_profile=context.semantic_profile,
+        domain_policy=context.domain_policy,
+        source_reader=reader,
+    )
+
+
 def test_36_missing_source_artifact_excludes(org_context: tuple[KnowledgeReadContext, Any]) -> None:
     context, reader = org_context
     reader._artifacts.clear()
-    result = context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    refreshed = _refresh_org_context(context, reader)
+    result = refreshed.admit_candidates(["asrt:priya-owns-retrieval-apr"])
     assert result.excluded[0].reason == "source_missing"
 
 
@@ -974,14 +989,16 @@ def test_38_inactive_source_excludes(org_context: tuple[KnowledgeReadContext, An
     reader._artifacts[artifact.source_artifact_id] = artifact.model_copy(
         update={"status": "retracted"}
     )
-    result = context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    refreshed = _refresh_org_context(context, reader)
+    result = refreshed.admit_candidates(["asrt:priya-owns-retrieval-apr"])
     assert result.excluded[0].reason == "source_inactive"
 
 
 def test_39_missing_source_revision_excludes(org_context: tuple[KnowledgeReadContext, Any]) -> None:
     context, reader = org_context
     reader._revisions.clear()
-    result = context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    refreshed = _refresh_org_context(context, reader)
+    result = refreshed.admit_candidates(["asrt:priya-owns-retrieval-apr"])
     assert result.excluded[0].reason == "source_revision_invalid"
 
 
@@ -991,7 +1008,8 @@ def test_40_revision_wrong_artifact_excludes(org_context: tuple[KnowledgeReadCon
     reader._revisions[revision.source_revision_id] = revision.model_copy(
         update={"source_artifact_id": "src:other"}
     )
-    result = context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    refreshed = _refresh_org_context(context, reader)
+    result = refreshed.admit_candidates(["asrt:priya-owns-retrieval-apr"])
     assert result.excluded[0].reason == "source_revision_invalid"
 
 
@@ -1044,59 +1062,170 @@ def test_44_provenance_snapshot_deeply_immutable(
     again = snapshot.get_artifact("src:ownership-document")
     assert again is not None
     assert again.status == "active"
+    mapped = snapshot.artifacts_by_id["src:ownership-document"]
+    mapped.status = "superseded"  # type: ignore[misc]
+    assert snapshot.get_artifact("src:ownership-document") is not None
+    assert snapshot.get_artifact("src:ownership-document").status == "active"
+
+
+def test_source_identity_mismatch_at_snapshot_fails_closed() -> None:
+    artifact = SourceArtifactV3(
+        source_artifact_id="src:wrong-id",
+        source_classification="organization:document",
+        authority="primary",
+        visibility=PublicVisibility(),
+        status="active",
+    )
+    reader = InMemoryKnowledgeSourceReader(artifacts={"src:map-key": artifact})
+    with pytest.raises(KnowledgeReadContextIntegrityError):
+        reader.get_provenance_snapshot(artifact_ids=["src:map-key"], revision_ids=[])
+
+
+def test_source_artifact_undeclared_domain_metadata_excluded() -> None:
+    domain_contract = _org_domain_contract().model_copy(
+        update={"source_annotation_schemas": ["organization:document_kind"]}
+    )
+    contract_digest = canonical_sha256(domain_contract.model_dump(mode="json"))
+    context, _reader = _build_from_fixture(
+        "organizational_memory_v1.json",
+        domain_contract=domain_contract,
+        semantic_profile=_org_semantic_profile(),
+        contract_digest=contract_digest,
+        profile_digest=ORG_PROFILE_DIGEST,
+    )
+    data = _load_fixture("organizational_memory_v1.json")
+    artifact = SourceArtifactV3.model_validate(data["sources"]["artifact"]).model_copy(
+        update={
+            "domain_metadata": [
+                DomainMetadataEntry(schema="organization:unknown", payload={"x": 1})
+            ]
+        }
+    )
+    reader = InMemoryKnowledgeSourceReader(
+        artifacts={artifact.source_artifact_id: artifact},
+        revisions={
+            item.source_revision_id: item
+            for item in (
+                SourceRevisionV2.model_validate(row)
+                for row in data["sources"]["revisions"]
+            )
+        },
+    )
+    pinned = KnowledgeReadContext(
+        parsed=context.parsed,
+        request=context.request,
+        domain_contract=domain_contract,
+        semantic_profile=context.semantic_profile,
+        domain_policy=context.domain_policy,
+        source_reader=reader,
+    )
+    result = pinned.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    assert result.excluded[0].reason == "domain_declaration"
+
+
+def test_external_request_mutation_does_not_affect_admission(
+    org_context: tuple[KnowledgeReadContext, Any],
+) -> None:
+    context, _ = org_context
+    request_copy = context.request.model_copy(deep=True)
+    request_copy.audience_labels.append("organization:leadership")
+    first = context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    second = context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    assert first.result_digest == second.result_digest
+
+
+def test_malicious_policy_cannot_poison_subsequent_candidates(
+    org_context: tuple[KnowledgeReadContext, Any],
+) -> None:
+    class PoisonPolicy:
+        policy_id = "organization.memory.admit.v1"
+
+        def narrow(self, **kwargs: Any) -> bool:
+            request = kwargs["request"]
+            request.audience_labels.append("organization:leadership")
+            provenance = kwargs["provenance"]
+            artifact = provenance.artifacts_by_id.get("src:ownership-document")
+            if artifact is not None:
+                artifact.status = "retracted"  # type: ignore[misc]
+            return True
+
+    context, _ = org_context
+    adjusted = KnowledgeReadContext(
+        parsed=context.parsed,
+        request=context.request,
+        domain_contract=context.domain_contract,
+        semantic_profile=context.semantic_profile,
+        domain_policy=PoisonPolicy(),
+        source_reader=context.source_reader,
+    )
+    result = adjusted.admit_candidates(
+        ["asrt:priya-owns-retrieval-apr", "asrt:marco-owns-retrieval-sep"]
+    )
+    assert result.admitted_assertion_ids == (
+        "asrt:marco-owns-retrieval-sep",
+        "asrt:priya-owns-retrieval-apr",
+    )
 
 
 def test_45_one_admission_operation_one_snapshot(
     org_context: tuple[KnowledgeReadContext, Any],
 ) -> None:
-    context, reader = org_context
-    reader.snapshot_call_count = 0
+    context, _reader = org_context
+    pinned = context.source_reader
+    assert isinstance(pinned, InMemoryKnowledgeSourceReader)
+    pinned.snapshot_call_count = 0
     context.admit_candidates(["asrt:priya-owns-retrieval-apr", "asrt:marco-owns-retrieval-sep"])
-    assert reader.snapshot_call_count == 1
+    assert pinned.snapshot_call_count == 1
 
 
 def test_46_mutating_backing_after_snapshot_does_not_mutate_snapshot(
     org_context: tuple[KnowledgeReadContext, Any],
 ) -> None:
-    _, reader = org_context
-    snapshot_a = reader.get_provenance_snapshot(
-        artifact_ids=["src:ownership-document"], revision_ids=[]
-    )
-    fp_a = snapshot_a.fingerprint
+    context_a, reader = org_context
+    pinned_a = context_a.source_reader
+    assert isinstance(pinned_a, InMemoryKnowledgeSourceReader)
+    view_fp_a = pinned_a.view_fingerprint
+    first = context_a.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    assert first.admitted_assertion_ids
     artifact = reader._artifacts["src:ownership-document"]
     reader._artifacts["src:ownership-document"] = artifact.model_copy(
         update={"status": "retracted"}
     )
-    assert snapshot_a.fingerprint == fp_a
-    assert snapshot_a.get_artifact("src:ownership-document") is not None
-    assert snapshot_a.get_artifact("src:ownership-document").status == "active"
+    second = context_a.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    assert second.admitted_assertion_ids
+    assert second.result_digest == first.result_digest
+    assert pinned_a.view_fingerprint == view_fp_a
 
 
 def test_47_context_b_observes_changed_source_state(
     org_context: tuple[KnowledgeReadContext, Any],
 ) -> None:
-    context, reader = org_context
-    context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    context_a, reader = org_context
+    context_a.admit_candidates(["asrt:priya-owns-retrieval-apr"])
     artifact = reader._artifacts["src:ownership-document"]
     reader._artifacts["src:ownership-document"] = artifact.model_copy(
         update={"status": "retracted"}
     )
-    result_b = context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    context_b = _refresh_org_context(context_a, reader)
+    result_b = context_b.admit_candidates(["asrt:priya-owns-retrieval-apr"])
     assert result_b.excluded[0].reason == "source_inactive"
 
 
 def test_48_parsed_revision_reuse_does_not_reuse_stale_verdicts(
     org_context: tuple[KnowledgeReadContext, Any],
 ) -> None:
-    context, reader = org_context
-    first = context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    context_a, reader = org_context
+    first = context_a.admit_candidates(["asrt:priya-owns-retrieval-apr"])
     assert first.admitted_assertion_ids
     artifact = reader._artifacts["src:ownership-document"]
     reader._artifacts["src:ownership-document"] = artifact.model_copy(
         update={"status": "retracted"}
     )
-    second = context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
-    assert not second.admitted_assertion_ids
+    second_on_a = context_a.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    assert second_on_a.admitted_assertion_ids
+    context_b = _refresh_org_context(context_a, reader)
+    on_b = context_b.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    assert not on_b.admitted_assertion_ids
 
 
 def test_49_registered_policy_identity_resolves() -> None:
@@ -1333,9 +1462,22 @@ def test_buddy_unscoped_and_wildcard_cases() -> None:
         in ctx_unscoped.admit_candidates(["asrt:unscoped-rumor"]).admitted_assertion_ids
     )
 
-    ctx_wildcard, _ = _buddy_context(_buddy_request(wildcard=True, include_unscoped=False))
+    ctx_c2_no_wildcard, _ = _buddy_context(
+        _buddy_request(campaign="C2", include_unscoped=False, wildcard=False)
+    )
+    scoped = ctx_c2_no_wildcard.admit_candidates(["asrt:c3-gm-secret"])
+    assert "asrt:c3-gm-secret" not in scoped.admitted_assertion_ids
+    assert scoped.excluded[0].reason == "scope"
+
+    ctx_wildcard, _ = _buddy_context(
+        _buddy_request(
+            wildcard=True,
+            include_unscoped=False,
+            audience=["dungeonbuddy.visibility:player", "dungeonbuddy.visibility:gm"],
+        )
+    )
     result = ctx_wildcard.admit_candidates(["asrt:c3-gm-secret"])
-    assert "asrt:c3-gm-secret" in result.admitted_assertion_ids or result.excluded
+    assert "asrt:c3-gm-secret" in result.admitted_assertion_ids
 
 
 def test_claim_mode_filter_policy_fixture() -> None:

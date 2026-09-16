@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -157,9 +158,26 @@ def _synthetic_workload() -> tuple[
     reader = InMemoryKnowledgeSourceReader(artifacts=artifacts, revisions=revisions)
     workload_digest = canonical_sha256(
         {
-            "assertion_count": ASSERTION_COUNT,
-            "source_artifact_count": SOURCE_ARTIFACT_COUNT,
-            "revisions_per_artifact": REVISIONS_PER_ARTIFACT,
+            "space_id": revision.space_id,
+            "revision_id": revision.revision_id,
+            "assertion_ids": [item.assertion_id for item in assertions],
+            "evidence": [
+                {
+                    "evidence_ref_id": item.evidence_ref_id,
+                    "source_artifact_id": item.source_artifact_id,
+                    "source_revision_id": item.source_revision_id,
+                    "evidence_role": item.evidence_role,
+                }
+                for item in evidence
+            ],
+            "artifacts": {
+                artifact_id: artifact.model_dump(mode="json")
+                for artifact_id, artifact in sorted(artifacts.items())
+            },
+            "revisions": {
+                revision_id: revision_row.model_dump(mode="json")
+                for revision_id, revision_row in sorted(revisions.items())
+            },
         }
     )
     return (
@@ -193,6 +211,8 @@ def _run_batch(context: KnowledgeReadContext, assertion_ids: list[str]) -> dict[
     elapsed_ms = (time.perf_counter() - start) * 1000.0
     return {
         "candidate_count": result.work.candidate_count,
+        "assertions_evaluated": result.work.assertions_evaluated,
+        "policy_evaluations": result.work.policy_evaluations,
         "evidence_ids_resolved": result.work.evidence_ids_resolved,
         "artifact_ids_requested": result.work.artifact_ids_requested,
         "revision_ids_requested": result.work.revision_ids_requested,
@@ -200,6 +220,12 @@ def _run_batch(context: KnowledgeReadContext, assertion_ids: list[str]) -> dict[
         "admitted_count": len(result.admitted_assertion_ids),
         "elapsed_ms": elapsed_ms,
     }
+
+
+def _git_head() -> str:
+    return (
+        subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    )
 
 
 def main() -> None:
@@ -262,6 +288,8 @@ def main() -> None:
 
     artifact = {
         "schema_version": "vnext_candidate_admission_10k_v1",
+        "characterization_only": True,
+        "exact_base": _git_head(),
         "workload_digest": workload_digest,
         "parsed_semantic_digest": parsed.semantic_digest,
         "assertion_count": ASSERTION_COUNT,

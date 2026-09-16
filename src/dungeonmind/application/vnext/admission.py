@@ -28,6 +28,8 @@ from .records import (
 @dataclass(frozen=True, slots=True)
 class AdmissionWorkCounts:
     candidate_count: int
+    assertions_evaluated: int
+    policy_evaluations: int
     evidence_ids_resolved: int
     artifact_ids_requested: int
     revision_ids_requested: int
@@ -347,7 +349,7 @@ def evidence_chain_passes(
                 return "domain_declaration"
 
         artifact_id = evidence.source_artifact_id
-        artifact = provenance.artifacts_by_id.get(artifact_id)
+        artifact = provenance.get_artifact(artifact_id)
         if artifact_id in provenance.missing_artifact_ids or artifact is None:
             memo[evidence_ref_id] = "source_missing"
             return "source_missing"
@@ -364,9 +366,14 @@ def evidence_chain_passes(
             memo[evidence_ref_id] = "source_inactive"
             return "source_inactive"
 
+        for entry in artifact.domain_metadata:
+            if entry.schema_term not in source_schemas:
+                memo[evidence_ref_id] = "domain_declaration"
+                return "domain_declaration"
+
         if evidence.source_revision_id is not None:
             revision_id = evidence.source_revision_id
-            revision = provenance.revisions_by_id.get(revision_id)
+            revision = provenance.get_revision(revision_id)
             if revision_id in provenance.missing_revision_ids or revision is None:
                 memo[evidence_ref_id] = "source_revision_invalid"
                 return "source_revision_invalid"

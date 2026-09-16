@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
@@ -29,6 +30,13 @@ from .model import ParsedKnowledgeRevision
 from .ports import KnowledgeSourceReader
 
 
+class _EvidenceMemoBox:
+    __slots__ = ("store",)
+
+    def __init__(self) -> None:
+        self.store: dict[str, str | None] = {}
+
+
 def _verify_descriptor_pin(
     *,
     parsed: ParsedKnowledgeRevision,
@@ -54,7 +62,7 @@ def _verify_descriptor_pin(
         raise KnowledgeReadContextIntegrityError("semantic profile descriptor digest mismatch")
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class KnowledgeReadContext:
     """One exact immutable revision + request + pinned descriptors for admission."""
 
@@ -64,7 +72,11 @@ class KnowledgeReadContext:
     semantic_profile: SemanticProfileDescriptorV2
     domain_policy: DomainAdmissionPolicy
     source_reader: KnowledgeSourceReader
-    _evidence_memo: dict[str, str | None] = field(default_factory=dict, repr=False)
+    _evidence_memo: _EvidenceMemoBox = field(
+        default_factory=_EvidenceMemoBox,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if self.request.space_id != self.parsed.space_id:
@@ -74,6 +86,15 @@ class KnowledgeReadContext:
             and self.request.revision_id != self.parsed.revision_id
         ):
             raise KnowledgeReadContextIntegrityError("request revision_id mismatch")
+
+        object.__setattr__(self, "request", self.request.model_copy(deep=True))
+        object.__setattr__(
+            self, "domain_contract", self.domain_contract.model_copy(deep=True)
+        )
+        object.__setattr__(
+            self, "semantic_profile", self.semantic_profile.model_copy(deep=True)
+        )
+        object.__setattr__(self, "source_reader", self.source_reader.open_coherent_view())
 
         _verify_descriptor_pin(
             parsed=self.parsed,
@@ -87,7 +108,7 @@ class KnowledgeReadContext:
         validate_request_vocabulary(self.request, domain_contract=self.domain_contract)
 
     def admit_candidates(self, candidate_assertion_ids: Sequence[str]) -> CandidateAdmissionResult:
-        self._evidence_memo.clear()
+        self._evidence_memo.store.clear()
         normalized_ids = tuple(dict.fromkeys(candidate_assertion_ids))
         for assertion_id in normalized_ids:
             if self.parsed.get_assertion(assertion_id) is None:
@@ -96,6 +117,7 @@ class KnowledgeReadContext:
                 )
 
         evaluation_order = tuple(sorted(normalized_ids))
+        assertions_evaluated = len(evaluation_order)
         (
             evidence_ids,
             artifact_ids,
@@ -119,6 +141,7 @@ class KnowledgeReadContext:
 
         admitted: list[str] = []
         excluded: list[CandidateExclusion] = []
+        policy_evaluations = 0
 
         for assertion_id in evaluation_order:
             assertion = self.parsed.get_assertion(assertion_id)
@@ -155,16 +178,18 @@ class KnowledgeReadContext:
                     audience=audience,
                     declared_labels=declared_labels,
                     domain_contract=self.domain_contract,
-                    memo=self._evidence_memo,
+                    memo=self._evidence_memo.store,
                 )
-            if reason is None and not self.domain_policy.narrow(
-                assertion=assertion,
-                request=self.request,
-                domain_contract=self.domain_contract,
-                semantic_profile=self.semantic_profile,
-                provenance=provenance,
-            ):
-                reason = "domain_policy"
+            if reason is None:
+                policy_evaluations += 1
+                if not self.domain_policy.narrow(
+                    assertion=copy.deepcopy(assertion),
+                    request=self.request.model_copy(deep=True),
+                    domain_contract=self.domain_contract.model_copy(deep=True),
+                    semantic_profile=self.semantic_profile.model_copy(deep=True),
+                    provenance=provenance,
+                ):
+                    reason = "domain_policy"
 
             if reason is None:
                 admitted.append(assertion_id)
@@ -175,6 +200,8 @@ class KnowledgeReadContext:
         excluded_sorted = tuple(sorted(excluded, key=lambda item: (item.assertion_id, item.reason)))
         work = AdmissionWorkCounts(
             candidate_count=len(evaluation_order),
+            assertions_evaluated=assertions_evaluated,
+            policy_evaluations=policy_evaluations,
             evidence_ids_resolved=len(evidence_ids),
             artifact_ids_requested=len(artifact_ids),
             revision_ids_requested=len(revision_ids),

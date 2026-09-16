@@ -1,31 +1,39 @@
 {
   "assertion_count": 10000,
+  "characterization_only": true,
+  "exact_base": "debb70c95b6cde0c258d5450a9a2d7afd85a8eed",
   "parsed_semantic_digest": "552ecc3eb8f2af6de1969e6793ef286b02ed4af264eaa9313ee9ff283a02a4ac",
   "runs": {
     "batch_10": {
       "admitted_count": 10,
       "artifact_ids_requested": 10,
+      "assertions_evaluated": 10,
       "candidate_count": 10,
-      "elapsed_ms": 1.8397429994365666,
+      "elapsed_ms": 4.258578999724705,
       "evidence_ids_resolved": 10,
+      "policy_evaluations": 10,
       "provenance_snapshot_calls": 1,
       "revision_ids_requested": 10
     },
     "batch_100": {
       "admitted_count": 100,
       "artifact_ids_requested": 100,
+      "assertions_evaluated": 100,
       "candidate_count": 100,
-      "elapsed_ms": 13.100847998430254,
+      "elapsed_ms": 44.99335500076995,
       "evidence_ids_resolved": 100,
+      "policy_evaluations": 100,
       "provenance_snapshot_calls": 1,
       "revision_ids_requested": 100
     },
     "single_candidate": {
       "admitted_count": 1,
       "artifact_ids_requested": 1,
+      "assertions_evaluated": 1,
       "candidate_count": 1,
-      "elapsed_ms": 0.7038839976303279,
+      "elapsed_ms": 0.838018000649754,
       "evidence_ids_resolved": 1,
+      "policy_evaluations": 1,
       "provenance_snapshot_calls": 1,
       "revision_ids_requested": 1
     }
@@ -36,5 +44,5 @@
     "passes": true,
     "single_candidate_max_artifact_ids_requested": 1
   },
-  "workload_digest": "b24e120121a7af7352e726050a472e9920d1cf4f00d880cb39bc21c6450bfc55"
+  "workload_digest": "d66073459f1e37f0205bcaba0f2f9e90cf5cef40695002ae2bf768d1f0aa25f3"
 }
