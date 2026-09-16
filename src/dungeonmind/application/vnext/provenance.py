@@ -367,42 +367,53 @@ def _build_snapshot_from_loaded(
 
 
 class CoherentInMemoryView:
-    """O(1) coherent view: pins one authority generation; materializes on snapshot only."""
+    """O(1) coherent view: pins one authority generation; materializes on snapshot only.
+
+    Epoch lookups are bound in closures at construction. There is no replaceable
+    parent/cache dict slot: attribute assignment raises ``TypeError``, matching
+    ``FrozenDict`` (no reachable mutable backing for later admission).
+    """
 
     __slots__ = (
-        "_artifact_cache",
+        "_artifact_at",
         "_epoch",
-        "_parent",
-        "_revision_cache",
+        "_loaded_artifact_ids",
+        "_loaded_revision_ids",
+        "_open_same_epoch",
+        "_revision_at",
+        "_snapshot_call_count",
         "_view_fingerprint",
-        "materialized_artifact_count",
-        "materialized_revision_count",
-        "snapshot_call_count",
     )
 
     def __init__(self, parent: InMemoryKnowledgeSourceReader, *, epoch: int) -> None:
-        object.__setattr__(self, "_parent", parent)
+        artifact_store = parent._artifact_store
+        revision_store = parent._revision_store
+
+        def artifact_at(artifact_id: str) -> SourceArtifactV3 | None:
+            return artifact_store.get_at(artifact_id, epoch)
+
+        def revision_at(revision_id: str) -> SourceRevisionV2 | None:
+            return revision_store.get_at(revision_id, epoch)
+
+        def open_same_epoch() -> CoherentInMemoryView:
+            return CoherentInMemoryView(parent, epoch=epoch)
+
+        object.__setattr__(self, "_artifact_at", artifact_at)
+        object.__setattr__(self, "_revision_at", revision_at)
+        object.__setattr__(self, "_open_same_epoch", open_same_epoch)
         object.__setattr__(self, "_epoch", epoch)
         object.__setattr__(
             self, "_view_fingerprint", coherent_epoch_view_fingerprint(epoch=epoch)
         )
-        object.__setattr__(self, "_artifact_cache", {})
-        object.__setattr__(self, "_revision_cache", {})
-        object.__setattr__(self, "snapshot_call_count", 0)
-        object.__setattr__(self, "materialized_artifact_count", 0)
-        object.__setattr__(self, "materialized_revision_count", 0)
+        object.__setattr__(self, "_loaded_artifact_ids", ())
+        object.__setattr__(self, "_loaded_revision_ids", ())
+        object.__setattr__(self, "_snapshot_call_count", 0)
 
     def __setattr__(self, name: str, value: object) -> None:
-        if name in {"_epoch", "_view_fingerprint", "epoch", "view_fingerprint"}:
-            raise TypeError("CoherentInMemoryView epoch/fingerprint are immutable")
-        if name.startswith("_") or name in {
-            "materialized_artifact_count",
-            "materialized_revision_count",
-            "snapshot_call_count",
-        }:
-            object.__setattr__(self, name, value)
-            return
-        raise TypeError(f"CoherentInMemoryView attribute {name!r} is not assignable")
+        raise TypeError("CoherentInMemoryView attributes are immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise TypeError("CoherentInMemoryView attributes are immutable")
 
     @property
     def epoch(self) -> int:
@@ -412,8 +423,20 @@ class CoherentInMemoryView:
     def view_fingerprint(self) -> str:
         return self._view_fingerprint
 
+    @property
+    def snapshot_call_count(self) -> int:
+        return self._snapshot_call_count
+
+    @property
+    def materialized_artifact_count(self) -> int:
+        return len(self._loaded_artifact_ids)
+
+    @property
+    def materialized_revision_count(self) -> int:
+        return len(self._loaded_revision_ids)
+
     def open_coherent_view(self) -> CoherentInMemoryView:
-        return CoherentInMemoryView(self._parent, epoch=self._epoch)
+        return self._open_same_epoch()
 
     def get_provenance_snapshot(
         self,
@@ -421,45 +444,37 @@ class CoherentInMemoryView:
         artifact_ids: Sequence[str],
         revision_ids: Sequence[str],
     ) -> KnowledgeProvenanceSnapshot:
-        self.snapshot_call_count += 1
+        object.__setattr__(self, "_snapshot_call_count", self._snapshot_call_count + 1)
         requested_artifacts = tuple(sorted(set(artifact_ids)))
         requested_revisions = tuple(sorted(set(revision_ids)))
 
         loaded_artifacts: dict[str, SourceArtifactV3] = {}
         missing_artifacts: list[str] = []
+        loaded_artifact_ids = self._loaded_artifact_ids
         for artifact_id in requested_artifacts:
-            if artifact_id in self._artifact_cache:
-                loaded_artifacts[artifact_id] = self._artifact_cache[artifact_id].model_copy(
-                    deep=True
-                )
-                continue
-            artifact = self._parent._artifact_store.get_at(artifact_id, self.epoch)
+            artifact = self._artifact_at(artifact_id)
             if artifact is None:
                 missing_artifacts.append(artifact_id)
-            else:
-                copied = artifact
-                _assert_source_identity(artifact_id=artifact_id, artifact=copied)
-                self._artifact_cache[artifact_id] = copied
-                self.materialized_artifact_count = len(self._artifact_cache)
-                loaded_artifacts[artifact_id] = copied
+                continue
+            _assert_source_identity(artifact_id=artifact_id, artifact=artifact)
+            loaded_artifacts[artifact_id] = artifact
+            if artifact_id not in loaded_artifact_ids:
+                loaded_artifact_ids = (*loaded_artifact_ids, artifact_id)
+        object.__setattr__(self, "_loaded_artifact_ids", loaded_artifact_ids)
 
         loaded_revisions: dict[str, SourceRevisionV2] = {}
         missing_revisions: list[str] = []
+        loaded_revision_ids = self._loaded_revision_ids
         for revision_id in requested_revisions:
-            if revision_id in self._revision_cache:
-                loaded_revisions[revision_id] = self._revision_cache[revision_id].model_copy(
-                    deep=True
-                )
-                continue
-            revision = self._parent._revision_store.get_at(revision_id, self.epoch)
+            revision = self._revision_at(revision_id)
             if revision is None:
                 missing_revisions.append(revision_id)
-            else:
-                copied = revision
-                _assert_revision_identity(revision_id=revision_id, revision=copied)
-                self._revision_cache[revision_id] = copied
-                self.materialized_revision_count = len(self._revision_cache)
-                loaded_revisions[revision_id] = copied
+                continue
+            _assert_revision_identity(revision_id=revision_id, revision=revision)
+            loaded_revisions[revision_id] = revision
+            if revision_id not in loaded_revision_ids:
+                loaded_revision_ids = (*loaded_revision_ids, revision_id)
+        object.__setattr__(self, "_loaded_revision_ids", loaded_revision_ids)
 
         return _build_snapshot_from_loaded(
             loaded_artifacts=loaded_artifacts,

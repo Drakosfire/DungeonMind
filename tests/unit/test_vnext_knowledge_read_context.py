@@ -1264,6 +1264,37 @@ def test_coherent_view_epoch_is_not_assignable(
         pinned.view_fingerprint = "tampered"  # type: ignore[misc]
 
 
+def test_coherent_view_private_backing_cannot_be_poisoned(
+    org_context: tuple[KnowledgeReadContext, Any],
+) -> None:
+    context, _ = org_context
+    pinned = context.source_reader
+    assert isinstance(pinned, CoherentInMemoryView)
+    first = context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    assert first.admitted_assertion_ids
+    for name in (
+        "_parent",
+        "_artifact_cache",
+        "_revision_cache",
+        "_artifact_at",
+        "_revision_at",
+        "_epoch",
+        "_loaded_artifact_ids",
+        "snapshot_call_count",
+        "materialized_artifact_count",
+    ):
+        with pytest.raises(TypeError):
+            setattr(pinned, name, None)
+    assert not hasattr(pinned, "_parent")
+    assert not hasattr(pinned, "_artifact_cache")
+    assert not hasattr(pinned, "_revision_cache")
+    loaded_ids = pinned._loaded_artifact_ids
+    assert isinstance(loaded_ids, tuple)
+    second = context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    assert second.result_digest == first.result_digest
+    assert second.admitted_assertion_ids == first.admitted_assertion_ids
+
+
 def test_admit_rejects_reader_widened_requested_source_set(
     org_context: tuple[KnowledgeReadContext, Any],
 ) -> None:
@@ -1373,9 +1404,9 @@ def test_45_one_admission_operation_one_snapshot(
     context, _reader = org_context
     pinned = context.source_reader
     assert isinstance(pinned, CoherentInMemoryView)
-    pinned.snapshot_call_count = 0
+    before = pinned.snapshot_call_count
     context.admit_candidates(["asrt:priya-owns-retrieval-apr", "asrt:marco-owns-retrieval-sep"])
-    assert pinned.snapshot_call_count == 1
+    assert pinned.snapshot_call_count == before + 1
 
 
 def test_46_mutating_backing_after_snapshot_does_not_mutate_snapshot(
