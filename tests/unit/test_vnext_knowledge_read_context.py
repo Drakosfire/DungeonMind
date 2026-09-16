@@ -1233,11 +1233,105 @@ def test_external_request_mutation_does_not_affect_admission(
     org_context: tuple[KnowledgeReadContext, Any],
 ) -> None:
     context, _ = org_context
-    request_copy = context.request.model_copy(deep=True)
-    request_copy.audience_labels.append("organization:leadership")
     first = context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    assert first.admitted_assertion_ids
+
+    leaked_request = context.request
+    leaked_request.standing_selector.clear()
+    leaked_request.audience_labels.clear()
+    leaked_contract = context.domain_contract
+    leaked_contract.visibility_labels.clear()
+    leaked_profile = context.semantic_profile
+    leaked_profile.predicates.clear()
+
     second = context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
-    assert first.result_digest == second.result_digest
+    assert second.result_digest == first.result_digest
+    assert second.admitted_assertion_ids == first.admitted_assertion_ids
+    assert context.request.standing_selector
+    assert context.domain_contract.visibility_labels
+    assert context.semantic_profile.predicates
+
+
+def test_coherent_view_epoch_is_not_assignable(
+    org_context: tuple[KnowledgeReadContext, Any],
+) -> None:
+    context, _ = org_context
+    pinned = context.source_reader
+    assert isinstance(pinned, CoherentInMemoryView)
+    with pytest.raises(TypeError):
+        pinned.epoch = 999  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        pinned.view_fingerprint = "tampered"  # type: ignore[misc]
+
+
+def test_admit_rejects_reader_widened_requested_source_set(
+    org_context: tuple[KnowledgeReadContext, Any],
+) -> None:
+    context, _ = org_context
+
+    class _WideningSnapshotReader:
+        snapshot_call_count = 0
+
+        def open_coherent_view(self) -> _WideningSnapshotReader:
+            return self
+
+        def get_provenance_snapshot(
+            self,
+            *,
+            artifact_ids: list[str],
+            revision_ids: list[str],
+        ) -> KnowledgeProvenanceSnapshot:
+            self.snapshot_call_count += 1
+            decoy = SourceArtifactV3(
+                source_artifact_id="src:decoy-extra",
+                source_classification="organization:document",
+                authority="primary",
+                visibility=PublicVisibility(),
+                status="active",
+            )
+            real = SourceArtifactV3(
+                source_artifact_id="src:ownership-document",
+                source_classification="organization:document",
+                authority="primary",
+                visibility=PublicVisibility(),
+                status="active",
+            )
+            requested_artifacts = tuple(
+                sorted(set(artifact_ids) | {"src:decoy-extra"})
+            )
+            requested_revisions = tuple(sorted(set(revision_ids)))
+            loaded = {
+                "src:ownership-document": real,
+                "src:decoy-extra": decoy,
+            }
+            fingerprint = provenance_snapshot_fingerprint(
+                artifacts=loaded,
+                revisions={},
+                requested_artifact_ids=requested_artifacts,
+                requested_revision_ids=requested_revisions,
+                missing_artifact_ids=(),
+                missing_revision_ids=requested_revisions,
+            )
+            return KnowledgeProvenanceSnapshot(
+                artifacts_by_id=loaded,
+                revisions_by_id={},
+                requested_artifact_ids=requested_artifacts,
+                requested_revision_ids=requested_revisions,
+                missing_artifact_ids=(),
+                missing_revision_ids=requested_revisions,
+                fingerprint=fingerprint,
+            )
+
+    widened = KnowledgeReadContext(
+        parsed=context.parsed,
+        request=context.request,
+        domain_contract=context.domain_contract,
+        semantic_profile=context.semantic_profile,
+        domain_policy=context.domain_policy,
+        source_reader=_WideningSnapshotReader(),
+    )
+    with pytest.raises(KnowledgeReadContextIntegrityError, match="candidate-derived"):
+        widened.admit_candidates(["asrt:priya-owns-retrieval-apr"])
 
 
 def test_malicious_policy_cannot_poison_subsequent_candidates(

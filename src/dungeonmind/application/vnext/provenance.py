@@ -101,8 +101,31 @@ def _assert_revision_identity(
         )
 
 
-def validate_provenance_snapshot_integrity(snapshot: KnowledgeProvenanceSnapshot) -> None:
-    """Fail-closed identity checks for any reader-produced provenance snapshot."""
+def validate_provenance_snapshot_integrity(
+    snapshot: KnowledgeProvenanceSnapshot,
+    *,
+    expected_artifact_ids: Sequence[str] | None = None,
+    expected_revision_ids: Sequence[str] | None = None,
+) -> None:
+    """Fail-closed identity checks for any reader-produced provenance snapshot.
+
+    When ``expected_*`` IDs are supplied (candidate-derived dependency sets), the
+    snapshot's self-declared ``requested_*`` tuples must match them exactly so a
+    custom reader cannot widen the authority surface exposed to admission/policy.
+    """
+
+    if expected_artifact_ids is not None:
+        expected_artifacts = tuple(sorted(set(expected_artifact_ids)))
+        if snapshot.requested_artifact_ids != expected_artifacts:
+            raise KnowledgeReadContextIntegrityError(
+                "provenance requested_artifact_ids do not match candidate-derived dependencies"
+            )
+    if expected_revision_ids is not None:
+        expected_revisions = tuple(sorted(set(expected_revision_ids)))
+        if snapshot.requested_revision_ids != expected_revisions:
+            raise KnowledgeReadContextIntegrityError(
+                "provenance requested_revision_ids do not match candidate-derived dependencies"
+            )
 
     requested_artifacts = frozenset(snapshot.requested_artifact_ids)
     requested_revisions = frozenset(snapshot.requested_revision_ids)
@@ -335,7 +358,11 @@ def _build_snapshot_from_loaded(
         missing_revision_ids=missing_revisions,
         fingerprint=fingerprint,
     )
-    validate_provenance_snapshot_integrity(snapshot)
+    validate_provenance_snapshot_integrity(
+        snapshot,
+        expected_artifact_ids=requested_artifacts,
+        expected_revision_ids=requested_revisions,
+    )
     return snapshot
 
 
@@ -344,27 +371,49 @@ class CoherentInMemoryView:
 
     __slots__ = (
         "_artifact_cache",
+        "_epoch",
         "_parent",
         "_revision_cache",
-        "epoch",
+        "_view_fingerprint",
         "materialized_artifact_count",
         "materialized_revision_count",
         "snapshot_call_count",
-        "view_fingerprint",
     )
 
     def __init__(self, parent: InMemoryKnowledgeSourceReader, *, epoch: int) -> None:
-        self._parent = parent
-        self.epoch = epoch
-        self.view_fingerprint = coherent_epoch_view_fingerprint(epoch=epoch)
-        self._artifact_cache: dict[str, SourceArtifactV3] = {}
-        self._revision_cache: dict[str, SourceRevisionV2] = {}
-        self.snapshot_call_count = 0
-        self.materialized_artifact_count = 0
-        self.materialized_revision_count = 0
+        object.__setattr__(self, "_parent", parent)
+        object.__setattr__(self, "_epoch", epoch)
+        object.__setattr__(
+            self, "_view_fingerprint", coherent_epoch_view_fingerprint(epoch=epoch)
+        )
+        object.__setattr__(self, "_artifact_cache", {})
+        object.__setattr__(self, "_revision_cache", {})
+        object.__setattr__(self, "snapshot_call_count", 0)
+        object.__setattr__(self, "materialized_artifact_count", 0)
+        object.__setattr__(self, "materialized_revision_count", 0)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name in {"_epoch", "_view_fingerprint", "epoch", "view_fingerprint"}:
+            raise TypeError("CoherentInMemoryView epoch/fingerprint are immutable")
+        if name.startswith("_") or name in {
+            "materialized_artifact_count",
+            "materialized_revision_count",
+            "snapshot_call_count",
+        }:
+            object.__setattr__(self, name, value)
+            return
+        raise TypeError(f"CoherentInMemoryView attribute {name!r} is not assignable")
+
+    @property
+    def epoch(self) -> int:
+        return self._epoch
+
+    @property
+    def view_fingerprint(self) -> str:
+        return self._view_fingerprint
 
     def open_coherent_view(self) -> CoherentInMemoryView:
-        return CoherentInMemoryView(self._parent, epoch=self.epoch)
+        return CoherentInMemoryView(self._parent, epoch=self._epoch)
 
     def get_provenance_snapshot(
         self,
