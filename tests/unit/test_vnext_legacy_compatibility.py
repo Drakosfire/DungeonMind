@@ -83,7 +83,7 @@ def _make_rev(
     )
 
 
-# 1. Steward handoff update (post-PR #60/#61: V2 complete, V3 active)
+# 1. Steward handoff update (post-PR #63: V3 complete, V4.1 active)
 def test_01_steward_handoff_records_pr60_merge_and_v2_complete() -> None:
     path = Path("Docs/Handoffs/HANDOFF-STEWARDSHIP-vnext-roadmap.md")
     assert path.exists()
@@ -100,7 +100,9 @@ def test_01_steward_handoff_records_pr60_merge_and_v2_complete() -> None:
     assert "b88a7b6ebc03f5a227d599222e3f25075566382d" in content
     assert "d409a2000e4608208cb8cfeed0c6907f3568abe2" in content
     assert "V2 COMPLETE — V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED" in content
-    assert "V3 ACTIVE" in content
+    assert "V3 COMPLETE — V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED" in content
+    assert "V4 ACTIVE" in content
+    assert "V4.1 ACTIVE" in content
 
 
 # 2. v1 stored revision decodes and has semantic parity

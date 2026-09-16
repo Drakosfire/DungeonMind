@@ -77,12 +77,22 @@ This handoff/bookkeeping PR may merge as one docs control-surface PR.
 
 Only after its merge:
 
-1. read the actual handoff/bookkeeping merge SHA from `main`;
+1. read the actual PR #64 handoff/bookkeeping merge SHA from `main`;
 2. create `kernel/v4-1-bounded-neighborhood` from that exact merged `main`;
-3. use this file as the binding implementation handoff;
-4. do not rewrite the Steward again in the V4.1 implementation PR unless a new roadmap fact changes.
+3. make the implementation branch's **first commit** record that actual PR #64 merge SHA as the new Steward/`main` anchor and as this handoff's activation fact **before any production code**;
+4. then implement V4.1 only, using this file as the binding implementation handoff.
 
-If this branch is rebased or amended before merge, preserve the semantic bookkeeping content even if the bookkeeping commit SHA changes.
+The first implementation commit is bookkeeping, not neighborhood runtime. It must record at least:
+
+```text
+actual PR #64 merge SHA
+new current main anchor
+this handoff is no longer PRE-DISPATCH / is ACTIVE for implementation
+```
+
+Do not start V4.1 production code in that first commit.
+
+If this branch is rebased or amended before merge, preserve the semantic bookkeeping content even if the bookkeeping commit SHA on this branch changes. The implementation-branch first commit must still record the **merged** PR #64 SHA, not this pre-merge head.
 
 ---
 
@@ -1106,6 +1116,7 @@ The Steward must verify:
 
 - this handoff/bookkeeping PR merged before V4.1 implementation branch creation;
 - implementation base is that exact merge;
+- the implementation branch's first commit records that actual PR #64 merge SHA as the new Steward/`main` anchor before production code;
 - living Steward records PR #63 merge, accepted head, review cycles, final PASS, V3 artifact, V3 COMPLETE, V4/V4.1 ACTIVE.
 
 ### Semantics
@@ -1154,6 +1165,8 @@ V4.2 ACTIVE
 ```
 
 before V4.2 implementation begins.
+
+V4.1 acceptance unblocks V4.2 only. V4.3 remains blocked on V4.2. V5 remains blocked on V4.3.
 
 ---
 

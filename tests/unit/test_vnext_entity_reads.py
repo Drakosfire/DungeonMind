@@ -742,10 +742,11 @@ def test_05_steward_records_v2_benchmark_structural_gate() -> None:
     assert bench["structural_gate"]["passes"] is True
 
 
-def test_06_steward_phase_v2_complete_v3_active() -> None:
+def test_06_steward_phase_v3_complete_v4_1_active() -> None:
     text = STEWARD_PATH.read_text(encoding="utf-8")
-    assert "V2 COMPLETE" in text or "V2 complete" in text.lower()
-    assert "V3 ACTIVE" in text
+    assert "V3 COMPLETE" in text
+    assert "V4 ACTIVE" in text
+    assert "V4.1 ACTIVE" in text
 
 
 def test_07_frozen_v0_aggregate_remains_exact() -> None:

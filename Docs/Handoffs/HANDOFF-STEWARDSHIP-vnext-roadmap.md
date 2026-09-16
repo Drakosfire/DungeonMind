@@ -79,12 +79,6 @@ V4 ACTIVE
 V4.1 ACTIVE
 ```
 
-Historical phase marker retained for prior acceptance suites:
-
-```text
-prior transition after PR #62: V3 ACTIVE
-```
-
 ### Current primary question
 
 **V4.1 — bounded neighborhood**
@@ -490,8 +484,10 @@ After every roadmap PR merge, update this file before another roadmap PR merges.
 
 Preferred sequence:
 
-1. the successor handoff/bookkeeping PR updates this handoff with the actual merge anchor and phase transition; then
-2. the successor implementation branch is created from that merged handoff/bookkeeping PR.
+1. the successor handoff/bookkeeping PR updates this handoff with the actual predecessor merge anchor and phase transition;
+2. after that PR merges, the successor implementation branch is created from that exact merge SHA;
+3. the implementation branch's **first commit** records that handoff/bookkeeping merge SHA as the new current `main` anchor before production code;
+4. then implementation proceeds.
 
 Every update records at minimum:
 
@@ -678,8 +674,14 @@ safe / independent:
 
 blocked until V4.1 acceptance:
   V4.2 merge
+
+blocked until V4.2 acceptance:
   V4.3 merge
+
+blocked until V4.3 acceptance:
   V5+ governed-write implementation merge
+
+blocked until later accepted predecessors:
   bridge-genesis migration
   cutover
   current-public-path quarantine/deletion
@@ -702,7 +704,7 @@ blocked until V4.1 acceptance:
 
 ### Named next action
 
-Merge the V4.1 handoff/bookkeeping PR, then create `kernel/v4-1-bounded-neighborhood` from that merge and implement only the bounded neighborhood question. Do not begin V4.2 evidence/anchor APIs or V4.3 search in the same implementation PR.
+Merge the V4.1 handoff/bookkeeping PR. Then create `kernel/v4-1-bounded-neighborhood` from that exact merge SHA. The implementation branch's first commit must record that actual PR #64 merge SHA as the new current `main` anchor before production code. Then implement only the bounded neighborhood question. V4.1 acceptance unblocks V4.2 only. Do not begin V4.2 evidence/anchor APIs, V4.3 search, or V5 writes in the same implementation PR.
 
 ---
 
