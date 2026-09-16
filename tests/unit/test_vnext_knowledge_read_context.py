@@ -26,7 +26,10 @@ from dungeonmind.application.vnext.errors import (
     KnowledgeReadContextIntegrityError,
 )
 from dungeonmind.application.vnext.provenance import (
+    CoherentInMemoryView,
     InMemoryKnowledgeSourceReader,
+    KnowledgeProvenanceSnapshot,
+    provenance_snapshot_fingerprint,
 )
 from dungeonmind.application.vnext.read_context import KnowledgeReadContext
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
@@ -1066,6 +1069,109 @@ def test_44_provenance_snapshot_deeply_immutable(
     mapped.status = "superseded"  # type: ignore[misc]
     assert snapshot.get_artifact("src:ownership-document") is not None
     assert snapshot.get_artifact("src:ownership-document").status == "active"
+    with pytest.raises(TypeError):
+        snapshot.artifacts_by_id._inner = {}  # type: ignore[attr-defined]
+    assert not hasattr(snapshot.artifacts_by_id, "_inner")
+    with pytest.raises(TypeError):
+        snapshot.artifacts_by_id.extra = "x"  # type: ignore[attr-defined]
+
+
+def test_coherent_view_does_not_preload_large_store() -> None:
+    artifacts = {
+        f"src:art-{index:04d}": SourceArtifactV3(
+            source_artifact_id=f"src:art-{index:04d}",
+            source_classification="organization:document",
+            authority="primary",
+            visibility=PublicVisibility(),
+            status="active",
+        )
+        for index in range(220)
+    }
+    reader = InMemoryKnowledgeSourceReader(artifacts=artifacts)
+    view = reader.open_coherent_view()
+    assert view.materialized_artifact_count == 0
+    assert view.materialized_revision_count == 0
+
+
+def test_coherent_view_materializes_only_requested_sources_on_admit(
+    org_context: tuple[KnowledgeReadContext, Any],
+) -> None:
+    context, reader = org_context
+    large = {
+        f"src:decoy-{index:04d}": SourceArtifactV3(
+            source_artifact_id=f"src:decoy-{index:04d}",
+            source_classification="organization:document",
+            authority="primary",
+            visibility=PublicVisibility(),
+            status="active",
+        )
+        for index in range(220)
+    }
+    reader._artifacts.update(large)  # type: ignore[attr-defined]
+    pinned = context.source_reader
+    assert isinstance(pinned, CoherentInMemoryView)
+    assert pinned.materialized_artifact_count == 0
+    context.admit_candidates(["asrt:priya-owns-retrieval-apr"])
+    assert pinned.materialized_artifact_count == 1
+    assert pinned.materialized_revision_count == 1
+
+
+def test_admit_candidates_validates_snapshot_from_non_inmemory_reader(
+    org_context: tuple[KnowledgeReadContext, Any],
+) -> None:
+    context, _ = org_context
+
+    class _MismatchSnapshotReader:
+        snapshot_call_count = 0
+
+        def open_coherent_view(self) -> _MismatchSnapshotReader:
+            return self
+
+        def get_provenance_snapshot(
+            self,
+            *,
+            artifact_ids: list[str],
+            revision_ids: list[str],
+        ) -> KnowledgeProvenanceSnapshot:
+            self.snapshot_call_count += 1
+            artifact = SourceArtifactV3(
+                source_artifact_id="src:wrong-body-id",
+                source_classification="organization:document",
+                authority="primary",
+                visibility=PublicVisibility(),
+                status="active",
+            )
+            requested_artifacts = tuple(sorted(set(artifact_ids)))
+            requested_revisions = tuple(sorted(set(revision_ids)))
+            loaded = {"src:ownership-document": artifact}
+            fingerprint = provenance_snapshot_fingerprint(
+                artifacts=loaded,
+                revisions={},
+                requested_artifact_ids=requested_artifacts,
+                requested_revision_ids=requested_revisions,
+                missing_artifact_ids=(),
+                missing_revision_ids=requested_revisions,
+            )
+            return KnowledgeProvenanceSnapshot(
+                artifacts_by_id=loaded,
+                revisions_by_id={},
+                requested_artifact_ids=requested_artifacts,
+                requested_revision_ids=requested_revisions,
+                missing_artifact_ids=(),
+                missing_revision_ids=requested_revisions,
+                fingerprint=fingerprint,
+            )
+
+    mismatched = KnowledgeReadContext(
+        parsed=context.parsed,
+        request=context.request,
+        domain_contract=context.domain_contract,
+        semantic_profile=context.semantic_profile,
+        domain_policy=context.domain_policy,
+        source_reader=_MismatchSnapshotReader(),
+    )
+    with pytest.raises(KnowledgeReadContextIntegrityError):
+        mismatched.admit_candidates(["asrt:priya-owns-retrieval-apr"])
 
 
 def test_source_identity_mismatch_at_snapshot_fails_closed() -> None:
@@ -1172,7 +1278,7 @@ def test_45_one_admission_operation_one_snapshot(
 ) -> None:
     context, _reader = org_context
     pinned = context.source_reader
-    assert isinstance(pinned, InMemoryKnowledgeSourceReader)
+    assert isinstance(pinned, CoherentInMemoryView)
     pinned.snapshot_call_count = 0
     context.admit_candidates(["asrt:priya-owns-retrieval-apr", "asrt:marco-owns-retrieval-sep"])
     assert pinned.snapshot_call_count == 1
@@ -1183,7 +1289,7 @@ def test_46_mutating_backing_after_snapshot_does_not_mutate_snapshot(
 ) -> None:
     context_a, reader = org_context
     pinned_a = context_a.source_reader
-    assert isinstance(pinned_a, InMemoryKnowledgeSourceReader)
+    assert isinstance(pinned_a, CoherentInMemoryView)
     view_fp_a = pinned_a.view_fingerprint
     first = context_a.admit_candidates(["asrt:priya-owns-retrieval-apr"])
     assert first.admitted_assertion_ids

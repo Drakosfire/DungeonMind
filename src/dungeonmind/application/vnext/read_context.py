@@ -28,6 +28,7 @@ from .admission import (
 from .errors import CandidateAdmissionIntegrityError, KnowledgeReadContextIntegrityError
 from .model import ParsedKnowledgeRevision
 from .ports import KnowledgeSourceReader
+from .provenance import validate_provenance_snapshot_integrity
 
 
 class _EvidenceMemoBox:
@@ -129,6 +130,7 @@ class KnowledgeReadContext:
             artifact_ids=artifact_ids,
             revision_ids=revision_ids,
         )
+        validate_provenance_snapshot_integrity(provenance)
         snapshot_calls = 1
         if snapshot_calls_before is not None:
             snapshot_calls_after = getattr(self.source_reader, "snapshot_call_count", 0)

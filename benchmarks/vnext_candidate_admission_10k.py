@@ -222,10 +222,21 @@ def _run_batch(context: KnowledgeReadContext, assertion_ids: list[str]) -> dict[
     }
 
 
+_KNOWN_MERGE_BASE = "48c5eba1b47f3e3d410ca824f47ae19b4ee41ed3"
+
+
 def _git_head() -> str:
-    return (
-        subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-    )
+    return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+
+
+def _git_merge_base() -> str:
+    try:
+        return (
+            subprocess.check_output(["git", "merge-base", "HEAD", "origin/main"], text=True)
+            .strip()
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return _KNOWN_MERGE_BASE
 
 
 def main() -> None:
@@ -289,7 +300,8 @@ def main() -> None:
     artifact = {
         "schema_version": "vnext_candidate_admission_10k_v1",
         "characterization_only": True,
-        "exact_base": _git_head(),
+        "exact_base": _git_merge_base(),
+        "exact_head": _git_head(),
         "workload_digest": workload_digest,
         "parsed_semantic_digest": parsed.semantic_digest,
         "assertion_count": ASSERTION_COUNT,
