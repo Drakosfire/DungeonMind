@@ -9,10 +9,11 @@ from typing import Literal
 from dungeonmind.domain.canonical import canonical_sha256
 
 from .errors import EntityReadIntegrityError
-from .model import ParsedKnowledgeRevision
 from .provenance import KnowledgeProvenanceSnapshot
 from .read_context import KnowledgeReadContext
 from .records import ParsedAssertion, ParsedEntity, ParsedEntityRefValue, ParsedEvidenceRef
+
+ENTITY_READ_PARTIAL_REASONS = frozenset({"support_unavailable", "result_truncated"})
 
 
 def _dedupe_sorted(ids: Sequence[str]) -> tuple[str, ...]:
@@ -34,6 +35,20 @@ class EntityReadIdentity:
 class EntityReadCompleteness:
     status: Literal["complete", "partial"]
     reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status == "complete":
+            if self.reason is not None:
+                raise EntityReadIntegrityError(
+                    "complete entity read cannot carry a partial reason"
+                )
+            return
+        if self.reason is None:
+            raise EntityReadIntegrityError("partial entity read requires an explicit reason")
+        if self.reason not in ENTITY_READ_PARTIAL_REASONS:
+            raise EntityReadIntegrityError(
+                f"unknown partial completeness reason: {self.reason}"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +142,6 @@ def _compute_result_digest(
     source_artifacts: tuple[EntityReadSourceArtifact, ...],
     source_revisions: tuple[EntityReadSourceRevision, ...],
     completeness: EntityReadCompleteness,
-    provenance_fingerprint: str | None,
 ) -> str:
     return canonical_sha256(
         {
@@ -168,7 +182,6 @@ def _compute_result_digest(
                 for item in source_revisions
             ],
             "completeness": {"status": completeness.status, "reason": completeness.reason},
-            "provenance_fingerprint": provenance_fingerprint,
         }
     )
 
@@ -232,29 +245,6 @@ def _support_for_admitted(
     return tuple(evidence), tuple(artifacts), tuple(revisions)
 
 
-def _incoming_touching_assertion_ids(
-    parsed: ParsedKnowledgeRevision, entity_id: str
-) -> tuple[str, ...]:
-    """Resolve incoming entity-ref assertions via neighbor subject indexes only."""
-
-    incoming_neighbor_ids = parsed.entity_ref_incoming.get(entity_id, ())
-    if not incoming_neighbor_ids:
-        return ()
-    discovered: list[str] = []
-    for source_entity_id in incoming_neighbor_ids:
-        for assertion_id in parsed.assertions_by_subject.get(source_entity_id, ()):
-            assertion = parsed.get_assertion(assertion_id)
-            if assertion is None:
-                raise EntityReadIntegrityError(
-                    f"indexed subject assertion missing from parsed revision: {assertion_id}"
-                )
-            if not isinstance(assertion.value, ParsedEntityRefValue):
-                continue
-            if assertion.value.entity_id == entity_id:
-                discovered.append(assertion_id)
-    return _dedupe_sorted(discovered)
-
-
 def _opposite_endpoint_id(assertion: ParsedAssertion, selected_entity_id: str) -> str | None:
     if not isinstance(assertion.value, ParsedEntityRefValue):
         return None
@@ -288,7 +278,6 @@ def _assemble(
             source_artifacts=(),
             source_revisions=(),
             completeness=completeness,
-            provenance_fingerprint=None,
         )
         miss = EntityLookupResult(
             identity=identity,
@@ -318,16 +307,18 @@ def _assemble(
             )
         return miss
 
-    subject_ids = tuple(parsed.assertions_by_subject.get(entity_id, ()))
-    outgoing_neighbor_ids = tuple(parsed.entity_ref_outgoing.get(entity_id, ()))
-    incoming_neighbor_ids = tuple(parsed.entity_ref_incoming.get(entity_id, ()))
+    subject_ids = tuple(parsed.get_subject_assertion_ids(entity_id))
+    outgoing_assertion_ids = tuple(parsed.get_outgoing_entity_ref_assertion_ids(entity_id))
+    incoming_assertion_ids = (
+        tuple(parsed.get_incoming_entity_ref_assertion_ids(entity_id))
+        if include_touching
+        else ()
+    )
     if include_touching:
-        incoming_assertion_ids = _incoming_touching_assertion_ids(parsed, entity_id)
         candidate_ids = _dedupe_sorted((*subject_ids, *incoming_assertion_ids))
     else:
         candidate_ids = _dedupe_sorted(subject_ids)
-        outgoing_neighbor_ids = ()
-        incoming_neighbor_ids = ()
+        outgoing_assertion_ids = ()
 
     admission, provenance = context.evaluate_candidates(candidate_ids)
     admitted_ids = admission.admitted_assertion_ids
@@ -374,8 +365,8 @@ def _assemble(
     work = EntityReadWorkCounts(
         entity_lookups=1,
         subject_assertion_candidates=len(subject_ids),
-        incoming_entity_ref_candidates=len(incoming_neighbor_ids) if include_touching else 0,
-        outgoing_entity_ref_candidates=len(outgoing_neighbor_ids) if include_touching else 0,
+        incoming_entity_ref_candidates=len(incoming_assertion_ids),
+        outgoing_entity_ref_candidates=len(outgoing_assertion_ids),
         deduped_candidate_assertions=len(candidate_ids),
         assertions_evaluated=admission.work.assertions_evaluated,
         policy_evaluations=admission.work.policy_evaluations,
@@ -395,7 +386,6 @@ def _assemble(
         source_artifacts=artifacts,
         source_revisions=revisions,
         completeness=completeness,
-        provenance_fingerprint=getattr(provenance, "fingerprint", None),
     )
     if include_touching:
         return CompleteEntityLookupResult(

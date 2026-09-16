@@ -58,6 +58,8 @@ class ParsedKnowledgeRevision:
     assertions_by_subject: FrozenDict[str, tuple[str, ...]]
     entity_ref_outgoing: FrozenDict[str, tuple[str, ...]]
     entity_ref_incoming: FrozenDict[str, tuple[str, ...]]
+    entity_ref_outgoing_assertions: FrozenDict[str, tuple[str, ...]]
+    entity_ref_incoming_assertions: FrozenDict[str, tuple[str, ...]]
     entity_adjacency: FrozenDict[str, tuple[str, ...]]
 
     # Evidence & supporter indexes
@@ -136,6 +138,12 @@ class ParsedKnowledgeRevision:
     def get_subject_assertions(self, entity_id: str) -> tuple[ParsedAssertion, ...]:
         asrt_ids = self.assertions_by_subject.get(entity_id, ())
         return tuple(self.assertions_by_id[aid] for aid in asrt_ids if aid in self.assertions_by_id)
+
+    def get_outgoing_entity_ref_assertion_ids(self, entity_id: str) -> tuple[str, ...]:
+        return self.entity_ref_outgoing_assertions.get(entity_id, ())
+
+    def get_incoming_entity_ref_assertion_ids(self, entity_id: str) -> tuple[str, ...]:
+        return self.entity_ref_incoming_assertions.get(entity_id, ())
 
     def get_adjacent_entities(self, entity_id: str) -> tuple[str, ...]:
         return self.entity_adjacency.get(entity_id, ())

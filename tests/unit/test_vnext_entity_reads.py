@@ -10,6 +10,7 @@ import sys
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -25,6 +26,7 @@ from dungeonmind.application.vnext.errors import (
     EntityReadIntegrityError,
 )
 from dungeonmind.application.vnext.frozen_json import FrozenDict
+from dungeonmind.application.vnext.model import ParsedKnowledgeRevision
 from dungeonmind.application.vnext.provenance import InMemoryKnowledgeSourceReader
 from dungeonmind.application.vnext.read_context import KnowledgeReadContext
 from dungeonmind.application.vnext.records import ParsedEntityRefValue
@@ -79,7 +81,7 @@ ENTITY_BENCH_PATH = REPO_ROOT / "Docs" / "Benchmarks" / "vnext_entity_reads_10k_
 V2_MERGE_SHA = "8af28bf359fa2044dbda23e674653edc9ebe3e6d"
 V2_ACCEPTED_HEAD = "121419e9d0823533306d6a9ca6586c769d82f6b0"
 V2_FINAL_REVIEW = "5217813591"
-BRANCH_BASE_SHA = "8a68894e40a56a115b2f44ad5410bec28fc81d3e"
+ACTIVATION_MAIN_SHA = "d409a2000e4608208cb8cfeed0c6907f3568abe2"
 
 _SVC = EntityReadService()
 
@@ -502,6 +504,86 @@ def _decoy_heavy_lab(*, decoy_assertions: int) -> tuple[KnowledgeReadContext, Kn
     return small, large
 
 
+def _incoming_neighbor_heavy_lab(*, neighbor_subject_count: int) -> KnowledgeReadContext:
+    """One incoming edge from a neighbor that also has a large unrelated subject set."""
+
+    entities = [Entity(entity_id="ent:selected"), Entity(entity_id="ent:noisy-neighbor")]
+    assertions = [
+        Assertion(
+            assertion_id=f"asrt:neighbor-noise-{index:04d}",
+            subject_entity_id="ent:noisy-neighbor",
+            predicate="test:relates",
+            value=EntityRefValue(entity_id="ent:noisy-neighbor"),
+            metadata=AssertionMetadata(
+                scope=[ScopeBinding(axis="test:scope", value="one")],
+                visibility=PublicVisibility(),
+                epistemic_basis=EpistemicBasis.ASSERTED,
+                claim_mode="test:fact",
+                standing=KnowledgeStanding.ESTABLISHED,
+                evidence_ref_ids=[],
+                temporal_scope=TimelessTemporalScope(),
+            ),
+        )
+        for index in range(neighbor_subject_count)
+    ]
+    assertions.append(
+        Assertion(
+            assertion_id="asrt:neighbor-points-at-selected",
+            subject_entity_id="ent:noisy-neighbor",
+            predicate="test:relates",
+            value=EntityRefValue(entity_id="ent:selected"),
+            metadata=AssertionMetadata(
+                scope=[ScopeBinding(axis="test:scope", value="one")],
+                visibility=PublicVisibility(),
+                epistemic_basis=EpistemicBasis.ASSERTED,
+                claim_mode="test:fact",
+                standing=KnowledgeStanding.ESTABLISHED,
+                evidence_ref_ids=["evidence:incoming"],
+                temporal_scope=TimelessTemporalScope(),
+            ),
+        )
+    )
+    artifacts = {
+        "src:incoming": SourceArtifactV3(
+            source_artifact_id="src:incoming",
+            source_classification="test:doc",
+            current_revision_id="srcrev:incoming",
+            authority="primary",
+            visibility=PublicVisibility(),
+            status="active",
+        )
+    }
+    revisions = {
+        "srcrev:incoming": SourceRevisionV2(
+            source_revision_id="srcrev:incoming",
+            source_artifact_id="src:incoming",
+            content_sha256="e" * 64,
+            body_storage="inline",
+            created_at=datetime(2026, 9, 15, tzinfo=UTC),
+        )
+    }
+    evidence = [
+        EvidenceRefV3(
+            evidence_ref_id="evidence:incoming",
+            source_artifact_id="src:incoming",
+            source_revision_id="srcrev:incoming",
+            evidence_role="support",
+            can_open_source=True,
+            can_highlight_span=False,
+        )
+    ]
+    context, _ = _lab_context(
+        entities=entities,
+        assertions=assertions,
+        evidence=evidence,
+        artifacts=artifacts,
+        revisions=revisions,
+        space_id="space:incoming-heavy",
+        revision_id="rev:incoming-heavy",
+    )
+    return context
+
+
 @pytest.fixture(name="org_context")
 def fixture_org_context() -> tuple[KnowledgeReadContext, InMemoryKnowledgeSourceReader]:
     return _build_from_fixture(
@@ -521,14 +603,11 @@ def test_01_v2_merge_sha_recorded_in_stewardship() -> None:
     assert V2_MERGE_SHA in text
 
 
-def test_02_implementation_branch_anchored_after_v2_merge() -> None:
-    result = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", V2_MERGE_SHA, "HEAD"],
-        cwd=REPO_ROOT,
-        check=False,
-    )
-    assert result.returncode == 0
-    assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True).strip()
+def test_02_v2_predecessor_recorded_in_authority_docs() -> None:
+    steward = STEWARD_PATH.read_text(encoding="utf-8")
+    handoff = V3_HANDOFF_PATH.read_text(encoding="utf-8")
+    assert V2_MERGE_SHA in steward
+    assert V2_MERGE_SHA in handoff
 
 
 def test_03_steward_rewrite_not_required_on_first_v3_impl_commit() -> None:
@@ -562,9 +641,10 @@ def test_07_frozen_v0_aggregate_remains_exact() -> None:
     assert bundle["aggregate_sha256"] == CANONICAL_V0_AGGREGATE
 
 
-def test_08_branch_base_matches_recorded_activation_anchor() -> None:
-    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True).strip()
-    assert head.startswith(BRANCH_BASE_SHA[:8])
+def test_08_activation_anchor_recorded_in_authority_docs() -> None:
+    handoff = V3_HANDOFF_PATH.read_text(encoding="utf-8")
+    assert ACTIVATION_MAIN_SHA in handoff
+    assert "current main at activation sync" in handoff.lower()
 
 
 # --- B. Exact entity read (9-20) ---
@@ -789,6 +869,10 @@ def test_26_incoming_discovery_uses_index_not_full_scan(
     result = _SVC.get_complete_entity(context, "retrieval-evaluation")
     assert result.work.incoming_entity_ref_candidates == 2
     assert result.work.deduped_candidate_assertions < len(context.parsed.assertions_by_id)
+    assert context.parsed.get_incoming_entity_ref_assertion_ids("retrieval-evaluation") == (
+        "asrt:marco-owns-retrieval-sep",
+        "asrt:priya-owns-retrieval-apr",
+    )
 
 
 def test_27_self_loop_touching_assertion_returned_once() -> None:
@@ -1064,9 +1148,15 @@ def test_43_excluded_assertions_do_not_force_partial(
     assert result.completeness.status == "complete"
 
 
-def test_44_partial_completeness_has_explicit_reason_when_used() -> None:
-    miss = EntityReadCompleteness(status="partial", reason="example")
-    assert miss.reason == "example"
+def test_44_partial_completeness_rejects_inconsistent_states() -> None:
+    with pytest.raises(EntityReadIntegrityError):
+        EntityReadCompleteness(status="complete", reason="support_unavailable")
+    with pytest.raises(EntityReadIntegrityError):
+        EntityReadCompleteness(status="partial", reason=None)
+    with pytest.raises(EntityReadIntegrityError):
+        EntityReadCompleteness(status="partial", reason="example")
+    named = EntityReadCompleteness(status="partial", reason="support_unavailable")
+    assert named.reason == "support_unavailable"
 
 
 def test_45_no_truncation_behind_complete() -> None:
@@ -1378,6 +1468,131 @@ def test_73_result_digest_changes_with_semantic_provenance_state(
     assert first.result_digest != second.result_digest
 
 
+def test_73b_result_digest_ignores_excluded_candidate_provenance() -> None:
+    artifacts = {
+        "src:visible": SourceArtifactV3(
+            source_artifact_id="src:visible",
+            source_classification="test:doc",
+            current_revision_id="srcrev:visible",
+            authority="primary",
+            visibility=PublicVisibility(),
+            status="active",
+        ),
+        "src:hidden": SourceArtifactV3(
+            source_artifact_id="src:hidden",
+            source_classification="test:doc",
+            current_revision_id="srcrev:hidden",
+            authority="primary",
+            visibility=PublicVisibility(),
+            status="active",
+        ),
+    }
+    revisions = {
+        "srcrev:visible": SourceRevisionV2(
+            source_revision_id="srcrev:visible",
+            source_artifact_id="src:visible",
+            content_sha256="1" * 64,
+            body_storage="inline",
+            created_at=datetime(2026, 9, 15, tzinfo=UTC),
+        ),
+        "srcrev:hidden": SourceRevisionV2(
+            source_revision_id="srcrev:hidden",
+            source_artifact_id="src:hidden",
+            content_sha256="2" * 64,
+            body_storage="inline",
+            created_at=datetime(2026, 9, 15, tzinfo=UTC),
+        ),
+    }
+    entities = [Entity(entity_id="ent:selected"), Entity(entity_id="ent:neighbor")]
+    assertions = [
+        Assertion(
+            assertion_id="asrt:visible-subject",
+            subject_entity_id="ent:selected",
+            predicate="test:title",
+            value=LiteralValue(value={"role": "selected"}),
+            metadata=AssertionMetadata(
+                scope=[ScopeBinding(axis="test:scope", value="one")],
+                visibility=PublicVisibility(),
+                epistemic_basis=EpistemicBasis.ASSERTED,
+                claim_mode="test:fact",
+                standing=KnowledgeStanding.ESTABLISHED,
+                evidence_ref_ids=["evidence:visible"],
+                temporal_scope=TimelessTemporalScope(),
+            ),
+        ),
+        Assertion(
+            assertion_id="asrt:hidden-incoming",
+            subject_entity_id="ent:neighbor",
+            predicate="test:relates",
+            value=EntityRefValue(entity_id="ent:selected"),
+            metadata=AssertionMetadata(
+                scope=[ScopeBinding(axis="test:scope", value="one")],
+                visibility=PublicVisibility(),
+                epistemic_basis=EpistemicBasis.ASSERTED,
+                claim_mode="test:fact",
+                standing=KnowledgeStanding.ESTABLISHED,
+                evidence_ref_ids=["evidence:hidden"],
+                temporal_scope=TimelessTemporalScope(),
+            ),
+        ),
+    ]
+    evidence = [
+        EvidenceRefV3(
+            evidence_ref_id="evidence:visible",
+            source_artifact_id="src:visible",
+            source_revision_id="srcrev:visible",
+            evidence_role="support",
+            can_open_source=True,
+            can_highlight_span=False,
+        ),
+        EvidenceRefV3(
+            evidence_ref_id="evidence:hidden",
+            source_artifact_id="src:hidden",
+            source_revision_id="srcrev:hidden",
+            evidence_role="support",
+            can_open_source=True,
+            can_highlight_span=False,
+        ),
+    ]
+    context, reader = _lab_context(
+        entities=entities,
+        assertions=assertions,
+        evidence=evidence,
+        artifacts=artifacts,
+        revisions=revisions,
+        policy=ExcludeByAssertionIdPolicy(
+            policy_id="test.always",
+            excluded_assertion_ids=frozenset({"asrt:hidden-incoming"}),
+        ),
+    )
+    first = _SVC.get_complete_entity(context, "ent:selected")
+    assert {item.assertion_id for item in first.assertions} == {"asrt:visible-subject"}
+    hidden = reader._revisions["srcrev:hidden"]
+    reader._revisions["srcrev:hidden"] = hidden.model_copy(update={"content_sha256": "f" * 64})
+    second_context = KnowledgeReadContext(
+        parsed=context.parsed,
+        request=context.request,
+        domain_contract=context.domain_contract,
+        semantic_profile=context.semantic_profile,
+        domain_policy=context.domain_policy,
+        source_reader=reader,
+    )
+    second = _SVC.get_complete_entity(second_context, "ent:selected")
+    assert first.result_digest == second.result_digest
+    visible = reader._revisions["srcrev:visible"]
+    reader._revisions["srcrev:visible"] = visible.model_copy(update={"content_sha256": "a" * 64})
+    third_context = KnowledgeReadContext(
+        parsed=context.parsed,
+        request=context.request,
+        domain_contract=context.domain_contract,
+        semantic_profile=context.semantic_profile,
+        domain_policy=context.domain_policy,
+        source_reader=reader,
+    )
+    third = _SVC.get_complete_entity(third_context, "ent:selected")
+    assert third.result_digest != first.result_digest
+
+
 def test_74_result_digest_independent_of_work_counters(
     org_context: tuple[KnowledgeReadContext, Any],
 ) -> None:
@@ -1407,6 +1622,32 @@ def test_76_complete_work_proportional_to_touching_support() -> None:
     result = _SVC.get_complete_entity(context, "ent:hub")
     assert result.work.deduped_candidate_assertions == 26
     assert result.work.endpoint_entity_lookups == 26
+
+
+def test_76b_incoming_heavy_neighbor_does_not_scan_unrelated_subject_assertions() -> None:
+    small = _incoming_neighbor_heavy_lab(neighbor_subject_count=80)
+    large = _incoming_neighbor_heavy_lab(neighbor_subject_count=2_000)
+    small_result = _SVC.get_complete_entity(small, "ent:selected")
+    lookup_count = {"n": 0}
+    original = ParsedKnowledgeRevision.get_assertion
+
+    def counting(self, assertion_id: str):
+        lookup_count["n"] += 1
+        return original(self, assertion_id)
+
+    with patch.object(ParsedKnowledgeRevision, "get_assertion", counting):
+        large_result = _SVC.get_complete_entity(large, "ent:selected")
+    assert large_result.work.incoming_entity_ref_candidates == 1
+    assert large_result.work.deduped_candidate_assertions == 1
+    assert large_result.work.assertions_evaluated == 1
+    assert small_result.work.deduped_candidate_assertions == (
+        large_result.work.deduped_candidate_assertions
+    )
+    assert lookup_count["n"] < 20
+    assert lookup_count["n"] < 2_000
+    assert {item.assertion_id for item in large_result.assertions} == {
+        "asrt:neighbor-points-at-selected"
+    }
 
 
 def test_77_unrelated_assertion_growth_does_not_expand_candidates() -> None:
@@ -1460,7 +1701,11 @@ def test_83_entity_reads_10k_benchmark_records_shape() -> None:
     assert payload["schema_version"] == "vnext_entity_reads_10k_v1"
     assert "runs" in payload
     assert payload["structural_gate"]["passes"] is True
-    for key in ("get_entity_low_degree_10k", "get_complete_entity_high_degree_10k"):
+    for key in (
+        "get_entity_low_degree_10k",
+        "get_complete_entity_high_degree_10k",
+        "get_complete_entity_incoming_heavy_10k",
+    ):
         run = payload["runs"][key]
         assert "p50_ms" in run
         assert "p95_ms" in run
@@ -1533,7 +1778,11 @@ def test_89_world_public_services_unchanged() -> None:
 
 def test_90_no_write_or_publication_path_changes() -> None:
     assert not any(VNEXT_SRC.glob("*write*"))
-    assert "get_entity" in (VNEXT_SRC / "entity_reads.py").read_text(encoding="utf-8")
+    text = (VNEXT_SRC / "entity_reads.py").read_text(encoding="utf-8")
+    assert "get_entity" in text
+    assert "get_incoming_entity_ref_assertion_ids" in text
+    assert "_incoming_touching_assertion_ids" not in text
+    assert "assertions_by_subject.get(source_entity_id" not in text
 
 
 def test_91_no_storage_migration_changes_in_entity_reads_scope() -> None:

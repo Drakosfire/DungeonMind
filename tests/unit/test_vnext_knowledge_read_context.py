@@ -366,24 +366,7 @@ def test_06_domain_contract_descriptor_digest_mismatch_fails_closed(
             descriptor_sha256="f" * 64,
         ),
     )
-    bad_parsed = parsed.__class__(
-        identity=bad_ref,
-        entities_by_id=parsed.entities_by_id,
-        assertions_by_id=parsed.assertions_by_id,
-        aliases_by_id=parsed.aliases_by_id,
-        evidence_by_id=parsed.evidence_by_id,
-        assertions_by_subject=parsed.assertions_by_subject,
-        entity_ref_outgoing=parsed.entity_ref_outgoing,
-        entity_ref_incoming=parsed.entity_ref_incoming,
-        entity_adjacency=parsed.entity_adjacency,
-        assertion_evidence=parsed.assertion_evidence,
-        evidence_supporters=parsed.evidence_supporters,
-        alias_exact_index=parsed.alias_exact_index,
-        literal_exact_index=parsed.literal_exact_index,
-        lexical_candidate_index=parsed.lexical_candidate_index,
-        semantic_digest=parsed.semantic_digest,
-        compatibility_key=parsed.compatibility_key,
-    )
+    bad_parsed = replace(parsed, identity=bad_ref)
     with pytest.raises(KnowledgeReadContextIntegrityError):
         KnowledgeReadContext(
             parsed=bad_parsed,

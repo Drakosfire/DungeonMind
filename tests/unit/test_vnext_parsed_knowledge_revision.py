@@ -340,6 +340,11 @@ def test_09_incoming_adjacency_complete_and_deterministic() -> None:
     incoming = parsed.entity_ref_incoming["ent:project-alpha"]
     assert incoming == ("ent:alice", "ent:bob")
     assert parsed.entity_ref_incoming["ent:alice"] == ()
+    assert parsed.get_incoming_entity_ref_assertion_ids("ent:project-alpha") == (
+        "asrt:alice-owns-alpha",
+        "asrt:bob-owns-alpha-provisional",
+    )
+    assert parsed.get_incoming_entity_ref_assertion_ids("ent:alice") == ()
 
 
 def test_10_outgoing_adjacency_complete_and_deterministic() -> None:
@@ -347,6 +352,10 @@ def test_10_outgoing_adjacency_complete_and_deterministic() -> None:
     outgoing = parsed.entity_ref_outgoing["ent:alice"]
     assert outgoing == ("ent:project-alpha",)
     assert parsed.entity_ref_outgoing["ent:project-alpha"] == ()
+    assert parsed.get_outgoing_entity_ref_assertion_ids("ent:alice") == (
+        "asrt:alice-owns-alpha",
+    )
+    assert parsed.get_outgoing_entity_ref_assertion_ids("ent:project-alpha") == ()
 
 
 def test_11_touching_adjacency_indexed_without_full_scan() -> None:
@@ -784,6 +793,8 @@ def test_35_reordered_input_builds_same_index_order() -> None:
     assert dict(p1.assertions_by_subject) == dict(p2.assertions_by_subject)
     assert dict(p1.entity_ref_outgoing) == dict(p2.entity_ref_outgoing)
     assert dict(p1.entity_ref_incoming) == dict(p2.entity_ref_incoming)
+    assert dict(p1.entity_ref_outgoing_assertions) == dict(p2.entity_ref_outgoing_assertions)
+    assert dict(p1.entity_ref_incoming_assertions) == dict(p2.entity_ref_incoming_assertions)
     assert dict(p1.entity_adjacency) == dict(p2.entity_adjacency)
     assert dict(p1.assertion_evidence) == dict(p2.assertion_evidence)
     assert dict(p1.evidence_supporters) == dict(p2.evidence_supporters)

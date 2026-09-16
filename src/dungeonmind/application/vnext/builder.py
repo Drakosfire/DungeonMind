@@ -463,6 +463,12 @@ def build_parsed_knowledge_revision_from_records(
     assertions_by_subject_builder: dict[str, list[str]] = {eid: [] for eid in entities_dict}
     entity_ref_outgoing_builder: dict[str, set[str]] = {eid: set() for eid in entities_dict}
     entity_ref_incoming_builder: dict[str, set[str]] = {eid: set() for eid in entities_dict}
+    entity_ref_outgoing_assertions_builder: dict[str, list[str]] = {
+        eid: [] for eid in entities_dict
+    }
+    entity_ref_incoming_assertions_builder: dict[str, list[str]] = {
+        eid: [] for eid in entities_dict
+    }
     assertion_evidence_builder: dict[str, tuple[str, ...]] = {}
     evidence_supporters_builder: dict[str, list[str]] = {evid: [] for evid in evidence_dict}
     alias_exact_builder: dict[str, set[str]] = {}
@@ -480,6 +486,8 @@ def build_parsed_knowledge_revision_from_records(
         if isinstance(asrt.value, ParsedEntityRefValue):
             entity_ref_outgoing_builder[asrt.subject_entity_id].add(asrt.value.entity_id)
             entity_ref_incoming_builder[asrt.value.entity_id].add(asrt.subject_entity_id)
+            entity_ref_outgoing_assertions_builder[asrt.subject_entity_id].append(aid)
+            entity_ref_incoming_assertions_builder[asrt.value.entity_id].append(aid)
         elif isinstance(asrt.value, ParsedLiteralValue):
             lit_key = (asrt.predicate, asrt.value.canonical_json_text)
             if lit_key not in literal_exact_builder:
@@ -516,6 +524,18 @@ def build_parsed_knowledge_revision_from_records(
     )
     entity_ref_incoming = FrozenDict(
         {eid: tuple(sorted(sources)) for eid, sources in entity_ref_incoming_builder.items()}
+    )
+    entity_ref_outgoing_assertions = FrozenDict(
+        {
+            eid: tuple(sorted(aids))
+            for eid, aids in entity_ref_outgoing_assertions_builder.items()
+        }
+    )
+    entity_ref_incoming_assertions = FrozenDict(
+        {
+            eid: tuple(sorted(aids))
+            for eid, aids in entity_ref_incoming_assertions_builder.items()
+        }
     )
 
     entity_adjacency = FrozenDict({
@@ -556,6 +576,8 @@ def build_parsed_knowledge_revision_from_records(
         assertions_by_subject=assertions_by_subject,
         entity_ref_outgoing=entity_ref_outgoing,
         entity_ref_incoming=entity_ref_incoming,
+        entity_ref_outgoing_assertions=entity_ref_outgoing_assertions,
+        entity_ref_incoming_assertions=entity_ref_incoming_assertions,
         entity_adjacency=entity_adjacency,
         assertion_evidence=assertion_evidence,
         evidence_supporters=evidence_supporters,

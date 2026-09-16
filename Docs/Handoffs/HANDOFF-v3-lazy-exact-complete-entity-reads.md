@@ -213,12 +213,31 @@ assertions_by_id
 assertions_by_subject
 entity_ref_outgoing
 entity_ref_incoming
+entity_ref_outgoing_assertions
+entity_ref_incoming_assertions
 entity_adjacency
 assertion_evidence
 evidence_by_id
 ```
 
 V3 should consume these indexes. Do not re-derive them by walking the full revision.
+
+Accepted V1 neighbor-entity indexes remain:
+
+```text
+entity_ref_outgoing[E]  → neighbor entity IDs
+entity_ref_incoming[E]  → neighbor entity IDs
+entity_adjacency[E]     → neighbor entity IDs
+```
+
+Those neighbor-entity indexes are not the complete-read candidate set. V3 complete reads consume the assertion-level entity-ref indexes:
+
+```text
+entity_ref_outgoing_assertions[E] → outgoing entity-ref assertion IDs
+entity_ref_incoming_assertions[E] → incoming entity-ref assertion IDs
+```
+
+Do not rediscover incoming assertion IDs by scanning an incoming neighbor's `assertions_by_subject` list.
 
 ### 2.3 V2 admission seam
 
@@ -500,16 +519,18 @@ It also does not recursively expand endpoint assertions.
 For selected entity `E`, derive candidates from revision-local indexes only:
 
 ```text
-subject IDs  = assertions_by_subject[E]
-outgoing IDs = entity_ref_outgoing[E]
-incoming IDs = entity_ref_incoming[E]
+subject IDs            = assertions_by_subject[E]
+outgoing assertion IDs = entity_ref_outgoing_assertions[E]
+incoming assertion IDs = entity_ref_incoming_assertions[E]
 
 candidate IDs = deterministic deduplicated union(
   subject IDs,
-  outgoing IDs,
-  incoming IDs,
+  outgoing assertion IDs,
+  incoming assertion IDs,
 )
 ```
+
+`entity_ref_incoming[E]` and `entity_ref_outgoing[E]` remain neighbor-entity indexes. They must not be treated as assertion IDs and must not be used to scan a neighbor's full subject assertion list.
 
 The union is important because outgoing entity-ref assertions are normally also subject assertions and must not be evaluated/returned twice.
 
@@ -772,13 +793,16 @@ class EntityReadIdentity:
 class EntityReadCompleteness:
     status: Literal["complete", "partial"]
     reason: str | None = None
+    # complete requires reason is None
+    # partial requires a closed reason from {support_unavailable, result_truncated}
+
 
 @dataclass(frozen=True, slots=True)
 class EntityReadWorkCounts:
     entity_lookups: int
     subject_assertion_candidates: int
-    incoming_entity_ref_candidates: int
-    outgoing_entity_ref_candidates: int
+    incoming_entity_ref_candidates: int  # incoming assertion IDs, not neighbor entity IDs
+    outgoing_entity_ref_candidates: int  # outgoing assertion IDs, not neighbor entity IDs
     deduped_candidate_assertions: int
     endpoint_entity_lookups: int
     evidence_ids_returned: int
@@ -831,7 +855,7 @@ returned evidence/support identity and locator content
 completeness status/reason
 ```
 
-If the result includes mutable source metadata whose content may change while the knowledge revision remains fixed, include the returned source metadata or provenance fingerprint in the result digest so two authority states do not accidentally share one semantic result digest.
+If the result includes mutable source metadata whose content may change while the knowledge revision remains fixed, include only the **returned** source artifact/revision identity in the result digest. Do not bind the fingerprint of the whole candidate provenance snapshot. Hidden/excluded candidate provenance must not change a visible result digest.
 
 Work counts and elapsed timing should not affect the semantic digest.
 

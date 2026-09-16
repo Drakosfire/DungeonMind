@@ -258,6 +258,167 @@ def _build_workload(
     )
 
 
+def _build_incoming_heavy_workload(
+    *,
+    neighbor_subject_count: int,
+) -> tuple[
+    KnowledgeRevision,
+    list[Entity],
+    list[Assertion],
+    list[EvidenceRefV3],
+    InMemoryKnowledgeSourceReader,
+    DomainContractDescriptor,
+    SemanticProfileDescriptorV2,
+    str,
+    str,
+    str,
+]:
+    domain_contract, semantic_profile, contract_digest, profile_digest = _domain_and_profile()
+    entities = [
+        Entity(entity_id="ent:incoming-selected"),
+        Entity(entity_id="ent:noisy-neighbor"),
+    ]
+    artifacts: dict[str, SourceArtifactV3] = {}
+    revisions: dict[str, SourceRevisionV2] = {}
+    for index in range(SOURCE_ARTIFACT_COUNT):
+        artifact_id = f"src:art-{index:04d}"
+        rev_a = f"srcrev:{index:04d}-a"
+        rev_b = f"srcrev:{index:04d}-b"
+        artifacts[artifact_id] = SourceArtifactV3(
+            source_artifact_id=artifact_id,
+            source_classification="bench:doc",
+            current_revision_id=rev_b,
+            authority="primary",
+            visibility=PublicVisibility(),
+            status="active",
+        )
+        revisions[rev_a] = SourceRevisionV2(
+            source_revision_id=rev_a,
+            source_artifact_id=artifact_id,
+            content_sha256=f"{index:064x}"[:64],
+            body_storage="inline",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        revisions[rev_b] = SourceRevisionV2(
+            source_revision_id=rev_b,
+            source_artifact_id=artifact_id,
+            content_sha256=f"{index + 1:064x}"[:64],
+            body_storage="inline",
+            created_at=datetime(2026, 2, 1, tzinfo=UTC),
+        )
+
+    assertions: list[Assertion] = []
+    evidence: list[EvidenceRefV3] = []
+
+    def _append_assertion(
+        *,
+        assertion_id: str,
+        subject: str,
+        target: str,
+        evidence_id: str,
+        artifact_index: int,
+    ) -> None:
+        artifact_id = f"src:art-{artifact_index % SOURCE_ARTIFACT_COUNT:04d}"
+        revision_id = (
+            f"srcrev:{artifact_index % SOURCE_ARTIFACT_COUNT:04d}-a"
+            if artifact_index % 2 == 0
+            else f"srcrev:{artifact_index % SOURCE_ARTIFACT_COUNT:04d}-b"
+        )
+        evidence.append(
+            EvidenceRefV3(
+                evidence_ref_id=evidence_id,
+                source_artifact_id=artifact_id,
+                source_revision_id=revision_id,
+                evidence_role="support",
+                can_open_source=True,
+                can_highlight_span=False,
+                locator=f"loc:{evidence_id}",
+            )
+        )
+        assertions.append(
+            Assertion(
+                assertion_id=assertion_id,
+                subject_entity_id=subject,
+                predicate="bench:relates",
+                value=EntityRefValue(entity_id=target),
+                metadata=AssertionMetadata(
+                    scope=[ScopeBinding(axis="bench:scope", value="one")],
+                    visibility=PublicVisibility(),
+                    epistemic_basis="asserted",
+                    claim_mode="bench:fact",
+                    standing=KnowledgeStanding.ESTABLISHED,
+                    evidence_ref_ids=[evidence_id],
+                    temporal_scope=TimelessTemporalScope(),
+                ),
+            )
+        )
+
+    for index in range(neighbor_subject_count):
+        _append_assertion(
+            assertion_id=f"asrt:neighbor-noise-{index:05d}",
+            subject="ent:noisy-neighbor",
+            target="ent:noisy-neighbor",
+            evidence_id=f"evidence:neighbor-noise-{index:05d}",
+            artifact_index=index,
+        )
+    _append_assertion(
+        assertion_id="asrt:neighbor-points-at-selected",
+        subject="ent:noisy-neighbor",
+        target="ent:incoming-selected",
+        evidence_id="evidence:neighbor-points-at-selected",
+        artifact_index=neighbor_subject_count,
+    )
+
+    revision = KnowledgeRevision(
+        space_id=f"space:bench-incoming-heavy-{neighbor_subject_count}",
+        revision_id=f"rev:bench-incoming-heavy-{neighbor_subject_count}",
+        created_at=datetime(2026, 9, 15, tzinfo=UTC),
+        operation_ids=["op:bench-incoming-heavy"],
+        graph_schema="dm_vnext_graph_v1",
+        graph_payload_sha256="0" * 64,
+        domain_contract_ref=DomainContractRef(
+            domain_id=domain_contract.domain_id,
+            domain_revision=domain_contract.domain_revision,
+            descriptor_sha256=contract_digest,
+        ),
+        semantic_profile_ref=SemanticProfileRef(
+            profile_id=semantic_profile.profile_id,
+            profile_revision=semantic_profile.profile_revision,
+            descriptor_sha256=profile_digest,
+        ),
+    )
+    reader = InMemoryKnowledgeSourceReader(artifacts=artifacts, revisions=revisions)
+    workload_digest = canonical_sha256(
+        {
+            "space_id": revision.space_id,
+            "revision_id": revision.revision_id,
+            "assertion_ids": [item.assertion_id for item in assertions],
+            "entity_ids": [item.entity_id for item in entities],
+            "evidence": [
+                {
+                    "evidence_ref_id": item.evidence_ref_id,
+                    "source_artifact_id": item.source_artifact_id,
+                    "source_revision_id": item.source_revision_id,
+                    "locator": item.locator,
+                }
+                for item in evidence
+            ],
+        }
+    )
+    return (
+        revision,
+        entities,
+        assertions,
+        evidence,
+        reader,
+        domain_contract,
+        semantic_profile,
+        contract_digest,
+        profile_digest,
+        workload_digest,
+    )
+
+
 def _request(*, space_id: str, revision_id: str) -> ProjectionRequest:
     return ProjectionRequest(
         space_id=space_id,
@@ -372,8 +533,12 @@ def main() -> None:
 
     workload_10k = _build_workload(assertion_count=10_000, high_degree=HIGH_DEGREE)
     workload_1k = _build_workload(assertion_count=1_000, high_degree=HIGH_DEGREE)
+    incoming_10k = _build_incoming_heavy_workload(neighbor_subject_count=10_000)
+    incoming_1k = _build_incoming_heavy_workload(neighbor_subject_count=1_000)
     context_10k, parsed_digest_10k = _context_from_workload(workload_10k)
     context_1k, parsed_digest_1k = _context_from_workload(workload_1k)
+    context_incoming_10k, parsed_digest_incoming_10k = _context_from_workload(incoming_10k)
+    context_incoming_1k, parsed_digest_incoming_1k = _context_from_workload(incoming_1k)
 
     low_exact_10k = _time_entity_read(
         context=context_10k,
@@ -399,11 +564,29 @@ def main() -> None:
         complete=False,
         iterations=max(20, args.iterations // 2),
     )
+    incoming_complete_10k = _time_entity_read(
+        context=context_incoming_10k,
+        entity_id="ent:incoming-selected",
+        complete=True,
+        iterations=args.iterations,
+    )
+    incoming_complete_1k = _time_entity_read(
+        context=context_incoming_1k,
+        entity_id="ent:incoming-selected",
+        complete=True,
+        iterations=max(20, args.iterations // 2),
+    )
 
     structural_gate_passes = (
         low_exact_10k["artifact_ids_requested"] == low_exact_1k["artifact_ids_requested"]
         and low_exact_10k["assertions_evaluated"] == low_exact_1k["assertions_evaluated"]
         and low_exact_10k["candidate_assertion_count"] == low_exact_1k["candidate_assertion_count"]
+        and incoming_complete_10k["assertions_evaluated"]
+        == incoming_complete_1k["assertions_evaluated"]
+        and incoming_complete_10k["candidate_assertion_count"]
+        == incoming_complete_1k["candidate_assertion_count"]
+        and incoming_complete_10k["incoming_entity_ref_candidates"] == 1
+        and incoming_complete_1k["incoming_entity_ref_candidates"] == 1
     )
 
     artifact = {
@@ -422,21 +605,43 @@ def main() -> None:
                 "workload_digest": workload_1k[-1],
                 "parsed_semantic_digest": parsed_digest_1k,
             },
+            "incoming_heavy_10k": {
+                "neighbor_subject_count": 10_000,
+                "workload_digest": incoming_10k[-1],
+                "parsed_semantic_digest": parsed_digest_incoming_10k,
+            },
+            "incoming_heavy_1k": {
+                "neighbor_subject_count": 1_000,
+                "workload_digest": incoming_1k[-1],
+                "parsed_semantic_digest": parsed_digest_incoming_1k,
+            },
         },
         "runs": {
             "get_entity_low_degree_10k": low_exact_10k,
             "get_complete_entity_low_degree_10k": low_complete_10k,
             "get_complete_entity_high_degree_10k": high_complete_10k,
             "get_entity_low_degree_1k": low_exact_1k,
+            "get_complete_entity_incoming_heavy_10k": incoming_complete_10k,
+            "get_complete_entity_incoming_heavy_1k": incoming_complete_1k,
         },
         "structural_gate": {
             "claim": (
-                "low-degree get_entity source work does not grow with unrelated revision size"
+                "low-degree get_entity source work does not grow with unrelated revision size; "
+                "incoming-heavy get_complete_entity work stays proportional to touching assertions"
             ),
             "observed_10k_artifact_ids_requested": low_exact_10k["artifact_ids_requested"],
             "observed_1k_artifact_ids_requested": low_exact_1k["artifact_ids_requested"],
             "observed_10k_assertions_evaluated": low_exact_10k["assertions_evaluated"],
             "observed_1k_assertions_evaluated": low_exact_1k["assertions_evaluated"],
+            "observed_incoming_heavy_10k_assertions_evaluated": incoming_complete_10k[
+                "assertions_evaluated"
+            ],
+            "observed_incoming_heavy_1k_assertions_evaluated": incoming_complete_1k[
+                "assertions_evaluated"
+            ],
+            "observed_incoming_heavy_10k_incoming_candidates": incoming_complete_10k[
+                "incoming_entity_ref_candidates"
+            ],
             "passes": structural_gate_passes,
         },
     }
@@ -445,7 +650,9 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if not structural_gate_passes:
-        raise SystemExit("structural gate failed: low-degree entity read scaled with space size")
+        raise SystemExit(
+            "structural gate failed: entity read scaled with unrelated neighbor/space size"
+        )
 
 
 if __name__ == "__main__":
