@@ -1,0 +1,112 @@
+{
+  "characterization_only": true,
+  "exact_base": "8a68894e40a56a115b2f44ad5410bec28fc81d3e",
+  "exact_head": "103271802fe35d5ce36941a523607eed3c3d0c12",
+  "runs": {
+    "get_complete_entity_high_degree_10k": {
+      "artifact_ids_requested": 30,
+      "assertions_evaluated": 30,
+      "candidate_assertion_count": 30,
+      "endpoint_entity_lookups": 30,
+      "entity_id": "ent:high-hub",
+      "evidence_ids_returned": 30,
+      "found": true,
+      "incoming_entity_ref_candidates": 0,
+      "outgoing_entity_ref_candidates": 30,
+      "p50_ms": 22.485303499706788,
+      "p95_ms": 29.413126001600176,
+      "policy_evaluations": 30,
+      "provenance_snapshot_calls": 1,
+      "result_digest": "9b0645b96ee00cb0d6f44ca9b0bbdc831ffdec341d4bc4e577caea87fa8ddf63",
+      "returned_assertion_count": 30,
+      "returned_evidence_count": 30,
+      "returned_related_endpoint_count": 30,
+      "revision_ids_requested": 30,
+      "subject_assertion_candidates": 30
+    },
+    "get_complete_entity_low_degree_10k": {
+      "artifact_ids_requested": 1,
+      "assertions_evaluated": 1,
+      "candidate_assertion_count": 1,
+      "endpoint_entity_lookups": 0,
+      "entity_id": "ent:selected-low",
+      "evidence_ids_returned": 1,
+      "found": true,
+      "incoming_entity_ref_candidates": 1,
+      "outgoing_entity_ref_candidates": 1,
+      "p50_ms": 1.1850840000988683,
+      "p95_ms": 1.6439930004708003,
+      "policy_evaluations": 1,
+      "provenance_snapshot_calls": 1,
+      "result_digest": "4414e3d22fa452c55ac379bfa7901b92af2c4deb3cb7aa9a8618c0e1a9dd58ce",
+      "returned_assertion_count": 1,
+      "returned_evidence_count": 1,
+      "returned_related_endpoint_count": 0,
+      "revision_ids_requested": 1,
+      "subject_assertion_candidates": 1
+    },
+    "get_entity_low_degree_10k": {
+      "artifact_ids_requested": 1,
+      "assertions_evaluated": 1,
+      "candidate_assertion_count": 1,
+      "endpoint_entity_lookups": 0,
+      "entity_id": "ent:selected-low",
+      "evidence_ids_returned": 1,
+      "found": true,
+      "incoming_entity_ref_candidates": 0,
+      "outgoing_entity_ref_candidates": 0,
+      "p50_ms": 1.8735980011115316,
+      "p95_ms": 3.76025299920002,
+      "policy_evaluations": 1,
+      "provenance_snapshot_calls": 1,
+      "result_digest": "4414e3d22fa452c55ac379bfa7901b92af2c4deb3cb7aa9a8618c0e1a9dd58ce",
+      "returned_assertion_count": 1,
+      "returned_evidence_count": 1,
+      "returned_related_endpoint_count": 0,
+      "revision_ids_requested": 1,
+      "subject_assertion_candidates": 1
+    },
+    "get_entity_low_degree_1k": {
+      "artifact_ids_requested": 1,
+      "assertions_evaluated": 1,
+      "candidate_assertion_count": 1,
+      "endpoint_entity_lookups": 0,
+      "entity_id": "ent:selected-low",
+      "evidence_ids_returned": 1,
+      "found": true,
+      "incoming_entity_ref_candidates": 0,
+      "outgoing_entity_ref_candidates": 0,
+      "p50_ms": 1.3309085006767418,
+      "p95_ms": 1.8220469974039588,
+      "policy_evaluations": 1,
+      "provenance_snapshot_calls": 1,
+      "result_digest": "5aa802c05982711c0f88c8f08eabbba8295d015989c377a135ca2c81c71dfa4d",
+      "returned_assertion_count": 1,
+      "returned_evidence_count": 1,
+      "returned_related_endpoint_count": 0,
+      "revision_ids_requested": 1,
+      "subject_assertion_candidates": 1
+    }
+  },
+  "schema_version": "vnext_entity_reads_10k_v1",
+  "structural_gate": {
+    "claim": "low-degree get_entity source work does not grow with unrelated revision size",
+    "observed_10k_artifact_ids_requested": 1,
+    "observed_10k_assertions_evaluated": 1,
+    "observed_1k_artifact_ids_requested": 1,
+    "observed_1k_assertions_evaluated": 1,
+    "passes": true
+  },
+  "workloads": {
+    "space_10k": {
+      "assertion_count": 10000,
+      "parsed_semantic_digest": "e01f3853e2c2550ae43b889df340e5205de9b39aafaa061cbed6e81e4f226741",
+      "workload_digest": "10e0d88c2ff9b85e6ccf36761c0a00146e16cd76e735ed1cea68c3fa3ced4133"
+    },
+    "space_1k": {
+      "assertion_count": 1000,
+      "parsed_semantic_digest": "57415c9b7cf55cabbd89812222268d2dd9d3350612f4907ebcd9e920b3632b70",
+      "workload_digest": "56907339f08f742cf4fad837e39cd01c4a0693f2219b4bc2c32dfc70540dc66b"
+    }
+  }
+}
