@@ -49,3 +49,9 @@ class NeighborhoodReadIntegrityError(PersistenceIntegrityError):
     """Fail-closed error when bounded neighborhood traversal cannot complete safely."""
 
     code = "neighborhood_read_integrity_error"
+
+
+class EvidenceReadIntegrityError(PersistenceIntegrityError):
+    """Fail-closed error when exact evidence/support assembly cannot complete safely."""
+
+    code = "evidence_read_integrity_error"

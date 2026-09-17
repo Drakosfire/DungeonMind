@@ -742,11 +742,12 @@ def test_05_steward_records_v2_benchmark_structural_gate() -> None:
     assert bench["structural_gate"]["passes"] is True
 
 
-def test_06_steward_phase_v3_complete_v4_1_active() -> None:
+def test_06_steward_phase_v3_complete_v4_2_active() -> None:
     text = STEWARD_PATH.read_text(encoding="utf-8")
     assert "V3 COMPLETE" in text
     assert "V4 ACTIVE" in text
-    assert "V4.1 ACTIVE" in text
+    assert "V4.1 COMPLETE" in text
+    assert "V4.2 ACTIVE" in text
 
 
 def test_07_frozen_v0_aggregate_remains_exact() -> None:
@@ -1815,10 +1816,11 @@ def test_91_no_storage_migration_changes_in_entity_reads_scope() -> None:
     assert "migration" not in text.lower()
 
 
-def test_92_no_v42_anchor_or_v43_search_api_exported() -> None:
+def test_92_no_v43_search_api_exported() -> None:
     exported = (REPO_ROOT / "src/dungeonmind/application/vnext/__init__.py").read_text(
         encoding="utf-8"
     )
+    assert "EvidenceReadService" in exported
     assert "get_evidence" not in exported.lower()
     assert "source_anchor" not in exported.lower()
     assert "anchor_search" not in exported.lower()

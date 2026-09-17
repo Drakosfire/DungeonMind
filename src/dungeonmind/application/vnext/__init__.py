@@ -33,10 +33,19 @@ from .entity_reads import (
 from .errors import (
     CandidateAdmissionIntegrityError,
     EntityReadIntegrityError,
+    EvidenceReadIntegrityError,
     KnowledgeReadContextIntegrityError,
     LegacyCompatibilityIntegrityError,
     NeighborhoodReadIntegrityError,
     RevisionStructuralIntegrityError,
+)
+from .evidence_reads import (
+    AssertionEvidenceResult,
+    EvidenceLookupResult,
+    EvidenceReadIdentity,
+    EvidenceReadService,
+    SourceAnchor,
+    SourceAnchorResolution,
 )
 from .frozen_json import (
     FrozenDict,
@@ -115,6 +124,7 @@ __all__ = [
     "PARSED_REVISION_FORMAT_VERSION",
     "AdmissionWorkCounts",
     "AlwaysAdmitPolicy",
+    "AssertionEvidenceResult",
     "CandidateAdmissionIntegrityError",
     "CandidateAdmissionResult",
     "CandidateExclusion",
@@ -130,6 +140,10 @@ __all__ = [
     "EntityReadSourceArtifact",
     "EntityReadSourceRevision",
     "EntityReadWorkCounts",
+    "EvidenceLookupResult",
+    "EvidenceReadIdentity",
+    "EvidenceReadIntegrityError",
+    "EvidenceReadService",
     "ExcludeByAssertionIdPolicy",
     "FrozenDict",
     "FrozenJsonValue",
@@ -171,6 +185,8 @@ __all__ = [
     "ParsedUtcIntervalTemporalScope",
     "ParsedVisibility",
     "RevisionStructuralIntegrityError",
+    "SourceAnchor",
+    "SourceAnchorResolution",
     "build_historical_semantic_witness",
     "build_parsed_knowledge_revision",
     "build_parsed_knowledge_revision_from_records",

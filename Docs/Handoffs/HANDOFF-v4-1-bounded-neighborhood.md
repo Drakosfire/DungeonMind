@@ -1,7 +1,7 @@
 # HANDOFF — V4.1 bounded neighborhood reads
 
 **Created:** 2026-09-16  
-**Status:** ACTIVE / IMPLEMENTATION IN REVIEW / NOT ACCEPTED  
+**Status:** COMPLETE — `V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED`  
 **Repository / implementation branch:** `Drakosfire/DungeonMind` / `kernel/v4-1-bounded-neighborhood`  
 **Predecessor:** PR #63 — `KERNEL: V3 lazy exact and complete entity reads`  
 **Accepted predecessor head:** `6c8adb474d84df6dc6e1d55cec6bedb2380e100b`  
@@ -9,10 +9,18 @@
 **Predecessor logical review cycles:** `3`  
 **Predecessor disposition:** `V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED`  
 **Predecessor merge:** `c12bf89ea54af1112a0e98163aa224eb89b11c22`  
-**Current implementation base:** `82a5c3e6889ad4e5648fef8f358423b5a576cb9b` — merged PR #64  
-**PR #64:** merged handoff/control-surface history; **not** V4.1 runtime implementation; **not** `V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED`  
+**Accepted implementation head:** `9b0fd143552ea5e4def3f4a7c8d08050b206eb52`  
+**Substantive repair head:** `626a5fcd2bea3395c62d62aa091b7c666b2ab26f`  
+**Logical Steward review cycles:** `3`  
+**Final PASS review:** `5230663567`  
+**Disposition:** `V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED`  
+**Merge:** `7f5df9eace6f1ab23a0d817e0b350c379923641f` — PR #66  
+**Benchmark:** `Docs/Benchmarks/vnext_neighborhood_10k_v1.json`  
+**Benchmark substantive head:** `626a5fcd2bea3395c62d62aa091b7c666b2ab26f`  
+**Structural gate:** PASS  
+**10k low-degree depth-1 p95:** ~1.97 ms  
 **Frozen vNext contract aggregate:** `fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea`  
-**Roadmap phase:** V4.1 — bounded neighborhood — ACTIVE / IMPLEMENTATION IN REVIEW / NOT ACCEPTED  
+**Roadmap phase:** V4.1 — bounded neighborhood — COMPLETE  
 **Successor:** V4.2 — standalone evidence + source-anchor support  
 **One-line mission:** Turn V1 revision-local entity-ref assertion indexes, V2 candidate-local admission, and V3 exact entity semantics into deterministic depth-1/depth-2 admitted graph traversal whose work is proportional to the visited frontier and its authority support rather than the whole KnowledgeSpace.
 
@@ -1182,3 +1190,24 @@ All of the following remain false until implementation evidence says otherwise:
 - deeper storage optimization remains unauthorized.
 
 The handoff's job is to make the next proof precise, not to claim that proof early.
+
+---
+
+## §17 Completion record
+
+V4.1 is complete.
+
+```text
+PR #66 — KERNEL: V4.1 bounded neighborhood reads
+accepted head: 9b0fd143552ea5e4def3f4a7c8d08050b206eb52
+substantive repair head: 626a5fcd2bea3395c62d62aa091b7c666b2ab26f
+logical Steward review cycles: 3
+final PASS review: 5230663567
+disposition: V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
+merge: 7f5df9eace6f1ab23a0d817e0b350c379923641f
+benchmark: Docs/Benchmarks/vnext_neighborhood_10k_v1.json
+structural gate: PASS
+10k low-degree depth-1 p95: ~1.97 ms
+```
+
+The V4.2 successor implementation PR carries the living Steward update and this completion record. Do not open a standalone V4.2 handoff PR. Draft PR #65 is superseded design history and must remain unmerged.
