@@ -1,10 +1,10 @@
 {
   "characterization_only": true,
   "exact_base": "82a5c3e6889ad4e5648fef8f358423b5a576cb9b",
-  "exact_head": "b41e36265fca7f72411f27ed87fbcace45355059",
+  "exact_head": "626a5fcd2bea3395c62d62aa091b7c666b2ab26f",
   "runs": {
     "branching_depth_2_10k": {
-      "artifact_ids_requested": 2,
+      "artifact_ids_requested": 1,
       "assertions_evaluated": 3,
       "deduped_candidate_assertions": 3,
       "endpoint_entity_lookups": 3,
@@ -30,8 +30,8 @@
         }
       ],
       "missing_seed_entity_ids": [],
-      "p50_ms": 2.8253365017008036,
-      "p95_ms": 4.385587002616376,
+      "p50_ms": 2.9334900027606636,
+      "p95_ms": 3.336709996801801,
       "policy_evaluations": 3,
       "provenance_snapshot_calls": 2,
       "requested_depth": 2,
@@ -41,12 +41,12 @@
       "result_digest": "5c60d28132cf96bc1b4788a7fd773c49182f5270816ad7d0927b4209a4275d25",
       "returned_entity_count": 4,
       "returned_traversal_assertion_count": 3,
-      "revision_ids_requested": 2,
+      "revision_ids_requested": 1,
       "seed_entity_lookups": 1,
       "touching_assertion_candidates": 5
     },
     "branching_depth_2_1k": {
-      "artifact_ids_requested": 2,
+      "artifact_ids_requested": 1,
       "assertions_evaluated": 3,
       "deduped_candidate_assertions": 3,
       "endpoint_entity_lookups": 3,
@@ -72,8 +72,8 @@
         }
       ],
       "missing_seed_entity_ids": [],
-      "p50_ms": 2.903733497078065,
-      "p95_ms": 3.485320004983805,
+      "p50_ms": 2.9304205017979257,
+      "p95_ms": 3.5807320091407746,
       "policy_evaluations": 3,
       "provenance_snapshot_calls": 2,
       "requested_depth": 2,
@@ -83,12 +83,12 @@
       "result_digest": "278ef987a55daccab98893daa192fdb746e93caafeff141e6f5d318c1f723fdf",
       "returned_entity_count": 4,
       "returned_traversal_assertion_count": 3,
-      "revision_ids_requested": 2,
+      "revision_ids_requested": 1,
       "seed_entity_lookups": 1,
       "touching_assertion_candidates": 5
     },
     "depth_boundary_depth_2_10k": {
-      "artifact_ids_requested": 2,
+      "artifact_ids_requested": 1,
       "assertions_evaluated": 2,
       "deduped_candidate_assertions": 2,
       "endpoint_entity_lookups": 2,
@@ -114,8 +114,8 @@
         }
       ],
       "missing_seed_entity_ids": [],
-      "p50_ms": 2.6372430002084,
-      "p95_ms": 3.4237350046169013,
+      "p50_ms": 2.927042507508304,
+      "p95_ms": 3.574628004571423,
       "policy_evaluations": 2,
       "provenance_snapshot_calls": 2,
       "requested_depth": 2,
@@ -125,7 +125,7 @@
       "result_digest": "8c37e07790ddb5c95f11d3379e3991af7da439305f00cc0ab9c877b9dd1c2d24",
       "returned_entity_count": 3,
       "returned_traversal_assertion_count": 2,
-      "revision_ids_requested": 2,
+      "revision_ids_requested": 1,
       "seed_entity_lookups": 1,
       "touching_assertion_candidates": 3
     },
@@ -149,8 +149,8 @@
         }
       ],
       "missing_seed_entity_ids": [],
-      "p50_ms": 7.495222496800125,
-      "p95_ms": 8.72403300309088,
+      "p50_ms": 7.817903991963249,
+      "p95_ms": 8.529576996807009,
       "policy_evaluations": 30,
       "provenance_snapshot_calls": 1,
       "requested_depth": 1,
@@ -184,8 +184,8 @@
         }
       ],
       "missing_seed_entity_ids": [],
-      "p50_ms": 1.5642405051039532,
-      "p95_ms": 1.8297399947186932,
+      "p50_ms": 1.544407001347281,
+      "p95_ms": 1.9740579882636666,
       "policy_evaluations": 1,
       "provenance_snapshot_calls": 1,
       "requested_depth": 1,
@@ -219,8 +219,8 @@
         }
       ],
       "missing_seed_entity_ids": [],
-      "p50_ms": 1.6134695033542812,
-      "p95_ms": 2.088339999318123,
+      "p50_ms": 1.4845920013613068,
+      "p95_ms": 1.7904199921758845,
       "policy_evaluations": 1,
       "provenance_snapshot_calls": 1,
       "requested_depth": 1,
@@ -235,7 +235,7 @@
       "touching_assertion_candidates": 1
     },
     "noisy_neighbor_depth_2_10k": {
-      "artifact_ids_requested": 2,
+      "artifact_ids_requested": 1,
       "assertions_evaluated": 2,
       "deduped_candidate_assertions": 2,
       "endpoint_entity_lookups": 2,
@@ -261,8 +261,8 @@
         }
       ],
       "missing_seed_entity_ids": [],
-      "p50_ms": 2.7016095045837574,
-      "p95_ms": 3.3672449935693294,
+      "p50_ms": 2.8789314965251833,
+      "p95_ms": 3.30221198964864,
       "policy_evaluations": 2,
       "provenance_snapshot_calls": 2,
       "requested_depth": 2,
@@ -272,7 +272,7 @@
       "result_digest": "29993af6f6bdd718a65f7361ba78d30c6ac7b3911f39b310746b11293748deb6",
       "returned_entity_count": 3,
       "returned_traversal_assertion_count": 2,
-      "revision_ids_requested": 2,
+      "revision_ids_requested": 1,
       "seed_entity_lookups": 1,
       "touching_assertion_candidates": 3
     }
@@ -281,7 +281,7 @@
   "structural_gate": {
     "claim": "fixed local neighborhood candidate/source work does not grow with unrelated space size; noisy-neighbor literals and depth-2 extra edges are not scanned; high-degree seed work scales with actual touching degree",
     "directional_target": "10k depth-1 neighborhood p95 < 50 ms",
-    "observed_low_degree_depth_1_10k_p95_ms": 1.8297399947186932,
+    "observed_low_degree_depth_1_10k_p95_ms": 1.9740579882636666,
     "passes": true
   },
   "workloads": {
