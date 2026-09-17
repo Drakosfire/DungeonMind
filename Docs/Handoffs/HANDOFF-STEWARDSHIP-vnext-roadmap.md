@@ -4,9 +4,9 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `82a5c3e6889ad4e5648fef8f358423b5a576cb9b` — merged PR #64, V4.1 implementation base  
-**Last merged roadmap implementation:** PR #63 — `KERNEL: V3 lazy exact and complete entity reads`  
-**Last merged control-surface history:** PR #64 — V4.1 handoff/bookkeeping; **not** V4.1 runtime implementation and **not** `V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED`  
+**Current main anchor:** `7f5df9eace6f1ab23a0d817e0b350c379923641f` — merged PR #66, V4.2 implementation base  
+**Last merged roadmap implementation:** PR #66 — `KERNEL: V4.1 bounded neighborhood reads`  
+**Last merged control-surface history:** PR #64 remains historical handoff/bookkeeping only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
 **Read/performance architecture:** `Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`  
@@ -57,8 +57,8 @@ V1   Immutable normalized revision + revision indexes    COMPLETE
 V2   Generic KnowledgeReadContext + candidate admission  COMPLETE
 V3   Lazy exact / complete entity reads                  COMPLETE
 V4   Neighborhood + evidence + anchor + indexed search   ACTIVE
-  V4.1 Bounded neighborhood                              ACTIVE
-  V4.2 Evidence + anchor support                         BLOCKED ON V4.1 ACCEPTANCE
+  V4.1 Bounded neighborhood                              COMPLETE
+  V4.2 Evidence + anchor support                         ACTIVE
   V4.3 Deterministic indexed search                      BLOCKED ON V4.2 ACCEPTANCE
 V5   Generic governed write contracts
 V6   DungeonBuddy domain implementation
@@ -77,41 +77,55 @@ V1 COMPLETE — V1_IMMUTABLE_NORMALIZATION_COMPLETE
 V2 COMPLETE — V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
 V3 COMPLETE — V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED
 V4 ACTIVE
-V4.1 ACTIVE
+V4.1 COMPLETE — V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
+V4.2 ACTIVE
 ```
 
 ### Current primary question
 
-**V4.1 — bounded neighborhood**
+**V4.2 — evidence reads + source anchors**
 
-> Can depth-1 and depth-2 neighborhood traversal discover and admit only the assertions needed for the visited frontier, with structural/provenance work proportional to visited neighborhood support rather than the whole KnowledgeSpace?
+> Can exact assertion/evidence support and context-bound source anchors be retrieved and revalidated through revision-local `assertion_evidence` / `evidence_supporters` indexes plus candidate-local V2 admission/provenance, with work proportional to the exact requested support set rather than the whole KnowledgeSpace?
 
-V4.1 is traversal only. It is not permission to implement standalone evidence/anchor APIs or deterministic search early.
+V4.2 is exact support and source-anchor revalidation only. It is not permission to implement deterministic search.
 
 Current implementation base:
 
 ```text
-82a5c3e6889ad4e5648fef8f358423b5a576cb9b
+7f5df9eace6f1ab23a0d817e0b350c379923641f
 ```
 
 ```text
-PR #64:
-  merged handoff/control-surface history
-  NOT V4.1 runtime implementation
-  NOT V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
+PR #66:
+  KERNEL: V4.1 bounded neighborhood reads
 
-V3:
-  COMPLETE
+accepted head:
+  9b0fd143552ea5e4def3f4a7c8d08050b206eb52
 
-V4:
-  ACTIVE
+substantive repair head:
+  626a5fcd2bea3395c62d62aa091b7c666b2ab26f
+
+review cycles:
+  3
+
+final PASS:
+  5230663567
+
+disposition:
+  V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
+
+merge:
+  7f5df9eace6f1ab23a0d817e0b350c379923641f
+
+benchmark:
+  Docs/Benchmarks/vnext_neighborhood_10k_v1.json
 
 V4.1:
-  ACTIVE
-  implementation now proceeding from current main
+  COMPLETE
 
 V4.2:
-  BLOCKED ON V4.1 ACCEPTANCE
+  ACTIVE
+  IMPLEMENTATION NOT YET ACCEPTED
 
 V4.3:
   BLOCKED ON V4.2 ACCEPTANCE
@@ -120,7 +134,7 @@ V5:
   BLOCKED ON V4.3 ACCEPTANCE
 ```
 
-Do not reinterpret PR #64 as V4.1 runtime acceptance.
+Do not reinterpret PR #64 as V4.1 runtime acceptance. PR #66 is the accepted V4.1 runtime merge.
 
 ---
 
@@ -586,41 +600,49 @@ If an update changes semantic contracts, ownership, migration model, read archit
 
 ---
 
-## §12 Current V4.1 proof obligations
+## §12 Current V4.2 proof obligations
 
-The V4.1 implementation must prove at least:
+V4.1 is complete. Its accepted neighborhood proof remains:
 
-- exact seed IDs only; no lexical/alias fallback;
-- explicit missing-seed behavior;
-- depth restricted to the intended bounded surface (depth 1 and 2);
-- seed entities are depth 0;
-- traversal uses revision-local touching-assertion indexes rather than scanning all assertions;
-- candidate assertion IDs are deduplicated and evaluated at most once per operation;
-- only admitted entity-ref assertions create traversable edges;
-- hidden/out-of-scope/domain-excluded/source-invalid edges do not leak opposite endpoints;
-- source-authority changes are visible in a newly constructed context and coherent in the existing context;
-- cycles and self-loops terminate deterministically;
-- converging paths deduplicate entities and edges and choose minimum depth;
-- deterministic ordering and semantic digest are independent of input construction order;
-- returned result is deeply immutable / mutation cannot poison later reads;
-- unrelated graph growth does not expand candidates, evaluated assertions, or requested sources for the same bounded neighborhood;
-- an adversarial high-degree off-path entity does not cause its unrelated assertion set to be scanned;
-- a depth-2 witness touches only depth-0/depth-1 frontier support and does not expand depth-2 entities to depth 3;
+```text
+Docs/Benchmarks/vnext_neighborhood_10k_v1.json
+accepted head: 9b0fd143552ea5e4def3f4a7c8d08050b206eb52
+substantive repair head: 626a5fcd2bea3395c62d62aa091b7c666b2ab26f
+10k low-degree depth-1 p95: ~1.97 ms
+structural gate: PASS
+```
+
+The V4.2 implementation must prove at least:
+
+- exact assertion evidence requires assertion admission first;
+- exact evidence availability requires at least one admitted assertion supporter;
+- alias-only evidence is not independently returnable and is not classified as orphan;
+- aliases are not scanned for V4.2 authorization;
+- missing versus excluded uses the same public-safe unavailable posture;
+- public semantic DTOs do not expose hidden-candidate diagnostics;
+- source anchors are deterministic, versioned, and exact-target recoverable;
+- supporter IDs are resolution metadata, not anchor identity;
+- containing evidence result digests still bind admitted supporter IDs;
+- anchor resolution reruns current-context V2 admission and never grants authority;
+- same pinned context stays coherent; a new context observes changed source authority;
+- assertion→evidence uses `assertion_evidence`; evidence→supporters uses `evidence_supporters`;
+- unrelated 1k→10k growth leaves fixed-target work unchanged;
+- unique artifact/revision IDs are operation-wide unique counts, not summed request events;
 - organizational-memory and Buddy-shaped opaque-domain fixtures use the same engine;
 - current World runtime and historical compatibility readers remain unchanged;
+- no V4.3 search API;
 - relevant 10k semantic/performance characterization is recorded.
 
 Suggested accepted artifact name:
 
 ```text
-Docs/Benchmarks/vnext_neighborhood_10k_v1.json
+Docs/Benchmarks/vnext_evidence_support_10k_v1.json
 ```
 
 Directional target from the canonical read/performance architecture:
 
 ```text
-10k depth-1 p95 < 50 ms
-100k depth-1 p95 < 100 ms
+10k exact evidence target p95 < 25 ms
 ```
 
 The timing target is not permission to weaken semantics. Structural work shape and semantic digest come first.
@@ -631,17 +653,22 @@ The timing target is not permission to weaken semantics. Structural work shape a
 
 Stop rather than compensating locally if:
 
-- V4.1 requires changing the frozen V0 contract bundle;
-- correct traversal requires full-space projection;
-- raw adjacency must be treated as admitted authority;
-- hidden/excluded edges must disclose endpoints to continue traversal;
-- candidate-local admission cannot preserve source coherence across frontier batches;
-- traversal correctness requires a revision-only cache of mutable admission/source verdicts;
-- a domain policy needs storage/network/clock access;
-- V4.1 requires standalone anchor/search semantics to function;
+- V4.2 requires changing the frozen V0 contract bundle;
+- exact assertion evidence requires full projection;
+- exact evidence lookup requires scanning all assertions;
+- anchor resolution requires scanning all EvidenceRefs or a durable anchor registry;
+- evidence must be returned despite zero admitted assertion supporters;
+- alias-only evidence must become publicly readable in V4.2;
+- correct alias authority requires a new reverse index;
+- source-body access is required for anchor correctness;
+- anchors must act as authorization independent of V2;
+- source freshness cannot remain coherent through the pinned read context;
+- correct context identity requires serializing opaque arbitrary policy state;
+- V4.3 search is needed to make exact support work;
 - Buddy/TTRPG vocabulary must enter generic application code;
-- current public World readers must change to prove the generic traversal seam;
-- tests must weaken fail-closed behavior to proceed.
+- current public World readers must change;
+- a revision-only authorization cache is required;
+- V2/V3/V4.1 fail-closed behavior must be weakened.
 
 When a stop condition fires, record:
 
@@ -663,31 +690,34 @@ What remains safe in parallel:
 ### Last merged roadmap implementation
 
 ```text
-DungeonMind PR #63
-KERNEL: V3 lazy exact and complete entity reads
-merged: c12bf89ea54af1112a0e98163aa224eb89b11c22
-accepted implementation head: 6c8adb474d84df6dc6e1d55cec6bedb2380e100b
+DungeonMind PR #66
+KERNEL: V4.1 bounded neighborhood reads
+merged: 7f5df9eace6f1ab23a0d817e0b350c379923641f
+accepted implementation head: 9b0fd143552ea5e4def3f4a7c8d08050b206eb52
+substantive repair head: 626a5fcd2bea3395c62d62aa091b7c666b2ab26f
 review cycles: 3
-final PASS review: 5224138590
+final PASS review: 5230663567
 disposition:
-  V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED
-artifact: Docs/Benchmarks/vnext_entity_reads_10k_v1.json
-artifact exact substantive head: 7a28a406904ea81bddd6c5021fc35086f04bff82
+  V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
+artifact: Docs/Benchmarks/vnext_neighborhood_10k_v1.json
+artifact exact substantive head: 626a5fcd2bea3395c62d62aa091b7c666b2ab26f
 structural gate: PASS
+10k low-degree depth-1 p95: ~1.97 ms
 frozen V0 aggregate: fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
 ```
 
-Current `main` after PR #64:
+Current `main` after PR #66:
 
 ```text
-82a5c3e6889ad4e5648fef8f358423b5a576cb9b
+7f5df9eace6f1ab23a0d817e0b350c379923641f
 ```
 
-PR #64 is merged handoff/control-surface history only. It is not V4.1 runtime implementation and does not confer `V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED`.
+PR #64 remains merged handoff/control-surface history only. PR #66 is the accepted V4.1 runtime merge.
 
 Prior key anchors:
 
 ```text
+PR #66 7f5df9eace6f1ab23a0d817e0b350c379923641f — V4.1 implementation
 PR #64 82a5c3e6889ad4e5648fef8f358423b5a576cb9b — V4.1 handoff/control-surface (not runtime)
 PR #63 c12bf89ea54af1112a0e98163aa224eb89b11c22 — V3 implementation
 PR #62 8a68894e40a56a115b2f44ad5410bec28fc81d3e — V3 activation sync
@@ -709,13 +739,14 @@ V1 COMPLETE — V1_IMMUTABLE_NORMALIZATION_COMPLETE
 V2 COMPLETE — V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
 V3 COMPLETE — V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED
 V4 ACTIVE
-V4.1 ACTIVE
+V4.1 COMPLETE — V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
+V4.2 ACTIVE
 ```
 
 ### Next primary question
 
 ```text
-Can depth-1 and depth-2 neighborhood traversal discover and admit only the assertions needed for the visited frontier, with structural/provenance work proportional to visited neighborhood support rather than the whole KnowledgeSpace?
+Can exact assertion/evidence support and context-bound source anchors be retrieved and revalidated through revision-local assertion_evidence / evidence_supporters indexes plus candidate-local V2 admission/provenance, with work proportional to the exact requested support set rather than the whole KnowledgeSpace?
 ```
 
 ### Parallel work posture
@@ -724,10 +755,7 @@ Can depth-1 and depth-2 neighborhood traversal discover and admit only the asser
 safe / independent:
   larger-scale benchmark characterization
   contract-frozen Buddy/domain work that does not depend on V4 runtime
-  design work for V4.2/V4.3 that does not merge early
-
-blocked until V4.1 acceptance:
-  V4.2 merge
+  design work for V4.3 that does not merge early
 
 blocked until V4.2 acceptance:
   V4.3 merge
@@ -743,7 +771,6 @@ blocked until later accepted predecessors:
 
 ### What remains false
 
-- no native vNext bounded neighborhood API is accepted yet;
 - no standalone vNext evidence retrieval API is accepted yet;
 - no standalone source-anchor creation/resolution API is accepted yet;
 - no native vNext deterministic search API is accepted yet;
@@ -758,7 +785,7 @@ blocked until later accepted predecessors:
 
 ### Named next action
 
-Implement V4.1 on `kernel/v4-1-bounded-neighborhood` from current `main` `82a5c3e6889ad4e5648fef8f358423b5a576cb9b`. Bookkeeping and process repair belong in this same implementation PR as the first commit. Then implement only the bounded neighborhood question. Do not create another handoff PR or bookkeeping-only PR. V4.1 acceptance unblocks V4.2 only. Do not begin V4.2 evidence/anchor APIs, V4.3 search, or V5 writes in the same implementation PR. The V4.2 successor handoff, when written, rides in the V4.2 implementation PR.
+Implement V4.2 on `kernel/v4-2-evidence-source-anchors` from current `main` `7f5df9eace6f1ab23a0d817e0b350c379923641f`. Bookkeeping and this V4.2 handoff belong in this same implementation PR as the first commit. Then implement only the evidence/source-anchor question. Do not create another handoff PR or bookkeeping-only PR. Draft PR #65 is superseded design history and must remain unmerged. V4.2 acceptance unblocks V4.3 only. Do not begin V4.3 search or V5 writes in the same implementation PR.
 
 ---
 
