@@ -1,0 +1,303 @@
+{
+  "characterization_only": true,
+  "exact_base": "82a5c3e6889ad4e5648fef8f358423b5a576cb9b",
+  "exact_head": "b41e36265fca7f72411f27ed87fbcace45355059",
+  "runs": {
+    "branching_depth_2_10k": {
+      "artifact_ids_requested": 2,
+      "assertions_evaluated": 3,
+      "deduped_candidate_assertions": 3,
+      "endpoint_entity_lookups": 3,
+      "evidence_ids_returned": 1,
+      "found_seed_entity_ids": [
+        "ent:branch"
+      ],
+      "frontier_entities_expanded": 3,
+      "layers": [
+        {
+          "assertions_evaluated": 2,
+          "deduped_candidate_assertions": 2,
+          "frontier_entities_expanded": 1,
+          "layer": 1,
+          "touching_assertion_candidates": 2
+        },
+        {
+          "assertions_evaluated": 1,
+          "deduped_candidate_assertions": 1,
+          "frontier_entities_expanded": 2,
+          "layer": 2,
+          "touching_assertion_candidates": 3
+        }
+      ],
+      "missing_seed_entity_ids": [],
+      "p50_ms": 2.8253365017008036,
+      "p95_ms": 4.385587002616376,
+      "policy_evaluations": 3,
+      "provenance_snapshot_calls": 2,
+      "requested_depth": 2,
+      "requested_seeds": [
+        "ent:branch"
+      ],
+      "result_digest": "5c60d28132cf96bc1b4788a7fd773c49182f5270816ad7d0927b4209a4275d25",
+      "returned_entity_count": 4,
+      "returned_traversal_assertion_count": 3,
+      "revision_ids_requested": 2,
+      "seed_entity_lookups": 1,
+      "touching_assertion_candidates": 5
+    },
+    "branching_depth_2_1k": {
+      "artifact_ids_requested": 2,
+      "assertions_evaluated": 3,
+      "deduped_candidate_assertions": 3,
+      "endpoint_entity_lookups": 3,
+      "evidence_ids_returned": 1,
+      "found_seed_entity_ids": [
+        "ent:branch"
+      ],
+      "frontier_entities_expanded": 3,
+      "layers": [
+        {
+          "assertions_evaluated": 2,
+          "deduped_candidate_assertions": 2,
+          "frontier_entities_expanded": 1,
+          "layer": 1,
+          "touching_assertion_candidates": 2
+        },
+        {
+          "assertions_evaluated": 1,
+          "deduped_candidate_assertions": 1,
+          "frontier_entities_expanded": 2,
+          "layer": 2,
+          "touching_assertion_candidates": 3
+        }
+      ],
+      "missing_seed_entity_ids": [],
+      "p50_ms": 2.903733497078065,
+      "p95_ms": 3.485320004983805,
+      "policy_evaluations": 3,
+      "provenance_snapshot_calls": 2,
+      "requested_depth": 2,
+      "requested_seeds": [
+        "ent:branch"
+      ],
+      "result_digest": "278ef987a55daccab98893daa192fdb746e93caafeff141e6f5d318c1f723fdf",
+      "returned_entity_count": 4,
+      "returned_traversal_assertion_count": 3,
+      "revision_ids_requested": 2,
+      "seed_entity_lookups": 1,
+      "touching_assertion_candidates": 5
+    },
+    "depth_boundary_depth_2_10k": {
+      "artifact_ids_requested": 2,
+      "assertions_evaluated": 2,
+      "deduped_candidate_assertions": 2,
+      "endpoint_entity_lookups": 2,
+      "evidence_ids_returned": 1,
+      "found_seed_entity_ids": [
+        "ent:bound-seed"
+      ],
+      "frontier_entities_expanded": 2,
+      "layers": [
+        {
+          "assertions_evaluated": 1,
+          "deduped_candidate_assertions": 1,
+          "frontier_entities_expanded": 1,
+          "layer": 1,
+          "touching_assertion_candidates": 1
+        },
+        {
+          "assertions_evaluated": 1,
+          "deduped_candidate_assertions": 1,
+          "frontier_entities_expanded": 1,
+          "layer": 2,
+          "touching_assertion_candidates": 2
+        }
+      ],
+      "missing_seed_entity_ids": [],
+      "p50_ms": 2.6372430002084,
+      "p95_ms": 3.4237350046169013,
+      "policy_evaluations": 2,
+      "provenance_snapshot_calls": 2,
+      "requested_depth": 2,
+      "requested_seeds": [
+        "ent:bound-seed"
+      ],
+      "result_digest": "8c37e07790ddb5c95f11d3379e3991af7da439305f00cc0ab9c877b9dd1c2d24",
+      "returned_entity_count": 3,
+      "returned_traversal_assertion_count": 2,
+      "revision_ids_requested": 2,
+      "seed_entity_lookups": 1,
+      "touching_assertion_candidates": 3
+    },
+    "high_degree_depth_1_10k": {
+      "artifact_ids_requested": 1,
+      "assertions_evaluated": 30,
+      "deduped_candidate_assertions": 30,
+      "endpoint_entity_lookups": 30,
+      "evidence_ids_returned": 1,
+      "found_seed_entity_ids": [
+        "ent:hub"
+      ],
+      "frontier_entities_expanded": 1,
+      "layers": [
+        {
+          "assertions_evaluated": 30,
+          "deduped_candidate_assertions": 30,
+          "frontier_entities_expanded": 1,
+          "layer": 1,
+          "touching_assertion_candidates": 30
+        }
+      ],
+      "missing_seed_entity_ids": [],
+      "p50_ms": 7.495222496800125,
+      "p95_ms": 8.72403300309088,
+      "policy_evaluations": 30,
+      "provenance_snapshot_calls": 1,
+      "requested_depth": 1,
+      "requested_seeds": [
+        "ent:hub"
+      ],
+      "result_digest": "1d45a88e5e6f0c3724886472539adccdc1f7675988a1bddb3378c15db35e6ab8",
+      "returned_entity_count": 31,
+      "returned_traversal_assertion_count": 30,
+      "revision_ids_requested": 1,
+      "seed_entity_lookups": 1,
+      "touching_assertion_candidates": 30
+    },
+    "low_degree_depth_1_10k": {
+      "artifact_ids_requested": 1,
+      "assertions_evaluated": 1,
+      "deduped_candidate_assertions": 1,
+      "endpoint_entity_lookups": 1,
+      "evidence_ids_returned": 1,
+      "found_seed_entity_ids": [
+        "ent:low"
+      ],
+      "frontier_entities_expanded": 1,
+      "layers": [
+        {
+          "assertions_evaluated": 1,
+          "deduped_candidate_assertions": 1,
+          "frontier_entities_expanded": 1,
+          "layer": 1,
+          "touching_assertion_candidates": 1
+        }
+      ],
+      "missing_seed_entity_ids": [],
+      "p50_ms": 1.5642405051039532,
+      "p95_ms": 1.8297399947186932,
+      "policy_evaluations": 1,
+      "provenance_snapshot_calls": 1,
+      "requested_depth": 1,
+      "requested_seeds": [
+        "ent:low"
+      ],
+      "result_digest": "91b18cb6c1d35d40e6471da66ed2b69fcc4ae3543f6596067b4166e0fb535210",
+      "returned_entity_count": 2,
+      "returned_traversal_assertion_count": 1,
+      "revision_ids_requested": 1,
+      "seed_entity_lookups": 1,
+      "touching_assertion_candidates": 1
+    },
+    "low_degree_depth_1_1k": {
+      "artifact_ids_requested": 1,
+      "assertions_evaluated": 1,
+      "deduped_candidate_assertions": 1,
+      "endpoint_entity_lookups": 1,
+      "evidence_ids_returned": 1,
+      "found_seed_entity_ids": [
+        "ent:low"
+      ],
+      "frontier_entities_expanded": 1,
+      "layers": [
+        {
+          "assertions_evaluated": 1,
+          "deduped_candidate_assertions": 1,
+          "frontier_entities_expanded": 1,
+          "layer": 1,
+          "touching_assertion_candidates": 1
+        }
+      ],
+      "missing_seed_entity_ids": [],
+      "p50_ms": 1.6134695033542812,
+      "p95_ms": 2.088339999318123,
+      "policy_evaluations": 1,
+      "provenance_snapshot_calls": 1,
+      "requested_depth": 1,
+      "requested_seeds": [
+        "ent:low"
+      ],
+      "result_digest": "5f46d9d90851e137df10a0e161d4b1525d27c758ecb6ad9ffcc420321a6e8e17",
+      "returned_entity_count": 2,
+      "returned_traversal_assertion_count": 1,
+      "revision_ids_requested": 1,
+      "seed_entity_lookups": 1,
+      "touching_assertion_candidates": 1
+    },
+    "noisy_neighbor_depth_2_10k": {
+      "artifact_ids_requested": 2,
+      "assertions_evaluated": 2,
+      "deduped_candidate_assertions": 2,
+      "endpoint_entity_lookups": 2,
+      "evidence_ids_returned": 1,
+      "found_seed_entity_ids": [
+        "ent:noisy-seed"
+      ],
+      "frontier_entities_expanded": 2,
+      "layers": [
+        {
+          "assertions_evaluated": 1,
+          "deduped_candidate_assertions": 1,
+          "frontier_entities_expanded": 1,
+          "layer": 1,
+          "touching_assertion_candidates": 1
+        },
+        {
+          "assertions_evaluated": 1,
+          "deduped_candidate_assertions": 1,
+          "frontier_entities_expanded": 1,
+          "layer": 2,
+          "touching_assertion_candidates": 2
+        }
+      ],
+      "missing_seed_entity_ids": [],
+      "p50_ms": 2.7016095045837574,
+      "p95_ms": 3.3672449935693294,
+      "policy_evaluations": 2,
+      "provenance_snapshot_calls": 2,
+      "requested_depth": 2,
+      "requested_seeds": [
+        "ent:noisy-seed"
+      ],
+      "result_digest": "29993af6f6bdd718a65f7361ba78d30c6ac7b3911f39b310746b11293748deb6",
+      "returned_entity_count": 3,
+      "returned_traversal_assertion_count": 2,
+      "revision_ids_requested": 2,
+      "seed_entity_lookups": 1,
+      "touching_assertion_candidates": 3
+    }
+  },
+  "schema_version": "vnext_neighborhood_10k_v1",
+  "structural_gate": {
+    "claim": "fixed local neighborhood candidate/source work does not grow with unrelated space size; noisy-neighbor literals and depth-2 extra edges are not scanned; high-degree seed work scales with actual touching degree",
+    "directional_target": "10k depth-1 neighborhood p95 < 50 ms",
+    "observed_low_degree_depth_1_10k_p95_ms": 1.8297399947186932,
+    "passes": true
+  },
+  "workloads": {
+    "space_10k": {
+      "assertion_count": 14038,
+      "decoy_count": 10000,
+      "entity_count": 12043,
+      "parsed_semantic_digest": "e717710df2213d43af4b5b2a0e1bee26cfaad5f449fb1fadeaa6298dc17257dd",
+      "workload_digest": "2a753ba34438598cda6b38fbc51ea3190ddb848a1eb3a0b2bc1e08d60d65d944"
+    },
+    "space_1k": {
+      "assertion_count": 5038,
+      "decoy_count": 1000,
+      "entity_count": 3043,
+      "parsed_semantic_digest": "69299c36d02327219fe3b9816d7630711de616735fe62ce13a49ed5a21579078",
+      "workload_digest": "3bc379e4dd5ac7edb55245d6800f4da98a0981f22f058745aa552a950d5efbfb"
+    }
+  }
+}
