@@ -323,8 +323,11 @@ def test_01_implementation_base_recorded() -> None:
     handoff = V41_HANDOFF_PATH.read_text(encoding="utf-8")
     assert IMPLEMENTATION_BASE in steward
     assert IMPLEMENTATION_BASE in handoff
-    assert "NOT V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED" in steward
-    assert "implementation now proceeding from current main" in steward
+    assert "V4.1 COMPLETE" in steward
+    assert "V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED" in steward
+    assert "V4.2 ACTIVE" in steward
+    assert "IMPLEMENTATION NOT YET ACCEPTED" in steward
+    assert "implementation now proceeding from current main" in handoff
 
 
 def test_02_v3_predecessor_recorded() -> None:
@@ -931,10 +934,10 @@ def test_51_world_public_services_unchanged() -> None:
         assert hashlib.sha256((REPO_ROOT / rel_path).read_bytes()).hexdigest() == digest
 
 
-def test_52_no_v42_or_v43_api_exported() -> None:
+def test_52_no_v43_search_api_exported() -> None:
     exported = (VNEXT_SRC / "__init__.py").read_text(encoding="utf-8")
     assert "NeighborhoodReadService" in exported
-    assert "get_evidence" not in exported
+    assert "EvidenceReadService" in exported
     assert "resolve_source_anchor" not in exported
     assert "anchor_search" not in exported
 
