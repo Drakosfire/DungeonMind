@@ -43,3 +43,9 @@ class EntityReadIntegrityError(PersistenceIntegrityError):
     """Fail-closed error when exact/complete entity assembly cannot complete safely."""
 
     code = "entity_read_integrity_error"
+
+
+class NeighborhoodReadIntegrityError(PersistenceIntegrityError):
+    """Fail-closed error when bounded neighborhood traversal cannot complete safely."""
+
+    code = "neighborhood_read_integrity_error"

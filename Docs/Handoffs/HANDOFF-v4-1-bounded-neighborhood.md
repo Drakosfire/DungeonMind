@@ -1,98 +1,89 @@
 # HANDOFF — V4.1 bounded neighborhood reads
 
 **Created:** 2026-09-16  
-**Status:** PRE-DISPATCH — the bookkeeping transition is present on this handoff branch; implementation may begin only after this handoff/bookkeeping PR merges to `main`  
-**Repository / handoff branch:** `Drakosfire/DungeonMind` / `handoff/v4-1-bounded-neighborhood`  
-**Suggested implementation branch:** `kernel/v4-1-bounded-neighborhood`  
+**Status:** ACTIVE / IMPLEMENTATION IN REVIEW / NOT ACCEPTED  
+**Repository / implementation branch:** `Drakosfire/DungeonMind` / `kernel/v4-1-bounded-neighborhood`  
 **Predecessor:** PR #63 — `KERNEL: V3 lazy exact and complete entity reads`  
 **Accepted predecessor head:** `6c8adb474d84df6dc6e1d55cec6bedb2380e100b`  
 **Predecessor final Steward review:** `5224138590`  
 **Predecessor logical review cycles:** `3`  
 **Predecessor disposition:** `V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED`  
 **Predecessor merge:** `c12bf89ea54af1112a0e98163aa224eb89b11c22`  
-**Bookkeeping commit on this branch:** `2b3ec130600f42d460b1c92f7378d9610b9f78da` — records V3 COMPLETE / V4 ACTIVE / V4.1 ACTIVE in the living Steward  
+**Current implementation base:** `82a5c3e6889ad4e5648fef8f358423b5a576cb9b` — merged PR #64  
+**PR #64:** merged handoff/control-surface history; **not** V4.1 runtime implementation; **not** `V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED`  
 **Frozen vNext contract aggregate:** `fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea`  
-**Roadmap phase:** V4.1 — bounded neighborhood — next implementation slice  
+**Roadmap phase:** V4.1 — bounded neighborhood — ACTIVE / IMPLEMENTATION IN REVIEW / NOT ACCEPTED  
 **Successor:** V4.2 — standalone evidence + source-anchor support  
 **One-line mission:** Turn V1 revision-local entity-ref assertion indexes, V2 candidate-local admission, and V3 exact entity semantics into deterministic depth-1/depth-2 admitted graph traversal whose work is proportional to the visited frontier and its authority support rather than the whole KnowledgeSpace.
 
 ---
 
-## §0 Dispatch gate — this handoff owns the bookkeeping task
+## §0 Dispatch gate — bookkeeping belongs in the implementation PR
 
 The previous V3 handoff exposed a process defect: a docs handoff merged before the living Steward had been advanced. PR #62 had to repair the durable state before V3 implementation could start.
 
-Do not repeat that pattern.
+PR #64 then repeated a different process mistake: it merged as a standalone handoff/bookkeeping PR. That is **not** the intended workflow and must not be repeated.
 
-This successor branch therefore has two responsibilities, in this order:
+Correct workflow:
 
 ```text
-1. BOOKKEEPING
-   update HANDOFF-STEWARDSHIP-vnext-roadmap.md with the accepted V3 facts
-
-2. HANDOFF
-   land this V4.1 implementation brief
+Steward designs/writes next implementation handoff
+        ↓
+Code agent creates implementation branch from current main
+        ↓
+same implementation PR:
+  bookkeeping/process update first
+  implementation
+  tests
+  benchmark/evidence
+        ↓
+Steward exact-head review
+        ↓
+PASS + merge
 ```
 
-The bookkeeping commit is already present on this branch:
+Handoffs do not get their own PRs. Bookkeeping and handoff-state updates belong in the implementation PR.
+
+This implementation branch therefore starts from exact current `main`:
 
 ```text
-2b3ec130600f42d460b1c92f7378d9610b9f78da
-STEWARDSHIP: record PR #63 merge, complete V3, and activate V4.1
+82a5c3e6889ad4e5648fef8f358423b5a576cb9b
 ```
 
-It records:
+and its **first commit** is bookkeeping/process repair, not neighborhood runtime. It records:
 
 ```text
-PR #63 merge:
-  c12bf89ea54af1112a0e98163aa224eb89b11c22
+current implementation base:
+  82a5c3e6889ad4e5648fef8f358423b5a576cb9b
 
-accepted V3 head:
-  6c8adb474d84df6dc6e1d55cec6bedb2380e100b
+PR #64:
+  merged handoff/control-surface history
+  NOT V4.1 runtime implementation
+  NOT V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
 
-logical review cycles:
-  3
+V3:
+  COMPLETE
 
-final PASS review:
-  5224138590
+V4:
+  ACTIVE
 
-final disposition:
-  V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED
+V4.1:
+  ACTIVE
+  implementation now proceeding from current main
 
-V3 benchmark:
-  Docs/Benchmarks/vnext_entity_reads_10k_v1.json
+V4.2:
+  BLOCKED ON V4.1 ACCEPTANCE
 
-benchmark substantive head:
-  7a28a406904ea81bddd6c5021fc35086f04bff82
+V4.3:
+  BLOCKED ON V4.2 ACCEPTANCE
 
-phase transition:
-  V3 COMPLETE
-  V4 ACTIVE
-  V4.1 ACTIVE
-```
-
-### Merge/dispatch rule
-
-This handoff/bookkeeping PR may merge as one docs control-surface PR.
-
-Only after its merge:
-
-1. read the actual PR #64 handoff/bookkeeping merge SHA from `main`;
-2. create `kernel/v4-1-bounded-neighborhood` from that exact merged `main`;
-3. make the implementation branch's **first commit** record that actual PR #64 merge SHA as the new Steward/`main` anchor and as this handoff's activation fact **before any production code**;
-4. then implement V4.1 only, using this file as the binding implementation handoff.
-
-The first implementation commit is bookkeeping, not neighborhood runtime. It must record at least:
-
-```text
-actual PR #64 merge SHA
-new current main anchor
-this handoff is no longer PRE-DISPATCH / is ACTIVE for implementation
+V5:
+  BLOCKED ON V4.3 ACCEPTANCE
 ```
 
 Do not start V4.1 production code in that first commit.
 
-If this branch is rebased or amended before merge, preserve the semantic bookkeeping content even if the bookkeeping commit SHA on this branch changes. The implementation-branch first commit must still record the **merged** PR #64 SHA, not this pre-merge head.
+The technical design below remains the binding implementation brief. Do not import material from draft PR #65.
 
 ---
 
@@ -1086,7 +1077,8 @@ The V4.1 implementation PR body should contain:
 
 ```text
 Primary question
-Exact base SHA (the merged V4.1 handoff/bookkeeping PR)
+Exact base SHA:
+  82a5c3e6889ad4e5648fef8f358423b5a576cb9b
 Exact current substantive head
 Intended changed surface
 Frozen V0 aggregate
@@ -1114,10 +1106,11 @@ The Steward must verify:
 
 ### Bookkeeping / sequencing
 
-- this handoff/bookkeeping PR merged before V4.1 implementation branch creation;
-- implementation base is that exact merge;
-- the implementation branch's first commit records that actual PR #64 merge SHA as the new Steward/`main` anchor before production code;
-- living Steward records PR #63 merge, accepted head, review cycles, final PASS, V3 artifact, V3 COMPLETE, V4/V4.1 ACTIVE.
+- implementation base is exact current `main` `82a5c3e6889ad4e5648fef8f358423b5a576cb9b`;
+- the implementation PR's first commit records that PR #64 merge SHA as the new Steward/`main` anchor before production code;
+- PR #64 is recorded as merged control-surface history, not V4.1 runtime acceptance;
+- living Steward records PR #63 merge, accepted head, review cycles, final PASS, V3 artifact, V3 COMPLETE, V4/V4.1 ACTIVE;
+- no standalone successor handoff PR is opened.
 
 ### Semantics
 
@@ -1151,7 +1144,7 @@ Only successful disposition:
 V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
 ```
 
-After V4.1 merges, the **V4.2 successor handoff/bookkeeping PR** must again update the living Steward first with:
+After V4.1 merges, the **V4.2 successor implementation PR** must carry the living Steward update in its first commit:
 
 ```text
 actual V4.1 merge SHA
@@ -1164,17 +1157,17 @@ V4.1 COMPLETE
 V4.2 ACTIVE
 ```
 
-before V4.2 implementation begins.
+Do not open a standalone V4.2 handoff/bookkeeping PR.
 
 V4.1 acceptance unblocks V4.2 only. V4.3 remains blocked on V4.2. V5 remains blocked on V4.3.
 
 ---
 
-## §16 What remains false after this handoff merges
+## §16 What remains false after this bookkeeping commit
 
-This handoff/bookkeeping PR does not itself establish runtime behavior.
+PR #64 and this first implementation commit do not establish runtime behavior.
 
-After it merges, all of the following remain false until implementation evidence says otherwise:
+All of the following remain false until implementation evidence says otherwise:
 
 - no native vNext bounded neighborhood API is accepted;
 - no standalone evidence retrieval API is accepted;

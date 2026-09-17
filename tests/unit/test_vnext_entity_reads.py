@@ -1815,9 +1815,11 @@ def test_91_no_storage_migration_changes_in_entity_reads_scope() -> None:
     assert "migration" not in text.lower()
 
 
-def test_92_no_v4_neighborhood_search_api_exported() -> None:
+def test_92_no_v42_anchor_or_v43_search_api_exported() -> None:
     exported = (REPO_ROOT / "src/dungeonmind/application/vnext/__init__.py").read_text(
         encoding="utf-8"
     )
-    assert "neighborhood" not in exported.lower()
+    assert "get_evidence" not in exported.lower()
+    assert "source_anchor" not in exported.lower()
     assert "anchor_search" not in exported.lower()
+    assert "search(" not in exported.lower()

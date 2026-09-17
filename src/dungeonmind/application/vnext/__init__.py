@@ -35,6 +35,7 @@ from .errors import (
     EntityReadIntegrityError,
     KnowledgeReadContextIntegrityError,
     LegacyCompatibilityIntegrityError,
+    NeighborhoodReadIntegrityError,
     RevisionStructuralIntegrityError,
 )
 from .frozen_json import (
@@ -67,6 +68,14 @@ from .model import (
     ParsedKnowledgeRevision,
     compute_compatibility_key,
     compute_semantic_digest,
+)
+from .neighborhood import (
+    MAX_NEIGHBORHOOD_SEED_COUNT,
+    NeighborhoodLayerWork,
+    NeighborhoodReadIdentity,
+    NeighborhoodReadService,
+    NeighborhoodResult,
+    NeighborhoodWorkCounts,
 )
 from .provenance import InMemoryKnowledgeSourceReader, KnowledgeProvenanceSnapshot
 from .read_context import KnowledgeReadContext
@@ -102,6 +111,7 @@ __all__ = [
     "COMPATIBILITY_DOMAIN_CONTRACT_REVISION",
     "COMPATIBILITY_MANIFEST_SHA256",
     "COMPATIBILITY_MAPPING_REVISION",
+    "MAX_NEIGHBORHOOD_SEED_COUNT",
     "PARSED_REVISION_FORMAT_VERSION",
     "AdmissionWorkCounts",
     "AlwaysAdmitPolicy",
@@ -129,6 +139,12 @@ __all__ = [
     "KnowledgeReadContextIntegrityError",
     "LegacyCompatibilityIntegrityError",
     "LegacyCompatibilityManifest",
+    "NeighborhoodLayerWork",
+    "NeighborhoodReadIdentity",
+    "NeighborhoodReadIntegrityError",
+    "NeighborhoodReadService",
+    "NeighborhoodResult",
+    "NeighborhoodWorkCounts",
     "ParsedAssertion",
     "ParsedAssertionMetadata",
     "ParsedAssertionValue",

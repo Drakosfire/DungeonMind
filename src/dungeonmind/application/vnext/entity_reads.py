@@ -188,11 +188,24 @@ def _compute_result_digest(
     )
 
 
+def _as_provenance_snapshots(
+    provenance: KnowledgeProvenanceSnapshot
+    | Sequence[KnowledgeProvenanceSnapshot]
+    | None,
+) -> tuple[KnowledgeProvenanceSnapshot, ...]:
+    if provenance is None:
+        return ()
+    if isinstance(provenance, KnowledgeProvenanceSnapshot):
+        return (provenance,)
+    return tuple(provenance)
+
+
 def _support_for_admitted(
     *,
     context: KnowledgeReadContext,
     admitted_ids: tuple[str, ...],
-    provenance: KnowledgeProvenanceSnapshot | None,
+    provenance: KnowledgeProvenanceSnapshot | Sequence[KnowledgeProvenanceSnapshot] | None,
+    integrity_error: type[Exception] = EntityReadIntegrityError,
 ) -> tuple[
     tuple[ParsedEvidenceRef, ...],
     tuple[EntityReadSourceArtifact, ...],
@@ -209,7 +222,7 @@ def _support_for_admitted(
     for evidence_id in unique_evidence_ids:
         record = parsed.get_evidence(evidence_id)
         if record is None:
-            raise EntityReadIntegrityError(
+            raise integrity_error(
                 f"admitted assertion evidence missing from parsed revision: {evidence_id}"
             )
         evidence.append(record)
@@ -217,33 +230,41 @@ def _support_for_admitted(
         if record.source_revision_id is not None:
             revision_ids.append(record.source_revision_id)
 
+    snapshots = _as_provenance_snapshots(provenance)
     artifacts: list[EntityReadSourceArtifact] = []
     revisions: list[EntityReadSourceRevision] = []
-    if provenance is not None:
-        for artifact_id in _dedupe_sorted(artifact_ids):
-            artifact = provenance.get_artifact(artifact_id)
-            if artifact is None:
-                continue
-            artifacts.append(
-                EntityReadSourceArtifact(
-                    source_artifact_id=artifact.source_artifact_id,
-                    status=artifact.status,
-                    current_revision_id=artifact.current_revision_id,
-                    source_classification=artifact.source_classification,
-                    authority=artifact.authority,
-                )
+    for artifact_id in _dedupe_sorted(artifact_ids):
+        artifact = None
+        for snapshot in snapshots:
+            artifact = snapshot.get_artifact(artifact_id)
+            if artifact is not None:
+                break
+        if artifact is None:
+            continue
+        artifacts.append(
+            EntityReadSourceArtifact(
+                source_artifact_id=artifact.source_artifact_id,
+                status=artifact.status,
+                current_revision_id=artifact.current_revision_id,
+                source_classification=artifact.source_classification,
+                authority=artifact.authority,
             )
-        for revision_id in _dedupe_sorted(revision_ids):
-            revision = provenance.get_revision(revision_id)
-            if revision is None:
-                continue
-            revisions.append(
-                EntityReadSourceRevision(
-                    source_revision_id=revision.source_revision_id,
-                    source_artifact_id=revision.source_artifact_id,
-                    content_sha256=revision.content_sha256,
-                )
+        )
+    for revision_id in _dedupe_sorted(revision_ids):
+        revision = None
+        for snapshot in snapshots:
+            revision = snapshot.get_revision(revision_id)
+            if revision is not None:
+                break
+        if revision is None:
+            continue
+        revisions.append(
+            EntityReadSourceRevision(
+                source_revision_id=revision.source_revision_id,
+                source_artifact_id=revision.source_artifact_id,
+                content_sha256=revision.content_sha256,
             )
+        )
     return tuple(evidence), tuple(artifacts), tuple(revisions)
 
 
