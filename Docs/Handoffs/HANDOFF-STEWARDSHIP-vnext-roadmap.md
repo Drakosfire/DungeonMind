@@ -4,8 +4,9 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `c12bf89ea54af1112a0e98163aa224eb89b11c22` — merged PR #63, V3 accepted  
+**Current main anchor:** `82a5c3e6889ad4e5648fef8f358423b5a576cb9b` — merged PR #64, V4.1 implementation base  
 **Last merged roadmap implementation:** PR #63 — `KERNEL: V3 lazy exact and complete entity reads`  
+**Last merged control-surface history:** PR #64 — V4.1 handoff/bookkeeping; **not** V4.1 runtime implementation and **not** `V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED`  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
 **Read/performance architecture:** `Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`  
@@ -86,6 +87,40 @@ V4.1 ACTIVE
 > Can depth-1 and depth-2 neighborhood traversal discover and admit only the assertions needed for the visited frontier, with structural/provenance work proportional to visited neighborhood support rather than the whole KnowledgeSpace?
 
 V4.1 is traversal only. It is not permission to implement standalone evidence/anchor APIs or deterministic search early.
+
+Current implementation base:
+
+```text
+82a5c3e6889ad4e5648fef8f358423b5a576cb9b
+```
+
+```text
+PR #64:
+  merged handoff/control-surface history
+  NOT V4.1 runtime implementation
+  NOT V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
+
+V3:
+  COMPLETE
+
+V4:
+  ACTIVE
+
+V4.1:
+  ACTIVE
+  implementation now proceeding from current main
+
+V4.2:
+  BLOCKED ON V4.1 ACCEPTANCE
+
+V4.3:
+  BLOCKED ON V4.2 ACCEPTANCE
+
+V5:
+  BLOCKED ON V4.3 ACCEPTANCE
+```
+
+Do not reinterpret PR #64 as V4.1 runtime acceptance.
 
 ---
 
@@ -482,12 +517,27 @@ This document is intentionally mutable.
 
 After every roadmap PR merge, update this file before another roadmap PR merges.
 
-Preferred sequence:
+Correct workflow:
 
-1. the successor handoff/bookkeeping PR updates this handoff with the actual predecessor merge anchor and phase transition;
-2. after that PR merges, the successor implementation branch is created from that exact merge SHA;
-3. the implementation branch's **first commit** records that handoff/bookkeeping merge SHA as the new current `main` anchor before production code;
-4. then implementation proceeds.
+```text
+Steward designs/writes next implementation handoff
+        ↓
+Code agent creates implementation branch from current main
+        ↓
+same implementation PR:
+  bookkeeping/process update first
+  implementation
+  tests
+  benchmark/evidence
+        ↓
+Steward exact-head review
+        ↓
+PASS + merge
+```
+
+Handoffs do not get their own PRs. Bookkeeping and handoff-state updates belong in the implementation PR. Do not create a separate bookkeeping-only PR.
+
+PR #64 was opened and merged as a standalone handoff/bookkeeping PR. That is historical control-surface history and must not be repeated.
 
 Every update records at minimum:
 
@@ -627,15 +677,19 @@ structural gate: PASS
 frozen V0 aggregate: fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
 ```
 
-Current `main` after PR #63:
+Current `main` after PR #64:
 
 ```text
-c12bf89ea54af1112a0e98163aa224eb89b11c22
+82a5c3e6889ad4e5648fef8f358423b5a576cb9b
 ```
+
+PR #64 is merged handoff/control-surface history only. It is not V4.1 runtime implementation and does not confer `V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED`.
 
 Prior key anchors:
 
 ```text
+PR #64 82a5c3e6889ad4e5648fef8f358423b5a576cb9b — V4.1 handoff/control-surface (not runtime)
+PR #63 c12bf89ea54af1112a0e98163aa224eb89b11c22 — V3 implementation
 PR #62 8a68894e40a56a115b2f44ad5410bec28fc81d3e — V3 activation sync
 PR #61 d409a2000e4608208cb8cfeed0c6907f3568abe2 — V3 handoff
 PR #60 8af28bf359fa2044dbda23e674653edc9ebe3e6d — V2 implementation
@@ -704,7 +758,7 @@ blocked until later accepted predecessors:
 
 ### Named next action
 
-Merge the V4.1 handoff/bookkeeping PR. Then create `kernel/v4-1-bounded-neighborhood` from that exact merge SHA. The implementation branch's first commit must record that actual PR #64 merge SHA as the new current `main` anchor before production code. Then implement only the bounded neighborhood question. V4.1 acceptance unblocks V4.2 only. Do not begin V4.2 evidence/anchor APIs, V4.3 search, or V5 writes in the same implementation PR.
+Implement V4.1 on `kernel/v4-1-bounded-neighborhood` from current `main` `82a5c3e6889ad4e5648fef8f358423b5a576cb9b`. Bookkeeping and process repair belong in this same implementation PR as the first commit. Then implement only the bounded neighborhood question. Do not create another handoff PR or bookkeeping-only PR. V4.1 acceptance unblocks V4.2 only. Do not begin V4.2 evidence/anchor APIs, V4.3 search, or V5 writes in the same implementation PR. The V4.2 successor handoff, when written, rides in the V4.2 implementation PR.
 
 ---
 
