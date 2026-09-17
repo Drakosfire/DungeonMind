@@ -66,6 +66,15 @@ V5 BLOCKED ON V4.3 ACCEPTANCE
 
 If V4.1 acceptance changes any assumption this handoff relies on, revise this design before activation rather than preserving stale prose.
 
+### Cycle 1 DESIGN HOLD (`5229891201` on `cf33ce3fedd1bb447ea913fc2e08cb350726f8ab`)
+
+Two bounded design corrections are now binding. They do not redesign V4.2.
+
+1. **Assertion-backed evidence only.** V4.2's public evidence/anchor surface authorizes an `EvidenceRef` only through admitted **assertion** supporters. `IdentityAlias.evidence_ref_ids` remain structurally valid V1 citations and must not be classified as orphan. Alias-backed evidence authority is outside V4.2.
+2. **Anchor identity omits supporter IDs.** `admitted_supporter_assertion_ids` are resolution metadata. If the admitted supporter set changes while bound evidence/source location and context identity stay the same, the anchor remains valid.
+
+PR #65 remains draft/non-authoritative until V4.1 is accepted and merged.
+
 ---
 
 ## §1 Primary question
@@ -191,6 +200,7 @@ assertion_evidence
 
 evidence_by_id
 evidence_supporters
+aliases_by_id
 ```
 
 Meaning:
@@ -201,9 +211,10 @@ assertion_evidence[assertion_id]
 
 evidence_supporters[evidence_ref_id]
   → exact assertion IDs that cite that evidence ref
+  → IdentityAlias.evidence_ref_ids are builder-validated but do not enter this index
 ```
 
-These are revision-local derived indexes. They discover structural candidates only. They do not establish caller authority.
+These are revision-local derived indexes. They discover structural candidates only. They do not establish caller authority. V4.2 must not append alias IDs onto `evidence_supporters` or treat an alias ID as an assertion ID.
 
 ### 3.4 Accepted V2 authority seam
 
@@ -320,13 +331,46 @@ Evidence/source records justify admitted knowledge. They must not become a side 
 
 V4.2 therefore adopts this rule:
 
-> **An EvidenceRef is returnable through the generic evidence-read surface only when the current pinned context can establish at least one admitted supporter assertion for that EvidenceRef.**
+> **An EvidenceRef is returnable through the generic V4.2 evidence-read / source-anchor surface only when the current pinned context can establish at least one admitted supporter assertion for that EvidenceRef.**
 
-Consequences:
+This slice is **assertion-backed evidence only**.
+
+Frozen `IdentityAlias` may carry `evidence_ref_ids`, and the parsed-revision builder already validates those references. That citation is real V1 structure. It is **not** a V4.2 admission path. Do not broaden V2 assertion admission into alias authorization.
+
+### 5.1 Alias-only versus orphan
+
+Internal classification is binding:
+
+```text
+orphan
+  EvidenceRef cited by zero assertions and zero IdentityAlias records
+
+alias-only
+  EvidenceRef cited by one or more IdentityAlias records and zero assertions
+
+assertion-backed
+  EvidenceRef cited by one or more assertions
+  (it may also be cited by aliases; aliases still do not authorize V4.2 reads)
+```
+
+Public `get_evidence` / anchor derivation remain public-safe unavailable for:
+
+```text
+missing evidence ID
+orphan
+alias-only
+all assertion supporters hidden/excluded
+```
+
+Internal typed diagnostics **must distinguish alias-only from orphan**. Do not label alias-only evidence as orphan. Do not invent a public diagnostic that reveals the distinction.
+
+A bounded alias-evidence authority (return evidence because an admitted alias cites it) is a successor design, not a V4.2 patch.
+
+### 5.2 Assertion-backed consequences
 
 ```text
 exact evidence ID exists structurally
-+ all supporters hidden/excluded
++ all assertion supporters hidden/excluded
 → evidence unavailable
 → no source IDs
 → no locator
@@ -335,7 +379,7 @@ exact evidence ID exists structurally
 → no anchor
 
 exact evidence ID exists structurally
-+ at least one supporter admitted
++ at least one assertion supporter admitted
 → evidence may be returned
 → only admitted supporter assertions are returned
 → source/provenance is validated through V2
@@ -344,7 +388,7 @@ exact evidence ID exists structurally
 
 Do not infer a new evidence-level scope/visibility model from source/evidence metadata.
 
-The authority path remains assertion-first.
+The V4.2 authority path remains assertion-first.
 
 ---
 
@@ -451,19 +495,22 @@ all entity reads
 
 ### 7.2 Evidence availability
 
-Evidence is available only if at least one supporter is admitted.
+Evidence is available on the V4.2 public surface only if at least one **assertion** supporter is admitted.
 
 Preferred public-safe behavior:
 
 ```text
-missing evidence ID                 → found=false
-existing evidence, zero supporters  → found=false
-existing evidence, all hidden       → found=false
-existing evidence, supporters rejected by source/domain/scope → found=false
-one or more admitted supporters     → found=true
+missing evidence ID                         → found=false
+orphan (zero assertion and zero alias cites) → found=false
+alias-only (alias cites, zero assertions)   → found=false
+existing evidence, all assertion supporters hidden → found=false
+existing evidence, assertion supporters rejected by source/domain/scope → found=false
+one or more admitted assertion supporters   → found=true
 ```
 
 Do not expose which unavailable case occurred through detailed public diagnostics.
+
+Internal diagnostics must still name alias-only separately from orphan. Zero assertion supporters is not, by itself, a license to call the evidence orphan.
 
 ### 7.3 Mixed supporter visibility
 
@@ -541,10 +588,12 @@ class SourceAnchor:
     source_locator: str | None
     line_ref: str | None
     source_span_ref_id: str | None
-    admitted_supporter_assertion_ids: tuple[str, ...]
+    admitted_supporter_assertion_ids: tuple[str, ...]  # resolution metadata, not identity
 ```
 
 Exact fields may be narrower if the client does not need all of them.
+
+`admitted_supporter_assertion_ids` is **resolution metadata**: the currently admitted assertion supporters that make this evidence available in this context. It is caller-visible on the DTO and on the evidence-read result digest. It is **not** part of anchor identity.
 
 Do not expose `SourceRevisionV2.body_storage` merely because it exists in the frozen authority record. Opening/fetching body content is outside V4.2.
 
@@ -573,9 +622,19 @@ returned source artifact authority fields relevant to visible meaning
 returned source revision content identity relevant to visible meaning
 ```
 
-The exact request/admission-context binding may be represented as one deterministic digest of the sealed request + pinned descriptors.
+Do **not** bind:
 
-Do not bind timing or work counters.
+```text
+admitted_supporter_assertion_ids
+timing
+work counters
+```
+
+Binding decision, explicit:
+
+> If the admitted supporter set changes while the bound evidence/source location and context identity remain the same, the anchor identity remains valid. Revalidation still requires at least one currently admitted assertion supporter. Newly generated DTO metadata may list a different supporter set. The containing evidence-read result digest still changes when returned supporters change, because that digest binds caller-visible support, not the anchor identity.
+
+The exact request/admission-context binding may be represented as one deterministic digest of the sealed request + pinned descriptors.
 
 ### 8.3 Anchor token must support exact revalidation
 
@@ -659,16 +718,16 @@ Exact naming is implementation latitude.
 anchor token
 → parse/verify version + recover exact evidence_ref_id
 → evidence_by_id exact lookup
-→ evidence_supporters exact supporter IDs
-→ V2 candidate admission on those supporters
-→ require at least one admitted supporter
+→ evidence_supporters exact assertion supporter IDs
+→ V2 candidate admission on those assertion supporters
+→ require at least one admitted assertion supporter
 → exact evidence/source provenance
-→ recompute canonical current-context anchor
-→ compare anchor identity
+→ recompute canonical current-context anchor identity
+→ compare identity (evidence/source location + context; not supporter IDs)
 → resolved or unavailable
 ```
 
-No full-space projection and no global anchor scan.
+No full-space projection and no global anchor scan. Alias citations are not consulted for authorization.
 
 ### 10.2 Public-safe failure
 
@@ -709,6 +768,28 @@ context B created over same ParsedKnowledgeRevision
 
 Do not cache anchor validity by knowledge revision alone.
 
+### 10.4 Supporter-set change does not retarget identity
+
+Required witness:
+
+```text
+context A
+→ evidence E admitted via supporter assertion S1
+→ anchor A created (identity binds E's evidence/source location + context A)
+
+later, still context A, S2 also becomes an admitted supporter of E
+  (S1 remains admitted; evidence/source location unchanged)
+
+resolve anchor A in context A
+→ still resolved
+→ anchor identity unchanged
+→ DTO metadata admitted_supporter_assertion_ids may now include S1 and S2
+
+later, all assertion supporters of E become hidden/excluded
+→ resolve anchor A → public-safe unavailable
+→ this is authorization failure, not an identity retarget
+```
+
 ---
 
 ## §11 Returned source metadata
@@ -737,7 +818,9 @@ Anchor/open metadata may additionally expose only the already-admitted locator/U
 
 Do not expose fields merely because they are present in persistence.
 
-If a caller-visible returned field changes, semantic result/anchor digests must change accordingly.
+If a caller-visible returned field changes, semantic **result** digests must change accordingly.
+
+Anchor identity is narrower: it changes only when bound evidence/source location or context identity changes. `admitted_supporter_assertion_ids` on the DTO is caller-visible resolution metadata and belongs in the evidence-read result digest, not in anchor identity.
 
 ---
 
@@ -780,7 +863,7 @@ hidden/excluded supporter/source detail changes → visible digest does not chan
 work counters/timing → never part of semantic digest
 ```
 
-An anchor's own identity digest is separate from the containing result digest.
+An anchor's own identity digest is separate from the containing result digest. The evidence-read result digest binds admitted supporter assertion IDs; the anchor identity does not.
 
 ---
 
@@ -863,10 +946,12 @@ The implementation must include focused proof for at least the following.
 
 ### B. Exact evidence lookup
 
-9. exact evidence with one admitted supporter returns evidence + supporter;
+9. exact evidence with one admitted assertion supporter returns evidence + supporter;
 10. missing evidence returns unavailable;
-11. orphan evidence with zero supporters returns unavailable;
-12. evidence with hidden-only supporters returns unavailable;
+11. orphan evidence (zero assertion and zero alias cites) returns unavailable and is classified internally as orphan;
+11a. alias-only evidence (IdentityAlias cites it; zero assertions) returns public-safe unavailable and is classified internally as alias-only, never orphan;
+11b. alias-only evidence does not enter `evidence_supporters` and is not authorized by treating the alias as an assertion;
+12. evidence with hidden-only assertion supporters returns unavailable;
 13. hidden-only evidence leaks no source artifact/revision/locator/span IDs;
 14. mixed admitted + hidden supporters returns only admitted supporters;
 15. out-of-scope supporter is omitted;
@@ -888,6 +973,8 @@ The implementation must include focused proof for at least the following.
 ### D. Anchor revalidation
 
 27. exact valid anchor resolves under same context;
+27a. additional admitted assertion supporter for the same evidence/source location does not change anchor identity; DTO metadata may list the new supporter set; the old anchor still resolves;
+27b. when every assertion supporter becomes hidden/excluded, resolve is public-safe unavailable (authorization), not an identity retarget;
 28. malformed anchor fails safely;
 29. unknown anchor version fails safely;
 30. context/request mismatch fails safely;
@@ -922,7 +1009,8 @@ The implementation must include focused proof for at least the following.
 50. hidden supporter provenance change does not perturb visible result digest;
 51. hidden-only evidence detail cannot be inferred from digest shape beyond unavailable state;
 52. work/timing changes do not perturb semantic digest;
-53. anchor identity changes when bound visible authority/context identity changes;
+53. anchor identity changes when bound visible evidence/source location or context identity changes;
+53a. admitted supporter-set change alone does not change anchor identity;
 54. seed/request input ordering where applicable is deterministic.
 
 ### H. Genericity
@@ -1094,6 +1182,8 @@ Do **not** implement in V4.2:
 ```text
 lexical search
 alias search
+alias-backed evidence reads
+IdentityAlias as a V4.2 admission/authorization path
 ranked search
 FTS/BM25
 vector retrieval
@@ -1127,7 +1217,8 @@ Stop and return to Steward if any become true:
 
 1. exact assertion/evidence retrieval requires full-space projection;
 2. evidence authority cannot be derived safely from admitted supporter assertions;
-3. evidence with zero admitted supporters must be exposed for a required product workflow;
+3. evidence with zero admitted assertion supporters must be exposed for a required product workflow;
+3a. alias-only evidence must be publicly returnable; that is a bounded alias-evidence successor, not a V4.2 patch and not a reason to stuff alias IDs into `evidence_supporters`;
 4. correct source-anchor resolution requires scanning all EvidenceRefs or all assertions;
 5. anchor target recovery requires a new durable reverse index or frozen V0 contract change;
 6. an anchor must act as authorization independent of V2 admission;
@@ -1198,6 +1289,8 @@ Frozen V0 aggregate
 Accepted V4.1 predecessor identity
 Exact assertion-evidence authority shape
 Exact evidence-supporter authority shape
+Alias-only vs orphan classification (alias-only is out of V4.2, not orphan)
+Anchor identity vs supporter-set metadata
 Anchor token/revalidation design
 Privacy behavior for missing vs hidden targets
 Semantic witnesses
@@ -1228,10 +1321,13 @@ Steward review must verify:
 
 - assertion target itself passes V2 before evidence leaks;
 - evidence is available only through admitted supporter assertions;
+- alias-only evidence is not classified as orphan and is not a V4.2 admission path;
 - hidden/missing evidence cases are public-safe;
 - mixed-support evidence returns admitted supporters only;
 - source lifecycle/visibility remains fail-closed;
-- anchors never bypass V2.
+- anchors never bypass V2;
+- anchor identity binds evidence/source location + context, not admitted supporter IDs;
+- supporter-set change without evidence/source location change leaves the bound anchor valid.
 
 ### Structural work
 
