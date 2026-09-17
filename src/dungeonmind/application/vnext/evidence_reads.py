@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from dungeonmind.domain.canonical import canonical_sha256
@@ -299,11 +301,41 @@ def _with_anchors(
     )
 
 
+_ACTIVE_TRACE: ContextVar[list[EvidenceReadTrace] | None] = ContextVar(
+    "dungeonmind_vnext_evidence_read_trace", default=None
+)
+
+
+@contextmanager
+def _capture_evidence_read_trace() -> Iterator[list[EvidenceReadTrace]]:
+    """Package-private characterization capture. Not part of the exported API."""
+    bucket: list[EvidenceReadTrace] = []
+    token = _ACTIVE_TRACE.set(bucket)
+    try:
+        yield bucket
+    finally:
+        _ACTIVE_TRACE.reset(token)
+
+
+def _record_trace(trace: EvidenceReadTrace) -> None:
+    bucket = _ACTIVE_TRACE.get()
+    if bucket is None:
+        return
+    bucket.clear()
+    bucket.append(trace)
+
+
+def _captured_trace() -> EvidenceReadTrace:
+    bucket = _ACTIVE_TRACE.get()
+    if not bucket:
+        return _empty_trace()
+    return bucket[-1]
+
+
 class EvidenceReadService:
     """Exact assertion/evidence support and source-anchor revalidation."""
 
-    def __init__(self) -> None:
-        self.last_trace: EvidenceReadTrace = _empty_trace()
+    __slots__ = ()
 
     def get_assertion_evidence(
         self,
@@ -365,7 +397,7 @@ class EvidenceReadService:
             )
             for item in evidence_tuple
         )
-        self.last_trace = _with_anchors(trace, constructed=len(anchors), revalidated=0)
+        _record_trace(_with_anchors(trace, constructed=len(anchors), revalidated=0))
         completeness = _complete()
         return AssertionEvidenceResult(
             identity=identity,
@@ -443,11 +475,10 @@ class EvidenceReadService:
             evidence_ids_consulted=0,
             provenance_snapshot_calls=admission.work.provenance_snapshot_calls,
         )
+        admitted_id_set = set(admission.admitted_assertion_ids)
         admitted_ids = tuple(
             sorted(
-                assertion_id
-                for assertion_id in supporter_ids
-                if assertion_id in set(admission.admitted_assertion_ids)
+                assertion_id for assertion_id in supporter_ids if assertion_id in admitted_id_set
             )
         )
         if not admitted_ids:
@@ -471,7 +502,7 @@ class EvidenceReadService:
                 admitted_supporter_assertion_ids=admitted_ids,
             ),
         )
-        self.last_trace = _with_anchors(trace, constructed=1, revalidated=0)
+        _record_trace(_with_anchors(trace, constructed=1, revalidated=0))
         completeness = _complete()
         return EvidenceLookupResult(
             identity=identity,
@@ -507,12 +538,12 @@ class EvidenceReadService:
         identity = _identity(context)
         parsed_token = decode_anchor_token(requested)
         if parsed_token is None:
-            self.last_trace = _empty_trace()
+            _record_trace(_empty_trace())
             return self._unresolved_anchor(identity=identity, requested=requested)
         evidence_ref_id, identity_digest = parsed_token
         lookup = self.get_evidence(context, evidence_ref_id)
-        trace = self.last_trace
-        self.last_trace = _with_anchors(trace, constructed=trace.anchors_constructed, revalidated=1)
+        trace = _captured_trace()
+        _record_trace(_with_anchors(trace, constructed=trace.anchors_constructed, revalidated=1))
         if not lookup.available or lookup.evidence is None or not lookup.anchors:
             return self._unresolved_anchor(identity=identity, requested=requested)
         current_digest = compute_anchor_identity_digest(
@@ -559,7 +590,7 @@ class EvidenceReadService:
         requested: str,
         trace: EvidenceReadTrace,
     ) -> AssertionEvidenceResult:
-        self.last_trace = trace
+        _record_trace(trace)
         completeness = _complete()
         return AssertionEvidenceResult(
             identity=identity,
@@ -587,7 +618,7 @@ class EvidenceReadService:
         requested: str,
         trace: EvidenceReadTrace,
     ) -> EvidenceLookupResult:
-        self.last_trace = trace
+        _record_trace(trace)
         completeness = _complete()
         return EvidenceLookupResult(
             identity=identity,

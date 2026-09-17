@@ -13,7 +13,11 @@ from typing import Any, Literal
 
 from dungeonmind.application.vnext.admission import AlwaysAdmitPolicy
 from dungeonmind.application.vnext.builder import build_parsed_knowledge_revision
-from dungeonmind.application.vnext.evidence_reads import EvidenceReadService, EvidenceReadTrace
+from dungeonmind.application.vnext.evidence_reads import (
+    EvidenceReadService,
+    EvidenceReadTrace,
+    _capture_evidence_read_trace,
+)
 from dungeonmind.application.vnext.provenance import InMemoryKnowledgeSourceReader
 from dungeonmind.application.vnext.read_context import KnowledgeReadContext
 from dungeonmind.application.vnext.source_anchors import decode_anchor_token
@@ -364,50 +368,51 @@ def _time_operation(
     last_evidence_count = 0
     last_supporter_count = 0
     recovered_evidence_id = ""
-    for _ in range(iterations):
-        read_context = _fresh(context)
-        start = time.perf_counter()
-        if kind == "assertion":
-            result = service.get_assertion_evidence(read_context, target)
-            last_available = result.available
-            last_digest = result.result_digest
-            last_evidence_count = len(result.evidence)
-            last_supporter_count = 1 if result.assertion is not None else 0
-            last_anchor_id = result.anchors[0].anchor_id if result.anchors else ""
-            last_resolved = None
-        elif kind == "evidence":
-            result = service.get_evidence(read_context, target)
-            last_available = result.available
-            last_digest = result.result_digest
-            last_evidence_count = 1 if result.evidence is not None else 0
-            last_supporter_count = len(result.admitted_supporter_assertions)
-            last_anchor_id = result.anchors[0].anchor_id if result.anchors else ""
-            last_resolved = None
-        elif kind == "resolve":
-            resolved = service.resolve_source_anchor(read_context, target)
-            last_available = resolved.resolved
-            last_resolved = resolved.resolved
-            last_digest = resolved.result_digest
-            last_evidence_count = 1 if resolved.evidence is not None else 0
-            last_supporter_count = len(resolved.admitted_supporter_assertions)
-            last_anchor_id = resolved.anchor.anchor_id if resolved.anchor is not None else ""
-        else:
-            created = service.get_evidence(read_context, target)
-            resolved = service.resolve_source_anchor(read_context, created.anchors[0].anchor_id)
-            last_available = created.available and resolved.resolved
-            last_resolved = resolved.resolved
-            last_digest = resolved.result_digest
-            last_evidence_count = 1 if resolved.evidence is not None else 0
-            last_supporter_count = len(resolved.admitted_supporter_assertions)
-            last_anchor_id = resolved.anchor.anchor_id if resolved.anchor is not None else ""
-        samples.append((time.perf_counter() - start) * 1000.0)
+    with _capture_evidence_read_trace() as traces:
+        for _ in range(iterations):
+            read_context = _fresh(context)
+            start = time.perf_counter()
+            if kind == "assertion":
+                result = service.get_assertion_evidence(read_context, target)
+                last_available = result.available
+                last_digest = result.result_digest
+                last_evidence_count = len(result.evidence)
+                last_supporter_count = 1 if result.assertion is not None else 0
+                last_anchor_id = result.anchors[0].anchor_id if result.anchors else ""
+                last_resolved = None
+            elif kind == "evidence":
+                result = service.get_evidence(read_context, target)
+                last_available = result.available
+                last_digest = result.result_digest
+                last_evidence_count = 1 if result.evidence is not None else 0
+                last_supporter_count = len(result.admitted_supporter_assertions)
+                last_anchor_id = result.anchors[0].anchor_id if result.anchors else ""
+                last_resolved = None
+            elif kind == "resolve":
+                resolved = service.resolve_source_anchor(read_context, target)
+                last_available = resolved.resolved
+                last_resolved = resolved.resolved
+                last_digest = resolved.result_digest
+                last_evidence_count = 1 if resolved.evidence is not None else 0
+                last_supporter_count = len(resolved.admitted_supporter_assertions)
+                last_anchor_id = resolved.anchor.anchor_id if resolved.anchor is not None else ""
+            else:
+                created = service.get_evidence(read_context, target)
+                resolved = service.resolve_source_anchor(read_context, created.anchors[0].anchor_id)
+                last_available = created.available and resolved.resolved
+                last_resolved = resolved.resolved
+                last_digest = resolved.result_digest
+                last_evidence_count = 1 if resolved.evidence is not None else 0
+                last_supporter_count = len(resolved.admitted_supporter_assertions)
+                last_anchor_id = resolved.anchor.anchor_id if resolved.anchor is not None else ""
+            samples.append((time.perf_counter() - start) * 1000.0)
     decoded = decode_anchor_token(last_anchor_id) if last_anchor_id else None
     if decoded is not None:
         recovered_evidence_id = decoded[0]
     timing = _percentiles(samples)
     return {
         **timing,
-        **_trace_payload(service.last_trace),
+        **_trace_payload(traces[-1]),
         "available": last_available,
         "resolved": last_resolved,
         "result_digest": last_digest,

@@ -13,7 +13,10 @@ import pytest
 from dungeonmind.application.vnext.admission import AlwaysAdmitPolicy, ExcludeByAssertionIdPolicy
 from dungeonmind.application.vnext.builder import build_parsed_knowledge_revision
 from dungeonmind.application.vnext.errors import EvidenceReadIntegrityError
-from dungeonmind.application.vnext.evidence_reads import EvidenceReadService
+from dungeonmind.application.vnext.evidence_reads import (
+    EvidenceReadService,
+    _capture_evidence_read_trace,
+)
 from dungeonmind.application.vnext.model import ParsedKnowledgeRevision
 from dungeonmind.application.vnext.provenance import InMemoryKnowledgeSourceReader
 from dungeonmind.application.vnext.read_context import KnowledgeReadContext
@@ -63,6 +66,13 @@ V42_HANDOFF_PATH = REPO_ROOT / "Docs" / "Handoffs" / "HANDOFF-v4-2-evidence-sour
 V41_HANDOFF_PATH = REPO_ROOT / "Docs" / "Handoffs" / "HANDOFF-v4-1-bounded-neighborhood.md"
 EVIDENCE_SRC = VNEXT_SRC / "evidence_reads.py"
 ANCHOR_SRC = VNEXT_SRC / "source_anchors.py"
+
+
+def _call_with_trace(operation):
+    with _capture_evidence_read_trace() as traces:
+        result = operation()
+    assert traces
+    return result, traces[-1]
 
 
 def _lab_contract() -> DomainContractDescriptor:
@@ -450,11 +460,11 @@ def test_10_missing_zero_supporter_and_alias_only_are_unavailable() -> None:
         return original(self, alias_id)
 
     with patch.object(ParsedKnowledgeRevision, "get_alias", counting):
-        alias_only = _SVC.get_evidence(alias_ctx, "evidence:alias")
+        alias_only, trace = _call_with_trace(lambda: _SVC.get_evidence(alias_ctx, "evidence:alias"))
     _public_unavailable(alias_only)
     assert lookup_count["n"] == 0
     assert "orphan" not in str(alias_only).lower()
-    assert _SVC.last_trace.supporter_candidates == 0
+    assert trace.supporter_candidates == 0
 
 
 def test_11_hidden_scope_and_policy_only_supporters_unavailable() -> None:
@@ -535,10 +545,10 @@ def test_13_exact_lookup_uses_evidence_supporters_not_all_assertions() -> None:
         return original(self, assertion_id)
 
     with patch.object(ParsedKnowledgeRevision, "get_assertion", counting):
-        result = _SVC.get_evidence(context, "evidence:lab")
+        result, trace = _call_with_trace(lambda: _SVC.get_evidence(context, "evidence:lab"))
     assert result.available is True
     assert lookup_count["n"] < 20
-    assert _SVC.last_trace.supporter_candidates == 1
+    assert trace.supporter_candidates == 1
     assert not hasattr(result, "supporter_candidates")
     assert not hasattr(result, "work")
 
@@ -554,12 +564,14 @@ def test_14_public_dto_omits_raw_candidate_counts() -> None:
             )
         ],
     )
-    result = _SVC.get_evidence(hidden, "evidence:lab")
-    assert _SVC.last_trace.supporter_candidates == 1
+    result, hidden_trace = _call_with_trace(lambda: _SVC.get_evidence(hidden, "evidence:lab"))
+    assert hidden_trace.supporter_candidates == 1
     assert "supporter_candidates" not in result.__dataclass_fields__
     missing, _ = _lab_context(entities=[Entity(entity_id="A")], assertions=[], evidence=[])
     missing_result = _SVC.get_evidence(missing, "evidence:lab")
     assert result.result_digest == missing_result.result_digest
+    assert not hasattr(_SVC, "last_trace")
+    assert "last_trace" not in dir(_SVC)
 
 
 def test_15_unrelated_growth_does_not_change_fixed_target_work() -> None:
@@ -580,10 +592,8 @@ def test_15_unrelated_growth_does_not_change_fixed_target_work() -> None:
         context, _ = _lab_context(entities=entities, assertions=assertions, evidence=evidence)
         return context
 
-    small = _SVC.get_evidence(build(20), "evidence:lab")
-    small_trace = _SVC.last_trace
-    large = _SVC.get_evidence(build(400), "evidence:lab")
-    large_trace = _SVC.last_trace
+    small, small_trace = _call_with_trace(lambda: _SVC.get_evidence(build(20), "evidence:lab"))
+    large, large_trace = _call_with_trace(lambda: _SVC.get_evidence(build(400), "evidence:lab"))
     assert small_trace.supporter_candidates == large_trace.supporter_candidates == 1
     assert small_trace.assertions_evaluated == large_trace.assertions_evaluated == 1
     assert small_trace.unique_artifact_ids_requested == large_trace.unique_artifact_ids_requested
@@ -604,10 +614,8 @@ def test_16_high_support_scales_honestly() -> None:
         )
         return context
 
-    four = _SVC.get_evidence(build(4), "evidence:hub")
-    four_trace = _SVC.last_trace
-    many = _SVC.get_evidence(build(64), "evidence:hub")
-    many_trace = _SVC.last_trace
+    four, four_trace = _call_with_trace(lambda: _SVC.get_evidence(build(4), "evidence:hub"))
+    many, many_trace = _call_with_trace(lambda: _SVC.get_evidence(build(64), "evidence:hub"))
     assert four.available is many.available is True
     assert four_trace.supporter_candidates == 4
     assert many_trace.supporter_candidates == 64
@@ -674,3 +682,62 @@ def test_19_evidence_support_10k_benchmark_records_shape() -> None:
         assert "supporter_candidates" in run
         assert "assertions_evaluated" in run
         assert "unique_artifact_ids_requested" in run
+
+
+def test_20_exported_service_has_no_hidden_candidate_side_channel() -> None:
+    hidden, _ = _lab_context(
+        entities=[Entity(entity_id="A")],
+        assertions=[
+            _literal(
+                "asrt:hidden",
+                "A",
+                visibility=LabelsAllVisibility(labels=["test:hidden"]),
+            )
+        ],
+    )
+    missing, _ = _lab_context(entities=[Entity(entity_id="A")], assertions=[], evidence=[])
+    service = EvidenceReadService()
+    hidden_result = service.get_evidence(hidden, "evidence:lab")
+    missing_result = service.get_evidence(missing, "evidence:lab")
+    assert hidden_result.available is False
+    assert missing_result.available is False
+    assert hidden_result.result_digest == missing_result.result_digest
+    assert not hasattr(service, "last_trace")
+    assert "last_trace" not in dir(service)
+    exported = (VNEXT_SRC / "__init__.py").read_text(encoding="utf-8")
+    assert "last_trace" not in exported
+    assert "EvidenceReadTrace" not in exported
+    assert "_capture_evidence_read_trace" not in exported
+    _, hidden_trace = _call_with_trace(lambda: service.get_evidence(hidden, "evidence:lab"))
+    _, missing_trace = _call_with_trace(lambda: service.get_evidence(missing, "evidence:lab"))
+    assert hidden_trace.supporter_candidates == 1
+    assert missing_trace.supporter_candidates == 0
+
+
+def test_21_get_evidence_hoists_admitted_supporter_set() -> None:
+    source = EVIDENCE_SRC.read_text(encoding="utf-8")
+    assert "admitted_id_set = set(admission.admitted_assertion_ids)" in source
+    assert "if assertion_id in set(admission.admitted_assertion_ids)" not in source
+    tree = ast.parse(source)
+    service_cls = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "EvidenceReadService"
+    )
+    method = next(
+        node
+        for node in service_cls.body
+        if isinstance(node, ast.FunctionDef) and node.name == "get_evidence"
+    )
+    nested_set_in_comp = [
+        node
+        for node in ast.walk(method)
+        if isinstance(node, (ast.ListComp, ast.GeneratorExp, ast.SetComp))
+        for inner in ast.walk(node)
+        if (
+            isinstance(inner, ast.Call)
+            and isinstance(inner.func, ast.Name)
+            and inner.func.id == "set"
+        )
+    ]
+    assert nested_set_in_comp == []
