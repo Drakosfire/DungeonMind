@@ -379,16 +379,16 @@ def test_07_duplicate_seeds_are_deduped() -> None:
     assert result.work.seed_entity_lookups == 1
 
 
-def test_08_seed_order_does_not_change_digest() -> None:
+def test_08_seed_order_does_not_change_semantic_result() -> None:
     context, _ = _lab_context(
         entities=[Entity(entity_id="A"), Entity(entity_id="B"), Entity(entity_id="C")],
         assertions=[_edge("asrt:ac", "A", "C"), _edge("asrt:bc", "B", "C")],
     )
     first = _SVC.get_neighborhood(context, ["A", "B"], depth=1)
     second = _SVC.get_neighborhood(context, ["B", "A"], depth=1)
-    assert first.result_digest == second.result_digest
-    assert first.found_seed_entity_ids == second.found_seed_entity_ids
-    assert _asrt_ids(first) == _asrt_ids(second)
+    third = _SVC.get_neighborhood(context, ["B", "A", "B"], depth=1)
+    assert first.requested_seed_entity_ids == ("A", "B")
+    assert first == second == third
 
 
 def test_09_too_many_seeds_fails_explicitly() -> None:
@@ -908,7 +908,9 @@ def test_50_same_context_source_epoch_across_layers() -> None:
         assertions=[_edge("asrt:ab", "A", "B"), _edge("asrt:bc", "B", "C")],
     )
     result = _SVC.get_neighborhood(context, ["A"], depth=2)
-    assert result.work.provenance_snapshot_calls <= 2
+    assert result.work.provenance_snapshot_calls == 2
+    assert result.work.artifact_ids_requested == 1
+    assert result.work.revision_ids_requested == 1
     assert result.work.layers[0].assertions_evaluated == 1
     assert result.work.layers[1].assertions_evaluated == 1
 
@@ -975,9 +977,14 @@ def test_55_neighborhood_10k_benchmark_records_shape() -> None:
         assert "result_digest" in run
         assert "assertions_evaluated" in run
         assert "artifact_ids_requested" in run
-    assert payload["runs"]["low_degree_depth_1_10k"]["assertions_evaluated"] == payload["runs"][
-        "low_degree_depth_1_1k"
-    ]["assertions_evaluated"]
+    assert (
+        payload["runs"]["low_degree_depth_1_10k"]["assertions_evaluated"]
+        == payload["runs"]["low_degree_depth_1_1k"]["assertions_evaluated"]
+    )
+    branching = payload["runs"]["branching_depth_2_10k"]
+    assert branching["provenance_snapshot_calls"] == 2
+    assert branching["artifact_ids_requested"] == 1
+    assert branching["revision_ids_requested"] == 1
 
 
 @pytest.fixture(name="org_context")

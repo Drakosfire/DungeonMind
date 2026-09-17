@@ -114,7 +114,7 @@ def _normalize_seeds(seed_entity_ids: Sequence[str]) -> tuple[str, ...]:
         raise NeighborhoodReadIntegrityError(
             f"at most {MAX_NEIGHBORHOOD_SEED_COUNT} seed entity IDs are allowed"
         )
-    return tuple(normalized)
+    return tuple(sorted(normalized))
 
 
 def _normalize_depth(depth: object) -> Literal[1, 2]:
@@ -247,8 +247,8 @@ class NeighborhoodReadService:
         assertions_evaluated = 0
         policy_evaluations = 0
         endpoint_entity_lookups = 0
-        artifact_ids_requested = 0
-        revision_ids_requested = 0
+        requested_artifact_ids: set[str] = set()
+        requested_revision_ids: set[str] = set()
         provenance_snapshot_calls = 0
 
         frontier = tuple(sorted(found_seeds))
@@ -282,8 +282,8 @@ class NeighborhoodReadService:
                 layer_policy = admission.work.policy_evaluations
                 assertions_evaluated += layer_evaluated
                 policy_evaluations += layer_policy
-                artifact_ids_requested += admission.work.artifact_ids_requested
-                revision_ids_requested += admission.work.revision_ids_requested
+                requested_artifact_ids.update(provenance.requested_artifact_ids)
+                requested_revision_ids.update(provenance.requested_revision_ids)
                 provenance_snapshot_calls += admission.work.provenance_snapshot_calls
                 for assertion_id in admission.admitted_assertion_ids:
                     assertion = parsed.get_assertion(assertion_id)
@@ -341,8 +341,8 @@ class NeighborhoodReadService:
             policy_evaluations=policy_evaluations,
             endpoint_entity_lookups=endpoint_entity_lookups,
             evidence_ids_returned=len(evidence),
-            artifact_ids_requested=artifact_ids_requested,
-            revision_ids_requested=revision_ids_requested,
+            artifact_ids_requested=len(requested_artifact_ids),
+            revision_ids_requested=len(requested_revision_ids),
             provenance_snapshot_calls=provenance_snapshot_calls,
             returned_entities=len(entities_tuple),
             returned_traversal_assertions=len(assertions_tuple),

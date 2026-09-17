@@ -406,6 +406,9 @@ def main() -> None:
         and branch_d2_10k["assertions_evaluated"] == branch_d2_1k["assertions_evaluated"]
         and branch_d2_10k["deduped_candidate_assertions"]
         == branch_d2_1k["deduped_candidate_assertions"]
+        and branch_d2_10k["artifact_ids_requested"] == 1
+        and branch_d2_10k["revision_ids_requested"] == 1
+        and branch_d2_10k["provenance_snapshot_calls"] == 2
         and noisy_d2["assertions_evaluated"] < NOISY_LITERALS
         and all(
             layer["touching_assertion_candidates"] < DEPTH_BOUNDARY_EDGES

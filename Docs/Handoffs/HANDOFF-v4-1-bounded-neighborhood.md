@@ -1,7 +1,7 @@
 # HANDOFF — V4.1 bounded neighborhood reads
 
 **Created:** 2026-09-16  
-**Status:** ACTIVE — implementation proceeding from current `main`  
+**Status:** ACTIVE / IMPLEMENTATION IN REVIEW / NOT ACCEPTED  
 **Repository / implementation branch:** `Drakosfire/DungeonMind` / `kernel/v4-1-bounded-neighborhood`  
 **Predecessor:** PR #63 — `KERNEL: V3 lazy exact and complete entity reads`  
 **Accepted predecessor head:** `6c8adb474d84df6dc6e1d55cec6bedb2380e100b`  
@@ -12,7 +12,7 @@
 **Current implementation base:** `82a5c3e6889ad4e5648fef8f358423b5a576cb9b` — merged PR #64  
 **PR #64:** merged handoff/control-surface history; **not** V4.1 runtime implementation; **not** `V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED`  
 **Frozen vNext contract aggregate:** `fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea`  
-**Roadmap phase:** V4.1 — bounded neighborhood — ACTIVE / NOT IMPLEMENTED  
+**Roadmap phase:** V4.1 — bounded neighborhood — ACTIVE / IMPLEMENTATION IN REVIEW / NOT ACCEPTED  
 **Successor:** V4.2 — standalone evidence + source-anchor support  
 **One-line mission:** Turn V1 revision-local entity-ref assertion indexes, V2 candidate-local admission, and V3 exact entity semantics into deterministic depth-1/depth-2 admitted graph traversal whose work is proportional to the visited frontier and its authority support rather than the whole KnowledgeSpace.
 
