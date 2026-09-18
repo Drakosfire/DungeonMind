@@ -1,9 +1,17 @@
 # HANDOFF — V4.2 evidence reads + source anchors
 
 **Created:** 2026-09-16
-**Status:** ACTIVE / IMPLEMENTATION NOT YET ACCEPTED — V4.1 accepted and merged; V4.2 may begin from exact current `main`
+**Status:** COMPLETE — `V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED`
 **Repository:** `Drakosfire/DungeonMind`
 **Implementation branch:** `kernel/v4-2-evidence-source-anchors`
+**Accepted exact head:** `84fe11fbf583732366d3828e01ed9a0051e4bd7a`  
+**Substantive repair head:** `28a4dbe16507b89d601a335b559d3203623cffd4`  
+**Logical Steward review cycles:** `2`  
+**Final PASS review:** `5237236070`  
+**Disposition:** `V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED`  
+**Merge:** `74733ddf9fc338469293c27c12302004fc1be99a` — PR #67  
+**Benchmark:** `Docs/Benchmarks/vnext_evidence_support_10k_v1.json`  
+**Benchmark substantive head:** `28a4dbe16507b89d601a335b559d3203623cffd4`  
 **Exact implementation base:** `7f5df9eace6f1ab23a0d817e0b350c379923641f`
 **Frozen vNext contract aggregate:** `fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea`
 **Roadmap phase:** V4.2 — evidence + source-anchor support

@@ -325,7 +325,8 @@ def test_01_implementation_base_recorded() -> None:
     assert IMPLEMENTATION_BASE in handoff
     assert "V4.1 COMPLETE" in steward
     assert "V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED" in steward
-    assert "V4.2 ACTIVE" in steward
+    assert "V4.2 COMPLETE" in steward
+    assert "V4.3 ACTIVE" in steward
     assert "IMPLEMENTATION NOT YET ACCEPTED" in steward
     assert "implementation now proceeding from current main" in handoff
 

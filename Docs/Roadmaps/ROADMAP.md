@@ -534,29 +534,36 @@ Preserve existing fail-closed provenance behavior.
 
 ## V4.3 — Deterministic search
 
-**Primary question:** Can search generate a small structural candidate set before expensive admission?
+**Primary question:** Can deterministic entity search generate an exact structural match-witness set from immutable revision-local indexes, admit only those witnesses through the pinned V2 authority path, and rank only admitted matches so that work grows with the real query match set rather than the whole KnowledgeSpace, while hidden or excluded matches cannot affect public result membership, ordering, or digest?
 
-First index:
+Search indexes discover candidates. They never authorize them.
 
-```text
-exact entity ID
-normalized label
-normalized alias
-tokens
-qualified predicates/terms
-```
+Public V4.3 results are **assertion-backed**. The revision may retain `alias_exact_index` as rebuildable structural substrate, but V4.3 must not treat an alias match as authority and must not return an entity merely because an alias matched and some unrelated assertion is admitted.
 
 Shape:
 
 ```text
 query
-→ deterministic candidate generation
-→ bounded deterministic ranking
-→ candidate-local provenance/admission
-→ results
+→ revision-local structural candidate generation
+→ exact match-witness assertions
+→ candidate-local V2 admission
+→ admitted-match aggregation
+→ deterministic ranking
+→ output limit
 ```
 
-Escalation only if measured need remains:
+Do not rank or cap candidates before admission. Hidden matches may increase internal work; they must not change visible membership, order, score, or digest.
+
+Indexes:
+
+```text
+exact entity ID
+assertion-level lexical tokens
+qualified predicates
+qualified term-ref values
+```
+
+Escalation only if later measured need remains:
 
 ```text
 1. revision-local lexical index

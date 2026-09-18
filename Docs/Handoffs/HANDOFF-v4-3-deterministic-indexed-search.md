@@ -5,7 +5,7 @@
 **Repository:** `Drakosfire/DungeonMind`  
 **Implementation branch:** `kernel/v4-3-deterministic-indexed-search`  
 **Accepted predecessor merge:** `74733ddf9fc338469293c27c12302004fc1be99a` — merged PR #67  
-**Implementation branch base:** branch from the current `main` that contains this handoff; record that exact SHA in the implementation PR before runtime work begins  
+**Implementation branch base:** `8aa654bc192c1aeb51a5f908a44fce9a1c4c5b4c`  
 **Frozen vNext contract aggregate:** `fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea`  
 **Roadmap phase:** V4.3 — deterministic indexed search  
 **Successor:** V5 — generic governed writes  

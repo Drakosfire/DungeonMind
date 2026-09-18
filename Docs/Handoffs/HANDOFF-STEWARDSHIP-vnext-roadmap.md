@@ -4,9 +4,9 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `7f5df9eace6f1ab23a0d817e0b350c379923641f` — merged PR #66, V4.2 implementation base  
-**Last merged roadmap implementation:** PR #66 — `KERNEL: V4.1 bounded neighborhood reads`  
-**Last merged control-surface history:** PR #64 remains historical handoff/bookkeeping only; it is not V4.1 runtime acceptance  
+**Current main anchor:** `8aa654bc192c1aeb51a5f908a44fce9a1c4c5b4c` — V4.3 implementation base after PR #67 merge and V4.3 design handoff  
+**Last merged roadmap implementation:** PR #67 — `KERNEL: V4.2 evidence reads + source anchors`  
+**Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
 **Read/performance architecture:** `Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`  
@@ -58,9 +58,9 @@ V2   Generic KnowledgeReadContext + candidate admission  COMPLETE
 V3   Lazy exact / complete entity reads                  COMPLETE
 V4   Neighborhood + evidence + anchor + indexed search   ACTIVE
   V4.1 Bounded neighborhood                              COMPLETE
-  V4.2 Evidence + anchor support                         ACTIVE
-  V4.3 Deterministic indexed search                      BLOCKED ON V4.2 ACCEPTANCE
-V5   Generic governed write contracts
+  V4.2 Evidence + anchor support                         COMPLETE
+  V4.3 Deterministic indexed search                      ACTIVE
+V5   Generic governed write contracts                    BLOCKED ON V4.3 ACCEPTANCE
 V6   DungeonBuddy domain implementation
 V7   Bridge-genesis migration
 V8   Joint semantic + performance acceptance
@@ -78,63 +78,61 @@ V2 COMPLETE — V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
 V3 COMPLETE — V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED
 V4 ACTIVE
 V4.1 COMPLETE — V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
-V4.2 ACTIVE
+V4.2 COMPLETE — V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
+V4.3 ACTIVE
 ```
 
 ### Current primary question
 
-**V4.2 — evidence reads + source anchors**
+**V4.3 — deterministic indexed search**
 
-> Can exact assertion/evidence support and context-bound source anchors be retrieved and revalidated through revision-local `assertion_evidence` / `evidence_supporters` indexes plus candidate-local V2 admission/provenance, with work proportional to the exact requested support set rather than the whole KnowledgeSpace?
+> Can deterministic entity search generate an exact structural match-witness set from immutable revision-local indexes, admit only those witnesses through the pinned V2 authority path, and rank only admitted matches so that work grows with the real query match set rather than the whole KnowledgeSpace, while hidden or excluded matches cannot affect public result membership, ordering, or digest?
 
-V4.2 is exact support and source-anchor revalidation only. It is not permission to implement deterministic search.
+V4.3 is assertion-backed deterministic indexed discovery only. Public results are not alias-authorized. It is not permission to implement fuzzy, FTS, vector, or V5 writes.
 
 Current implementation base:
 
 ```text
-7f5df9eace6f1ab23a0d817e0b350c379923641f
+8aa654bc192c1aeb51a5f908a44fce9a1c4c5b4c
 ```
 
 ```text
-PR #66:
-  KERNEL: V4.1 bounded neighborhood reads
+PR #67:
+  KERNEL: V4.2 evidence reads + source anchors
 
 accepted head:
-  9b0fd143552ea5e4def3f4a7c8d08050b206eb52
+  84fe11fbf583732366d3828e01ed9a0051e4bd7a
 
 substantive repair head:
-  626a5fcd2bea3395c62d62aa091b7c666b2ab26f
+  28a4dbe16507b89d601a335b559d3203623cffd4
 
 review cycles:
-  3
+  2
 
 final PASS:
-  5230663567
+  5237236070
 
 disposition:
-  V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
+  V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
 
 merge:
-  7f5df9eace6f1ab23a0d817e0b350c379923641f
+  74733ddf9fc338469293c27c12302004fc1be99a
 
 benchmark:
-  Docs/Benchmarks/vnext_neighborhood_10k_v1.json
-
-V4.1:
-  COMPLETE
+  Docs/Benchmarks/vnext_evidence_support_10k_v1.json
 
 V4.2:
-  ACTIVE
-  IMPLEMENTATION NOT YET ACCEPTED
+  COMPLETE
 
 V4.3:
-  BLOCKED ON V4.2 ACCEPTANCE
+  ACTIVE
+  IMPLEMENTATION NOT YET ACCEPTED
 
 V5:
   BLOCKED ON V4.3 ACCEPTANCE
 ```
 
-Do not reinterpret PR #64 as V4.1 runtime acceptance. PR #66 is the accepted V4.1 runtime merge.
+Do not reinterpret PR #64 as V4.1 runtime acceptance. PR #67 is the accepted V4.2 runtime merge. The V4.3 design handoff is already on `main`; this implementation PR does not create another handoff file.
 
 ---
 
@@ -690,33 +688,34 @@ What remains safe in parallel:
 ### Last merged roadmap implementation
 
 ```text
-DungeonMind PR #66
-KERNEL: V4.1 bounded neighborhood reads
-merged: 7f5df9eace6f1ab23a0d817e0b350c379923641f
-accepted implementation head: 9b0fd143552ea5e4def3f4a7c8d08050b206eb52
-substantive repair head: 626a5fcd2bea3395c62d62aa091b7c666b2ab26f
-review cycles: 3
-final PASS review: 5230663567
+DungeonMind PR #67
+KERNEL: V4.2 evidence reads + source anchors
+merged: 74733ddf9fc338469293c27c12302004fc1be99a
+accepted implementation head: 84fe11fbf583732366d3828e01ed9a0051e4bd7a
+substantive repair head: 28a4dbe16507b89d601a335b559d3203623cffd4
+review cycles: 2
+final PASS review: 5237236070
 disposition:
-  V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
-artifact: Docs/Benchmarks/vnext_neighborhood_10k_v1.json
-artifact exact substantive head: 626a5fcd2bea3395c62d62aa091b7c666b2ab26f
+  V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
+artifact: Docs/Benchmarks/vnext_evidence_support_10k_v1.json
+artifact exact substantive head: 28a4dbe16507b89d601a335b559d3203623cffd4
 structural gate: PASS
-10k low-degree depth-1 p95: ~1.97 ms
+10k exact evidence p95: ~2.06 ms
 frozen V0 aggregate: fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
 ```
 
-Current `main` after PR #66:
+Current `main` at V4.3 activation:
 
 ```text
-7f5df9eace6f1ab23a0d817e0b350c379923641f
+8aa654bc192c1aeb51a5f908a44fce9a1c4c5b4c
 ```
 
-PR #64 remains merged handoff/control-surface history only. PR #66 is the accepted V4.1 runtime merge.
+PR #67 is the accepted V4.2 runtime merge. The V4.3 design handoff is already on that `main`.
 
 Prior key anchors:
 
 ```text
+PR #67 74733ddf9fc338469293c27c12302004fc1be99a — V4.2 implementation
 PR #66 7f5df9eace6f1ab23a0d817e0b350c379923641f — V4.1 implementation
 PR #64 82a5c3e6889ad4e5648fef8f358423b5a576cb9b — V4.1 handoff/control-surface (not runtime)
 PR #63 c12bf89ea54af1112a0e98163aa224eb89b11c22 — V3 implementation
@@ -740,13 +739,14 @@ V2 COMPLETE — V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
 V3 COMPLETE — V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED
 V4 ACTIVE
 V4.1 COMPLETE — V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
-V4.2 ACTIVE
+V4.2 COMPLETE — V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
+V4.3 ACTIVE
 ```
 
 ### Next primary question
 
 ```text
-Can exact assertion/evidence support and context-bound source anchors be retrieved and revalidated through revision-local assertion_evidence / evidence_supporters indexes plus candidate-local V2 admission/provenance, with work proportional to the exact requested support set rather than the whole KnowledgeSpace?
+Can deterministic entity search generate an exact structural match-witness set from immutable revision-local indexes, admit only those witnesses through the pinned V2 authority path, and rank only admitted matches so that work grows with the real query match set rather than the whole KnowledgeSpace, while hidden or excluded matches cannot affect public result membership, ordering, or digest?
 ```
 
 ### Parallel work posture
@@ -755,10 +755,6 @@ Can exact assertion/evidence support and context-bound source anchors be retriev
 safe / independent:
   larger-scale benchmark characterization
   contract-frozen Buddy/domain work that does not depend on V4 runtime
-  design work for V4.3 that does not merge early
-
-blocked until V4.2 acceptance:
-  V4.3 merge
 
 blocked until V4.3 acceptance:
   V5+ governed-write implementation merge
@@ -771,9 +767,8 @@ blocked until later accepted predecessors:
 
 ### What remains false
 
-- no standalone vNext evidence retrieval API is accepted yet;
-- no standalone source-anchor creation/resolution API is accepted yet;
 - no native vNext deterministic search API is accepted yet;
+- no public alias-discovery authority contract is accepted;
 - no vNext KnowledgeSpace/head storage runtime exists;
 - no native vNext governed write path exists;
 - no bridge-genesis migration exists;
@@ -785,7 +780,7 @@ blocked until later accepted predecessors:
 
 ### Named next action
 
-Implement V4.2 on `kernel/v4-2-evidence-source-anchors` from current `main` `7f5df9eace6f1ab23a0d817e0b350c379923641f`. Bookkeeping and this V4.2 handoff belong in this same implementation PR as the first commit. Then implement only the evidence/source-anchor question. Do not create another handoff PR or bookkeeping-only PR. Draft PR #65 is superseded design history and must remain unmerged. V4.2 acceptance unblocks V4.3 only. Do not begin V4.3 search or V5 writes in the same implementation PR.
+Implement V4.3 on `kernel/v4-3-deterministic-indexed-search` from current `main` `8aa654bc192c1aeb51a5f908a44fce9a1c4c5b4c`. The V4.3 design handoff is already on `main`; do not create another handoff PR. Close V4.2 in this PR's first commit, then implement only the deterministic indexed-search question. Public V4.3 results stay assertion-backed. Do not invent alias authorization, fuzzy/FTS/vector search, or V5 writes.
 
 ---
 
