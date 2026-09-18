@@ -30,11 +30,13 @@ MATCH_KIND_PREDICATE = "predicate"
 MATCH_KIND_TERM_REF = "term_ref"
 MATCH_KIND_LEXICAL = "lexical"
 
-# Integer ranking weights. Higher wins; entity_id ascending is the final tie-break.
-SCORE_EXACT_ENTITY_ID = 1_000_000
-SCORE_PREDICATE_OR_TERM = 10_000
+# Within-class integer strength only. Class order is lexicographic, not weighted.
 SCORE_LEXICAL_TOKEN = 10
 SCORE_ADMITTED_ASSERTION = 1
+
+RANK_CLASS_EXACT_ID = 0
+RANK_CLASS_PREDICATE_OR_TERM = 1
+RANK_CLASS_LEXICAL = 2
 
 _MATCH_KIND_ORDER = (
     MATCH_KIND_EXACT_ID,
@@ -148,13 +150,17 @@ def _identity_payload(identity: SearchReadIdentity) -> dict[str, str]:
     }
 
 
-def _require_query(query: object) -> str:
+def _require_query(query: object) -> tuple[str, str]:
+    """Return ``(raw_query, normalized_query)``.
+
+    Empty after trim is rejected. Exact-ID lookup must use ``raw_query`` as
+    opaque identity; lexical/predicate/term search uses ``normalized_query``.
+    """
     if not isinstance(query, str):
         raise SearchReadIntegrityError("search query must be a string")
-    normalized = normalize_search_query(query)
-    if normalized == "":
+    if query.strip() == "":
         raise SearchReadIntegrityError("search query must be non-empty after trim")
-    return normalized
+    return query, normalize_search_query(query)
 
 
 def _require_limit(limit: object) -> int:
@@ -183,35 +189,43 @@ def _score_and_kinds(
     exact_id: bool,
 ) -> tuple[int, tuple[str, ...]]:
     kinds: list[str] = []
-    score = 0
     if exact_id:
         kinds.append(MATCH_KIND_EXACT_ID)
-        score += SCORE_EXACT_ENTITY_ID
     has_predicate = any(item.predicate == normalized_query for item in admitted)
     if has_predicate:
         kinds.append(MATCH_KIND_PREDICATE)
-        score += SCORE_PREDICATE_OR_TERM
     has_term = any(
         isinstance(item.value, ParsedTermRefValue) and item.value.term == normalized_query
         for item in admitted
     )
     if has_term:
         kinds.append(MATCH_KIND_TERM_REF)
-        score += SCORE_PREDICATE_OR_TERM
     witnessed_tokens: set[str] = set()
     query_token_set = set(query_tokens)
     for assertion in admitted:
         witnessed_tokens.update(tok for tok in _literal_tokens(assertion) if tok in query_token_set)
     if witnessed_tokens:
         kinds.append(MATCH_KIND_LEXICAL)
-        score += SCORE_LEXICAL_TOKEN * len(witnessed_tokens)
-    score += SCORE_ADMITTED_ASSERTION * len(admitted)
+    within_class_score = SCORE_LEXICAL_TOKEN * len(witnessed_tokens)
+    within_class_score += SCORE_ADMITTED_ASSERTION * len(admitted)
     ordered_kinds = tuple(kind for kind in _MATCH_KIND_ORDER if kind in kinds)
     if not ordered_kinds:
         raise SearchReadIntegrityError(
             f"admitted search hit {entity_id!r} has no authorized match kind"
         )
-    return score, ordered_kinds
+    return within_class_score, ordered_kinds
+
+
+def _hit_sort_key(hit: SearchHit) -> tuple[int, int, str]:
+    """Lexicographic class, then within-class strength, then opaque entity_id."""
+    kinds = hit.match_kinds
+    if MATCH_KIND_EXACT_ID in kinds:
+        rank_class = RANK_CLASS_EXACT_ID
+    elif MATCH_KIND_PREDICATE in kinds or MATCH_KIND_TERM_REF in kinds:
+        rank_class = RANK_CLASS_PREDICATE_OR_TERM
+    else:
+        rank_class = RANK_CLASS_LEXICAL
+    return (rank_class, -hit.deterministic_score, hit.entity.entity_id)
 
 
 def _result_digest(
@@ -258,7 +272,7 @@ class SearchReadService:
         *,
         limit: int = 20,
     ) -> SearchResult:
-        normalized_query = _require_query(query)
+        raw_query, normalized_query = _require_query(query)
         resolved_limit = _require_limit(limit)
         identity = _identity(context)
         parsed = context.parsed
@@ -276,7 +290,7 @@ class SearchReadService:
             witness_ids.update(parsed.lookup_lexical_assertions(token))
 
         exact_id_lookups = 1
-        exact_entity = parsed.get_entity(normalized_query)
+        exact_entity = parsed.get_entity(raw_query)
 
         ordered_witnesses = tuple(sorted(witness_ids))
         assertions_evaluated = 0
@@ -341,7 +355,7 @@ class SearchReadService:
                 )
             )
 
-        ranked.sort(key=lambda hit: (-hit.deterministic_score, hit.entity.entity_id))
+        ranked.sort(key=_hit_sort_key)
         hits = tuple(ranked[:resolved_limit])
         completeness = SearchCompleteness(status="complete")
         digest = _result_digest(

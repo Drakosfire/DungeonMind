@@ -15,13 +15,16 @@ from dungeonmind.application.vnext.errors import SearchReadIntegrityError
 from dungeonmind.application.vnext.model import ParsedKnowledgeRevision
 from dungeonmind.application.vnext.provenance import InMemoryKnowledgeSourceReader
 from dungeonmind.application.vnext.read_context import KnowledgeReadContext
+from dungeonmind.application.vnext.records import ParsedEntity
 from dungeonmind.application.vnext.search import (
     MATCH_KIND_EXACT_ID,
     MATCH_KIND_LEXICAL,
     MATCH_KIND_PREDICATE,
     MATCH_KIND_TERM_REF,
+    SearchHit,
     SearchReadService,
     _capture_search_read_trace,
+    _hit_sort_key,
 )
 from dungeonmind.application.vnext.search_normalize import (
     normalize_search_query,
@@ -335,11 +338,49 @@ def test_04_exact_entity_id_hit_without_scan() -> None:
     assert [hit.entity.entity_id for hit in result.hits] == ["id:alpha"]
     assert result.hits[0].match_kinds == (MATCH_KIND_EXACT_ID,)
     assert result.hits[0].admitted_match_assertions == ()
+    assert result.hits[0].deterministic_score == 0
     assert result.completeness.status == "complete"
     assert trace.exact_id_lookups == 1
     assert trace.structural_assertion_candidates == 0
     assert trace.assertions_evaluated == 0
     assert trace.provenance_snapshot_calls == 0
+
+
+def test_04b_exact_id_preserves_opaque_case() -> None:
+    context, _ = _lab_context(
+        entities=[Entity(entity_id="Entity:Alpha"), Entity(entity_id="entity:alpha")],
+        assertions=[
+            _literal("asrt:lower", "entity:alpha", "alpha marble"),
+        ],
+    )
+    mixed = _SVC.search_entities(context, "Entity:Alpha")
+    assert mixed.hits[0].entity.entity_id == "Entity:Alpha"
+    assert mixed.hits[0].match_kinds == (MATCH_KIND_EXACT_ID,)
+    assert all(
+        MATCH_KIND_EXACT_ID not in hit.match_kinds
+        for hit in mixed.hits
+        if hit.entity.entity_id != "Entity:Alpha"
+    )
+    lower = _SVC.search_entities(context, "entity:alpha")
+    assert lower.hits[0].entity.entity_id == "entity:alpha"
+    assert MATCH_KIND_EXACT_ID in lower.hits[0].match_kinds
+    assert all(hit.entity.entity_id != "Entity:Alpha" for hit in lower.hits)
+    folded = _SVC.search_entities(context, "ENTITY:ALPHA")
+    assert all(MATCH_KIND_EXACT_ID not in hit.match_kinds for hit in folded.hits)
+    assert all(hit.entity.entity_id != "Entity:Alpha" for hit in folded.hits)
+
+
+def test_04c_exact_id_does_not_trim_opaque_identity() -> None:
+    context, _ = _lab_context(
+        entities=[Entity(entity_id="id:alpha"), Entity(entity_id=" id:alpha")],
+        assertions=[],
+    )
+    padded = _SVC.search_entities(context, " id:alpha")
+    assert [hit.entity.entity_id for hit in padded.hits] == [" id:alpha"]
+    bare = _SVC.search_entities(context, "id:alpha")
+    assert [hit.entity.entity_id for hit in bare.hits] == ["id:alpha"]
+    outer = _SVC.search_entities(context, "  id:alpha  ")
+    assert all(MATCH_KIND_EXACT_ID not in hit.match_kinds for hit in outer.hits)
 
 
 def test_05_single_lexical_token_uses_assertion_witness() -> None:
@@ -542,6 +583,48 @@ def test_13_deterministic_tie_breaks_by_entity_id() -> None:
     assert first.hits[0].deterministic_score == first.hits[1].deterministic_score
     assert first.result_digest == second.result_digest
     assert first.hits[0].match_kinds == first.hits[1].match_kinds
+
+
+def test_13b_rank_classes_are_lexicographic_not_weighted_sums() -> None:
+    exact = SearchHit(
+        entity=ParsedEntity(entity_id="Entity:Alpha"),
+        admitted_match_assertions=(),
+        match_kinds=(MATCH_KIND_EXACT_ID,),
+        deterministic_score=0,
+    )
+    predicate = SearchHit(
+        entity=ParsedEntity(entity_id="id:predicate"),
+        admitted_match_assertions=(),
+        match_kinds=(MATCH_KIND_PREDICATE,),
+        deterministic_score=1,
+    )
+    lexical = SearchHit(
+        entity=ParsedEntity(entity_id="zzz-lex"),
+        admitted_match_assertions=(),
+        match_kinds=(MATCH_KIND_LEXICAL,),
+        deterministic_score=2_000_000,
+    )
+    ordered = sorted([lexical, predicate, exact], key=_hit_sort_key)
+    assert [hit.entity.entity_id for hit in ordered] == [
+        "Entity:Alpha",
+        "id:predicate",
+        "zzz-lex",
+    ]
+
+    context, _ = _lab_context(
+        entities=[
+            Entity(entity_id="Entity:Alpha"),
+            Entity(entity_id="zzz-lex"),
+        ],
+        assertions=[
+            _literal("asrt:lex", "zzz-lex", "alpha alpha alpha marble vault"),
+        ],
+    )
+    exact_result = _SVC.search_entities(context, "Entity:Alpha")
+    assert [hit.entity.entity_id for hit in exact_result.hits] == ["Entity:Alpha", "zzz-lex"]
+    assert exact_result.hits[0].match_kinds == (MATCH_KIND_EXACT_ID,)
+    assert MATCH_KIND_LEXICAL in exact_result.hits[1].match_kinds
+    assert exact_result.hits[0].deterministic_score < exact_result.hits[1].deterministic_score
 
 
 def test_14_unrelated_growth_does_not_change_low_frequency_work() -> None:
