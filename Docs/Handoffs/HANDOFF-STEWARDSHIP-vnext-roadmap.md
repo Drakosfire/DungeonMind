@@ -705,7 +705,8 @@ Prior key anchors:
 ```text
 PR #68 bc115eb40f1601e5b6c6fda23ff05ee5bf06883d — V4.3 implementation
 PR #67 74733ddf9fc338469293c27c12302004fc1be99a — V4.2 implementation
-PR #66 7f5df9eace6f1ab23a0d817e0b350c379923641f — V4.1 implementation; final PASS 5230663567
+PR #66 7f5df9eace6f1ab23a0d817e0b350c379923641f — V4.1 implementation; accepted head 9b0fd143552ea5e4def3f4a7c8d08050b206eb52; final PASS 5230663567
+V4.3 implementation base 8aa654bc192c1aeb51a5f908a44fce9a1c4c5b4c
 PR #64 82a5c3e6889ad4e5648fef8f358423b5a576cb9b — V4.1 handoff/control-surface (not runtime)
 PR #63 c12bf89ea54af1112a0e98163aa224eb89b11c22 — V3 implementation
 PR #62 8a68894e40a56a115b2f44ad5410bec28fc81d3e — V3 activation sync

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from dungeonmind.domain.errors import PersistenceIntegrityError
 
 
@@ -61,3 +63,19 @@ class SearchReadIntegrityError(PersistenceIntegrityError):
     """Fail-closed error when deterministic indexed search cannot complete safely."""
 
     code = "search_read_integrity_error"
+
+
+class GovernedMaterializationIntegrityError(PersistenceIntegrityError):
+    """Fail-closed error when generic governed materialization cannot complete safely."""
+
+    code = "governed_materialization_integrity_error"
+
+    def __init__(self, reason: str, *, details: dict[str, Any] | None = None) -> None:
+        materialization_details: dict[str, Any] = {"reason": reason}
+        if details:
+            materialization_details.update(details)
+        super().__init__(
+            "generic governed materialization failed",
+            details=materialization_details,
+        )
+        self.reason = reason
