@@ -1,0 +1,59 @@
+{
+  "characterization_only": true,
+  "exact_base": "bc115eb40f1601e5b6c6fda23ff05ee5bf06883d",
+  "exact_head": "ccbc008861257a29ab91fd6c3fe5748b70e62a0f",
+  "notes": "In-memory materialization only. bytes_written is always 0; publication latency is not measured in V5.1.",
+  "runs": {
+    "tiny_accepted_change_10k": {
+      "accepted_item_count": 1,
+      "bytes_written": 0,
+      "child_assertion_count": 10000,
+      "child_entity_count": 10001,
+      "expected_parent_revision_id": "rev:parent-10000",
+      "graph_payload_sha256": "9d9badaac8626bd7e8af30d33f3f25a03cf695d0b116050d80922f2ee97a92ca",
+      "p50_ms": 2507.8687189961784,
+      "p95_ms": 3759.7251890110783,
+      "parent_assertion_count": 10000,
+      "parent_entity_count": 10000,
+      "parent_reconstruct_ms": 2026.3775080093183,
+      "parent_revision_id": "rev:parent-10000",
+      "payload_bytes": 4900441,
+      "rejected_item_count": 0,
+      "tiny_entity_present": true
+    },
+    "tiny_accepted_change_1k": {
+      "accepted_item_count": 1,
+      "bytes_written": 0,
+      "child_assertion_count": 1000,
+      "child_entity_count": 1001,
+      "expected_parent_revision_id": "rev:parent-1000",
+      "graph_payload_sha256": "f695ae1fd9ef500aa5e11aae594a0985587976e0bb9136473e43eb30c1c11640",
+      "p50_ms": 184.05950054875575,
+      "p95_ms": 232.37154399976134,
+      "parent_assertion_count": 1000,
+      "parent_entity_count": 1000,
+      "parent_reconstruct_ms": 99.86122598638758,
+      "parent_revision_id": "rev:parent-1000",
+      "payload_bytes": 490441,
+      "rejected_item_count": 0,
+      "tiny_entity_present": true
+    }
+  },
+  "schema_version": "vnext_governed_materialization_10k_v1",
+  "seed": "generic-governed-materialization-v1",
+  "structural_gate": "PASS",
+  "workloads": {
+    "space_10k": {
+      "assertion_count": 10000,
+      "entity_count": 10000,
+      "reconstruct_ms": 2026.3775080093183,
+      "semantic_digest": "4e4f91544bca3580539b770410dae80c5279ac4b1148844c0ceb4db6ec91662e"
+    },
+    "space_1k": {
+      "assertion_count": 1000,
+      "entity_count": 1000,
+      "reconstruct_ms": 99.86122598638758,
+      "semantic_digest": "ff328eb2210c8145a8d02f3ac0b776220bbe14e09d17d684dfaa247916928ecf"
+    }
+  }
+}
