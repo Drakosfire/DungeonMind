@@ -261,6 +261,7 @@ def _build_standard_parsed() -> ParsedKnowledgeRevision:
 
 # --- Matrix Tests 1..40 ---
 
+
 def test_01_exact_revision_identity_preserved() -> None:
     rev = _make_base_revision()
     # Explicitly test with unsorted operation_ids to prove sequence preservation
@@ -352,9 +353,7 @@ def test_10_outgoing_adjacency_complete_and_deterministic() -> None:
     outgoing = parsed.entity_ref_outgoing["ent:alice"]
     assert outgoing == ("ent:project-alpha",)
     assert parsed.entity_ref_outgoing["ent:project-alpha"] == ()
-    assert parsed.get_outgoing_entity_ref_assertion_ids("ent:alice") == (
-        "asrt:alice-owns-alpha",
-    )
+    assert parsed.get_outgoing_entity_ref_assertion_ids("ent:alice") == ("asrt:alice-owns-alpha",)
     assert parsed.get_outgoing_entity_ref_assertion_ids("ent:project-alpha") == ()
 
 
@@ -405,6 +404,19 @@ def test_16_lexical_candidate_index_deterministic_and_non_authoritative() -> Non
     parsed = _build_standard_parsed()
     candidates = parsed.lookup_lexical_candidates("architect")
     assert set(candidates) == {"ent:alice", "ent:charlie"}
+    # Alias tokens populate the entity-level index, not the assertion-level witness index.
+    assert parsed.lookup_lexical_assertions("architect") == ()
+
+
+def test_16b_assertion_level_indexes_are_deterministic_and_alias_free() -> None:
+    parsed = _build_standard_parsed()
+    assert parsed.lookup_predicate_assertions("corp:owns") == (
+        "asrt:alice-owns-alpha",
+        "asrt:bob-owns-alpha-provisional",
+    )
+    assert parsed.lookup_term_ref_assertions("corp:on_leave") == ("asrt:charlie-retracted",)
+    assert "architect" not in parsed.lexical_assertion_index
+    assert "the" in parsed.lexical_candidate_index
 
 
 def test_17_duplicate_entity_id_fails_closed() -> None:
@@ -801,6 +813,9 @@ def test_35_reordered_input_builds_same_index_order() -> None:
     assert dict(p1.alias_exact_index) == dict(p2.alias_exact_index)
     assert dict(p1.literal_exact_index) == dict(p2.literal_exact_index)
     assert dict(p1.lexical_candidate_index) == dict(p2.lexical_candidate_index)
+    assert dict(p1.lexical_assertion_index) == dict(p2.lexical_assertion_index)
+    assert dict(p1.predicate_assertion_index) == dict(p2.predicate_assertion_index)
+    assert dict(p1.term_ref_assertion_index) == dict(p2.term_ref_assertion_index)
 
 
 def test_36_generic_organizational_memory_fixture_builds_without_ttrpg_imports() -> None:

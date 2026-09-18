@@ -5,7 +5,7 @@
 **Repository:** `Drakosfire/DungeonMind`  
 **Implementation branch:** `kernel/v4-3-deterministic-indexed-search`  
 **Accepted predecessor merge:** `74733ddf9fc338469293c27c12302004fc1be99a` — merged PR #67  
-**Implementation branch base:** branch from the current `main` that contains this handoff; record that exact SHA in the implementation PR before runtime work begins  
+**Implementation branch base:** `8aa654bc192c1aeb51a5f908a44fce9a1c4c5b4c`  
 **Frozen vNext contract aggregate:** `fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea`  
 **Roadmap phase:** V4.3 — deterministic indexed search  
 **Successor:** V5 — generic governed writes  
@@ -298,9 +298,11 @@ V4.3 may use only immutable, rebuildable revision-local structures.
 
 ## 6.1 Exact entity ID
 
-If the normalized query exactly equals an existing `entity_id`, the service may produce an exact-ID candidate through direct lookup.
+If the caller query exactly equals an existing `entity_id` as opaque identity, the service may produce an exact-ID candidate through direct lookup.
 
-This path may reuse accepted V3 exact-entity semantics.
+This path reuses accepted V3 exact-entity semantics. Do not case-fold, lowercase, or trim the identifier before lookup. Lexical/predicate/term search continues to use the shared normalized query; exact-ID lookup does not apply that normalization to the identifier.
+
+Legal IDs that differ only by case are distinct. Query `Entity:Alpha` must not resolve `entity:alpha`.
 
 Do not substring-scan entity IDs.
 
@@ -401,6 +403,8 @@ case-fold or lowercase consistently with the chosen index contract
 tokenize with one checked-in deterministic rule
 reject an empty normalized query
 ```
+
+That shared rule applies to lexical tokens, qualified predicate lookup, and qualified term-ref lookup. It does **not** rewrite opaque `entity_id` exact-ID lookup.
 
 Do not have builder normalization and search normalization drift apart.
 
@@ -525,7 +529,7 @@ Preferred ranking posture:
 4. stable entity_id tie-break
 ```
 
-Exact numeric weights are implementation latitude but must be small, integer/deterministic, documented in code, and covered by ranking tests.
+These tiers are lexicographic rank classes. A within-class integer may explain lexical/assertion strength, but it must not be able to promote a lower class above a higher one. Do not enforce class order with “large enough” additive weights.
 
 For multi-token lexical queries, score only tokens witnessed by admitted assertions.
 

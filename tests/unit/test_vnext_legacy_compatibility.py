@@ -103,7 +103,8 @@ def test_01_steward_handoff_records_pr60_merge_and_v2_complete() -> None:
     assert "V3 COMPLETE — V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED" in content
     assert "V4 ACTIVE" in content
     assert "V4.1 COMPLETE" in content
-    assert "V4.2 ACTIVE" in content
+    assert "V4.2 COMPLETE" in content
+    assert "V4.3 ACTIVE" in content
 
 
 # 2. v1 stored revision decodes and has semantic parity

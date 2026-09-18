@@ -38,6 +38,7 @@ from .errors import (
     LegacyCompatibilityIntegrityError,
     NeighborhoodReadIntegrityError,
     RevisionStructuralIntegrityError,
+    SearchReadIntegrityError,
 )
 from .evidence_reads import (
     AssertionEvidenceResult,
@@ -114,6 +115,13 @@ from .records import (
     ParsedUtcIntervalTemporalScope,
     ParsedVisibility,
 )
+from .search import (
+    SearchCompleteness,
+    SearchHit,
+    SearchReadIdentity,
+    SearchReadService,
+    SearchResult,
+)
 
 __all__ = [
     "COMPATIBILITY_DOMAIN_CONTRACT_ID",
@@ -185,6 +193,12 @@ __all__ = [
     "ParsedUtcIntervalTemporalScope",
     "ParsedVisibility",
     "RevisionStructuralIntegrityError",
+    "SearchCompleteness",
+    "SearchHit",
+    "SearchReadIdentity",
+    "SearchReadIntegrityError",
+    "SearchReadService",
+    "SearchResult",
     "SourceAnchor",
     "SourceAnchorResolution",
     "build_historical_semantic_witness",

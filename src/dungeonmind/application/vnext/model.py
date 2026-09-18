@@ -70,6 +70,9 @@ class ParsedKnowledgeRevision:
     alias_exact_index: FrozenDict[str, tuple[str, ...]]
     literal_exact_index: FrozenDict[tuple[str, str], tuple[str, ...]]
     lexical_candidate_index: FrozenDict[str, tuple[str, ...]]
+    lexical_assertion_index: FrozenDict[str, tuple[str, ...]]
+    predicate_assertion_index: FrozenDict[str, tuple[str, ...]]
+    term_ref_assertion_index: FrozenDict[str, tuple[str, ...]]
 
     # Computed digests
     semantic_digest: str
@@ -162,6 +165,16 @@ class ParsedKnowledgeRevision:
     def lookup_lexical_candidates(self, token: str) -> tuple[str, ...]:
         normalized = token.strip().lower()
         return self.lexical_candidate_index.get(normalized, ())
+
+    def lookup_lexical_assertions(self, token: str) -> tuple[str, ...]:
+        normalized = token.strip().lower()
+        return self.lexical_assertion_index.get(normalized, ())
+
+    def lookup_predicate_assertions(self, predicate: str) -> tuple[str, ...]:
+        return self.predicate_assertion_index.get(predicate, ())
+
+    def lookup_term_ref_assertions(self, term: str) -> tuple[str, ...]:
+        return self.term_ref_assertion_index.get(term, ())
 
 
 def compute_semantic_digest(

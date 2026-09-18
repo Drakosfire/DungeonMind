@@ -55,3 +55,9 @@ class EvidenceReadIntegrityError(PersistenceIntegrityError):
     """Fail-closed error when exact evidence/support assembly cannot complete safely."""
 
     code = "evidence_read_integrity_error"
+
+
+class SearchReadIntegrityError(PersistenceIntegrityError):
+    """Fail-closed error when deterministic indexed search cannot complete safely."""
+
+    code = "search_read_integrity_error"
