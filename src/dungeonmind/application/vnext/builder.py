@@ -6,7 +6,6 @@ without performing scope/visibility/domain admission or introducing domain/TTRPG
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -69,8 +68,7 @@ from .records import (
     ParsedUtcIntervalTemporalScope,
     ParsedVisibility,
 )
-
-_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+from .search_normalize import tokenize_search_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -312,9 +310,7 @@ def build_parsed_knowledge_revision(
         )
 
     # --- 5. Identity ---
-    parent_rev_id = (
-        str(revision.parent_revision_id) if revision.parent_revision_id else None
-    )
+    parent_rev_id = str(revision.parent_revision_id) if revision.parent_revision_id else None
     identity = ParsedKnowledgeRevisionIdentity(
         space_id=str(revision.space_id),
         revision_id=str(revision.revision_id),
@@ -474,11 +470,15 @@ def build_parsed_knowledge_revision_from_records(
     alias_exact_builder: dict[str, set[str]] = {}
     literal_exact_builder: dict[tuple[str, str], list[str]] = {}
     lexical_candidate_builder: dict[str, set[str]] = {}
+    lexical_assertion_builder: dict[str, set[str]] = {}
+    predicate_assertion_builder: dict[str, set[str]] = {}
+    term_ref_assertion_builder: dict[str, set[str]] = {}
 
     for aid in sorted(assertions_dict.keys()):
         asrt = assertions_dict[aid]
         assertions_by_subject_builder[asrt.subject_entity_id].append(aid)
         assertion_evidence_builder[aid] = asrt.metadata.evidence_ref_ids
+        predicate_assertion_builder.setdefault(asrt.predicate, set()).add(aid)
 
         for evid in asrt.metadata.evidence_ref_ids:
             evidence_supporters_builder[evid].append(aid)
@@ -494,12 +494,12 @@ def build_parsed_knowledge_revision_from_records(
                 literal_exact_builder[lit_key] = []
             literal_exact_builder[lit_key].append(aid)
 
-            # Lexical indexing for string values
             if isinstance(asrt.value.value, str):
-                for tok in _TOKEN_PATTERN.findall(asrt.value.value.lower()):
-                    if tok not in lexical_candidate_builder:
-                        lexical_candidate_builder[tok] = set()
-                    lexical_candidate_builder[tok].add(asrt.subject_entity_id)
+                for tok in tokenize_search_text(asrt.value.value):
+                    lexical_candidate_builder.setdefault(tok, set()).add(asrt.subject_entity_id)
+                    lexical_assertion_builder.setdefault(tok, set()).add(aid)
+        elif isinstance(asrt.value, ParsedTermRefValue):
+            term_ref_assertion_builder.setdefault(asrt.value.term, set()).add(aid)
 
     # Index aliases
     for al_id in sorted(aliases_dict.keys()):
@@ -509,11 +509,8 @@ def build_parsed_knowledge_revision_from_records(
             alias_exact_builder[norm_alias] = set()
         alias_exact_builder[norm_alias].add(al.entity_id)
 
-        # Lexical indexing for alias tokens
-        for tok in _TOKEN_PATTERN.findall(al.alias_text.lower()):
-            if tok not in lexical_candidate_builder:
-                lexical_candidate_builder[tok] = set()
-            lexical_candidate_builder[tok].add(al.entity_id)
+        for tok in tokenize_search_text(al.alias_text):
+            lexical_candidate_builder.setdefault(tok, set()).add(al.entity_id)
 
     # Finalize index structures with sorted tuples and wrap in FrozenDict
     assertions_by_subject = FrozenDict(
@@ -526,37 +523,42 @@ def build_parsed_knowledge_revision_from_records(
         {eid: tuple(sorted(sources)) for eid, sources in entity_ref_incoming_builder.items()}
     )
     entity_ref_outgoing_assertions = FrozenDict(
-        {
-            eid: tuple(sorted(aids))
-            for eid, aids in entity_ref_outgoing_assertions_builder.items()
-        }
+        {eid: tuple(sorted(aids)) for eid, aids in entity_ref_outgoing_assertions_builder.items()}
     )
     entity_ref_incoming_assertions = FrozenDict(
-        {
-            eid: tuple(sorted(aids))
-            for eid, aids in entity_ref_incoming_assertions_builder.items()
-        }
+        {eid: tuple(sorted(aids)) for eid, aids in entity_ref_incoming_assertions_builder.items()}
     )
 
-    entity_adjacency = FrozenDict({
-        eid: tuple(sorted(entity_ref_outgoing_builder[eid] | entity_ref_incoming_builder[eid]))
-        for eid in entities_dict
-    })
+    entity_adjacency = FrozenDict(
+        {
+            eid: tuple(sorted(entity_ref_outgoing_builder[eid] | entity_ref_incoming_builder[eid]))
+            for eid in entities_dict
+        }
+    )
 
     assertion_evidence = FrozenDict(assertion_evidence_builder)
     evidence_supporters = FrozenDict(
         {evid: tuple(sorted(aids)) for evid, aids in evidence_supporters_builder.items()}
     )
 
-    alias_exact_index = FrozenDict({
-        norm_text: tuple(sorted(eids)) for norm_text, eids in alias_exact_builder.items()
-    })
-    literal_exact_index = FrozenDict({
-        k: tuple(sorted(aids)) for k, aids in literal_exact_builder.items()
-    })
-    lexical_candidate_index = FrozenDict({
-        tok: tuple(sorted(eids)) for tok, eids in lexical_candidate_builder.items()
-    })
+    alias_exact_index = FrozenDict(
+        {norm_text: tuple(sorted(eids)) for norm_text, eids in alias_exact_builder.items()}
+    )
+    literal_exact_index = FrozenDict(
+        {k: tuple(sorted(aids)) for k, aids in literal_exact_builder.items()}
+    )
+    lexical_candidate_index = FrozenDict(
+        {tok: tuple(sorted(eids)) for tok, eids in lexical_candidate_builder.items()}
+    )
+    lexical_assertion_index = FrozenDict(
+        {tok: tuple(sorted(aids)) for tok, aids in lexical_assertion_builder.items()}
+    )
+    predicate_assertion_index = FrozenDict(
+        {predicate: tuple(sorted(aids)) for predicate, aids in predicate_assertion_builder.items()}
+    )
+    term_ref_assertion_index = FrozenDict(
+        {term: tuple(sorted(aids)) for term, aids in term_ref_assertion_builder.items()}
+    )
 
     semantic_digest = compute_semantic_digest(
         identity,
@@ -584,6 +586,9 @@ def build_parsed_knowledge_revision_from_records(
         alias_exact_index=alias_exact_index,
         literal_exact_index=literal_exact_index,
         lexical_candidate_index=lexical_candidate_index,
+        lexical_assertion_index=lexical_assertion_index,
+        predicate_assertion_index=predicate_assertion_index,
+        term_ref_assertion_index=term_ref_assertion_index,
         semantic_digest=semantic_digest,
         compatibility_key=compatibility_key,
     )
