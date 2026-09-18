@@ -1,8 +1,8 @@
 # DungeonMind — vNext Governed Knowledge Roadmap
 
 **Status:** current forward roadmap  
-**Updated:** 2026-09-14  
-**Roadmap anchor:** DungeonMind `main` after PR #53 (`ccd9327e9e2b47b2f046b661b9aedc0a9f3e5895`)  
+**Updated:** 2026-09-18  
+**Roadmap anchor:** DungeonMind `main` after PR #68 (`bc115eb40f1601e5b6c6fda23ff05ee5bf06883d`)  
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -613,6 +613,30 @@ candidate/proposed knowledge
 
 Human Graph Review becomes one DungeonBuddy governance workflow, not the Kernel definition of publication.
 
+### V5.1 — Generic governed materialization
+
+V5.1 answers only the first publication seam:
+
+```text
+governed intent
+→ deterministic graph materialization
+→ frozen PublishKnowledgeRevisionCommand
+```
+
+No database write. No head mutation. No CAS. No replay.
+
+Given one exact native-vNext parent, one frozen `KnowledgeContribution`, complete accepted/rejected `ContributionDisposition`s, and explicit publication identity, materialize one structurally validated generic child graph and one frozen command.
+
+V5.2 (expected-parent atomic CAS) and V5.3 (durable idempotent replay / recovery) remain blocked until V5.1 is accepted.
+
+Current V5.1 implementation base after PR #68 (`V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED`):
+
+```text
+bc115eb40f1601e5b6c6fda23ff05ee5bf06883d
+```
+
+Authority: `Docs/Handoffs/HANDOFF-v5-1-generic-governed-materialization.md`
+
 ### Low-hanging write optimization
 
 Take only obvious representation wins:
@@ -634,6 +658,8 @@ large immutable parent
 ```
 
 Break down parent load, materialization, validation, serialization/hash, bytes written, and total publication latency.
+
+V5.1 records the in-memory subset (parent load, materialization, validation, serialization/hash, payload bytes). Bytes written and publication latency wait for V5.2+.
 
 ---
 
