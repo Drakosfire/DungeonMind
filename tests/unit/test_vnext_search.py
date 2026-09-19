@@ -303,15 +303,16 @@ def _visible_lab() -> KnowledgeReadContext:
     return context
 
 
-def test_01_bookkeeping_records_v43_active_not_accepted() -> None:
+def test_01_bookkeeping_records_v43_complete_v51_active() -> None:
     steward = STEWARD_PATH.read_text(encoding="utf-8")
     assert IMPLEMENTATION_BASE in steward
     assert "V4.2 COMPLETE" in steward
     assert "V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED" in steward
-    assert "V4.3 ACTIVE" in steward
+    assert "V4.3 COMPLETE" in steward
+    assert "V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED" in steward
+    assert "V5.1 ACTIVE" in steward
     assert "IMPLEMENTATION NOT YET ACCEPTED" in steward
-    assert "V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED" not in steward
-    assert "BLOCKED ON V4.3 ACCEPTANCE" in steward
+    assert "BLOCKED ON V5.1 ACCEPTANCE" in steward
 
 
 def test_02_frozen_v0_aggregate_remains_exact() -> None:

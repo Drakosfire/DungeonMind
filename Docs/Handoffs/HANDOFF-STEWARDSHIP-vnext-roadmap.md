@@ -4,8 +4,8 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `8aa654bc192c1aeb51a5f908a44fce9a1c4c5b4c` — V4.3 implementation base after PR #67 merge and V4.3 design handoff  
-**Last merged roadmap implementation:** PR #67 — `KERNEL: V4.2 evidence reads + source anchors`  
+**Current main anchor:** `bc115eb40f1601e5b6c6fda23ff05ee5bf06883d` — merged PR #68; V5.1 implementation base  
+**Last merged roadmap implementation:** PR #68 — `KERNEL: V4.3 deterministic indexed search`  
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
@@ -56,11 +56,14 @@ V0   Contract freeze                                      COMPLETE
 V1   Immutable normalized revision + revision indexes    COMPLETE
 V2   Generic KnowledgeReadContext + candidate admission  COMPLETE
 V3   Lazy exact / complete entity reads                  COMPLETE
-V4   Neighborhood + evidence + anchor + indexed search   ACTIVE
+V4   Neighborhood + evidence + anchor + indexed search   COMPLETE
   V4.1 Bounded neighborhood                              COMPLETE
   V4.2 Evidence + anchor support                         COMPLETE
-  V4.3 Deterministic indexed search                      ACTIVE
-V5   Generic governed write contracts                    BLOCKED ON V4.3 ACCEPTANCE
+  V4.3 Deterministic indexed search                      COMPLETE
+V5   Generic governed write contracts                    ACTIVE
+  V5.1 Generic governed materialization                  ACTIVE
+  V5.2 Expected-parent atomic CAS publication            BLOCKED ON V5.1
+  V5.3 Durable idempotent replay / recovery              BLOCKED ON V5.2
 V6   DungeonBuddy domain implementation
 V7   Bridge-genesis migration
 V8   Joint semantic + performance acceptance
@@ -76,63 +79,69 @@ V0 COMPLETE — VNEXT_CONTRACT_FROZEN
 V1 COMPLETE — V1_IMMUTABLE_NORMALIZATION_COMPLETE
 V2 COMPLETE — V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
 V3 COMPLETE — V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED
-V4 ACTIVE
+V4 COMPLETE
 V4.1 COMPLETE — V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
 V4.2 COMPLETE — V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
-V4.3 ACTIVE
+V4.3 COMPLETE — V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
+V5 ACTIVE
+V5.1 ACTIVE — IMPLEMENTATION NOT YET ACCEPTED
 ```
 
 ### Current primary question
 
-**V4.3 — deterministic indexed search**
+**V5.1 — generic governed materialization**
 
-> Can deterministic entity search generate an exact structural match-witness set from immutable revision-local indexes, admit only those witnesses through the pinned V2 authority path, and rank only admitted matches so that work grows with the real query match set rather than the whole KnowledgeSpace, while hidden or excluded matches cannot affect public result membership, ordering, or digest?
+> Given one exact native-vNext parent, one frozen `KnowledgeContribution`, a complete `ContributionDisposition` set, and explicit publication identity, can DungeonMind deterministically produce one structurally validated generic child graph and one frozen `PublishKnowledgeRevisionCommand` without World/Graph-Review transport, durable publication, head mutation, or persistence redesign?
 
-V4.3 is assertion-backed deterministic indexed discovery only. Public results are not alias-authorized. It is not permission to implement fuzzy, FTS, vector, or V5 writes.
+V5.1 is in-memory materialization plus command freeze only. It is not permission to implement CAS publication, head mutation, durable replay, or World writer replacement.
 
 Current implementation base:
 
 ```text
-8aa654bc192c1aeb51a5f908a44fce9a1c4c5b4c
+bc115eb40f1601e5b6c6fda23ff05ee5bf06883d
 ```
 
 ```text
-PR #67:
-  KERNEL: V4.2 evidence reads + source anchors
+PR #68:
+  KERNEL: V4.3 deterministic indexed search
 
 accepted head:
-  84fe11fbf583732366d3828e01ed9a0051e4bd7a
+  1507248d0a8a3beeefe486b86af99aa9c2507492
 
-substantive repair head:
-  28a4dbe16507b89d601a335b559d3203623cffd4
+substantive repair:
+  630d697e041a0fb18bfc970ca3eb46494e936276
 
 review cycles:
-  2
+  3
 
 final PASS:
-  5237236070
+  5250109322
 
 disposition:
-  V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
+  V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
 
 merge:
-  74733ddf9fc338469293c27c12302004fc1be99a
+  bc115eb40f1601e5b6c6fda23ff05ee5bf06883d
 
 benchmark:
-  Docs/Benchmarks/vnext_evidence_support_10k_v1.json
-
-V4.2:
-  COMPLETE
+  Docs/Benchmarks/vnext_deterministic_search_10k_v1.json
 
 V4.3:
+  COMPLETE
+  V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
+
+V5:
+  ACTIVE
+
+V5.1:
   ACTIVE
   IMPLEMENTATION NOT YET ACCEPTED
 
-V5:
-  BLOCKED ON V4.3 ACCEPTANCE
+V5.2+:
+  BLOCKED ON V5.1 ACCEPTANCE
 ```
 
-Do not reinterpret PR #64 as V4.1 runtime acceptance. PR #67 is the accepted V4.2 runtime merge. The V4.3 design handoff is already on `main`; this implementation PR does not create another handoff file.
+Do not reinterpret PR #64 as V4.1 runtime acceptance. PR #68 is the accepted V4.3 runtime merge. The V5.1 design/implementation handoff lands in this PR's first bookkeeping commit.
 
 ---
 
@@ -487,7 +496,7 @@ new distributed cache
 new graph database
 ```
 
-V4.2 owns evidence + anchor support. V4.3 owns deterministic indexed search.
+V4.2 owns evidence + anchor support. V4.3 owns deterministic indexed search. V5.1 owns generic governed materialization and command freeze only.
 
 ---
 
@@ -598,52 +607,41 @@ If an update changes semantic contracts, ownership, migration model, read archit
 
 ---
 
-## §12 Current V4.2 proof obligations
+## §12 Current V5.1 proof obligations
 
-V4.1 is complete. Its accepted neighborhood proof remains:
+V4 is complete. The accepted V4.3 search proof remains:
 
 ```text
-Docs/Benchmarks/vnext_neighborhood_10k_v1.json
-accepted head: 9b0fd143552ea5e4def3f4a7c8d08050b206eb52
-substantive repair head: 626a5fcd2bea3395c62d62aa091b7c666b2ab26f
-10k low-degree depth-1 p95: ~1.97 ms
-structural gate: PASS
+Docs/Benchmarks/vnext_deterministic_search_10k_v1.json
+accepted head: 1507248d0a8a3beeefe486b86af99aa9c2507492
+substantive repair: 630d697e041a0fb18bfc970ca3eb46494e936276
+review cycles: 3
+final PASS: 5250109322
+disposition: V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
+merge: bc115eb40f1601e5b6c6fda23ff05ee5bf06883d
 ```
 
-The V4.2 implementation must prove at least:
+The V5.1 implementation must prove at least:
 
-- exact assertion evidence requires assertion admission first;
-- exact evidence availability requires at least one admitted assertion supporter;
-- alias-only evidence is not independently returnable and is not classified as orphan;
-- aliases are not scanned for V4.2 authorization;
-- missing versus excluded uses the same public-safe unavailable posture;
-- public semantic DTOs do not expose hidden-candidate diagnostics;
-- source anchors are deterministic, versioned, and exact-target recoverable;
-- supporter IDs are resolution metadata, not anchor identity;
-- containing evidence result digests still bind admitted supporter IDs;
-- anchor resolution reruns current-context V2 admission and never grants authority;
-- same pinned context stays coherent; a new context observes changed source authority;
-- assertion→evidence uses `assertion_evidence`; evidence→supporters uses `evidence_supporters`;
-- unrelated 1k→10k growth leaves fixed-target work unchanged;
-- unique artifact/revision IDs are operation-wide unique counts, not summed request events;
+- one native `dm_vnext_graph_v1` parent plus a finalized `KnowledgeContribution` and complete accepted/rejected dispositions materializes one child payload;
+- the child round-trips through the V1 builder;
+- the frozen `PublishKnowledgeRevisionCommand` binds `parent_revision_id == expected_parent_revision_id == parent.revision_id`;
+- rejected and unresolved items cannot leak into the child;
+- incomplete or extra dispositions fail closed;
+- identity kinds are applied only where §7 of the V5.1 handoff names a graph-local meaning;
+- World/Graph-Review types and `review_materialization*` are not imported;
+- no repository, head, or CAS write occurs;
 - organizational-memory and Buddy-shaped opaque-domain fixtures use the same engine;
 - current World runtime and historical compatibility readers remain unchanged;
-- no V4.3 search API;
-- relevant 10k semantic/performance characterization is recorded.
+- large parent + one tiny accepted change characterization is recorded.
 
-Suggested accepted artifact name:
-
-```text
-Docs/Benchmarks/vnext_evidence_support_10k_v1.json
-```
-
-Directional target from the canonical read/performance architecture:
+Suggested characterization artifact:
 
 ```text
-10k exact evidence target p95 < 25 ms
+Docs/Benchmarks/vnext_governed_materialization_10k_v1.json
 ```
 
-The timing target is not permission to weaken semantics. Structural work shape and semantic digest come first.
+The timing numbers are characterization, not permission to weaken fail-closed validation.
 
 ---
 
@@ -651,22 +649,15 @@ The timing target is not permission to weaken semantics. Structural work shape a
 
 Stop rather than compensating locally if:
 
-- V4.2 requires changing the frozen V0 contract bundle;
-- exact assertion evidence requires full projection;
-- exact evidence lookup requires scanning all assertions;
-- anchor resolution requires scanning all EvidenceRefs or a durable anchor registry;
-- evidence must be returned despite zero admitted assertion supporters;
-- alias-only evidence must become publicly readable in V4.2;
-- correct alias authority requires a new reverse index;
-- source-body access is required for anchor correctness;
-- anchors must act as authorization independent of V2;
-- source freshness cannot remain coherent through the pinned read context;
-- correct context identity requires serializing opaque arbitrary policy state;
-- V4.3 search is needed to make exact support work;
-- Buddy/TTRPG vocabulary must enter generic application code;
-- current public World readers must change;
-- a revision-only authorization cache is required;
-- V2/V3/V4.1 fail-closed behavior must be weakened.
+- V5.1 requires changing the frozen V0 contract bundle;
+- a valid child cannot be produced without `ProposeEvidence` or another new item kind;
+- native child encoding requires World union-graph fields;
+- generic validation requires Graph Review or Buddy governance types;
+- identity kinds that V5.1 must apply cannot be defined without a new identity-resolution slice;
+- a database write, head CAS, or receipt is required to make the command meaningful;
+- current public World writers must change;
+- V1–V4 accepted read semantics regress;
+- Buddy/TTRPG vocabulary must enter generic application code.
 
 When a stop condition fires, record:
 
@@ -688,35 +679,34 @@ What remains safe in parallel:
 ### Last merged roadmap implementation
 
 ```text
-DungeonMind PR #67
-KERNEL: V4.2 evidence reads + source anchors
-merged: 74733ddf9fc338469293c27c12302004fc1be99a
-accepted implementation head: 84fe11fbf583732366d3828e01ed9a0051e4bd7a
-substantive repair head: 28a4dbe16507b89d601a335b559d3203623cffd4
-review cycles: 2
-final PASS review: 5237236070
+DungeonMind PR #68
+KERNEL: V4.3 deterministic indexed search
+merged: bc115eb40f1601e5b6c6fda23ff05ee5bf06883d
+accepted implementation head: 1507248d0a8a3beeefe486b86af99aa9c2507492
+substantive repair: 630d697e041a0fb18bfc970ca3eb46494e936276
+review cycles: 3
+final PASS review: 5250109322
 disposition:
-  V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
-artifact: Docs/Benchmarks/vnext_evidence_support_10k_v1.json
-artifact exact substantive head: 28a4dbe16507b89d601a335b559d3203623cffd4
-structural gate: PASS
-10k exact evidence p95: ~2.06 ms
+  V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
+artifact: Docs/Benchmarks/vnext_deterministic_search_10k_v1.json
 frozen V0 aggregate: fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea
 ```
 
-Current `main` at V4.3 activation:
+Current `main` at V5.1 activation:
 
 ```text
-8aa654bc192c1aeb51a5f908a44fce9a1c4c5b4c
+bc115eb40f1601e5b6c6fda23ff05ee5bf06883d
 ```
 
-PR #67 is the accepted V4.2 runtime merge. The V4.3 design handoff is already on that `main`.
+PR #68 is the accepted V4.3 runtime merge. The V5.1 design/implementation handoff lands in this PR's first bookkeeping commit.
 
 Prior key anchors:
 
 ```text
+PR #68 bc115eb40f1601e5b6c6fda23ff05ee5bf06883d — V4.3 implementation
 PR #67 74733ddf9fc338469293c27c12302004fc1be99a — V4.2 implementation
-PR #66 7f5df9eace6f1ab23a0d817e0b350c379923641f — V4.1 implementation; final PASS 5230663567
+PR #66 7f5df9eace6f1ab23a0d817e0b350c379923641f — V4.1 implementation; accepted head 9b0fd143552ea5e4def3f4a7c8d08050b206eb52; final PASS 5230663567
+V4.3 implementation base 8aa654bc192c1aeb51a5f908a44fce9a1c4c5b4c
 PR #64 82a5c3e6889ad4e5648fef8f358423b5a576cb9b — V4.1 handoff/control-surface (not runtime)
 PR #63 c12bf89ea54af1112a0e98163aa224eb89b11c22 — V3 implementation
 PR #62 8a68894e40a56a115b2f44ad5410bec28fc81d3e — V3 activation sync
@@ -737,16 +727,18 @@ V0 COMPLETE — VNEXT_CONTRACT_FROZEN
 V1 COMPLETE — V1_IMMUTABLE_NORMALIZATION_COMPLETE
 V2 COMPLETE — V2_KNOWLEDGE_READ_CONTEXT_ADMISSION_ACCEPTED
 V3 COMPLETE — V3_LAZY_EXACT_COMPLETE_ENTITY_READS_ACCEPTED
-V4 ACTIVE
+V4 COMPLETE
 V4.1 COMPLETE — V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
 V4.2 COMPLETE — V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
-V4.3 ACTIVE
+V4.3 COMPLETE — V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
+V5 ACTIVE
+V5.1 ACTIVE — IMPLEMENTATION NOT YET ACCEPTED
 ```
 
 ### Next primary question
 
 ```text
-Can deterministic entity search generate an exact structural match-witness set from immutable revision-local indexes, admit only those witnesses through the pinned V2 authority path, and rank only admitted matches so that work grows with the real query match set rather than the whole KnowledgeSpace, while hidden or excluded matches cannot affect public result membership, ordering, or digest?
+Given one exact native-vNext parent, one frozen KnowledgeContribution, a complete ContributionDisposition set, and explicit publication identity, can DungeonMind deterministically produce one structurally validated generic child graph and one frozen PublishKnowledgeRevisionCommand without World/Graph-Review transport, durable publication, head mutation, or persistence redesign?
 ```
 
 ### Parallel work posture
@@ -754,12 +746,13 @@ Can deterministic entity search generate an exact structural match-witness set f
 ```text
 safe / independent:
   larger-scale benchmark characterization
-  contract-frozen Buddy/domain work that does not depend on V4 runtime
+  contract-frozen Buddy/domain work that does not depend on V5 runtime
 
-blocked until V4.3 acceptance:
-  V5+ governed-write implementation merge
+blocked until V5.1 acceptance:
+  V5.2 expected-parent atomic CAS publication
 
 blocked until later accepted predecessors:
+  V5.3 durable replay / recovery
   bridge-genesis migration
   cutover
   current-public-path quarantine/deletion
@@ -767,10 +760,11 @@ blocked until later accepted predecessors:
 
 ### What remains false
 
-- no native vNext deterministic search API is accepted yet;
-- no public alias-discovery authority contract is accepted;
+- no native vNext governed write path is accepted yet;
+- no expected-parent CAS publisher exists;
 - no vNext KnowledgeSpace/head storage runtime exists;
-- no native vNext governed write path exists;
+- no durable publication receipt / replay / recovery exists;
+- no public alias-discovery authority contract is accepted;
 - no bridge-genesis migration exists;
 - no current public World read cutover has occurred;
 - no historical-reader quarantine/deletion is authorized;
@@ -780,7 +774,7 @@ blocked until later accepted predecessors:
 
 ### Named next action
 
-Implement V4.3 on `kernel/v4-3-deterministic-indexed-search` from current `main` `8aa654bc192c1aeb51a5f908a44fce9a1c4c5b4c`. The V4.3 design handoff is already on `main`; do not create another handoff PR. Close V4.2 in this PR's first commit, then implement only the deterministic indexed-search question. Public V4.3 results stay assertion-backed. Do not invent alias authorization, fuzzy/FTS/vector search, or V5 writes.
+Implement V5.1 on `kernel/v5-1-generic-governed-materialization` from current `main` `bc115eb40f1601e5b6c6fda23ff05ee5bf06883d`. Close V4.3 in this PR's first bookkeeping commit, then implement only in-memory generic materialization and `PublishKnowledgeRevisionCommand` freeze. Do not implement CAS publication, head mutation, durable replay, or World writer replacement. Do not claim `V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED`.
 
 ---
 

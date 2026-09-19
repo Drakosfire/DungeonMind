@@ -34,6 +34,7 @@ from .errors import (
     CandidateAdmissionIntegrityError,
     EntityReadIntegrityError,
     EvidenceReadIntegrityError,
+    GovernedMaterializationIntegrityError,
     KnowledgeReadContextIntegrityError,
     LegacyCompatibilityIntegrityError,
     NeighborhoodReadIntegrityError,
@@ -72,6 +73,12 @@ from .legacy_compat import (
     validate_stored_legacy_graph_revision,
     verify_historical_semantic_parity,
     verify_legacy_compatibility_manifest,
+)
+from .materialization import (
+    NATIVE_VNEXT_GRAPH_SCHEMA,
+    GovernedMaterializationResult,
+    GovernedPublicationIdentity,
+    materialize_governed_revision,
 )
 from .model import (
     PARSED_REVISION_FORMAT_VERSION,
@@ -129,6 +136,7 @@ __all__ = [
     "COMPATIBILITY_MANIFEST_SHA256",
     "COMPATIBILITY_MAPPING_REVISION",
     "MAX_NEIGHBORHOOD_SEED_COUNT",
+    "NATIVE_VNEXT_GRAPH_SCHEMA",
     "PARSED_REVISION_FORMAT_VERSION",
     "AdmissionWorkCounts",
     "AlwaysAdmitPolicy",
@@ -155,6 +163,9 @@ __all__ = [
     "ExcludeByAssertionIdPolicy",
     "FrozenDict",
     "FrozenJsonValue",
+    "GovernedMaterializationIntegrityError",
+    "GovernedMaterializationResult",
+    "GovernedPublicationIdentity",
     "InMemoryKnowledgeSourceReader",
     "KnowledgeProvenanceSnapshot",
     "KnowledgeReadContext",
@@ -215,6 +226,7 @@ __all__ = [
     "decode_legacy_stored_graph_revision",
     "freeze_json_value",
     "load_legacy_world_compat_manifest",
+    "materialize_governed_revision",
     "thaw_json_value",
     "validate_stored_legacy_graph_revision",
     "verify_historical_semantic_parity",
