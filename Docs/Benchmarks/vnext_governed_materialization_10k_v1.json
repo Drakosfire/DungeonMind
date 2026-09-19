@@ -1,7 +1,7 @@
 {
   "characterization_only": true,
   "exact_base": "bc115eb40f1601e5b6c6fda23ff05ee5bf06883d",
-  "exact_head": "d92974b59b9d06eb52c946c5b1c00c18116aab7c",
+  "exact_head": "cc62079883f34227aa001b7358b6abe192d7f36e",
   "notes": "In-memory materialization only. bytes_written is always 0; publication latency is not measured in V5.1.",
   "runs": {
     "tiny_accepted_change_10k": {
@@ -11,19 +11,19 @@
       "child_entity_count": 10001,
       "expected_parent_revision_id": "rev:parent-10000",
       "graph_payload_sha256": "9d9badaac8626bd7e8af30d33f3f25a03cf695d0b116050d80922f2ee97a92ca",
-      "p50_ms": 2819.9825289775617,
-      "p95_ms": 3434.7269699792378,
+      "p50_ms": 3967.5881610019132,
+      "p95_ms": 6645.326989993919,
       "parent_assertion_count": 10000,
       "parent_entity_count": 10000,
-      "parent_reconstruct_ms": 891.2110049859621,
+      "parent_reconstruct_ms": 2001.6662380076014,
       "parent_revision_id": "rev:parent-10000",
       "payload_bytes": 4900441,
       "rejected_item_count": 0,
-      "serialize_hash_p50_ms": 788.4006639651489,
-      "serialize_hash_p95_ms": 1139.0026329900138,
+      "serialize_hash_p50_ms": 1239.652053482132,
+      "serialize_hash_p95_ms": 1879.2427949374542,
       "tiny_entity_present": true,
-      "validate_p50_ms": 1523.5719479969703,
-      "validate_p95_ms": 1885.8904780936427
+      "validate_p50_ms": 2174.720390001312,
+      "validate_p95_ms": 3508.5314409807324
     },
     "tiny_accepted_change_1k": {
       "accepted_item_count": 1,
@@ -32,19 +32,19 @@
       "child_entity_count": 1001,
       "expected_parent_revision_id": "rev:parent-1000",
       "graph_payload_sha256": "f695ae1fd9ef500aa5e11aae594a0985587976e0bb9136473e43eb30c1c11640",
-      "p50_ms": 199.09827347146347,
-      "p95_ms": 286.77032800624147,
+      "p50_ms": 343.3638704882469,
+      "p95_ms": 684.0462479740381,
       "parent_assertion_count": 1000,
       "parent_entity_count": 1000,
-      "parent_reconstruct_ms": 64.4723930163309,
+      "parent_reconstruct_ms": 95.80947598442435,
       "parent_revision_id": "rev:parent-1000",
       "payload_bytes": 490441,
       "rejected_item_count": 0,
-      "serialize_hash_p50_ms": 71.4916565339081,
-      "serialize_hash_p95_ms": 122.11796396877617,
+      "serialize_hash_p50_ms": 114.46668647113256,
+      "serialize_hash_p95_ms": 202.38095300737768,
       "tiny_entity_present": true,
-      "validate_p50_ms": 82.30614548665471,
-      "validate_p95_ms": 173.82955801440403
+      "validate_p50_ms": 162.8623165015597,
+      "validate_p95_ms": 436.2556079868227
     }
   },
   "schema_version": "vnext_governed_materialization_10k_v1",
@@ -54,13 +54,13 @@
     "space_10k": {
       "assertion_count": 10000,
       "entity_count": 10000,
-      "reconstruct_ms": 891.2110049859621,
+      "reconstruct_ms": 2001.6662380076014,
       "semantic_digest": "cf099d8234b796e1ea136a92eb4ec120ab3f32ce328c1ff7876d0a38153206e8"
     },
     "space_1k": {
       "assertion_count": 1000,
       "entity_count": 1000,
-      "reconstruct_ms": 64.4723930163309,
+      "reconstruct_ms": 95.80947598442435,
       "semantic_digest": "c117fe383ca98004a38d87815fcff32eba9f9f64f8dc73189ebc0d6aabe88c54"
     }
   }
