@@ -218,6 +218,8 @@ materialize_governed_revision(
     contribution,
     dispositions,
     publication_identity,
+    domain_contract,
+    semantic_profile,
 ) -> GovernedMaterializationResult
 ```
 
@@ -243,23 +245,42 @@ dispositions:
   no extras, no missing ids, no duplicate item_ids
   every disposition is accepted or rejected
   unresolved fails closed
+  identity_decision_ids must close against accepted
+    ProposeIdentityDecision.decision.decision_id values in the same
+    contribution; unknown or rejected references fail closed
 
 publication identity:
   operation_ids           non-empty unique
   created_at              explicit
   expected_parent_revision_id
     must equal parent.revision_id
+
+domain_contract:
+  DomainContractDescriptor
+  domain_id / domain_revision / canonical descriptor digest
+    must match parent.domain_contract_ref
+
+semantic_profile:
+  SemanticProfileDescriptorV2
+  profile_id / profile_revision / canonical descriptor digest
+    must match parent.semantic_profile_ref
 ```
 
 Output:
 
 ```text
 GovernedMaterializationResult
-  command: PublishKnowledgeRevisionCommand
+  command: PublishKnowledgeRevisionCommand   # copy-on-read sealed snapshot
   graph_payload_sha256
   accepted_item_ids
   rejected_item_ids
+  validate_ms
+  serialize_hash_ms
 ```
+
+`command` and `graph_payload` accessors return fresh copies from sealed
+canonical JSON. Mutating a retrieved `graph_payload` or `operation_ids` cannot
+change a later retrieve or the bound payload digest.
 
 The command must satisfy the frozen parent invariant:
 
@@ -295,9 +316,15 @@ Fail closed, with a dedicated vNext materialization integrity error, when:
 - dispositions are incomplete, extra, or duplicated;
 - any disposition is `unresolved`;
 - publication `expected_parent_revision_id` disagrees with `parent.revision_id`;
-- operation identity is empty or non-unique.
+- operation identity is empty or non-unique;
+- supplied DomainContract/SemanticProfile identity or canonical digest disagrees with the parent refs;
+- any `identity_decision_ids` reference is not an accepted `ProposeIdentityDecision.decision_id` in the same contribution.
 
 Rejected items are ignored. They must not mutate the child and must not contribute to the child payload digest.
+
+After the child is structurally rebuilt, every child assertion must pass the V2 `domain_declaration_passes` and `semantic_profile_passes` write checks against the pinned descriptors. Undeclared predicates, claim modes, scope axes, visibility labels, temporal schemas, or value kinds fail closed. This is write validation, not ProjectionRequest audience admission.
+
+V5.1 closes `identity_decision_ids` as governance references only. It does not invent identity-resolution rewrite from those ids.
 
 ## 6.2 Accepted-item application order
 
@@ -455,13 +482,18 @@ Focused tests must prove at least:
 15. `split` / `unmerge` / `mark_ambiguous` / `human_override` fail closed.
 16. Same inputs in different list-construction order for dispositions still yield the same command digest when coverage is identical.
 17. Parent revision object is unchanged after materialization.
-18. Command `parent_revision_id == expected_parent_revision_id`.
+18. Command `parent_revision_id == expected_parent_revision_id`. Mutating a retrieved command payload or `operation_ids` cannot change a later retrieve or the bound digest.
 19. Organizational-memory and Buddy-shaped opaque-domain fixtures can be used as native parents without Buddy/TTRPG vocabulary entering the materializer.
 20. Source of `materialization.py` / equivalent contains none of: `world_id`, `GM`, `PLAYER`, `campaign_id`, `review_materialization`, `ContributionReview`, `dungeonmind_dnd`.
 21. Public export is the materialization result/function/service, not a publisher.
 22. Runtime source does not claim `V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED`.
-23. Large parent + one tiny accepted change characterization is recorded.
+23. Large parent + one tiny accepted change characterization is recorded, including validate and serialize+hash timings.
 24. Frozen V0 aggregate remains `fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea`.
+25. Non-native parent fails closed.
+26. Undeclared predicate / value kind fails closed against the pinned SemanticProfile.
+27. Undeclared claim mode, scope axis, or visibility label fails closed against the pinned DomainContract.
+28. Descriptor identity or digest mismatch against the parent refs fails closed.
+29. `identity_decision_ids` close against accepted identity decisions; unknown or rejected references fail closed.
 
 ---
 

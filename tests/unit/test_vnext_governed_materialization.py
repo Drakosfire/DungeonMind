@@ -21,6 +21,7 @@ from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.common import (
     EpistemicBasis,
     KnowledgeStanding,
+    LabelsAnyVisibility,
     PublicVisibility,
     ScopeBinding,
     TimelessTemporalScope,
@@ -37,10 +38,13 @@ from dungeonmind.contracts.vnext.contribution import (
 from dungeonmind.contracts.vnext.domain import (
     Assertion,
     AssertionMetadata,
+    DomainContractDescriptor,
     DomainContractRef,
     Entity,
     EntityRefValue,
     LiteralValue,
+    SemanticProfileDescriptorV2,
+    SemanticProfilePredicate,
 )
 from dungeonmind.contracts.vnext.knowledge import (
     IdentityAlias,
@@ -53,12 +57,15 @@ from dungeonmind.contracts.vnext.source import EvidenceRefV3
 from dungeonmind.domain.canonical import canonical_sha256
 from tests.unit.test_vnext_knowledge_read_context import (
     CANONICAL_V0_AGGREGATE,
+    FIXTURES_DIR,
     ORG_CONTRACT_DIGEST,
     ORG_PROFILE_DIGEST,
     REPO_ROOT,
     VNEXT_SRC,
     _buddy_context,
+    _buddy_domain_contract,
     _buddy_request,
+    _buddy_semantic_profile,
     _build_from_fixture,
     _org_domain_contract,
     _org_semantic_profile,
@@ -108,6 +115,47 @@ def _evidence(evidence_id: str = "ev:lab") -> EvidenceRefV3:
     )
 
 
+def _lab_descriptors() -> tuple[DomainContractDescriptor, SemanticProfileDescriptorV2]:
+    contract = DomainContractDescriptor(
+        domain_id="lab.domain",
+        domain_revision="1",
+        scope_axes=["lab:scope"],
+        visibility_labels=["lab:hidden"],
+        claim_modes=["lab:fact"],
+        admission_policy_id="lab.always",
+    )
+    profile = SemanticProfileDescriptorV2(
+        profile_id="lab.profile",
+        profile_revision="1",
+        term_namespaces=["lab"],
+        predicates=[
+            SemanticProfilePredicate(term="lab:title", allowed_value_kinds=["literal"]),
+            SemanticProfilePredicate(term="lab:reports_to", allowed_value_kinds=["entity_ref"]),
+        ],
+    )
+    return contract, profile
+
+
+def _lab_digests() -> tuple[str, str]:
+    contract, profile = _lab_descriptors()
+    return (
+        canonical_sha256(contract.model_dump(mode="json")),
+        canonical_sha256(profile.model_dump(mode="json")),
+    )
+
+
+_materialize = materialize_governed_revision
+
+
+def _call(**kwargs):
+    parent = kwargs["parent"]
+    contract, profile = _lab_descriptors()
+    kwargs.setdefault("publication", _publication(parent))
+    kwargs.setdefault("domain_contract", contract)
+    kwargs.setdefault("semantic_profile", profile)
+    return _materialize(**kwargs)
+
+
 def _parent(
     *,
     entities: list[Entity] | None = None,
@@ -124,6 +172,7 @@ def _parent(
         assertions = [_literal("asrt:alice-title", "ent:alice", "Alice")]
     if evidence is None:
         evidence = [_evidence()]
+    contract_digest, profile_digest = _lab_digests()
     revision = KnowledgeRevision(
         space_id=space_id,
         revision_id=revision_id,
@@ -134,12 +183,12 @@ def _parent(
         domain_contract_ref=DomainContractRef(
             domain_id="lab.domain",
             domain_revision="1",
-            descriptor_sha256="b" * 64,
+            descriptor_sha256=contract_digest,
         ),
         semantic_profile_ref=SemanticProfileRef(
             profile_id="lab.profile",
             profile_revision="1",
-            descriptor_sha256="c" * 64,
+            descriptor_sha256=profile_digest,
         ),
     )
     return build_parsed_knowledge_revision(
@@ -208,7 +257,7 @@ def test_01_happy_path_entity_and_assertion_round_trip() -> None:
             ),
         ],
     )
-    result = materialize_governed_revision(
+    result = _call(
         parent=parent,
         contribution=contrib,
         dispositions=_accepted("i1", "i2"),
@@ -252,13 +301,13 @@ def test_02_rejected_items_do_not_change_child_digest() -> None:
         assertion=_literal("asrt:bob-title", "ent:bob", "Bob"),
     )
     ghost = ProposeEntity(item_id="i3", entity=Entity(entity_id="ent:ghost"))
-    full = materialize_governed_revision(
+    full = _call(
         parent=parent,
         contribution=_contribution(parent, [bob, title, ghost]),
         dispositions=[*_accepted("i1", "i2"), *_rejected("i3")],
         publication=_publication(parent),
     )
-    omitted = materialize_governed_revision(
+    omitted = _call(
         parent=parent,
         contribution=_contribution(parent, [bob, title]),
         dispositions=_accepted("i1", "i2"),
@@ -273,7 +322,7 @@ def test_03_incomplete_dispositions_fail_closed() -> None:
     parent = _parent()
     contrib = _contribution(parent, [_bob_item()])
     with pytest.raises(GovernedMaterializationIntegrityError) as exc:
-        materialize_governed_revision(
+        _call(
             parent=parent,
             contribution=contrib,
             dispositions=[],
@@ -286,7 +335,7 @@ def test_04_extra_dispositions_fail_closed() -> None:
     parent = _parent()
     contrib = _contribution(parent, [_bob_item()])
     with pytest.raises(GovernedMaterializationIntegrityError) as exc:
-        materialize_governed_revision(
+        _call(
             parent=parent,
             contribution=contrib,
             dispositions=_accepted("i1", "i-extra"),
@@ -299,7 +348,7 @@ def test_05_unresolved_fails_closed() -> None:
     parent = _parent()
     contrib = _contribution(parent, [_bob_item()])
     with pytest.raises(GovernedMaterializationIntegrityError) as exc:
-        materialize_governed_revision(
+        _call(
             parent=parent,
             contribution=contrib,
             dispositions=[ContributionDisposition(item_id="i1", disposition="unresolved")],
@@ -316,7 +365,7 @@ def test_06_space_mismatch_fails_closed() -> None:
         space_id="space:other",
     )
     with pytest.raises(GovernedMaterializationIntegrityError) as exc:
-        materialize_governed_revision(
+        _call(
             parent=parent,
             contribution=contrib,
             dispositions=_accepted("i1"),
@@ -333,7 +382,7 @@ def test_07_non_finalized_contribution_fails_closed() -> None:
         status="draft",
     )
     with pytest.raises(GovernedMaterializationIntegrityError) as exc:
-        materialize_governed_revision(
+        _call(
             parent=parent,
             contribution=contrib,
             dispositions=_accepted("i1"),
@@ -351,7 +400,7 @@ def test_08_expected_parent_mismatch_fails_closed() -> None:
         expected_parent_revision_id="rev:stale",
     )
     with pytest.raises(GovernedMaterializationIntegrityError) as exc:
-        materialize_governed_revision(
+        _call(
             parent=parent,
             contribution=contrib,
             dispositions=_accepted("i1"),
@@ -374,7 +423,7 @@ def test_09_duplicate_contribution_item_ids_fail_closed() -> None:
         ],
     )
     with pytest.raises(GovernedMaterializationIntegrityError) as exc:
-        materialize_governed_revision(
+        _call(
             parent=parent,
             contribution=contrib,
             dispositions=_accepted("i1"),
@@ -385,7 +434,7 @@ def test_09_duplicate_contribution_item_ids_fail_closed() -> None:
 
 def test_10_retract_removes_target_and_missing_fails() -> None:
     parent = _parent()
-    result = materialize_governed_revision(
+    result = _call(
         parent=parent,
         contribution=_contribution(
             parent,
@@ -399,7 +448,7 @@ def test_10_retract_removes_target_and_missing_fails() -> None:
         for item in result.command.graph_payload["assertions"]
     )
     with pytest.raises(GovernedMaterializationIntegrityError) as exc:
-        materialize_governed_revision(
+        _call(
             parent=parent,
             contribution=_contribution(
                 parent,
@@ -419,7 +468,7 @@ def test_11_supersede_replaces_target_and_collision_fails() -> None:
             _literal("asrt:bob-title", "ent:bob", "Bob"),
         ],
     )
-    result = materialize_governed_revision(
+    result = _call(
         parent=parent,
         contribution=_contribution(
             parent,
@@ -438,7 +487,7 @@ def test_11_supersede_replaces_target_and_collision_fails() -> None:
     assert "asrt:alice-title" not in ids
     assert "asrt:alice-renamed" in ids
     with pytest.raises(GovernedMaterializationIntegrityError) as exc:
-        materialize_governed_revision(
+        _call(
             parent=parent,
             contribution=_contribution(
                 parent,
@@ -462,7 +511,7 @@ def test_12_assertion_collision_and_idempotent_replay() -> None:
         item_id="i1",
         assertion=_literal("asrt:alice-title", "ent:alice", "Alice"),
     )
-    replay = materialize_governed_revision(
+    replay = _call(
         parent=parent,
         contribution=_contribution(parent, [same]),
         dispositions=_accepted("i1"),
@@ -472,7 +521,7 @@ def test_12_assertion_collision_and_idempotent_replay() -> None:
         item["assertion_id"] for item in replay.command.graph_payload["assertions"]
     ]
     with pytest.raises(GovernedMaterializationIntegrityError) as exc:
-        materialize_governed_revision(
+        _call(
             parent=parent,
             contribution=_contribution(
                 parent,
@@ -492,7 +541,7 @@ def test_12_assertion_collision_and_idempotent_replay() -> None:
 def test_13_missing_subject_fails_via_structural_validation() -> None:
     parent = _parent()
     with pytest.raises(GovernedMaterializationIntegrityError) as exc:
-        materialize_governed_revision(
+        _call(
             parent=parent,
             contribution=_contribution(
                 parent,
@@ -532,7 +581,7 @@ def test_14_identity_add_remove_merge_and_reject() -> None:
             )
         ],
     )
-    added = materialize_governed_revision(
+    added = _call(
         parent=parent,
         contribution=_contribution(
             parent,
@@ -556,7 +605,7 @@ def test_14_identity_add_remove_merge_and_reject() -> None:
     aliases = {item["alias_id"]: item for item in added.command.graph_payload["aliases"]}
     assert aliases["iddec:alias"]["alias_text"] == "aka-alice"
 
-    removed = materialize_governed_revision(
+    removed = _call(
         parent=parent,
         contribution=_contribution(
             parent,
@@ -579,7 +628,7 @@ def test_14_identity_add_remove_merge_and_reject() -> None:
     )
     assert all(item["alias_id"] != "al:old" for item in removed.command.graph_payload["aliases"])
 
-    merged = materialize_governed_revision(
+    merged = _call(
         parent=parent,
         contribution=_contribution(
             parent,
@@ -609,7 +658,7 @@ def test_14_identity_add_remove_merge_and_reject() -> None:
     )
     assert bob_title["subject_entity_id"] == "ent:alice"
 
-    rejected = materialize_governed_revision(
+    rejected = _call(
         parent=parent,
         contribution=_contribution(
             parent,
@@ -650,7 +699,7 @@ def test_15_non_materializable_identity_kinds_fail_closed() -> None:
         (IdentityDecisionKind.HUMAN_OVERRIDE, {"subject_entity_ids": ["ent:alice"]}),
     ):
         with pytest.raises(GovernedMaterializationIntegrityError) as exc:
-            materialize_governed_revision(
+            _call(
                 parent=parent,
                 contribution=_contribution(
                     parent,
@@ -683,13 +732,13 @@ def test_16_disposition_list_order_does_not_change_digest() -> None:
         ),
     ]
     contrib = _contribution(parent, items)
-    first = materialize_governed_revision(
+    first = _call(
         parent=parent,
         contribution=contrib,
         dispositions=_accepted("i1", "i2"),
         publication=_publication(parent),
     )
-    second = materialize_governed_revision(
+    second = _call(
         parent=parent,
         contribution=contrib,
         dispositions=list(reversed(_accepted("i1", "i2"))),
@@ -702,7 +751,7 @@ def test_17_parent_revision_is_unchanged() -> None:
     parent = _parent()
     before_entities = set(parent.entities_by_id)
     before_assertions = set(parent.assertions_by_id)
-    materialize_governed_revision(
+    _call(
         parent=parent,
         contribution=_contribution(
             parent, [ProposeEntity(item_id="i1", entity=Entity(entity_id="ent:bob"))]
@@ -716,7 +765,7 @@ def test_17_parent_revision_is_unchanged() -> None:
 
 def test_18_command_parent_fields_are_equal() -> None:
     parent = _parent()
-    result = materialize_governed_revision(
+    result = _call(
         parent=parent,
         contribution=_contribution(
             parent, [ProposeEntity(item_id="i1", entity=Entity(entity_id="ent:bob"))]
@@ -724,11 +773,17 @@ def test_18_command_parent_fields_are_equal() -> None:
         dispositions=_accepted("i1"),
         publication=_publication(parent),
     )
-    assert result.command.parent_revision_id == result.command.expected_parent_revision_id
+    first = result.command
+    assert first.parent_revision_id == first.expected_parent_revision_id
     snapshot = result.graph_payload
-    result.command.graph_payload["entities"] = []
+    first.graph_payload["entities"] = []
+    first.operation_ids.append("op:mutated")
+    second = result.command
+    assert second.graph_payload == snapshot
+    assert second.operation_ids == ["op:child"]
     assert result.graph_payload == snapshot
     assert result.graph_payload_sha256 == canonical_sha256(snapshot)
+    assert result.graph_payload_sha256 == canonical_sha256(second.graph_payload)
 
 
 def test_19_org_and_buddy_fixtures_share_the_engine() -> None:
@@ -740,8 +795,14 @@ def test_19_org_and_buddy_fixtures_share_the_engine() -> None:
         profile_digest=ORG_PROFILE_DIGEST,
     )
     org_parent = org_context.parsed
-    org_assert = next(iter(org_parent.assertions_by_id.values()))
-    org_result = materialize_governed_revision(
+    org_title = next(
+        Assertion.model_validate(item)
+        for item in json.loads(
+            (FIXTURES_DIR / "organizational_memory_v1.json").read_text(encoding="utf-8")
+        )["assertions"]
+        if item["predicate"] == "organization:title"
+    )
+    org_result = _call(
         parent=org_parent,
         contribution=_contribution(
             org_parent,
@@ -749,26 +810,29 @@ def test_19_org_and_buddy_fixtures_share_the_engine() -> None:
                 ProposeEntity(item_id="i1", entity=Entity(entity_id="ent:new-org")),
                 ProposeAssertion(
                     item_id="i2",
-                    assertion=Assertion(
-                        assertion_id="asrt:new-org-title",
-                        subject_entity_id="ent:new-org",
-                        predicate=org_assert.predicate,
-                        value=LiteralValue(value="New desk"),
-                        metadata=_meta(evidence_id=org_assert.metadata.evidence_ref_ids[0]),
+                    assertion=org_title.model_copy(
+                        update={
+                            "assertion_id": "asrt:new-org-title",
+                            "subject_entity_id": "ent:new-org",
+                            "value": LiteralValue(value={"title": "New desk"}),
+                        }
                     ),
                 ),
             ],
         ),
         dispositions=_accepted("i1", "i2"),
         publication=_publication(org_parent),
+        domain_contract=_org_domain_contract(),
+        semantic_profile=_org_semantic_profile(),
     )
     entity_ids = [item["entity_id"] for item in org_result.command.graph_payload["entities"]]
     assert "ent:new-org" in entity_ids
+    decoded = decode_native_graph_payload(org_result.command.graph_payload)
+    assert any(item.assertion_id == "asrt:new-org-title" for item in decoded.assertions)
 
     buddy_context, _ = _buddy_context(_buddy_request())
     buddy_parent = buddy_context.parsed
-    buddy_assert = next(iter(buddy_parent.assertions_by_id.values()))
-    buddy_result = materialize_governed_revision(
+    buddy_result = _call(
         parent=buddy_parent,
         contribution=_contribution(
             buddy_parent,
@@ -776,11 +840,12 @@ def test_19_org_and_buddy_fixtures_share_the_engine() -> None:
         ),
         dispositions=_accepted("i1"),
         publication=_publication(buddy_parent),
+        domain_contract=_buddy_domain_contract(),
+        semantic_profile=_buddy_semantic_profile(),
     )
     assert "ent:new-buddy" in [
         item["entity_id"] for item in buddy_result.command.graph_payload["entities"]
     ]
-    _ = buddy_assert
     source = MATERIALIZATION_SRC.read_text(encoding="utf-8")
     for banned in ('"GM"', "'GM'", "PLAYER", "campaign_id", "world_id", "dungeonbuddy"):
         assert banned not in source
@@ -825,6 +890,10 @@ def test_23_materialization_10k_benchmark_records_shape() -> None:
     assert run["accepted_item_count"] == 1
     assert run["bytes_written"] == 0
     assert "p95_ms" in run
+    assert "validate_p50_ms" in run
+    assert "validate_p95_ms" in run
+    assert "serialize_hash_p50_ms" in run
+    assert "serialize_hash_p95_ms" in run
 
 
 def test_24_frozen_v0_aggregate_unchanged() -> None:
@@ -832,15 +901,14 @@ def test_24_frozen_v0_aggregate_unchanged() -> None:
     if digest_path.is_file():
         assert digest_path.read_text(encoding="utf-8").strip() == CANONICAL_V0_AGGREGATE
     assert (
-        CANONICAL_V0_AGGREGATE
-        == "fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea"
+        CANONICAL_V0_AGGREGATE == "fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea"
     )
 
 
 def test_25_non_native_parent_fails_closed() -> None:
     parent = _parent(graph_schema="dm_union_graph_v6")
     with pytest.raises(GovernedMaterializationIntegrityError) as exc:
-        materialize_governed_revision(
+        _call(
             parent=parent,
             contribution=_contribution(
                 parent, [ProposeEntity(item_id="i1", entity=Entity(entity_id="ent:bob"))]
@@ -849,3 +917,220 @@ def test_25_non_native_parent_fails_closed() -> None:
             publication=_publication(parent),
         )
     assert _reason(exc.value) == "parent_not_native_vnext"
+
+
+def test_26_undeclared_predicate_fails_closed() -> None:
+    parent = _parent()
+    with pytest.raises(GovernedMaterializationIntegrityError) as exc:
+        _call(
+            parent=parent,
+            contribution=_contribution(
+                parent,
+                [
+                    ProposeEntity(item_id="i1", entity=Entity(entity_id="ent:bob")),
+                    ProposeAssertion(
+                        item_id="i2",
+                        assertion=Assertion(
+                            assertion_id="asrt:bob-unknown",
+                            subject_entity_id="ent:bob",
+                            predicate="lab:unknown",
+                            value=LiteralValue(value="x"),
+                            metadata=_meta(),
+                        ),
+                    ),
+                ],
+            ),
+            dispositions=_accepted("i1", "i2"),
+        )
+    assert _reason(exc.value) == "undeclared_semantic_profile"
+
+
+def test_27_undeclared_domain_vocabulary_fails_closed() -> None:
+    parent = _parent()
+    with pytest.raises(GovernedMaterializationIntegrityError) as exc:
+        _call(
+            parent=parent,
+            contribution=_contribution(
+                parent,
+                [
+                    ProposeEntity(item_id="i1", entity=Entity(entity_id="ent:bob")),
+                    ProposeAssertion(
+                        item_id="i2",
+                        assertion=_literal("asrt:bob-title", "ent:bob", "Bob").model_copy(
+                            update={
+                                "metadata": AssertionMetadata(
+                                    scope=[ScopeBinding(axis="lab:other", value="one")],
+                                    visibility=PublicVisibility(),
+                                    epistemic_basis=EpistemicBasis.ASSERTED,
+                                    claim_mode="lab:fact",
+                                    standing=KnowledgeStanding.ESTABLISHED,
+                                    evidence_ref_ids=["ev:lab"],
+                                    temporal_scope=TimelessTemporalScope(),
+                                )
+                            }
+                        ),
+                    ),
+                ],
+            ),
+            dispositions=_accepted("i1", "i2"),
+        )
+    assert _reason(exc.value) == "undeclared_domain_vocabulary"
+
+    with pytest.raises(GovernedMaterializationIntegrityError) as claim_exc:
+        _call(
+            parent=parent,
+            contribution=_contribution(
+                parent,
+                [
+                    ProposeEntity(item_id="i1", entity=Entity(entity_id="ent:bob")),
+                    ProposeAssertion(
+                        item_id="i2",
+                        assertion=_literal("asrt:bob-title", "ent:bob", "Bob").model_copy(
+                            update={
+                                "metadata": AssertionMetadata(
+                                    scope=[ScopeBinding(axis="lab:scope", value="one")],
+                                    visibility=PublicVisibility(),
+                                    epistemic_basis=EpistemicBasis.ASSERTED,
+                                    claim_mode="lab:belief",
+                                    standing=KnowledgeStanding.ESTABLISHED,
+                                    evidence_ref_ids=["ev:lab"],
+                                    temporal_scope=TimelessTemporalScope(),
+                                )
+                            }
+                        ),
+                    ),
+                ],
+            ),
+            dispositions=_accepted("i1", "i2"),
+        )
+    assert _reason(claim_exc.value) == "undeclared_domain_vocabulary"
+
+    with pytest.raises(GovernedMaterializationIntegrityError) as vis_exc:
+        _call(
+            parent=parent,
+            contribution=_contribution(
+                parent,
+                [
+                    ProposeEntity(item_id="i1", entity=Entity(entity_id="ent:bob")),
+                    ProposeAssertion(
+                        item_id="i2",
+                        assertion=_literal("asrt:bob-title", "ent:bob", "Bob").model_copy(
+                            update={
+                                "metadata": AssertionMetadata(
+                                    scope=[ScopeBinding(axis="lab:scope", value="one")],
+                                    visibility=LabelsAnyVisibility(labels=["lab:secret"]),
+                                    epistemic_basis=EpistemicBasis.ASSERTED,
+                                    claim_mode="lab:fact",
+                                    standing=KnowledgeStanding.ESTABLISHED,
+                                    evidence_ref_ids=["ev:lab"],
+                                    temporal_scope=TimelessTemporalScope(),
+                                )
+                            }
+                        ),
+                    ),
+                ],
+            ),
+            dispositions=_accepted("i1", "i2"),
+        )
+    assert _reason(vis_exc.value) == "undeclared_domain_vocabulary"
+
+
+def test_28_descriptor_pin_mismatch_fails_closed() -> None:
+    parent = _parent()
+    contract, profile = _lab_descriptors()
+    contrib = _contribution(
+        parent, [ProposeEntity(item_id="i1", entity=Entity(entity_id="ent:bob"))]
+    )
+    with pytest.raises(GovernedMaterializationIntegrityError) as identity_exc:
+        _call(
+            parent=parent,
+            contribution=contrib,
+            dispositions=_accepted("i1"),
+            domain_contract=contract.model_copy(update={"domain_id": "lab.other"}),
+            semantic_profile=profile,
+        )
+    assert _reason(identity_exc.value) == "domain_contract_identity_mismatch"
+
+    with pytest.raises(GovernedMaterializationIntegrityError) as digest_exc:
+        _call(
+            parent=parent,
+            contribution=contrib,
+            dispositions=_accepted("i1"),
+            domain_contract=contract.model_copy(update={"admission_policy_id": "lab.other"}),
+            semantic_profile=profile,
+        )
+    assert _reason(digest_exc.value) == "domain_contract_digest_mismatch"
+
+    with pytest.raises(GovernedMaterializationIntegrityError) as profile_exc:
+        _call(
+            parent=parent,
+            contribution=contrib,
+            dispositions=_accepted("i1"),
+            domain_contract=contract,
+            semantic_profile=profile.model_copy(update={"profile_id": "lab.other"}),
+        )
+    assert _reason(profile_exc.value) == "semantic_profile_identity_mismatch"
+
+
+def test_29_identity_decision_ids_close_against_accepted_decisions() -> None:
+    parent = _parent()
+    identity = ProposeIdentityDecision(
+        item_id="i1",
+        decision=IdentityDecisionV3(
+            decision_id="iddec:alias",
+            space_id=parent.space_id,
+            decision_kind=IdentityDecisionKind.ALIAS_ADD,
+            subject_entity_ids=["ent:alice"],
+            alias="aka-alice",
+            created_at=NOW,
+        ),
+    )
+    entity = ProposeEntity(item_id="i2", entity=Entity(entity_id="ent:bob"))
+    closed = _call(
+        parent=parent,
+        contribution=_contribution(parent, [identity, entity]),
+        dispositions=[
+            ContributionDisposition(
+                item_id="i1",
+                disposition="accepted",
+                identity_decision_ids=["iddec:alias"],
+            ),
+            ContributionDisposition(
+                item_id="i2",
+                disposition="accepted",
+                identity_decision_ids=["iddec:alias"],
+            ),
+        ],
+    )
+    aliases = {item["alias_id"]: item for item in closed.command.graph_payload["aliases"]}
+    assert aliases["iddec:alias"]["alias_text"] == "aka-alice"
+
+    with pytest.raises(GovernedMaterializationIntegrityError) as missing_exc:
+        _call(
+            parent=parent,
+            contribution=_contribution(parent, [identity, entity]),
+            dispositions=[
+                ContributionDisposition(item_id="i1", disposition="accepted"),
+                ContributionDisposition(
+                    item_id="i2",
+                    disposition="accepted",
+                    identity_decision_ids=["iddec:missing"],
+                ),
+            ],
+        )
+    assert _reason(missing_exc.value) == "identity_decision_id_unresolved"
+
+    with pytest.raises(GovernedMaterializationIntegrityError) as rejected_exc:
+        _call(
+            parent=parent,
+            contribution=_contribution(parent, [identity, entity]),
+            dispositions=[
+                ContributionDisposition(item_id="i1", disposition="rejected"),
+                ContributionDisposition(
+                    item_id="i2",
+                    disposition="accepted",
+                    identity_decision_ids=["iddec:alias"],
+                ),
+            ],
+        )
+    assert _reason(rejected_exc.value) == "identity_decision_id_unresolved"

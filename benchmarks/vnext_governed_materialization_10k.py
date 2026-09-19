@@ -32,13 +32,16 @@ from dungeonmind.contracts.vnext.contribution import (
 from dungeonmind.contracts.vnext.domain import (
     Assertion,
     AssertionMetadata,
+    DomainContractDescriptor,
     DomainContractRef,
     Entity,
     LiteralValue,
+    SemanticProfileDescriptorV2,
+    SemanticProfilePredicate,
 )
 from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
 from dungeonmind.contracts.vnext.source import EvidenceRefV3
-from dungeonmind.domain.canonical import canonical_json
+from dungeonmind.domain.canonical import canonical_json, canonical_sha256
 
 KNOWN_MERGE_BASE = "bc115eb40f1601e5b6c6fda23ff05ee5bf06883d"
 NOW = datetime(2026, 9, 18, 12, 0, tzinfo=UTC)
@@ -58,6 +61,25 @@ def _meta() -> AssertionMetadata:
         evidence_ref_ids=["ev:bench"],
         temporal_scope=TimelessTemporalScope(),
     )
+
+
+def _descriptors() -> tuple[DomainContractDescriptor, SemanticProfileDescriptorV2]:
+    contract = DomainContractDescriptor(
+        domain_id="bench.domain",
+        domain_revision="1",
+        scope_axes=["bench:scope"],
+        claim_modes=["bench:fact"],
+        admission_policy_id="bench.always",
+    )
+    profile = SemanticProfileDescriptorV2(
+        profile_id="bench.profile",
+        profile_revision="1",
+        term_namespaces=["bench"],
+        predicates=[
+            SemanticProfilePredicate(term="bench:title", allowed_value_kinds=["literal"]),
+        ],
+    )
+    return contract, profile
 
 
 def _build_parent(entity_count: int) -> dict[str, Any]:
@@ -83,6 +105,7 @@ def _build_parent(entity_count: int) -> dict[str, Any]:
             can_highlight_span=False,
         )
     ]
+    contract, profile = _descriptors()
     revision = KnowledgeRevision(
         space_id="space:bench",
         revision_id=f"rev:parent-{entity_count}",
@@ -91,14 +114,14 @@ def _build_parent(entity_count: int) -> dict[str, Any]:
         graph_schema="dm_vnext_graph_v1",
         graph_payload_sha256="0" * 64,
         domain_contract_ref=DomainContractRef(
-            domain_id="bench.domain",
-            domain_revision="1",
-            descriptor_sha256="b" * 64,
+            domain_id=contract.domain_id,
+            domain_revision=contract.domain_revision,
+            descriptor_sha256=canonical_sha256(contract.model_dump(mode="json")),
         ),
         semantic_profile_ref=SemanticProfileRef(
-            profile_id="bench.profile",
-            profile_revision="1",
-            descriptor_sha256="c" * 64,
+            profile_id=profile.profile_id,
+            profile_revision=profile.profile_revision,
+            descriptor_sha256=canonical_sha256(profile.model_dump(mode="json")),
         ),
     )
     parsed = build_parsed_knowledge_revision(
@@ -142,7 +165,10 @@ def _time_materialize(parent: Any, iterations: int) -> dict[str, Any]:
         expected_parent_revision_id=parent.revision_id,
     )
     samples: list[float] = []
+    validate_samples: list[float] = []
+    serialize_samples: list[float] = []
     result = None
+    contract, profile = _descriptors()
     for _ in range(iterations):
         started = time.perf_counter()
         result = materialize_governed_revision(
@@ -150,11 +176,17 @@ def _time_materialize(parent: Any, iterations: int) -> dict[str, Any]:
             contribution=contribution,
             dispositions=dispositions,
             publication=publication,
+            domain_contract=contract,
+            semantic_profile=profile,
         )
         samples.append((time.perf_counter() - started) * 1000.0)
+        validate_samples.append(result.validate_ms)
+        serialize_samples.append(result.serialize_hash_ms)
     assert result is not None
     payload_bytes = len(canonical_json(result.command.graph_payload).encode("utf-8"))
     child_entities = [item["entity_id"] for item in result.command.graph_payload["entities"]]
+    validate_pct = _percentiles(validate_samples)
+    serialize_pct = _percentiles(serialize_samples)
     return {
         "accepted_item_count": len(result.accepted_item_ids),
         "rejected_item_count": len(result.rejected_item_ids),
@@ -167,6 +199,10 @@ def _time_materialize(parent: Any, iterations: int) -> dict[str, Any]:
         "parent_revision_id": result.command.parent_revision_id,
         "expected_parent_revision_id": result.command.expected_parent_revision_id,
         **_percentiles(samples),
+        "validate_p50_ms": validate_pct["p50_ms"],
+        "validate_p95_ms": validate_pct["p95_ms"],
+        "serialize_hash_p50_ms": serialize_pct["p50_ms"],
+        "serialize_hash_p95_ms": serialize_pct["p95_ms"],
     }
 
 

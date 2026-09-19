@@ -1,16 +1,17 @@
 """Generic governed materialization of one native-vNext child graph.
 
 Given one exact native parent revision, one frozen KnowledgeContribution,
-complete accepted/rejected dispositions, and explicit publication identity,
-this module produces one structurally validated child payload and one frozen
+complete accepted/rejected dispositions, pinned DomainContract/SemanticProfile
+descriptors, and explicit publication identity, this module produces one
+structurally and vocabulary-validated child payload and one sealed
 PublishKnowledgeRevisionCommand. It does not write a repository, mutate a
 head, perform CAS publication, or import World/Graph-Review transport.
 """
 
 from __future__ import annotations
 
-import copy
 import json
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -42,10 +43,12 @@ from dungeonmind.contracts.vnext.contribution import (
 from dungeonmind.contracts.vnext.domain import (
     Assertion,
     AssertionMetadata,
+    DomainContractDescriptor,
     DomainContractRef,
     Entity,
     EntityRefValue,
     LiteralValue,
+    SemanticProfileDescriptorV2,
     TermRefValue,
 )
 from dungeonmind.contracts.vnext.knowledge import (
@@ -59,6 +62,7 @@ from dungeonmind.contracts.vnext.knowledge import (
 from dungeonmind.contracts.vnext.source import EvidenceRefV3
 from dungeonmind.domain.canonical import canonical_json, canonical_sha256
 
+from .admission import domain_declaration_passes, semantic_profile_passes
 from .builder import DecodedKnowledgeContent, build_parsed_knowledge_revision
 from .errors import GovernedMaterializationIntegrityError, RevisionStructuralIntegrityError
 from .frozen_json import thaw_json_value
@@ -106,13 +110,27 @@ class GovernedPublicationIdentity:
 
 @dataclass(frozen=True, slots=True)
 class GovernedMaterializationResult:
-    """Ephemeral materialization: command plus isolated payload snapshot."""
+    """Ephemeral materialization with a sealed command snapshot.
 
-    command: PublishKnowledgeRevisionCommand
+    ``command`` and ``graph_payload`` are copy-on-read. Mutating a retrieved
+    command cannot change a later retrieve or the bound payload digest.
+    """
+
     graph_payload_sha256: str
     accepted_item_ids: tuple[str, ...]
     rejected_item_ids: tuple[str, ...]
+    validate_ms: float
+    serialize_hash_ms: float
+    _command_json: str
     _payload_json: str
+
+    @property
+    def command(self) -> PublishKnowledgeRevisionCommand:
+        loaded = json.loads(self._command_json)
+        restored = PublishKnowledgeRevisionCommand.model_validate(loaded)
+        if canonical_sha256(restored.graph_payload) != self.graph_payload_sha256:
+            _fail("sealed_command_payload_digest_mismatch")
+        return restored
 
     @property
     def graph_payload(self) -> dict[str, Any]:
@@ -128,9 +146,20 @@ def materialize_governed_revision(
     contribution: KnowledgeContribution,
     dispositions: Sequence[ContributionDisposition],
     publication: GovernedPublicationIdentity,
+    domain_contract: DomainContractDescriptor,
+    semantic_profile: SemanticProfileDescriptorV2,
 ) -> GovernedMaterializationResult:
     """Materialize one validated native child graph and publish command."""
-    _validate_preconditions(parent, contribution, dispositions, publication)
+    validate_started = time.perf_counter()
+    _validate_preconditions(
+        parent,
+        contribution,
+        dispositions,
+        publication,
+        domain_contract=domain_contract,
+        semantic_profile=semantic_profile,
+    )
+    validate_ms = (time.perf_counter() - validate_started) * 1000.0
 
     disposition_by_item = {item.item_id: item for item in dispositions}
     accepted_ids: list[str] = []
@@ -165,6 +194,7 @@ def materialize_governed_revision(
         else:
             _fail("unsupported_contribution_item", item_id=item.item_id)
 
+    serialize_started = time.perf_counter()
     payload = encode_native_graph_payload(
         entities=entities,
         assertions=assertions,
@@ -172,8 +202,11 @@ def materialize_governed_revision(
         evidence=evidence,
     )
     payload_sha = canonical_sha256(payload)
+    serialize_hash_ms = (time.perf_counter() - serialize_started) * 1000.0
+
+    validate_started = time.perf_counter()
     try:
-        _rebuild_child(
+        child = _rebuild_child(
             parent=parent,
             publication=publication,
             payload=payload,
@@ -184,25 +217,37 @@ def materialize_governed_revision(
             "child_structural_integrity",
             message=str(exc),
         )
+    _validate_child_vocabulary(
+        child,
+        domain_contract=domain_contract,
+        semantic_profile=semantic_profile,
+    )
+    validate_ms += (time.perf_counter() - validate_started) * 1000.0
 
+    serialize_started = time.perf_counter()
     command = PublishKnowledgeRevisionCommand(
         space_id=parent.space_id,
         parent_revision_id=parent.revision_id,
         expected_parent_revision_id=parent.revision_id,
         operation_ids=list(publication.operation_ids),
         graph_schema=parent.graph_schema,
-        graph_payload=copy.deepcopy(payload),
+        graph_payload=json.loads(canonical_json(payload)),
         domain_contract_ref=_domain_contract_ref(parent),
         semantic_profile_ref=_semantic_profile_ref(parent),
         migration_origin_ref=_migration_origin_ref(parent),
         created_at=publication.created_at,
     )
+    command_json = canonical_json(command.model_dump(mode="json"))
+    payload_json = canonical_json(payload)
+    serialize_hash_ms += (time.perf_counter() - serialize_started) * 1000.0
     return GovernedMaterializationResult(
-        command=command,
         graph_payload_sha256=payload_sha,
         accepted_item_ids=tuple(accepted_ids),
         rejected_item_ids=tuple(rejected_ids),
-        _payload_json=canonical_json(payload),
+        validate_ms=validate_ms,
+        serialize_hash_ms=serialize_hash_ms,
+        _command_json=command_json,
+        _payload_json=payload_json,
     )
 
 
@@ -215,16 +260,10 @@ def encode_native_graph_payload(
 ) -> dict[str, Any]:
     """Deterministic native-vNext graph payload from contract primitives."""
     return {
-        "entities": [
-            entities[key].model_dump(mode="json") for key in sorted(entities)
-        ],
-        "assertions": [
-            assertions[key].model_dump(mode="json") for key in sorted(assertions)
-        ],
+        "entities": [entities[key].model_dump(mode="json") for key in sorted(entities)],
+        "assertions": [assertions[key].model_dump(mode="json") for key in sorted(assertions)],
         "aliases": [aliases[key].model_dump(mode="json") for key in sorted(aliases)],
-        "evidence": [
-            evidence[key].model_dump(mode="json") for key in sorted(evidence)
-        ],
+        "evidence": [evidence[key].model_dump(mode="json") for key in sorted(evidence)],
     }
 
 
@@ -252,6 +291,9 @@ def _validate_preconditions(
     contribution: KnowledgeContribution,
     dispositions: Sequence[ContributionDisposition],
     publication: GovernedPublicationIdentity,
+    *,
+    domain_contract: DomainContractDescriptor,
+    semantic_profile: SemanticProfileDescriptorV2,
 ) -> None:
     if parent.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA:
         _fail("parent_not_native_vnext", graph_schema=parent.graph_schema)
@@ -275,11 +317,7 @@ def _validate_preconditions(
             missing=sorted(set(item_ids) - set(disposition_ids)),
             extra=sorted(set(disposition_ids) - set(item_ids)),
         )
-    unresolved = [
-        item.item_id
-        for item in dispositions
-        if item.disposition == "unresolved"
-    ]
+    unresolved = [item.item_id for item in dispositions if item.disposition == "unresolved"]
     if unresolved:
         _fail("unresolved_dispositions", item_ids=unresolved)
     if publication.expected_parent_revision_id != parent.revision_id:
@@ -292,6 +330,108 @@ def _validate_preconditions(
         _fail("empty_operation_ids")
     if len(publication.operation_ids) != len(set(publication.operation_ids)):
         _fail("duplicate_operation_ids")
+    _pin_descriptors(
+        parent,
+        domain_contract=domain_contract,
+        semantic_profile=semantic_profile,
+    )
+    _close_identity_decision_ids(contribution, dispositions)
+
+
+def _pin_descriptors(
+    parent: ParsedKnowledgeRevision,
+    *,
+    domain_contract: DomainContractDescriptor,
+    semantic_profile: SemanticProfileDescriptorV2,
+) -> None:
+    contract_ref = parent.domain_contract_ref
+    if (
+        domain_contract.domain_id != contract_ref.domain_id
+        or domain_contract.domain_revision != contract_ref.domain_revision
+    ):
+        _fail(
+            "domain_contract_identity_mismatch",
+            domain_id=domain_contract.domain_id,
+            domain_revision=domain_contract.domain_revision,
+            expected_domain_id=contract_ref.domain_id,
+            expected_domain_revision=contract_ref.domain_revision,
+        )
+    contract_digest = canonical_sha256(domain_contract.model_dump(mode="json"))
+    if contract_digest != contract_ref.descriptor_sha256:
+        _fail(
+            "domain_contract_digest_mismatch",
+            descriptor_sha256=contract_digest,
+            expected_descriptor_sha256=contract_ref.descriptor_sha256,
+        )
+    profile_ref = parent.semantic_profile_ref
+    if (
+        semantic_profile.profile_id != profile_ref.profile_id
+        or semantic_profile.profile_revision != profile_ref.profile_revision
+    ):
+        _fail(
+            "semantic_profile_identity_mismatch",
+            profile_id=semantic_profile.profile_id,
+            profile_revision=semantic_profile.profile_revision,
+            expected_profile_id=profile_ref.profile_id,
+            expected_profile_revision=profile_ref.profile_revision,
+        )
+    profile_digest = canonical_sha256(semantic_profile.model_dump(mode="json"))
+    if profile_digest != profile_ref.descriptor_sha256:
+        _fail(
+            "semantic_profile_digest_mismatch",
+            descriptor_sha256=profile_digest,
+            expected_descriptor_sha256=profile_ref.descriptor_sha256,
+        )
+
+
+def _close_identity_decision_ids(
+    contribution: KnowledgeContribution,
+    dispositions: Sequence[ContributionDisposition],
+) -> None:
+    disposition_by_item = {item.item_id: item for item in dispositions}
+    accepted_decision_ids = {
+        item.decision.decision_id
+        for item in contribution.items
+        if isinstance(item, ProposeIdentityDecision)
+        and disposition_by_item[item.item_id].disposition == "accepted"
+    }
+    for disposition in dispositions:
+        for decision_id in disposition.identity_decision_ids:
+            if decision_id not in accepted_decision_ids:
+                _fail(
+                    "identity_decision_id_unresolved",
+                    item_id=disposition.item_id,
+                    identity_decision_id=decision_id,
+                )
+
+
+def _validate_child_vocabulary(
+    child: ParsedKnowledgeRevision,
+    *,
+    domain_contract: DomainContractDescriptor,
+    semantic_profile: SemanticProfileDescriptorV2,
+) -> None:
+    for assertion in child.assertions_by_id.values():
+        reason = domain_declaration_passes(
+            assertion,
+            domain_contract=domain_contract,
+        )
+        if reason is not None:
+            _fail(
+                "undeclared_domain_vocabulary",
+                assertion_id=assertion.assertion_id,
+                gate=reason,
+            )
+        reason = semantic_profile_passes(
+            assertion,
+            semantic_profile=semantic_profile,
+        )
+        if reason is not None:
+            _fail(
+                "undeclared_semantic_profile",
+                assertion_id=assertion.assertion_id,
+                gate=reason,
+            )
 
 
 def _apply_propose_entity(entities: dict[str, Entity], item: ProposeEntity) -> None:
@@ -303,9 +443,7 @@ def _apply_propose_entity(entities: dict[str, Entity], item: ProposeEntity) -> N
         _fail("entity_id_collision", entity_id=item.entity.entity_id)
 
 
-def _apply_propose_assertion(
-    assertions: dict[str, Assertion], item: ProposeAssertion
-) -> None:
+def _apply_propose_assertion(assertions: dict[str, Assertion], item: ProposeAssertion) -> None:
     existing = assertions.get(item.assertion.assertion_id)
     incoming = item.assertion
     if existing is None:
@@ -326,10 +464,7 @@ def _apply_supersede(assertions: dict[str, Assertion], item: SupersedeAssertion)
         _fail("supersede_missing_target", assertion_id=item.target_assertion_id)
     replacement = item.replacement_assertion
     colliding = assertions.get(replacement.assertion_id)
-    if (
-        colliding is not None
-        and replacement.assertion_id != item.target_assertion_id
-    ):
+    if colliding is not None and replacement.assertion_id != item.target_assertion_id:
         _fail(
             "supersede_replacement_collision",
             assertion_id=replacement.assertion_id,
@@ -395,9 +530,7 @@ def _apply_alias_add(
         _fail("alias_id_collision", alias_id=alias.alias_id)
 
 
-def _apply_alias_remove(
-    aliases: dict[str, IdentityAlias], decision: IdentityDecisionV3
-) -> None:
+def _apply_alias_remove(aliases: dict[str, IdentityAlias], decision: IdentityDecisionV3) -> None:
     subjects = set(decision.subject_entity_ids)
     alias_text = str(decision.alias)
     removed = [
