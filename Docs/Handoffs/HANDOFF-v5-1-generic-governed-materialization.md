@@ -318,7 +318,10 @@ Fail closed, with a dedicated vNext materialization integrity error, when:
 - publication `expected_parent_revision_id` disagrees with `parent.revision_id`;
 - operation identity is empty or non-unique;
 - supplied DomainContract/SemanticProfile identity or canonical digest disagrees with the parent refs;
-- any `identity_decision_ids` reference is not an accepted `ProposeIdentityDecision.decision_id` in the same contribution.
+- any `identity_decision_ids` reference is not an accepted `ProposeIdentityDecision.decision_id` in the same contribution;
+- two `ProposeIdentityDecision` items share a `decision_id`;
+- an accepted identity decision has `status != active`;
+- an accepted identity decision has non-empty `supersedes_decision_ids`.
 
 Rejected items are ignored. They must not mutate the child and must not contribute to the child payload digest.
 
@@ -430,9 +433,12 @@ split
 unmerge
 mark_ambiguous
 human_override
+duplicate decision_id across ProposeIdentityDecision items
+accepted status != active
+accepted non-empty supersedes_decision_ids
 ```
 
-Those kinds are real frozen contract members, but applying them requires identity-rewrite policy that V5.1 does not own. Do not silently no-op them.
+Those kinds and lifecycle fields are real frozen contract members, but applying them requires identity-rewrite or supersession policy that V5.1 does not own. Do not silently no-op them, and do not invent a partial identity-decision ledger.
 
 Do not persist identity decisions as a new payload key. The frozen native graph content remains entities, assertions, aliases, and evidence.
 
@@ -491,9 +497,12 @@ Focused tests must prove at least:
 24. Frozen V0 aggregate remains `fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea`.
 25. Non-native parent fails closed.
 26. Undeclared predicate / value kind fails closed against the pinned SemanticProfile.
-27. Undeclared claim mode, scope axis, or visibility label fails closed against the pinned DomainContract.
+27. Undeclared claim mode, scope axis, visibility label, domain temporal schema, or domain-metadata schema fails closed against the pinned DomainContract.
 28. Descriptor identity or digest mismatch against the parent refs fails closed.
 29. `identity_decision_ids` close against accepted identity decisions; unknown or rejected references fail closed.
+30. Duplicate `decision_id` across identity proposals fails closed before mutation, including mixed kinds that would not collide on alias id.
+31. Accepted identity decisions with `status != active` fail closed.
+32. Accepted identity decisions with non-empty `supersedes_decision_ids` fail closed.
 
 ---
 

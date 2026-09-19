@@ -54,6 +54,7 @@ from dungeonmind.contracts.vnext.domain import (
 from dungeonmind.contracts.vnext.knowledge import (
     IdentityAlias,
     IdentityDecisionKind,
+    IdentityDecisionStatus,
     IdentityDecisionV3,
     KnowledgeRevision,
     MigrationOriginRef,
@@ -335,6 +336,7 @@ def _validate_preconditions(
         domain_contract=domain_contract,
         semantic_profile=semantic_profile,
     )
+    _validate_identity_decision_integrity(contribution, dispositions)
     _close_identity_decision_ids(contribution, dispositions)
 
 
@@ -382,6 +384,40 @@ def _pin_descriptors(
             descriptor_sha256=profile_digest,
             expected_descriptor_sha256=profile_ref.descriptor_sha256,
         )
+
+
+def _validate_identity_decision_integrity(
+    contribution: KnowledgeContribution,
+    dispositions: Sequence[ContributionDisposition],
+) -> None:
+    disposition_by_item = {item.item_id: item for item in dispositions}
+    seen_decision_ids: dict[str, str] = {}
+    for item in contribution.items:
+        if not isinstance(item, ProposeIdentityDecision):
+            continue
+        decision_id = item.decision.decision_id
+        previous = seen_decision_ids.get(decision_id)
+        if previous is not None:
+            _fail(
+                "duplicate_identity_decision_id",
+                decision_id=decision_id,
+                item_ids=[previous, item.item_id],
+            )
+        seen_decision_ids[decision_id] = item.item_id
+        if disposition_by_item[item.item_id].disposition != "accepted":
+            continue
+        if item.decision.status != IdentityDecisionStatus.ACTIVE:
+            _fail(
+                "identity_decision_not_active",
+                decision_id=decision_id,
+                status=str(item.decision.status),
+            )
+        if item.decision.supersedes_decision_ids:
+            _fail(
+                "identity_supersession_not_materializable_in_v5_1",
+                decision_id=decision_id,
+                supersedes_decision_ids=list(item.decision.supersedes_decision_ids),
+            )
 
 
 def _close_identity_decision_ids(

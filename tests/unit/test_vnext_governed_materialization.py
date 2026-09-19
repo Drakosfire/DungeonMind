@@ -19,6 +19,8 @@ from dungeonmind.application.vnext.materialization import (
 from dungeonmind.application.vnext.model import ParsedKnowledgeRevision
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.common import (
+    DomainMetadataEntry,
+    DomainTemporalScope,
     EpistemicBasis,
     KnowledgeStanding,
     LabelsAnyVisibility,
@@ -49,6 +51,7 @@ from dungeonmind.contracts.vnext.domain import (
 from dungeonmind.contracts.vnext.knowledge import (
     IdentityAlias,
     IdentityDecisionKind,
+    IdentityDecisionStatus,
     IdentityDecisionV3,
     KnowledgeRevision,
     PublishKnowledgeRevisionCommand,
@@ -944,6 +947,25 @@ def test_26_undeclared_predicate_fails_closed() -> None:
         )
     assert _reason(exc.value) == "undeclared_semantic_profile"
 
+    with pytest.raises(GovernedMaterializationIntegrityError) as kind_exc:
+        _call(
+            parent=parent,
+            contribution=_contribution(
+                parent,
+                [
+                    ProposeEntity(item_id="i1", entity=Entity(entity_id="ent:bob")),
+                    ProposeAssertion(
+                        item_id="i2",
+                        assertion=_literal("asrt:bob-title", "ent:bob", "Bob").model_copy(
+                            update={"value": EntityRefValue(entity_id="ent:alice")}
+                        ),
+                    ),
+                ],
+            ),
+            dispositions=_accepted("i1", "i2"),
+        )
+    assert _reason(kind_exc.value) == "undeclared_semantic_profile"
+
 
 def test_27_undeclared_domain_vocabulary_fails_closed() -> None:
     parent = _parent()
@@ -1033,6 +1055,73 @@ def test_27_undeclared_domain_vocabulary_fails_closed() -> None:
             dispositions=_accepted("i1", "i2"),
         )
     assert _reason(vis_exc.value) == "undeclared_domain_vocabulary"
+
+    with pytest.raises(GovernedMaterializationIntegrityError) as temporal_exc:
+        _call(
+            parent=parent,
+            contribution=_contribution(
+                parent,
+                [
+                    ProposeEntity(item_id="i1", entity=Entity(entity_id="ent:bob")),
+                    ProposeAssertion(
+                        item_id="i2",
+                        assertion=_literal("asrt:bob-title", "ent:bob", "Bob").model_copy(
+                            update={
+                                "metadata": AssertionMetadata(
+                                    scope=[ScopeBinding(axis="lab:scope", value="one")],
+                                    visibility=PublicVisibility(),
+                                    epistemic_basis=EpistemicBasis.ASSERTED,
+                                    claim_mode="lab:fact",
+                                    standing=KnowledgeStanding.ESTABLISHED,
+                                    evidence_ref_ids=["ev:lab"],
+                                    temporal_scope=DomainTemporalScope(
+                                        schema="lab:calendar",
+                                        payload={"era": "1"},
+                                    ),
+                                )
+                            }
+                        ),
+                    ),
+                ],
+            ),
+            dispositions=_accepted("i1", "i2"),
+        )
+    assert _reason(temporal_exc.value) == "undeclared_domain_vocabulary"
+
+    with pytest.raises(GovernedMaterializationIntegrityError) as metadata_exc:
+        _call(
+            parent=parent,
+            contribution=_contribution(
+                parent,
+                [
+                    ProposeEntity(item_id="i1", entity=Entity(entity_id="ent:bob")),
+                    ProposeAssertion(
+                        item_id="i2",
+                        assertion=_literal("asrt:bob-title", "ent:bob", "Bob").model_copy(
+                            update={
+                                "metadata": AssertionMetadata(
+                                    scope=[ScopeBinding(axis="lab:scope", value="one")],
+                                    visibility=PublicVisibility(),
+                                    epistemic_basis=EpistemicBasis.ASSERTED,
+                                    claim_mode="lab:fact",
+                                    standing=KnowledgeStanding.ESTABLISHED,
+                                    evidence_ref_ids=["ev:lab"],
+                                    temporal_scope=TimelessTemporalScope(),
+                                    domain_metadata=[
+                                        DomainMetadataEntry(
+                                            schema="lab:note",
+                                            payload={"n": 1},
+                                        )
+                                    ],
+                                )
+                            }
+                        ),
+                    ),
+                ],
+            ),
+            dispositions=_accepted("i1", "i2"),
+        )
+    assert _reason(metadata_exc.value) == "undeclared_domain_vocabulary"
 
 
 def test_28_descriptor_pin_mismatch_fails_closed() -> None:
@@ -1134,3 +1223,99 @@ def test_29_identity_decision_ids_close_against_accepted_decisions() -> None:
             ],
         )
     assert _reason(rejected_exc.value) == "identity_decision_id_unresolved"
+
+
+def test_30_duplicate_identity_decision_id_fails_closed() -> None:
+    parent = _parent(
+        entities=[Entity(entity_id="ent:alice"), Entity(entity_id="ent:bob")],
+        assertions=[
+            _literal("asrt:alice-title", "ent:alice", "Alice"),
+            _literal("asrt:bob-title", "ent:bob", "Bob"),
+        ],
+    )
+    with pytest.raises(GovernedMaterializationIntegrityError) as exc:
+        _call(
+            parent=parent,
+            contribution=_contribution(
+                parent,
+                [
+                    ProposeIdentityDecision(
+                        item_id="i1",
+                        decision=IdentityDecisionV3(
+                            decision_id="iddec:shared",
+                            space_id=parent.space_id,
+                            decision_kind=IdentityDecisionKind.REJECT_CANDIDATE,
+                            subject_entity_ids=["ent:alice"],
+                            created_at=NOW,
+                        ),
+                    ),
+                    ProposeIdentityDecision(
+                        item_id="i2",
+                        decision=IdentityDecisionV3(
+                            decision_id="iddec:shared",
+                            space_id=parent.space_id,
+                            decision_kind=IdentityDecisionKind.MERGE,
+                            subject_entity_ids=["ent:alice", "ent:bob"],
+                            target_entity_ids=["ent:alice"],
+                            created_at=NOW,
+                        ),
+                    ),
+                ],
+            ),
+            dispositions=_accepted("i1", "i2"),
+        )
+    assert _reason(exc.value) == "duplicate_identity_decision_id"
+
+
+def test_31_non_active_identity_decision_fails_closed() -> None:
+    parent = _parent()
+    with pytest.raises(GovernedMaterializationIntegrityError) as exc:
+        _call(
+            parent=parent,
+            contribution=_contribution(
+                parent,
+                [
+                    ProposeIdentityDecision(
+                        item_id="i1",
+                        decision=IdentityDecisionV3(
+                            decision_id="iddec:alias",
+                            space_id=parent.space_id,
+                            decision_kind=IdentityDecisionKind.ALIAS_ADD,
+                            subject_entity_ids=["ent:alice"],
+                            alias="aka-alice",
+                            status=IdentityDecisionStatus.RETRACTED,
+                            created_at=NOW,
+                        ),
+                    )
+                ],
+            ),
+            dispositions=_accepted("i1"),
+        )
+    assert _reason(exc.value) == "identity_decision_not_active"
+
+
+def test_32_identity_supersession_fails_closed() -> None:
+    parent = _parent()
+    with pytest.raises(GovernedMaterializationIntegrityError) as exc:
+        _call(
+            parent=parent,
+            contribution=_contribution(
+                parent,
+                [
+                    ProposeIdentityDecision(
+                        item_id="i1",
+                        decision=IdentityDecisionV3(
+                            decision_id="iddec:alias",
+                            space_id=parent.space_id,
+                            decision_kind=IdentityDecisionKind.ALIAS_ADD,
+                            subject_entity_ids=["ent:alice"],
+                            alias="aka-alice",
+                            supersedes_decision_ids=["iddec:old"],
+                            created_at=NOW,
+                        ),
+                    )
+                ],
+            ),
+            dispositions=_accepted("i1"),
+        )
+    assert _reason(exc.value) == "identity_supersession_not_materializable_in_v5_1"
