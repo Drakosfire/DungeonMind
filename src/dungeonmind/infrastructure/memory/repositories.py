@@ -76,6 +76,7 @@ from ...contracts.graph import (
     WorldGraphHead,
     WorldGraphRevision,
 )
+from ...contracts.identity import IdentityDecisionRecord, IdentityDecisionRecordV2
 from ...contracts.mind_turn import MindTurnRequest, MindTurnResponse
 from ...contracts.retrieval import GraphRetrievalSession
 from ...contracts.review_publication import (
@@ -918,6 +919,11 @@ class InMemoryIdentityDecisionRepository:
         self._lock = threading.RLock()
 
     def append(self, decision: DurableIdentityDecision) -> DurableIdentityDecision:
+        if not isinstance(decision, (IdentityDecisionRecord, IdentityDecisionRecordV2)):
+            raise PersistenceIntegrityError(
+                "canonical reconciliation decisions must use the atomic reconciliation "
+                "publisher"
+            )
         key = (decision.world_id, decision.decision_id)
         with self._lock:
             existing = self._items.get(key)

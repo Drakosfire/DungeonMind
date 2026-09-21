@@ -12,7 +12,10 @@ from ...application.world_identity_reconciliation import (
     IdentityReconciliationPublicationResult,
 )
 from ...contracts.graph import PublishRevisionCommand
-from ...contracts.identity import IdentityReconciliationDecision
+from ...contracts.identity import (
+    IDENTITY_RECONCILIATION_DECISION_SCHEMA,
+    IdentityReconciliationDecision,
+)
 from ...domain.errors import (
     IdempotencyConflictError,
     PersistenceIntegrityError,
@@ -225,3 +228,26 @@ class PostgresWorldIdentityReconciliationRepository:
                 published_revision_id=revision.revision_id,
                 decision_ids=tuple(decision.decision_id for decision in command.decisions),
             )
+
+    def list_for_world(self, world_id: str) -> list[IdentityReconciliationDecision]:
+        with self._database.transaction() as conn:
+            rows = conn.execute(
+                sql.SQL(
+                    f"""
+                    SELECT {_IDENTITY_SELECT}
+                    FROM {{}}.identity_decisions
+                    WHERE world_id = %s AND schema_version = %s
+                    ORDER BY decision_id
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (world_id, IDENTITY_RECONCILIATION_DECISION_SCHEMA),
+            ).fetchall()
+        records = [_return_identity(row) for row in rows]
+        reconciliation_records: list[IdentityReconciliationDecision] = []
+        for record in records:
+            if not isinstance(record, IdentityReconciliationDecision):
+                raise PersistenceIntegrityError(
+                    "reconciliation history contains a non-reconciliation decision"
+                )
+            reconciliation_records.append(record)
+        return reconciliation_records

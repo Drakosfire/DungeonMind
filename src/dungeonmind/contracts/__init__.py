@@ -169,6 +169,7 @@ from .identity import (
     IdentityMergeSideEffects,
     IdentityOutcome,
     IdentityReconciliationDecision,
+    IdentityReconciliationDecisionKind,
 )
 from .ids import new_id
 from .knowledge_assertion import (
@@ -411,6 +412,7 @@ __all__ = [
     "IdentityMergeSideEffects",
     "IdentityOutcome",
     "IdentityReconciliationDecision",
+    "IdentityReconciliationDecisionKind",
     "KnowledgeAssertionMetadataV1",
     "MindTurnRequest",
     "MindTurnResponse",

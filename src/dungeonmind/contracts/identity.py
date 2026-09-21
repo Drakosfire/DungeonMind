@@ -37,6 +37,11 @@ class IdentityDecisionKind(StrEnum):
     REJECT_CANDIDATE = "reject_candidate"
     MARK_AMBIGUOUS = "mark_ambiguous"
     HUMAN_OVERRIDE = "human_override"
+
+
+class IdentityReconciliationDecisionKind(StrEnum):
+    """Decision vocabulary owned by the atomic current-World rebind seam."""
+
     CANONICAL_REBIND = "canonical_rebind"
 
 
@@ -61,8 +66,8 @@ class IdentityReconciliationDecision(DungeonMindModel):
     decision_id: str
     world_id: str
     operation_id: str
-    decision_kind: Literal[IdentityDecisionKind.CANONICAL_REBIND] = (
-        IdentityDecisionKind.CANONICAL_REBIND
+    decision_kind: Literal[IdentityReconciliationDecisionKind.CANONICAL_REBIND] = (
+        IdentityReconciliationDecisionKind.CANONICAL_REBIND
     )
     source_object_id: str
     target_object_id: str

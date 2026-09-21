@@ -10,7 +10,11 @@ from psycopg import IsolationLevel, sql
 from pydantic import ValidationError
 
 from ...application.existing_world_adoption import require_v2_contribution_correction_closure
-from ...application.repositories import DurableGraphContribution, DurableIdentityDecision
+from ...application.repositories import (
+    DurableGraphContribution,
+    DurableIdentityDecision,
+    DurableIdentityHistoryRecord,
+)
 from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
 from ...contracts.contribution import (
     GRAPH_CONTRIBUTION_SCHEMA,
@@ -143,10 +147,10 @@ def _return_contribution(row: dict[str, Any]) -> DurableGraphContribution:
     ).model_copy(deep=True)
 
 
-def _return_identity(row: dict[str, Any]) -> DurableIdentityDecision:
+def _return_identity(row: dict[str, Any]) -> DurableIdentityHistoryRecord:
     schema_version = row["schema_version"]
     if schema_version == IDENTITY_DECISION_SCHEMA:
-        model_type: type[DurableIdentityDecision] = IdentityDecisionRecord
+        model_type: type[DurableIdentityHistoryRecord] = IdentityDecisionRecord
     elif schema_version == IDENTITY_DECISION_V2_SCHEMA:
         model_type = IdentityDecisionRecordV2
     elif schema_version == IDENTITY_RECONCILIATION_DECISION_SCHEMA:
@@ -785,8 +789,8 @@ class PostgresContributionReviewRepository:
 
 def _append_identity_in_transaction(
     conn: Any,
-    decision: DurableIdentityDecision,
-) -> DurableIdentityDecision:
+    decision: DurableIdentityHistoryRecord,
+) -> DurableIdentityHistoryRecord:
     """Insert/reconcile one identity decision inside an existing transaction."""
     fingerprint = model_fingerprint(decision)
     ensure_world(conn, decision.world_id, created_at=decision.created_at)
@@ -843,8 +847,18 @@ class PostgresIdentityDecisionRepository:
         self._database = database
 
     def append(self, decision: DurableIdentityDecision) -> DurableIdentityDecision:
+        if not isinstance(decision, (IdentityDecisionRecord, IdentityDecisionRecordV2)):
+            raise PersistenceIntegrityError(
+                "canonical reconciliation decisions must use the atomic reconciliation "
+                "publisher"
+            )
         with self._database.transaction() as conn:
-            return _append_identity_in_transaction(conn, decision)
+            stored = _append_identity_in_transaction(conn, decision)
+            if not isinstance(stored, (IdentityDecisionRecord, IdentityDecisionRecordV2)):
+                raise PersistenceIntegrityError(
+                    "legacy identity repository returned a reconciliation decision"
+                )
+            return stored
 
     def get(self, world_id: str, decision_id: str) -> DurableIdentityDecision | None:
         with self._database.transaction() as conn:
@@ -860,7 +874,10 @@ class PostgresIdentityDecisionRepository:
             ).fetchone()
         if row is None:
             return None
-        return _return_identity(row)
+        stored = _return_identity(row)
+        if not isinstance(stored, (IdentityDecisionRecord, IdentityDecisionRecordV2)):
+            return None
+        return stored
 
     def list_for_world(self, world_id: str) -> list[DurableIdentityDecision]:
         with self._database.transaction() as conn:
@@ -875,7 +892,14 @@ class PostgresIdentityDecisionRepository:
                 ).format(sql.Identifier(SCHEMA)),
                 (world_id,),
             ).fetchall()
-        return [_return_identity(row) for row in rows]
+        return [
+            stored
+            for row in rows
+            if isinstance(
+                stored := _return_identity(row),
+                (IdentityDecisionRecord, IdentityDecisionRecordV2),
+            )
+        ]
 
 
 def _put_artifact_in_transaction(

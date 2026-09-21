@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import ValidationError
 
 from dungeonmind.application.graph_snapshot import GRAPH_SCHEMA_V6
 from dungeonmind.application.world_identity_reconciliation import (
@@ -12,8 +13,10 @@ from dungeonmind.application.world_identity_reconciliation import (
     materialize_identity_reconciliation,
 )
 from dungeonmind.contracts.graph import StoredGraphRevision, WorldGraphRevision
+from dungeonmind.contracts.identity import IdentityDecisionRecord
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
+from dungeonmind.infrastructure.memory import InMemoryIdentityDecisionRepository
 
 WORLD_ID = "eldyrwild"
 PARENT_REVISION_ID = "rev:parent-identity-reconciliation"
@@ -228,3 +231,31 @@ def test_unknown_source_fails_closed_without_rewriting_history() -> None:
         )
     assert exc.value.details["reason"] == "unknown_source_identity"
     assert parent.graph_payload["objects"][0]["object_id"] == "node:ephanna"  # type: ignore[index]
+
+
+def test_reconciliation_history_cannot_escape_through_legacy_identity_append() -> None:
+    parent = _parent()
+    materialized = materialize_identity_reconciliation(
+        parent,
+        world_id=WORLD_ID,
+        operation_id="op:append-guard",
+        reconciliation_decisions=[
+            CanonicalRebindRequest("node:ephanna", "pc:ephanna")
+        ],
+        actor="steward",
+        reason=None,
+        created_at=NOW,
+    )
+
+    with pytest.raises(ValidationError):
+        IdentityDecisionRecord.model_validate(
+            {
+                "decision_id": "dec:legacy-rebind",
+                "world_id": WORLD_ID,
+                "decision_kind": "canonical_rebind",
+                "subject_object_ids": ["node:ephanna"],
+                "created_at": NOW,
+            }
+        )
+    with pytest.raises(PersistenceIntegrityError, match="atomic reconciliation publisher"):
+        InMemoryIdentityDecisionRepository().append(materialized.decisions[0])  # type: ignore[arg-type]

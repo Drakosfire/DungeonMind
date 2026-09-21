@@ -13,7 +13,11 @@ from dungeonmind.application.world_identity_reconciliation import (
     publish_identity_reconciliation,
 )
 from dungeonmind.contracts.graph import PublishRevisionCommand
-from dungeonmind.domain.errors import IdempotencyConflictError, StaleParentRevisionError
+from dungeonmind.domain.errors import (
+    IdempotencyConflictError,
+    PersistenceIntegrityError,
+    StaleParentRevisionError,
+)
 from dungeonmind.infrastructure.postgres import (
     PostgresRepositoryBundle,
     PostgresWorldIdentityReconciliationRepository,
@@ -63,32 +67,45 @@ def _publish(pg, parent_id: str, *, repository=None, requests=None, operation_id
 
 
 @pytest.mark.integration
+def test_postgres_legacy_identity_append_rejects_reconciliation_record(pg) -> None:
+    seeded_parent = _seed(pg)
+    parent = pg.world_graph.get_revision(WORLD_ID, seeded_parent.revision_id)
+    assert parent is not None
+    materialized = materialize_identity_reconciliation(
+        parent,
+        world_id=WORLD_ID,
+        operation_id="op:append-guard",
+        reconciliation_decisions=[CanonicalRebindRequest("node:ephanna", "pc:ephanna")],
+        actor="steward",
+        reason=None,
+        created_at=NOW,
+    )
+
+    with pytest.raises(PersistenceIntegrityError, match="atomic reconciliation publisher"):
+        pg.identity_decisions.append(materialized.decisions[0])  # type: ignore[arg-type]
+    assert pg.identity_decisions.list_for_world(WORLD_ID) == []
+    assert pg.identity_reconciliation.list_for_world(WORLD_ID) == []
+
+
+@pytest.mark.integration
 def test_postgres_reconciliation_restart_replay_and_exact_retry(pg) -> None:
-    parent = _seed(
+    seeded_parent = _seed(
         pg,
         object_ids=[*(f"node:pc-{index}" for index in range(1, 7)), "node:anchor"],
     )
-    result = _publish(pg, parent.revision_id)
+    parent = pg.world_graph.get_revision(WORLD_ID, seeded_parent.revision_id)
+    assert parent is not None
+    result = _publish(pg, parent.revision.revision_id)
 
     child = pg.world_graph.get_revision(WORLD_ID, result.published_revision_id)
     assert child is not None
-    assert child.revision.parent_revision_id == parent.revision_id
+    assert child.revision.parent_revision_id == parent.revision.revision_id
     assert len(pg.identity_decisions.list_for_world(WORLD_ID)) == 6
     assert {item["object_id"] for item in child.graph_payload["objects"]} == {  # type: ignore[index]
         *(f"pc:pc-{index}" for index in range(1, 7)),
         "node:anchor",
     }
     assert child.graph_payload["evidence_refs"] == parent.graph_payload["evidence_refs"]
-    replayed = materialize_identity_reconciliation(
-        parent,
-        world_id=WORLD_ID,
-        operation_id="op:six",
-        reconciliation_decisions=_requests(),
-        actor="steward",
-        reason="canonical identity reconciliation",
-        created_at=NOW,
-    )
-    assert replayed.graph_payload == child.graph_payload
 
     with pg.database.connect() as conn:
         before = {
@@ -110,11 +127,28 @@ def test_postgres_reconciliation_restart_replay_and_exact_retry(pg) -> None:
     # parent, child, head, and decisions through fresh connections.
     restarted = PostgresRepositoryBundle(pg.database)
     assert restarted.world_graph.get_head(WORLD_ID).head_revision_id == result.published_revision_id  # type: ignore[union-attr]
-    assert len(restarted.identity_decisions.list_for_world(WORLD_ID)) == 6
+    stored_decisions = restarted.identity_reconciliation.list_for_world(WORLD_ID)
+    assert len(stored_decisions) == 6
+    replayed = materialize_identity_reconciliation(
+        parent,
+        world_id=WORLD_ID,
+        operation_id=stored_decisions[0].operation_id,
+        reconciliation_decisions=[
+            CanonicalRebindRequest(
+                decision.source_object_id,
+                decision.target_object_id,
+            )
+            for decision in stored_decisions
+        ],
+        actor=stored_decisions[0].actor,
+        reason=stored_decisions[0].reason,
+        created_at=stored_decisions[0].created_at,
+    )
+    assert replayed.graph_payload == child.graph_payload
 
     retried = _publish(
         restarted,
-        parent.revision_id,
+        parent.revision.revision_id,
         repository=restarted.identity_reconciliation,
     )
     assert retried.already_applied is True
@@ -175,7 +209,10 @@ def test_postgres_reconciliation_failure_rolls_back_every_family(
 
 @pytest.mark.integration
 def test_postgres_reconciliation_stale_parent_has_zero_effects(pg) -> None:
-    parent = _seed(pg)
+    parent = _seed(
+        pg,
+        object_ids=[*(f"node:pc-{index}" for index in range(1, 7)), "node:anchor"],
+    )
     advanced = pg.world_graph.publish_revision(
         PublishRevisionCommand(
             world_id=WORLD_ID,
@@ -203,7 +240,12 @@ def test_postgres_reconciliation_stale_parent_has_zero_effects(pg) -> None:
 @pytest.mark.integration
 def test_postgres_reconciliation_same_operation_different_material_conflicts(pg) -> None:
     parent = _seed(pg)
-    _publish(pg, parent.revision_id, operation_id="op:conflict", requests=[_requests(1)[0]])
+    _publish(
+        pg,
+        parent.revision_id,
+        operation_id="op:conflict",
+        requests=[CanonicalRebindRequest("node:ephanna", "pc:ephanna")],
+    )
 
     with pytest.raises(IdempotencyConflictError):
         _publish(
