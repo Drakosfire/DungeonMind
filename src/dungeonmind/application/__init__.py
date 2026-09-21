@@ -42,6 +42,7 @@ from .repositories import (
     SemanticSearchPort,
     SourceRepository,
     WorldGraphRepository,
+    WorldIdentityReconciliationRepository,
 )
 from .review_materialization import (
     FinalizedReviewGraphMaterialization,
@@ -91,10 +92,17 @@ from .world_graph_retrieval import (
     WorldGraphRetrievalService,
     derive_source_anchor_id,
 )
+from .world_identity_reconciliation import (
+    CanonicalRebindRequest,
+    IdentityReconciliationPublicationResult,
+    materialize_identity_reconciliation,
+    publish_identity_reconciliation,
+)
 
 __all__ = [
     "NOOP_READ_OBSERVER",
     "AdmittedAssertionValue",
+    "CanonicalRebindRequest",
     "CompleteObjectLookupResult",
     "ContributionRepository",
     "ContributionReviewRepository",
@@ -113,6 +121,7 @@ __all__ = [
     "GraphSearchResult",
     "GraphSnapshotReader",
     "IdentityDecisionRepository",
+    "IdentityReconciliationPublicationResult",
     "MindThreadRepository",
     "MindTurnService",
     "NeighborhoodResult",
@@ -144,6 +153,7 @@ __all__ = [
     "WorldGraphReadPhaseDuration",
     "WorldGraphRepository",
     "WorldGraphRetrievalService",
+    "WorldIdentityReconciliationRepository",
     "adopt_existing_world",
     "classify_read_failure",
     "derive_source_anchor_id",
@@ -156,8 +166,10 @@ __all__ = [
     "load_contribution_review_v2",
     "materialize_finalized_review",
     "materialize_finalized_review_v6",
+    "materialize_identity_reconciliation",
     "materialize_reviewed_world_initialization_v6",
     "publish_finalized_review",
+    "publish_identity_reconciliation",
     "query_fictional_time_shadow_at_revision",
     "repair_existing_world_adoption_source_classification",
 ]

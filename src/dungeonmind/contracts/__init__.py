@@ -160,6 +160,7 @@ from .graph import (
 from .identity import (
     IDENTITY_DECISION_SCHEMA,
     IDENTITY_DECISION_V2_SCHEMA,
+    IDENTITY_RECONCILIATION_DECISION_SCHEMA,
     IdentityAliasMapRewrite,
     IdentityDecisionKind,
     IdentityDecisionRecord,
@@ -167,6 +168,7 @@ from .identity import (
     IdentityDecisionStatus,
     IdentityMergeSideEffects,
     IdentityOutcome,
+    IdentityReconciliationDecision,
 )
 from .ids import new_id
 from .knowledge_assertion import (
@@ -299,6 +301,7 @@ __all__ = [
     "GRAPH_REVISION_SCHEMA",
     "IDENTITY_DECISION_SCHEMA",
     "IDENTITY_DECISION_V2_SCHEMA",
+    "IDENTITY_RECONCILIATION_DECISION_SCHEMA",
     "KNOWLEDGE_ASSERTION_METADATA_SCHEMA",
     "MIND_TURN_SCHEMA",
     "PROJECTION_REQUEST_SCHEMA",
@@ -407,6 +410,7 @@ __all__ = [
     "IdentityDecisionStatus",
     "IdentityMergeSideEffects",
     "IdentityOutcome",
+    "IdentityReconciliationDecision",
     "KnowledgeAssertionMetadataV1",
     "MindTurnRequest",
     "MindTurnResponse",

@@ -40,8 +40,10 @@ from ...contracts.evidence import (
 from ...contracts.identity import (
     IDENTITY_DECISION_SCHEMA,
     IDENTITY_DECISION_V2_SCHEMA,
+    IDENTITY_RECONCILIATION_DECISION_SCHEMA,
     IdentityDecisionRecord,
     IdentityDecisionRecordV2,
+    IdentityReconciliationDecision,
 )
 from ...contracts.retrieval import GraphRetrievalSession
 from ...domain.errors import (
@@ -147,6 +149,8 @@ def _return_identity(row: dict[str, Any]) -> DurableIdentityDecision:
         model_type: type[DurableIdentityDecision] = IdentityDecisionRecord
     elif schema_version == IDENTITY_DECISION_V2_SCHEMA:
         model_type = IdentityDecisionRecordV2
+    elif schema_version == IDENTITY_RECONCILIATION_DECISION_SCHEMA:
+        model_type = IdentityReconciliationDecision
     else:
         raise PersistenceIntegrityError(
             f"unsupported identity decision schema {schema_version!r}"

@@ -23,6 +23,7 @@ from .semantic import (
     PostgresSemanticSearch,
 )
 from .threads import PostgresMindThreadRepository
+from .world_identity_reconciliation import PostgresWorldIdentityReconciliationRepository
 
 __all__ = [
     "PostgresContributionRepository",
@@ -39,6 +40,7 @@ __all__ = [
     "PostgresSemanticSearch",
     "PostgresSourceRepository",
     "PostgresWorldGraphRepository",
+    "PostgresWorldIdentityReconciliationRepository",
 ]
 
 
@@ -56,6 +58,7 @@ class PostgresRepositoryBundle:
             database
         )
         self.identity_decisions = PostgresIdentityDecisionRepository(database)
+        self.identity_reconciliation = PostgresWorldIdentityReconciliationRepository(database)
         self.sources = PostgresSourceRepository(database)
         self.retrieval_sessions = PostgresRetrievalSessionRepository(database)
         self.threads = PostgresMindThreadRepository(database)
