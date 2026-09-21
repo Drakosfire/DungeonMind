@@ -100,7 +100,8 @@ def test_postgres_reconciliation_restart_replay_and_exact_retry(pg) -> None:
     child = pg.world_graph.get_revision(WORLD_ID, result.published_revision_id)
     assert child is not None
     assert child.revision.parent_revision_id == parent.revision.revision_id
-    assert len(pg.identity_decisions.list_for_world(WORLD_ID)) == 6
+    assert pg.identity_decisions.list_for_world(WORLD_ID) == []
+    assert len(pg.identity_reconciliation.list_for_world(WORLD_ID)) == 6
     assert {item["object_id"] for item in child.graph_payload["objects"]} == {  # type: ignore[index]
         *(f"pc:pc-{index}" for index in range(1, 7)),
         "node:anchor",
@@ -254,4 +255,5 @@ def test_postgres_reconciliation_same_operation_different_material_conflicts(pg)
             operation_id="op:conflict",
             requests=[CanonicalRebindRequest("node:ephanna", "pc:other")],
         )
-    assert len(pg.identity_decisions.list_for_world(WORLD_ID)) == 1
+    assert pg.identity_decisions.list_for_world(WORLD_ID) == []
+    assert len(pg.identity_reconciliation.list_for_world(WORLD_ID)) == 1
