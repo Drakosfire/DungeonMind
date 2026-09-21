@@ -1,0 +1,70 @@
+{
+  "adapter": "in_memory",
+  "characterization_only": true,
+  "exact_base": "9f006bf77d72faabee8a3eef359b89a3d537b0c1",
+  "exact_head": "dfc227c94952eb4fadeb6d88e019da518617bc34",
+  "notes": "In-memory adapter. logical_authority_bytes_written is canonical revision-envelope bytes plus canonical graph-payload bytes. It is not PostgreSQL WAL size, disk amplification, or physical I/O. No V5.2 performance threshold is claimed.",
+  "runs": {
+    "tiny_accepted_change_10k": {
+      "child_entity_count": 10001,
+      "child_payload_bytes": 4900441,
+      "graph_payload_sha256": "9d9badaac8626bd7e8af30d33f3f25a03cf695d0b116050d80922f2ee97a92ca",
+      "head_after": "rev:198e57faefdf738bab88d17067056b6f",
+      "head_before": "rev:3976090e05d2d8a29a83979ed87b0d38",
+      "head_event_count": 2,
+      "head_event_delta": 1,
+      "iterations": 8,
+      "logical_authority_bytes_written": 4901278,
+      "p50_ms": 2031.5899135312065,
+      "p95_ms": 2233.86070196284,
+      "parent_assertion_count": 10000,
+      "parent_entity_count": 10000,
+      "parent_payload_bytes": 4900380,
+      "parent_revision_id": "rev:3976090e05d2d8a29a83979ed87b0d38",
+      "revision_envelope_bytes": 837,
+      "revision_id": "rev:198e57faefdf738bab88d17067056b6f",
+      "revision_row_count": 2,
+      "revision_row_delta": 1,
+      "tiny_entity_present": true
+    },
+    "tiny_accepted_change_1k": {
+      "child_entity_count": 1001,
+      "child_payload_bytes": 490441,
+      "graph_payload_sha256": "f695ae1fd9ef500aa5e11aae594a0985587976e0bb9136473e43eb30c1c11640",
+      "head_after": "rev:504b34cf619e24118cf384877eaa326c",
+      "head_before": "rev:9127c92a6aa18bcf48a317860fe6737d",
+      "head_event_count": 2,
+      "head_event_delta": 1,
+      "iterations": 8,
+      "logical_authority_bytes_written": 491278,
+      "p50_ms": 130.93165296595544,
+      "p95_ms": 158.21040101582184,
+      "parent_assertion_count": 1000,
+      "parent_entity_count": 1000,
+      "parent_payload_bytes": 490380,
+      "parent_revision_id": "rev:9127c92a6aa18bcf48a317860fe6737d",
+      "revision_envelope_bytes": 837,
+      "revision_id": "rev:504b34cf619e24118cf384877eaa326c",
+      "revision_row_count": 2,
+      "revision_row_delta": 1,
+      "tiny_entity_present": true
+    }
+  },
+  "schema_version": "vnext_cas_publication_10k_v1",
+  "seed": "expected-parent-cas-publication-v1",
+  "structural_gate": "PASS",
+  "workloads": {
+    "space_10k": {
+      "assertion_count": 10000,
+      "entity_count": 10000,
+      "parent_payload_bytes": 4900380,
+      "parent_revision_id": "rev:3976090e05d2d8a29a83979ed87b0d38"
+    },
+    "space_1k": {
+      "assertion_count": 1000,
+      "entity_count": 1000,
+      "parent_payload_bytes": 490380,
+      "parent_revision_id": "rev:9127c92a6aa18bcf48a317860fe6737d"
+    }
+  }
+}
