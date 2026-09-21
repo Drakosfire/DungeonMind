@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
-import subprocess
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -383,24 +383,29 @@ def test_v52_source_has_no_legacy_authority_vocabulary() -> None:
 
 
 def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
-    result = subprocess.run(
-        [
-            "git",
-            "diff",
-            "--name-only",
-            IMPLEMENTATION_BASE,
-            "--",
-            "src/dungeonmind/contracts/vnext",
-            "src/dungeonmind/infrastructure/postgres/graph.py",
-            "src/dungeonmind/infrastructure/memory/repositories.py",
-            "src/dungeonmind/domain/revision_ids.py",
-        ],
-        cwd=REPO_ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    assert result.stdout.strip() == ""
+    """Pinned bytes from the PR #69 merge, without requiring that commit locally."""
+    unchanged = {
+        "src/dungeonmind/infrastructure/postgres/graph.py": (
+            "dfd996aab0eeed2c6829a9e835db877366d0e254bd833c8b942ff7d73c434a93"
+        ),
+        "src/dungeonmind/infrastructure/memory/repositories.py": (
+            "3a94d449edaf92c9eff47d962465d89b0dbc8d5ec14af5b50d432e0fd7199db2"
+        ),
+        "src/dungeonmind/domain/revision_ids.py": (
+            "3f9688ddfa08536508b0f240353555c14ebc30f28166d763f447d883849c0e7e"
+        ),
+    }
+    for relative, digest in unchanged.items():
+        actual = hashlib.sha256((REPO_ROOT / relative).read_bytes()).hexdigest()
+        assert actual == digest, f"{relative} changed since {IMPLEMENTATION_BASE}"
+    contracts = REPO_ROOT / "src/dungeonmind/contracts/vnext"
+    tree = hashlib.sha256()
+    for path in sorted(item for item in contracts.rglob("*") if item.is_file()):
+        tree.update(path.relative_to(contracts).as_posix().encode())
+        tree.update(b"\0")
+        tree.update(path.read_bytes())
+        tree.update(b"\0")
+    assert tree.hexdigest() == "9b0690b07ae9e1bdb1c349bf945de0da736ce3035041c5762addd658f8db8806"
     bundle = json.loads(
         (REPO_ROOT / "Docs/Contracts/vnext/dm_vnext_contract_v1.json").read_text(encoding="utf-8")
     )
