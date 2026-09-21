@@ -59,6 +59,8 @@ V52_SOURCES = (
     "src/dungeonmind/application/vnext/records.py",
     "src/dungeonmind/application/vnext/ports.py",
     "src/dungeonmind/infrastructure/memory/vnext_knowledge.py",
+    "src/dungeonmind/infrastructure/postgres/vnext_knowledge.py",
+    "migrations/versions/0008_vnext_knowledge_authority.py",
 )
 BANNED_VOCABULARY = re.compile(
     r"\b(world_id|GM|PLAYER|campaign_id|ContributionReview|"

@@ -34,6 +34,10 @@ EXPECTED_TABLES = {
     "semantic_documents",
     "existing_world_adoptions",
     "reviewed_world_initializations",
+    "knowledge_spaces",
+    "knowledge_revisions",
+    "knowledge_heads",
+    "knowledge_head_events",
 }
 
 
@@ -70,7 +74,7 @@ def test_vector_extension_and_schema_tables(db) -> None:
             "SELECT version_num FROM dungeonmind.alembic_version"
         ).fetchone()
         assert version is not None
-        assert version["version_num"] == "0007_reviewed_world_init"
+        assert version["version_num"] == "0008_vnext_knowledge_authority"
 
         constraints = conn.execute(
             """
@@ -138,7 +142,7 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
             version = conn.execute(
                 "SELECT version_num FROM dungeonmind.alembic_version"
             ).fetchone()
-            assert version["version_num"] == "0007_reviewed_world_init"
+            assert version["version_num"] == "0008_vnext_knowledge_authority"
             tables = conn.execute(
                 """
                 SELECT COUNT(*) AS n
