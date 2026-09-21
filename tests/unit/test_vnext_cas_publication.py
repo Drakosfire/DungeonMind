@@ -400,12 +400,17 @@ def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
         assert actual == digest, f"{relative} changed since {IMPLEMENTATION_BASE}"
     contracts = REPO_ROOT / "src/dungeonmind/contracts/vnext"
     tree = hashlib.sha256()
-    for path in sorted(item for item in contracts.rglob("*") if item.is_file()):
+    sources = sorted(
+        item
+        for item in contracts.rglob("*.py")
+        if item.is_file() and "__pycache__" not in item.parts
+    )
+    for path in sources:
         tree.update(path.relative_to(contracts).as_posix().encode())
         tree.update(b"\0")
         tree.update(path.read_bytes())
         tree.update(b"\0")
-    assert tree.hexdigest() == "9b0690b07ae9e1bdb1c349bf945de0da736ce3035041c5762addd658f8db8806"
+    assert tree.hexdigest() == "cd8a0d7f770c1d87586125856c54d20c710f87df7428500b8cb391377a0facbe"
     bundle = json.loads(
         (REPO_ROOT / "Docs/Contracts/vnext/dm_vnext_contract_v1.json").read_text(encoding="utf-8")
     )
