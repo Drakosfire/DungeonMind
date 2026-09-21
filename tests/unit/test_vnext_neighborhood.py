@@ -327,8 +327,9 @@ def test_01_implementation_base_recorded() -> None:
     assert "V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED" in steward
     assert "V4.2 COMPLETE" in steward
     assert "V4.3 COMPLETE" in steward
-    assert "V5.1 ACTIVE" in steward
-    assert "IMPLEMENTATION NOT YET ACCEPTED" in steward
+    assert "V5.1 COMPLETE" in steward
+    assert "V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED" in steward
+    assert "V5.2 ACTIVE" in steward
     assert "implementation now proceeding from current main" in handoff
 
 

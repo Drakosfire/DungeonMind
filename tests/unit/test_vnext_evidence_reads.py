@@ -305,7 +305,8 @@ def test_01_bookkeeping_records_v41_complete() -> None:
     assert "V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED" in steward
     assert "V4.1 COMPLETE" in steward
     assert "V4.2 COMPLETE" in steward
-    assert "IMPLEMENTATION NOT YET ACCEPTED" in steward
+    assert "V5.1 COMPLETE" in steward
+    assert "V5.2 ACTIVE" in steward
     assert "V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED" in handoff
     assert v41.split("**Status:**", 1)[1].startswith(" COMPLETE")
     assert handoff.split("**Status:**", 1)[1].startswith(" COMPLETE")

@@ -750,7 +750,8 @@ def test_06_steward_phase_v3_complete_v5_1_active() -> None:
     assert "V4.2 COMPLETE" in text
     assert "V4.3 COMPLETE" in text
     assert "V5 ACTIVE" in text
-    assert "V5.1 ACTIVE" in text
+    assert "V5.1 COMPLETE" in text
+    assert "V5.2 ACTIVE" in text
 
 
 def test_07_frozen_v0_aggregate_remains_exact() -> None:

@@ -627,15 +627,32 @@ No database write. No head mutation. No CAS. No replay.
 
 Given one exact native-vNext parent, one frozen `KnowledgeContribution`, complete accepted/rejected `ContributionDisposition`s, and explicit publication identity, materialize one structurally validated generic child graph and one frozen command.
 
-V5.2 (expected-parent atomic CAS) and V5.3 (durable idempotent replay / recovery) remain blocked until V5.1 is accepted.
+V5.1 is accepted: `V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED` on PR #69, merge `9f006bf77d72faabee8a3eef359b89a3d537b0c1`, accepted head `daa6de4d8a3f36095deff68614db34f2eaba342e`, substantive runtime `cc62079883f34227aa001b7358b6abe192d7f36e`, review cycles 4, final PASS `5257033813`.
 
-Current V5.1 implementation base after PR #68 (`V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED`):
+### V5.2 — Expected-parent atomic CAS publication
+
+V5.2 answers only the durability seam:
 
 ```text
-bc115eb40f1601e5b6c6fda23ff05ee5bf06883d
+GovernedMaterializationResult
+→ sealed PublishKnowledgeRevisionCommand
+→ one immutable KnowledgeRevision
+→ one atomic KnowledgeHead transition
 ```
 
-Authority: `Docs/Handoffs/HANDOFF-v5-1-generic-governed-materialization.md`
+Native authority lives in `knowledge_spaces`, `knowledge_revisions`, `knowledge_heads`, and `knowledge_head_events`. It does not reuse World tables. Stale expected parents fail closed with no authority mutation. V5.2 does not provide a publication receipt, exact replay-as-success, or uncertain-outcome recovery.
+
+V5.3 remains blocked until V5.2 is accepted.
+
+Current V5.2 implementation base after PR #69:
+
+```text
+9f006bf77d72faabee8a3eef359b89a3d537b0c1
+```
+
+Authority: `Docs/Handoffs/HANDOFF-v5-2-expected-parent-cas-publication.md`
+
+V5.1 authority remains `Docs/Handoffs/HANDOFF-v5-1-generic-governed-materialization.md`.
 
 ### Low-hanging write optimization
 

@@ -4,8 +4,8 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `bc115eb40f1601e5b6c6fda23ff05ee5bf06883d` — merged PR #68; V5.1 implementation base  
-**Last merged roadmap implementation:** PR #68 — `KERNEL: V4.3 deterministic indexed search`  
+**Current main anchor:** `9f006bf77d72faabee8a3eef359b89a3d537b0c1` — merged PR #69; V5.2 implementation base  
+**Last merged roadmap implementation:** PR #69 — `KERNEL: V5.1 generic governed materialization`  
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
@@ -61,8 +61,8 @@ V4   Neighborhood + evidence + anchor + indexed search   COMPLETE
   V4.2 Evidence + anchor support                         COMPLETE
   V4.3 Deterministic indexed search                      COMPLETE
 V5   Generic governed write contracts                    ACTIVE
-  V5.1 Generic governed materialization                  ACTIVE
-  V5.2 Expected-parent atomic CAS publication            BLOCKED ON V5.1
+  V5.1 Generic governed materialization                  COMPLETE
+  V5.2 Expected-parent atomic CAS publication            ACTIVE
   V5.3 Durable idempotent replay / recovery              BLOCKED ON V5.2
 V6   DungeonBuddy domain implementation
 V7   Bridge-genesis migration
@@ -84,21 +84,22 @@ V4.1 COMPLETE — V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
 V4.2 COMPLETE — V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
 V4.3 COMPLETE — V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
 V5 ACTIVE
-V5.1 ACTIVE — IMPLEMENTATION NOT YET ACCEPTED
+V5.1 COMPLETE — V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED
+V5.2 ACTIVE — IMPLEMENTATION NOT YET ACCEPTED
 ```
 
 ### Current primary question
 
-**V5.1 — generic governed materialization**
+**V5.2 — expected-parent atomic CAS publication**
 
-> Given one exact native-vNext parent, one frozen `KnowledgeContribution`, a complete `ContributionDisposition` set, and explicit publication identity, can DungeonMind deterministically produce one structurally validated generic child graph and one frozen `PublishKnowledgeRevisionCommand` without World/Graph-Review transport, durable publication, head mutation, or persistence redesign?
+> Given one already-governed V5.1 materialization, can DungeonMind durably publish its exact `PublishKnowledgeRevisionCommand` as one immutable native-vNext `KnowledgeRevision` and atomically advance exactly one `KnowledgeHead` under expected-parent compare-and-swap semantics?
 
-V5.1 is in-memory materialization plus command freeze only. It is not permission to implement CAS publication, head mutation, durable replay, or World writer replacement.
+V5.2 owns native revision identity and the atomic publication boundary. It is not permission to implement durable replay, uncertain-outcome recovery, public write transport, or World writer replacement.
 
 Current implementation base:
 
 ```text
-bc115eb40f1601e5b6c6fda23ff05ee5bf06883d
+9f006bf77d72faabee8a3eef359b89a3d537b0c1
 ```
 
 ```text
@@ -134,14 +135,24 @@ V5:
   ACTIVE
 
 V5.1:
+  COMPLETE
+  V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED
+  PR #69
+  accepted head daa6de4d8a3f36095deff68614db34f2eaba342e
+  substantive runtime cc62079883f34227aa001b7358b6abe192d7f36e
+  review cycles 4
+  final PASS 5257033813
+  merge 9f006bf77d72faabee8a3eef359b89a3d537b0c1
+
+V5.2:
   ACTIVE
   IMPLEMENTATION NOT YET ACCEPTED
 
-V5.2+:
-  BLOCKED ON V5.1 ACCEPTANCE
+V5.3:
+  BLOCKED ON V5.2
 ```
 
-Do not reinterpret PR #64 as V4.1 runtime acceptance. PR #68 is the accepted V4.3 runtime merge. The V5.1 design/implementation handoff lands in this PR's first bookkeeping commit.
+Do not reinterpret PR #64 as V4.1 runtime acceptance. PR #69 is the accepted V5.1 runtime merge. The V5.2 design/implementation handoff lands in this PR's first bookkeeping commit.
 
 ---
 
@@ -732,13 +743,14 @@ V4.1 COMPLETE — V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
 V4.2 COMPLETE — V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
 V4.3 COMPLETE — V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
 V5 ACTIVE
-V5.1 ACTIVE — IMPLEMENTATION NOT YET ACCEPTED
+V5.1 COMPLETE — V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED
+V5.2 ACTIVE — IMPLEMENTATION NOT YET ACCEPTED
 ```
 
 ### Next primary question
 
 ```text
-Given one exact native-vNext parent, one frozen KnowledgeContribution, a complete ContributionDisposition set, and explicit publication identity, can DungeonMind deterministically produce one structurally validated generic child graph and one frozen PublishKnowledgeRevisionCommand without World/Graph-Review transport, durable publication, head mutation, or persistence redesign?
+Given one already-governed V5.1 materialization, can DungeonMind durably publish its exact PublishKnowledgeRevisionCommand as one immutable native-vNext KnowledgeRevision and atomically advance exactly one KnowledgeHead under expected-parent compare-and-swap semantics?
 ```
 
 ### Parallel work posture
@@ -746,13 +758,12 @@ Given one exact native-vNext parent, one frozen KnowledgeContribution, a complet
 ```text
 safe / independent:
   larger-scale benchmark characterization
-  contract-frozen Buddy/domain work that does not depend on V5 runtime
+  contract-frozen Buddy/domain work that does not depend on V5.2 runtime
 
-blocked until V5.1 acceptance:
-  V5.2 expected-parent atomic CAS publication
+blocked until V5.2 acceptance:
+  V5.3 durable replay / recovery
 
 blocked until later accepted predecessors:
-  V5.3 durable replay / recovery
   bridge-genesis migration
   cutover
   current-public-path quarantine/deletion
@@ -760,9 +771,7 @@ blocked until later accepted predecessors:
 
 ### What remains false
 
-- no native vNext governed write path is accepted yet;
-- no expected-parent CAS publisher exists;
-- no vNext KnowledgeSpace/head storage runtime exists;
+- no expected-parent CAS publisher is accepted yet;
 - no durable publication receipt / replay / recovery exists;
 - no public alias-discovery authority contract is accepted;
 - no bridge-genesis migration exists;
@@ -774,7 +783,7 @@ blocked until later accepted predecessors:
 
 ### Named next action
 
-Implement V5.1 on `kernel/v5-1-generic-governed-materialization` from current `main` `bc115eb40f1601e5b6c6fda23ff05ee5bf06883d`. Close V4.3 in this PR's first bookkeeping commit, then implement only in-memory generic materialization and `PublishKnowledgeRevisionCommand` freeze. Do not implement CAS publication, head mutation, durable replay, or World writer replacement. Do not claim `V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED`.
+Implement V5.2 on `kernel/v5-2-expected-parent-cas-publication` from current `main` `9f006bf77d72faabee8a3eef359b89a3d537b0c1`. Close V5.1 in this PR's first bookkeeping commit, then implement native revision identity and expected-parent atomic CAS publication only. Do not implement durable replay, uncertain-outcome recovery, public write transport, or World writer replacement. Do not claim `V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED`.
 
 ---
 
