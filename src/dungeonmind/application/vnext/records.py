@@ -6,11 +6,16 @@ collections (tuples, FrozenDicts) to guarantee isolation against caller mutation
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from dungeonmind.contracts.vnext.common import KnowledgeStanding
+from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
+from dungeonmind.domain.canonical import canonical_json, canonical_sha256
+from dungeonmind.domain.errors import PersistenceIntegrityError
 
 from .frozen_json import FrozenJsonValue
 
@@ -229,3 +234,70 @@ class ParsedKnowledgeRevisionIdentity:
     domain_contract_ref: ParsedDomainContractRef
     semantic_profile_ref: ParsedSemanticProfileRef
     migration_origin_ref: ParsedMigrationOriginRef | None
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeHeadEvent:
+    """One native head transition. V5.2 writes ``publish`` only."""
+
+    space_id: str
+    event_kind: Literal["publish", "rollback"]
+    previous_revision_id: str | None
+    target_revision_id: str
+    occurred_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class StoredKnowledgeRevision:
+    """Immutable revision plus an isolated canonical graph payload."""
+
+    revision: KnowledgeRevision
+    graph_payload_sha256: str
+    _payload_json: str
+
+    @staticmethod
+    def seal(revision: KnowledgeRevision, payload: Mapping[str, Any]) -> StoredKnowledgeRevision:
+        payload_json = canonical_json(dict(payload))
+        digest = canonical_sha256(dict(payload))
+        if digest != revision.graph_payload_sha256:
+            raise PersistenceIntegrityError(
+                "stored graph payload digest disagrees with the revision envelope"
+            )
+        return StoredKnowledgeRevision(
+            revision=revision,
+            graph_payload_sha256=digest,
+            _payload_json=payload_json,
+        )
+
+    @property
+    def graph_payload(self) -> dict[str, Any]:
+        loaded = json.loads(self._payload_json)
+        if not isinstance(loaded, dict):
+            raise PersistenceIntegrityError("stored graph payload is not an object")
+        if canonical_sha256(loaded) != self.graph_payload_sha256:
+            raise PersistenceIntegrityError("stored graph payload digest drift")
+        return loaded
+
+
+@dataclass(frozen=True, slots=True)
+class PublishedKnowledgeRevision:
+    """Copy-on-read result of one successful native publication."""
+
+    revision: KnowledgeRevision
+    graph_payload_sha256: str
+    _payload_json: str
+
+    @staticmethod
+    def from_stored(stored: StoredKnowledgeRevision) -> PublishedKnowledgeRevision:
+        return PublishedKnowledgeRevision(
+            revision=stored.revision,
+            graph_payload_sha256=stored.graph_payload_sha256,
+            _payload_json=stored._payload_json,
+        )
+
+    @property
+    def graph_payload(self) -> dict[str, Any]:
+        loaded = json.loads(self._payload_json)
+        if not isinstance(loaded, dict):
+            raise PersistenceIntegrityError("published graph payload is not an object")
+        return loaded

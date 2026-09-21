@@ -35,7 +35,9 @@ from .errors import (
     EntityReadIntegrityError,
     EvidenceReadIntegrityError,
     GovernedMaterializationIntegrityError,
+    KnowledgePublicationIntegrityError,
     KnowledgeReadContextIntegrityError,
+    KnowledgeStaleParentRevisionError,
     LegacyCompatibilityIntegrityError,
     NeighborhoodReadIntegrityError,
     RevisionStructuralIntegrityError,
@@ -95,6 +97,7 @@ from .neighborhood import (
     NeighborhoodWorkCounts,
 )
 from .provenance import InMemoryKnowledgeSourceReader, KnowledgeProvenanceSnapshot
+from .publication import publish_governed_materialization
 from .read_context import KnowledgeReadContext
 from .records import (
     ParsedAssertion,
@@ -121,7 +124,9 @@ from .records import (
     ParsedUnknownTemporalScope,
     ParsedUtcIntervalTemporalScope,
     ParsedVisibility,
+    PublishedKnowledgeRevision,
 )
+from .revision_ids import compute_knowledge_revision_id
 from .search import (
     SearchCompleteness,
     SearchHit,
@@ -168,8 +173,10 @@ __all__ = [
     "GovernedPublicationIdentity",
     "InMemoryKnowledgeSourceReader",
     "KnowledgeProvenanceSnapshot",
+    "KnowledgePublicationIntegrityError",
     "KnowledgeReadContext",
     "KnowledgeReadContextIntegrityError",
+    "KnowledgeStaleParentRevisionError",
     "LegacyCompatibilityIntegrityError",
     "LegacyCompatibilityManifest",
     "NeighborhoodLayerWork",
@@ -203,6 +210,7 @@ __all__ = [
     "ParsedUnknownTemporalScope",
     "ParsedUtcIntervalTemporalScope",
     "ParsedVisibility",
+    "PublishedKnowledgeRevision",
     "RevisionStructuralIntegrityError",
     "SearchCompleteness",
     "SearchHit",
@@ -219,6 +227,7 @@ __all__ = [
     "canonical_json_bytes",
     "canonical_json_text",
     "compute_compatibility_key",
+    "compute_knowledge_revision_id",
     "compute_legacy_compatibility_key",
     "compute_mapping_implementation_digest",
     "compute_semantic_digest",
@@ -227,6 +236,7 @@ __all__ = [
     "freeze_json_value",
     "load_legacy_world_compat_manifest",
     "materialize_governed_revision",
+    "publish_governed_materialization",
     "thaw_json_value",
     "validate_stored_legacy_graph_revision",
     "verify_historical_semantic_parity",
