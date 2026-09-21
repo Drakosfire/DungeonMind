@@ -15,6 +15,7 @@ from .base import DungeonMindModel
 
 IDENTITY_DECISION_SCHEMA = "dm_identity_decision_v1"
 IDENTITY_DECISION_V2_SCHEMA = "dm_identity_decision_v2"
+IDENTITY_RECONCILIATION_DECISION_SCHEMA = "dm_identity_reconciliation_decision_v1"
 
 
 class IdentityOutcome(StrEnum):
@@ -38,10 +39,60 @@ class IdentityDecisionKind(StrEnum):
     HUMAN_OVERRIDE = "human_override"
 
 
+class IdentityReconciliationDecisionKind(StrEnum):
+    """Decision vocabulary owned by the atomic current-World rebind seam."""
+
+    CANONICAL_REBIND = "canonical_rebind"
+
+
 class IdentityDecisionStatus(StrEnum):
     ACTIVE = "active"
     SUPERSEDED = "superseded"
     RETRACTED = "retracted"
+
+
+class IdentityReconciliationDecision(DungeonMindModel):
+    """One durable, one-to-one replacement of a current canonical identity.
+
+    This is deliberately separate from the merge record. A rebind does not
+    manufacture a second entity or claim that two entities were merged: it
+    moves one existing current identity to its explicitly supplied canonical
+    replacement while retaining the source as historical identity.
+    """
+
+    schema_version: Literal[
+        "dm_identity_reconciliation_decision_v1"
+    ] = IDENTITY_RECONCILIATION_DECISION_SCHEMA
+    decision_id: str
+    world_id: str
+    operation_id: str
+    decision_kind: Literal[IdentityReconciliationDecisionKind.CANONICAL_REBIND] = (
+        IdentityReconciliationDecisionKind.CANONICAL_REBIND
+    )
+    source_object_id: str
+    target_object_id: str
+    actor: str = "system"
+    reason: str | None = None
+    status: IdentityDecisionStatus = IdentityDecisionStatus.ACTIVE
+    created_at: datetime
+
+    @field_validator(
+        "decision_id",
+        "world_id",
+        "operation_id",
+        "source_object_id",
+        "target_object_id",
+        "actor",
+    )
+    @classmethod
+    def _required_text(cls, value: str) -> str:
+        return _require_nonblank_identity_id(value, field_name="identity reconciliation value")
+
+    @model_validator(mode="after")
+    def _source_differs_from_target(self) -> Self:
+        if self.source_object_id == self.target_object_id:
+            raise ValueError("canonical rebind source and target must differ")
+        return self
 
 
 class IdentityDecisionRecord(DungeonMindModel):

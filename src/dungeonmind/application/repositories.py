@@ -13,7 +13,7 @@ Failure model (from ``domain.errors``):
 
 from collections.abc import Callable, Sequence
 from datetime import datetime
-from typing import Any, Protocol, TypeAlias
+from typing import TYPE_CHECKING, Any, Protocol, TypeAlias
 
 from ..contracts.contribution import (
     ContributionStatus,
@@ -44,7 +44,11 @@ from ..contracts.graph import (
     WorldGraphHead,
     WorldGraphRevision,
 )
-from ..contracts.identity import IdentityDecisionRecord, IdentityDecisionRecordV2
+from ..contracts.identity import (
+    IdentityDecisionRecord,
+    IdentityDecisionRecordV2,
+    IdentityReconciliationDecision,
+)
 from ..contracts.mind_turn import MindTurnRequest, MindTurnResponse
 from ..contracts.retrieval import GraphRetrievalSession
 from ..contracts.review_publication import (
@@ -67,6 +71,7 @@ from .source_provenance_snapshot import SourceProvenanceSnapshot
 
 DurableGraphContribution: TypeAlias = GraphContribution | GraphContributionV2
 DurableIdentityDecision: TypeAlias = IdentityDecisionRecord | IdentityDecisionRecordV2
+DurableIdentityHistoryRecord: TypeAlias = DurableIdentityDecision | IdentityReconciliationDecision
 DurableContributionReviewState: TypeAlias = (
     ContributionReviewState | ContributionReviewStateV2
 )
@@ -135,6 +140,25 @@ class WorldGraphRepository(Protocol):
     ) -> WorldGraphHead:
         """Repoint the head to an existing, validated revision. Auditable;
         never deletes the abandoned revision. Raises ``RevisionNotFoundError``."""
+        ...
+
+
+if TYPE_CHECKING:
+    from .world_identity_reconciliation import (
+        IdentityReconciliationPublicationCommand,
+        IdentityReconciliationPublicationResult,
+    )
+
+
+class WorldIdentityReconciliationRepository(Protocol):
+    """Atomic current-World canonical identity reconciliation publisher."""
+
+    def publish(
+        self, command: "IdentityReconciliationPublicationCommand"
+    ) -> "IdentityReconciliationPublicationResult": ...
+
+    def list_for_world(self, world_id: str) -> list[IdentityReconciliationDecision]:
+        """Read only the reconciliation history owned by this atomic seam."""
         ...
 
 
