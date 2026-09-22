@@ -11,7 +11,12 @@ from dungeonmind.application.eldyrwild_party_registry_provenance_repair import (
     materialize_party_registry_provenance_repair,
     publish_party_registry_provenance_repair,
 )
-from dungeonmind.application.graph_snapshot import GRAPH_SCHEMA_V6
+from dungeonmind.application.graph_snapshot import (
+    GRAPH_SCHEMA_V6,
+    VersionedUnionGraphSnapshotReader,
+)
+from dungeonmind.application.semantic_profiles import descriptor_sha256
+from dungeonmind.application.world_graph_projection import WorldGraphProjectionService
 from dungeonmind.contracts.evidence import (
     SourceArtifactV2,
     SourceAuthority,
@@ -24,10 +29,14 @@ from dungeonmind.contracts.graph import (
     StoredGraphRevision,
     WorldGraphRevision,
 )
+from dungeonmind.contracts.projection import Admissibility
+from dungeonmind.contracts.projection_v2 import ScopeModeV2, WorldGraphProjectionRequestV2
 from dungeonmind.contracts.vocabulary import Visibility
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
 from dungeonmind.infrastructure.memory import InMemorySourceRepository, InMemoryWorldGraphRepository
+from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
+from dungeonmind_dnd.application.world_object_vocabulary import load_builtin_v3_descriptor
 
 NOW = datetime(2026, 9, 22, tzinfo=UTC)
 REVISION = "sha256:" + "a" * 64
@@ -48,6 +57,7 @@ def _metadata(evidence_id: str) -> dict[str, object]:
 
 
 def _payload() -> dict[str, object]:
+    descriptor = load_builtin_v3_descriptor()
     evidence = []
     objects = []
     for object_id in PC_OBJECT_IDS:
@@ -87,9 +97,9 @@ def _payload() -> dict[str, object]:
         "world_id": ELDYRWILD_WORLD_ID,
         "semantic_profile": {
             "schema_version": "dm_semantic_profile_ref_v1",
-            "profile_id": "test.profile",
-            "profile_revision": "v1",
-            "descriptor_sha256": "0" * 64,
+            "profile_id": descriptor.profile_id,
+            "profile_revision": descriptor.profile_revision,
+            "descriptor_sha256": descriptor_sha256(descriptor),
         },
         "relationship_endpoint_aspect_schema": "dm_relationship_endpoint_aspect_v1",
         "objects": objects,
@@ -152,6 +162,31 @@ def _parent(payload: dict[str, object] | None = None) -> StoredGraphRevision:
     )
 
 
+def _project(graph, sources, revision_id: str):
+    descriptor = load_builtin_v3_descriptor()
+    return WorldGraphProjectionService(
+        world_graph=graph,
+        sources=sources,
+        graph_reader=VersionedUnionGraphSnapshotReader(
+            profile_registry=StaticSemanticProfileRegistry([descriptor])
+        ),
+        reviewed_world_initializations=_NoReviewedInitialization(),
+    ).project(
+        WorldGraphProjectionRequestV2(
+            world_id=ELDYRWILD_WORLD_ID,
+            campaign_id=None,
+            admissibility=Admissibility.GM,
+            scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN,
+            revision_pin=revision_id,
+        )
+    )
+
+
+class _NoReviewedInitialization:
+    def get_for_world(self, world_id: str):
+        return None
+
+
 def test_repairs_only_the_six_party_registry_evidence_keys() -> None:
     parent = _parent()
     result = materialize_party_registry_provenance_repair(parent, sources=_sources())
@@ -207,3 +242,30 @@ def test_publish_is_exact_retry_noop_and_stale_parent_fails_closed() -> None:
             expected_parent_revision_id="rev:wrong",
         )
     assert error.value.details["reason"] == "expected_parent_missing"
+
+
+def test_native_projection_admits_exact_six_after_repair_and_preserves_other_exclusion() -> None:
+    graph = InMemoryWorldGraphRepository()
+    sources = _sources()
+    seeded = graph.publish_revision(
+        PublishRevisionCommand(
+            world_id=ELDYRWILD_WORLD_ID,
+            parent_revision_id=None,
+            expected_parent_revision_id=None,
+            operation_ids=["seed"],
+            graph_schema=GRAPH_SCHEMA_V6,
+            graph_payload=_payload(),
+            created_at=NOW,
+        )
+    )
+    before = _project(graph, sources, seeded.revision_id)
+    assert not set(PC_OBJECT_IDS) & set(before.graph.objects)
+    repaired = publish_party_registry_provenance_repair(
+        graph,
+        sources=sources,
+        created_at=NOW,
+        expected_parent_revision_id=seeded.revision_id,
+    )
+    after = _project(graph, sources, repaired.child_revision_id)
+    assert set(PC_OBJECT_IDS) <= set(after.graph.objects)
+    assert after.scoped_graph.object_exclusions == {}
