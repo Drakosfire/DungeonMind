@@ -13,7 +13,13 @@ from dungeonmind.application.eldyrwild_party_registry_provenance_repair import (
     materialize_party_registry_provenance_repair,
     publish_party_registry_provenance_repair,
 )
+from dungeonmind.application.graph_snapshot import VersionedUnionGraphSnapshotReader
+from dungeonmind.application.semantic_profiles import StaticSemanticProfileRegistry
+from dungeonmind.application.world_graph_projection import WorldGraphProjectionService
+from dungeonmind.contracts.projection import Admissibility
+from dungeonmind.contracts.projection_v2 import ScopeModeV2, WorldGraphProjectionRequestV2
 from dungeonmind.infrastructure.postgres import PostgresDatabase, PostgresRepositoryBundle
+from dungeonmind_dnd.application.world_object_vocabulary import load_builtin_v3_descriptor
 
 
 def _bundle(url: str) -> PostgresRepositoryBundle:
@@ -64,9 +70,28 @@ def main() -> int:
         )
         print(json.dumps({"apply_gate": "executed", **result.__dict__}, indent=2, default=str))
         return 0
-    child = bundle.world_graph.get_revision(ELDYRWILD_WORLD_ID, str(preflight["expected_child"]))
-    print(json.dumps({"preflight": preflight, "child_exists": child is not None}, indent=2))
-    return 0 if child is not None else 2
+    projection = WorldGraphProjectionService(
+        world_graph=bundle.world_graph,
+        sources=bundle.sources,
+        graph_reader=VersionedUnionGraphSnapshotReader(
+            profile_registry=StaticSemanticProfileRegistry([load_builtin_v3_descriptor()])
+        ),
+        reviewed_world_initializations=bundle.reviewed_world_initializations,
+    ).project(WorldGraphProjectionRequestV2(
+        world_id=ELDYRWILD_WORLD_ID,
+        campaign_id=None,
+        admissibility=Admissibility.GM,
+        scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN,
+        revision_pin=str(preflight["expected_child"]),
+    ))
+    admitted = set(projection.graph.objects)
+    result = {"preflight": preflight, "six_pc_admitted": sorted(
+        object_id for object_id in (
+            "pc:baergrom", "pc:bonogo", "pc:caelynn", "pc:ephanna", "pc:karsemine", "pc:stafl"
+        ) if object_id in admitted
+    ), "admitted_object_count": len(admitted)}
+    print(json.dumps(result, indent=2))
+    return 0 if len(result["six_pc_admitted"]) == 6 else 2
 
 
 if __name__ == "__main__":

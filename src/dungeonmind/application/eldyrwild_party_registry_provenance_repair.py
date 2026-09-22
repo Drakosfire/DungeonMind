@@ -99,6 +99,16 @@ def materialize_party_registry_provenance_repair(
         or artifact.source_domain_key != "party_registry"
     ):
         _fail("party_registry_artifact_unexpected", artifact_id=artifact.source_artifact_id)
+    if artifact.current_revision_id is None:
+        _fail("party_registry_current_revision_missing")
+    revision = sources.get_revision(artifact.current_revision_id)
+    if revision is None:
+        _fail("party_registry_source_revision_missing", revision_id=artifact.current_revision_id)
+    if revision.source_artifact_id != PARTY_REGISTRY_ARTIFACT_ID:
+        _fail(
+            "party_registry_source_revision_artifact_mismatch",
+            revision_id=artifact.current_revision_id,
+        )
 
     target_ids: list[str] = []
     for object_id in PC_OBJECT_IDS:
