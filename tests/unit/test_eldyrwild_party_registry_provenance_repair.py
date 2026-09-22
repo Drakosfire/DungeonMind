@@ -205,6 +205,41 @@ def test_fails_closed_for_a_non_historical_evidence_key() -> None:
         materialize_party_registry_provenance_repair(_parent(payload), sources=_sources())
 
 
+@pytest.mark.parametrize(
+    ("mutate", "reason"),
+    [
+        (
+            lambda sources: sources._artifacts.__setitem__(
+                PARTY_REGISTRY_ARTIFACT_ID,
+                sources._artifacts[PARTY_REGISTRY_ARTIFACT_ID].model_copy(
+                    update={"current_revision_id": None}
+                ),
+            ),
+            "party_registry_current_revision_missing",
+        ),
+        (
+            lambda sources: sources._revisions.clear(),
+            "party_registry_source_revision_missing",
+        ),
+        (
+            lambda sources: sources._revisions.__setitem__(
+                REVISION,
+                sources._revisions[REVISION].model_copy(
+                    update={"source_artifact_id": "artifact:wrong"}
+                ),
+            ),
+            "party_registry_source_revision_artifact_mismatch",
+        ),
+    ],
+)
+def test_fails_closed_for_invalid_party_registry_source_revision_chain(mutate, reason) -> None:
+    sources = _sources()
+    mutate(sources)
+    with pytest.raises(PersistenceIntegrityError) as error:
+        materialize_party_registry_provenance_repair(_parent(), sources=sources)
+    assert error.value.details["reason"] == reason
+
+
 def test_publish_is_exact_retry_noop_and_stale_parent_fails_closed() -> None:
     graph = InMemoryWorldGraphRepository()
     parent = _payload()
@@ -244,7 +279,7 @@ def test_publish_is_exact_retry_noop_and_stale_parent_fails_closed() -> None:
     assert error.value.details["reason"] == "expected_parent_missing"
 
 
-def test_native_projection_admits_exact_six_after_repair_and_preserves_other_exclusion() -> None:
+def test_native_projection_admits_exact_six_after_repair() -> None:
     graph = InMemoryWorldGraphRepository()
     sources = _sources()
     seeded = graph.publish_revision(
