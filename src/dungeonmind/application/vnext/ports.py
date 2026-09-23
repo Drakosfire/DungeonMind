@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
+from dungeonmind.contracts.vnext.knowledge import KnowledgeHead, PublishKnowledgeRevisionCommand
+
 from .provenance import KnowledgeProvenanceSnapshot
+from .records import KnowledgeHeadEvent, StoredKnowledgeRevision
 
 
 class KnowledgeSourceReader(Protocol):
@@ -26,3 +29,17 @@ class KnowledgeSourceReader(Protocol):
         artifact_ids: Sequence[str],
         revision_ids: Sequence[str],
     ) -> KnowledgeProvenanceSnapshot: ...
+
+
+class KnowledgeRevisionRepository(Protocol):
+    """Native vNext revision/head authority. Not a product write API."""
+
+    def get_head(self, space_id: str) -> KnowledgeHead | None: ...
+
+    def get_revision(self, space_id: str, revision_id: str) -> StoredKnowledgeRevision | None: ...
+
+    def publish_revision(
+        self, command: PublishKnowledgeRevisionCommand
+    ) -> StoredKnowledgeRevision: ...
+
+    def head_events(self, space_id: str) -> tuple[KnowledgeHeadEvent, ...]: ...
