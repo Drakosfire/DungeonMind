@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import re
 import threading
@@ -34,6 +35,7 @@ from dungeonmind.domain.errors import (
     PersistenceIntegrityError,
     PersistenceUnavailableError,
 )
+from dungeonmind.infrastructure.memory.repositories import InMemoryWorldGraphRepository
 from dungeonmind.infrastructure.memory.vnext_knowledge import InMemoryKnowledgeRevisionRepository
 from tests.unit.test_vnext_governed_materialization import (
     _accepted,
@@ -426,13 +428,10 @@ def test_v52_source_has_no_legacy_authority_vocabulary() -> None:
 
 
 def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
-    """Pinned bytes from the PR #69 merge, without requiring that commit locally."""
+    """Pin World publication behavior, not unrelated edits in the same module."""
     unchanged = {
         "src/dungeonmind/infrastructure/postgres/graph.py": (
             "dfd996aab0eeed2c6829a9e835db877366d0e254bd833c8b942ff7d73c434a93"
-        ),
-        "src/dungeonmind/infrastructure/memory/repositories.py": (
-            "3a94d449edaf92c9eff47d962465d89b0dbc8d5ec14af5b50d432e0fd7199db2"
         ),
         "src/dungeonmind/domain/revision_ids.py": (
             "3f9688ddfa08536508b0f240353555c14ebc30f28166d763f447d883849c0e7e"
@@ -441,6 +440,22 @@ def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
     for relative, digest in unchanged.items():
         actual = hashlib.sha256((REPO_ROOT / relative).read_bytes()).hexdigest()
         assert actual == digest, f"{relative} changed since {IMPLEMENTATION_BASE}"
+    publication_methods = ("_publish_revision_locked", "publish_revision")
+    publication = hashlib.sha256()
+    for name in publication_methods:
+        source = inspect.getsource(getattr(InMemoryWorldGraphRepository, name))
+        assert "knowledge_revisions" not in source
+        assert "compute_knowledge_revision_id" not in source
+        publication.update(name.encode())
+        publication.update(b"\0")
+        publication.update(source.encode())
+        publication.update(b"\0")
+    assert publication.hexdigest() == (
+        "f3848d1aad074e0873067ecc14e908c09c3d9abe7923d13b49a766f2f4fd6d92"
+    )
+    locked = inspect.getsource(InMemoryWorldGraphRepository._publish_revision_locked)
+    assert "compute_revision_id" in locked
+    assert "StaleParentRevisionError" in locked
     contracts = REPO_ROOT / "src/dungeonmind/contracts/vnext"
     tree = hashlib.sha256()
     sources = sorted(
