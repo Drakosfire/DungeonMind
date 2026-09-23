@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from psycopg import Connection, sql
@@ -18,6 +18,11 @@ from ...contracts.vnext.knowledge import (
     KnowledgeHead,
     KnowledgeRevision,
     PublishKnowledgeRevisionCommand,
+)
+from ...contracts.vnext.prospective import (
+    KnowledgeProspectivePublication,
+    KnowledgeProspectivePublicationResult,
+    ProspectiveResultBinding,
 )
 from ...contracts.vnext.publication import KnowledgePublicationReceipt
 from ...domain.canonical import canonical_json, canonical_sha256
@@ -48,10 +53,12 @@ class PostgresKnowledgeRevisionRepository:
         *,
         after_revision_insert: Callable[[], None] | None = None,
         after_receipt_insert: Callable[[], None] | None = None,
+        after_prospective_result_insert: Callable[[], None] | None = None,
     ) -> None:
         self._database = database
         self._after_revision_insert = after_revision_insert
         self._after_receipt_insert = after_receipt_insert
+        self._after_prospective_result_insert = after_prospective_result_insert
 
     def get_head(self, space_id: str) -> KnowledgeHead | None:
         with self._database.transaction() as conn:
@@ -147,6 +154,81 @@ class PostgresKnowledgeRevisionRepository:
             if self._after_receipt_insert is not None:
                 self._after_receipt_insert()
             return receipt
+
+    def get_prospective_publication(
+        self, space_id: str, publication_id: str
+    ) -> KnowledgeProspectivePublication | None:
+        with self._database.transaction() as conn:
+            receipt = _read_receipt(conn, space_id, publication_id)
+            result = _read_prospective_result(conn, space_id, publication_id)
+            if result is not None and receipt is None:
+                raise PersistenceIntegrityError("prospective result exists without receipt")
+            if result is None:
+                return None
+            return KnowledgeProspectivePublication(
+                publication_receipt=receipt,
+                prospective_result=result,
+            )
+
+    def publish_prospective_publication(
+        self,
+        command: PublishKnowledgeRevisionCommand,
+        publication_id: str,
+        prospective_request_sha256: str,
+        result_bindings: Sequence[ProspectiveResultBinding],
+    ) -> KnowledgeProspectivePublication:
+        with self._database.transaction() as conn:
+            _lock_space(conn, command.space_id, created_at=command.created_at)
+            receipt = _read_receipt(conn, command.space_id, publication_id)
+            result = _read_prospective_result(conn, command.space_id, publication_id)
+            command_sha = canonical_sha256(command.model_dump(mode="json"))
+            if result is not None and receipt is None:
+                raise PersistenceIntegrityError("prospective result exists without receipt")
+            if receipt is not None:
+                if (
+                    result is None
+                    or receipt.command_sha256 != command_sha
+                    or result.prospective_request_sha256 != prospective_request_sha256
+                ):
+                    raise KnowledgePublicationIdempotencyConflictError(
+                        space_id=command.space_id, publication_id=publication_id
+                    )
+                return KnowledgeProspectivePublication(
+                    publication_receipt=receipt,
+                    prospective_result=result,
+                )
+            stored = commit_expected_parent(
+                command,
+                read_head=lambda: _read_head(conn, command.space_id),
+                read_revision=lambda revision_id: _read_revision(
+                    conn, command.space_id, revision_id
+                ),
+                insert_revision=lambda value: _insert_revision(conn, value),
+                advance_head=lambda head, event: _advance_head(conn, head, event),
+            )
+            receipt = KnowledgePublicationReceipt(
+                space_id=command.space_id,
+                publication_id=publication_id,
+                command_sha256=command_sha,
+                expected_parent_revision_id=command.expected_parent_revision_id,
+                published_revision_id=stored.revision.revision_id,
+                graph_payload_sha256=stored.graph_payload_sha256,
+            )
+            result = KnowledgeProspectivePublicationResult(
+                space_id=command.space_id,
+                publication_id=publication_id,
+                prospective_request_sha256=prospective_request_sha256,
+                published_revision_id=stored.revision.revision_id,
+                results=list(result_bindings),
+            )
+            _insert_receipt(conn, receipt)
+            _insert_prospective_result(conn, result)
+            if self._after_prospective_result_insert is not None:
+                self._after_prospective_result_insert()
+            return KnowledgeProspectivePublication(
+                publication_receipt=receipt,
+                prospective_result=result,
+            )
 
 
 def _lock_space(conn: Connection[Any], space_id: str, *, created_at: Any) -> None:
@@ -338,6 +420,70 @@ def _insert_receipt(conn: Connection[Any], receipt: KnowledgePublicationReceipt)
             receipt.status, fingerprint,
         ),
     )
+
+
+def _read_prospective_result(
+    conn: Connection[Any], space_id: str, publication_id: str
+) -> KnowledgeProspectivePublicationResult | None:
+    row = conn.execute(
+        sql.SQL(
+            """
+            SELECT schema_version, space_id, publication_id,
+                   prospective_request_sha256, published_revision_id,
+                   result_bindings, status, record_fingerprint
+            FROM {}.knowledge_prospective_publication_results
+            WHERE space_id = %s AND publication_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (space_id, publication_id),
+    ).fetchone()
+    if row is None:
+        return None
+    fingerprint = row["record_fingerprint"]
+    result_data = dict(row)
+    result_data["results"] = result_data.pop("result_bindings")
+    result_data.pop("record_fingerprint", None)
+    try:
+        result = KnowledgeProspectivePublicationResult.model_validate(result_data)
+    except Exception as exc:
+        raise PersistenceIntegrityError(
+            f"failed to reconstruct prospective publication result: {exc}"
+        ) from exc
+    if canonical_sha256(result.model_dump(mode="json")) != fingerprint:
+        raise PersistenceIntegrityError("prospective result fingerprint drift")
+    revision = _read_revision(conn, space_id, result.published_revision_id)
+    if revision is None:
+        raise PersistenceIntegrityError("prospective result references missing revision")
+    return result
+
+
+def _insert_prospective_result(
+    conn: Connection[Any], result: KnowledgeProspectivePublicationResult
+) -> None:
+    payload = result.model_dump(mode="json")
+    conn.execute(
+        sql.SQL(
+            """
+            INSERT INTO {}.knowledge_prospective_publication_results (
+                schema_version, space_id, publication_id,
+                prospective_request_sha256, published_revision_id,
+                result_bindings, status, record_fingerprint
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (
+            result.schema_version,
+            result.space_id,
+            result.publication_id,
+            result.prospective_request_sha256,
+            result.published_revision_id,
+            jsonb([item.model_dump(mode="json") for item in result.results]),
+            result.status,
+            canonical_sha256(payload),
+        ),
+    )
+
+
 def _reconstruct(row: dict[str, Any]) -> StoredKnowledgeRevision:
     try:
         revision = KnowledgeRevision.model_validate(row["revision_payload"])
