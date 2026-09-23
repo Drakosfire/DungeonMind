@@ -17,6 +17,7 @@ from dungeonmind.application.vnext.errors import (
 from dungeonmind.application.vnext.materialization import GovernedPublicationIdentity
 from dungeonmind.application.vnext.prospective import (
     allocate_prospective_result_id,
+    get_prospective_publication,
     publish_prospective_contribution,
     resolve_prospective_contribution,
 )
@@ -477,3 +478,12 @@ def test_result_corruption_fails_closed() -> None:
             _accepted("create-1"),
             result.publication_receipt.publication_id,
         )
+
+    tampered_binding = original.results[0].model_copy(update={"durable_id": "ent:tampered"})
+    tampered_result = original.model_copy(update={"results": [tampered_binding]})
+    repo._prospective_results[key] = tampered_result
+    repo._prospective_fingerprints[key] = canonical_sha256(
+        tampered_result.model_dump(mode="json")
+    )
+    with pytest.raises(PersistenceIntegrityError, match="allocation drift"):
+        get_prospective_publication(SPACE, "prepared:corrupt", repository=repo)

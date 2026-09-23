@@ -393,6 +393,14 @@ def _verify_result_bindings(
     entity_ids = {item.get("entity_id") for item in payload.get("entities", [])}
     assertion_ids = {item.get("assertion_id") for item in payload.get("assertions", [])}
     for binding in result.results:
+        expected_id = allocate_prospective_result_id(
+            space_id=result.space_id,
+            publication_id=result.publication_id,
+            client_op_id=binding.client_op_id,
+            result_kind=binding.result_kind,
+        )
+        if binding.durable_id != expected_id:
+            raise PersistenceIntegrityError("prospective result allocation drift")
         ids = entity_ids if binding.result_kind == "entity" else assertion_ids
         if binding.durable_id not in ids:
             raise PersistenceIntegrityError("prospective result binding missing from revision")
