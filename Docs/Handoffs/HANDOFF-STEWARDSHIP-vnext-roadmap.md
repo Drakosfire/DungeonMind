@@ -5,7 +5,7 @@
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
 **Current main anchor:** `01762848cbdd666b092d4cb26af558ba1468fa4d` — merged PR #71; V5.3 implementation base
-**Last merged roadmap implementation:** PR #69 — `KERNEL: V5.1 generic governed materialization`  
+**Last merged roadmap implementation:** PR #71 — `KERNEL: V5.2 native expected-parent CAS publication`
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
@@ -93,7 +93,7 @@ V5.3 ACTIVE — durable publication replay / recovery implementation
 
 **V5.3 — durable publication replay / recovery**
 
-> Given one already-governed V5.1 materialization, can DungeonMind durably publish its exact `PublishKnowledgeRevisionCommand` as one immutable native-vNext `KnowledgeRevision` and atomically advance exactly one `KnowledgeHead` under expected-parent compare-and-swap semantics?
+> Can DungeonMind durably bind one exact native publication command to one terminal receipt and recover that result by `(space_id, publication_id)` without misclassifying persistence corruption as an unknown outcome or inferring success from the current head?
 
 V5.2 owns native revision identity and the atomic publication boundary. It is not permission to implement durable replay, uncertain-outcome recovery, public write transport, or World writer replacement.
 

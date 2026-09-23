@@ -47,9 +47,11 @@ class PostgresKnowledgeRevisionRepository:
         database: PostgresDatabase,
         *,
         after_revision_insert: Callable[[], None] | None = None,
+        after_receipt_insert: Callable[[], None] | None = None,
     ) -> None:
         self._database = database
         self._after_revision_insert = after_revision_insert
+        self._after_receipt_insert = after_receipt_insert
 
     def get_head(self, space_id: str) -> KnowledgeHead | None:
         with self._database.transaction() as conn:
@@ -142,6 +144,8 @@ class PostgresKnowledgeRevisionRepository:
                 graph_payload_sha256=stored.graph_payload_sha256,
             )
             _insert_receipt(conn, receipt)
+            if self._after_receipt_insert is not None:
+                self._after_receipt_insert()
             return receipt
 
 

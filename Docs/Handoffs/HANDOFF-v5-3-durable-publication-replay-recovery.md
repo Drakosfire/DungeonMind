@@ -15,7 +15,7 @@ pr_body_template: |
 # HANDOFF — V5.3 durable publication replay and recovery
 
 **Created:** 2026-09-22
-**Status:** ACTIVE — Review Cycle 1 HOLD repair on exact head `0290b1ab85efa118018f0f7ec2a1034bc6d6762d`
+**Status:** ACTIVE — Review Cycle 2 HOLD repair on exact head `103651aa870eb51dc7a97955f0d5d9ff5add6c40`
 **Canonical handoff path:** `Docs/Handoffs/HANDOFF-v5-3-durable-publication-replay-recovery.md`
 **Repository:** `Drakosfire/DungeonMind`
 **Roadmap phase:** `V5.3`
@@ -82,7 +82,7 @@ PR #71 disposition:
   V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED
 
 PR #71 merge:
-  V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED
+  01762848cbdd666b092d4cb26af558ba1468fa4d
 
 branch base for V5.3:
   01762848cbdd666b092d4cb26af558ba1468fa4d
@@ -214,6 +214,25 @@ Decision rule:
 ```
 
 Any additional runtime, contract, infrastructure, migration, or documentation path is a stop.
+
+### Review-cycle rebrief — approved test-surface expansion
+
+The implementation discovered that the accepted V5.2 → V5.3 stewardship transition
+left stale phase assertions in four existing vNext read-test modules, while the
+PostgreSQL publication proof belongs in the existing integration cohort rather
+than a newly named recovery module. The Steward rebrief therefore authorizes
+these five additional test paths for this PR:
+
+```text
+tests/integration/test_postgres_vnext_knowledge_publication.py
+tests/unit/test_vnext_entity_reads.py
+tests/unit/test_vnext_evidence_reads.py
+tests/unit/test_vnext_neighborhood.py
+tests/unit/test_vnext_search.py
+```
+
+This is a bounded test-only expansion. It does not authorize new runtime,
+contract, migration, or V5.4 scope.
 
 ## §5 Explicitly out of scope
 
@@ -664,31 +683,34 @@ WorldKeeper WK-3 implementation remains BLOCKED
 on DungeonMind prospective-reference atomic publication.
 ```
 
-## §13 Current implementation handback — Review Cycle 1 HOLD
+## §13 Current implementation handback — Review Cycle 2 HOLD
 
 ```text
 repository: Drakosfire/DungeonMind
 branch: kernel/v5-3-durable-publication-replay-recovery
 base: 01762848cbdd666b092d4cb26af558ba1468fa4d
-reviewed head: 0290b1ab85efa118018f0f7ec2a1034bc6d6762d
+reviewed head: 103651aa870eb51dc7a97955f0d5d9ff5add6c40
 PR: #74
 Review Cycle 1: HOLD — review 5292176272
+Review Cycle 2: HOLD — review 5292793905
 ```
 
-The review blockers are recorded as the current repair contract:
+Cycle 1 blockers were repaired in commit `103651a`; Cycle 2 leaves this
+narrower repair contract:
 
-1. PostgreSQL receipt reconstruction must exclude the storage-only
-   `record_fingerprint` before strict contract validation.
-2. PostgreSQL replay/concurrency/recovery integration proof and migration
-   `0009_vnext_publication_receipts` CI expectations must be present.
-3. Missing receipt after an ambiguous publish/probe must return typed
-   `KnowledgePublicationOutcomeUnknownError`, never the arbitrary original
-   exception.
-4. `publication_id` is mandatory on the public application publication seam.
-5. This full handoff, not a compressed summary, is the canonical design and
-   evidence contract.
+1. Persistence-integrity corruption must propagate as
+   `PersistenceIntegrityError`, never be converted into `outcome_unknown`.
+2. PostgreSQL proof must cover same-ID concurrent replay, same-ID conflicting
+   command race, receipt/revision/head/event rollback, and replay after a
+   descendant.
+3. The response-loss cohort must assert one receipt for one publication, and
+   exact-head integration CI must pass.
+4. Canonical stewardship fields must remain current, including the PR #71
+   merge SHA and the V5.3 primary question.
+5. The approved five-path test-surface rebrief above must remain recorded.
 
 Repair acceptance requires exact receipt cross-verification of publication ID,
 space, expected parent, command digest, payload digest, and published revision.
 The repair must not claim V5.3 acceptance until PostgreSQL evidence and CI are
-independently rerun on the repaired exact head.
+independently rerun on the repaired exact head. V5.4 remains entirely out of
+scope.

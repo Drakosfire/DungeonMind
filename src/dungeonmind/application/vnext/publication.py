@@ -61,11 +61,15 @@ def publish_governed_materialization(
         receipt = repository.publish_publication(command, publication_id)
     except (KnowledgePublicationIdempotencyConflictError, KnowledgeStaleParentRevisionError):
         raise
+    except PersistenceIntegrityError:
+        raise
     except Exception as exc:
         try:
             recovered = get_publication_receipt(
                 command.space_id, publication_id, repository=repository
             )
+        except PersistenceIntegrityError:
+            raise
         except Exception as probe_exc:
             raise KnowledgePublicationOutcomeUnknownError(
                 space_id=command.space_id,

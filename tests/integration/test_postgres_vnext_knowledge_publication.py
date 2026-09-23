@@ -228,6 +228,89 @@ def test_exact_replay_and_changed_retry_are_receipt_first(
     assert _receipt_count(migrated_database) == 1
 
 
+def test_same_id_concurrent_replay_converges_to_one_receipt(
+    migrated_database: str, pg
+) -> None:
+    del pg
+    repo = _repo(migrated_database)
+    genesis = repo.publish_revision(genesis_command())
+    command = genesis_command(
+        parent_revision_id=genesis.revision.revision_id,
+        expected_parent_revision_id=genesis.revision.revision_id,
+        operation_ids=["op:concurrent-replay"],
+    )
+    barrier = threading.Barrier(2)
+    receipts: list[str] = []
+    errors: list[BaseException] = []
+
+    def publish() -> None:
+        try:
+            barrier.wait(timeout=5)
+            receipt = _repo(migrated_database).publish_publication(
+                command, "publication:concurrent-replay"
+            )
+        except BaseException as exc:
+            errors.append(exc)
+        else:
+            receipts.append(receipt.published_revision_id)
+
+    threads = [threading.Thread(target=publish) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert all(not thread.is_alive() for thread in threads)
+    assert errors == []
+    assert len(receipts) == 2
+    assert receipts[0] == receipts[1]
+    assert _receipt_count(migrated_database) == 1
+    assert _counts(migrated_database) == (2, 2)
+
+
+def test_same_id_conflicting_command_race_has_one_winner_and_conflict(
+    migrated_database: str, pg
+) -> None:
+    del pg
+    setup = _repo(migrated_database)
+    genesis = setup.publish_revision(genesis_command())
+    parent_id = genesis.revision.revision_id
+    commands = [
+        genesis_command(
+            parent_revision_id=parent_id,
+            expected_parent_revision_id=parent_id,
+            operation_ids=[f"op:conflicting:{side}"],
+            payload={"side": side},
+        )
+        for side in ("left", "right")
+    ]
+    barrier = threading.Barrier(2)
+    winners: list[str] = []
+    errors: list[BaseException] = []
+
+    def publish(index: int) -> None:
+        try:
+            barrier.wait(timeout=5)
+            receipt = _repo(migrated_database).publish_publication(
+                commands[index], "publication:conflicting-race"
+            )
+        except BaseException as exc:
+            errors.append(exc)
+        else:
+            winners.append(receipt.published_revision_id)
+
+    threads = [threading.Thread(target=publish, args=(index,)) for index in (0, 1)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(winners) == 1
+    assert len(errors) == 1
+    assert isinstance(errors[0], KnowledgePublicationIdempotencyConflictError)
+    assert _receipt_count(migrated_database) == 1
+    assert _counts(migrated_database) == (2, 2)
+
+
 def test_same_parent_different_publication_ids_have_one_cas_winner(
     migrated_database: str, pg
 ) -> None:
@@ -274,7 +357,11 @@ def test_same_parent_different_publication_ids_have_one_cas_winner(
 def test_receipt_corruption_fails_closed(migrated_database: str, pg) -> None:
     del pg
     repo = _repo(migrated_database)
-    receipt = repo.publish_publication(genesis_command(), "publication:corrupt")
+    repo.publish_revision(genesis_command())
+    _contribution, _dispositions, materialization = _materialize_bob(repo)
+    receipt = publish_governed_materialization(
+        materialization, publication_id="publication:corrupt", repository=repo
+    )
     with PostgresDatabase(migrated_database).connect() as conn:
         conn.execute(
             """
@@ -286,7 +373,9 @@ def test_receipt_corruption_fails_closed(migrated_database: str, pg) -> None:
         )
         conn.commit()
     with pytest.raises(PersistenceIntegrityError, match="receipt fingerprint"):
-        repo.get_publication_receipt(SPACE, receipt.publication_id)
+        publish_governed_materialization(
+            materialization, publication_id=receipt.publication_id, repository=repo
+        )
 
 
 def test_post_commit_response_loss_recovers_by_receipt(
@@ -314,6 +403,53 @@ def test_post_commit_response_loss_recovers_by_receipt(
         repository=ResponseLoss(),
     )
     assert receipt.publication_id == "publication:response-loss"
+    assert _receipt_count(migrated_database) == 1
+
+
+def test_publication_receipt_revision_head_event_rollback_is_atomic(
+    migrated_database: str, pg
+) -> None:
+    del pg
+
+    def boom() -> None:
+        raise RuntimeError("receipt insert failed")
+
+    repo = PostgresKnowledgeRevisionRepository(
+        PostgresDatabase(migrated_database), after_receipt_insert=boom
+    )
+    with pytest.raises(RuntimeError, match="receipt insert failed"):
+        repo.publish_publication(genesis_command(), "publication:rollback")
+    assert repo.get_publication_receipt(SPACE, "publication:rollback") is None
+    assert repo.get_revision(SPACE, revision_from_command(genesis_command()).revision_id) is None
+    assert repo.get_head(SPACE) is None
+    assert repo.head_events(SPACE) == ()
+    assert _counts(migrated_database) == (0, 0)
+    assert _receipt_count(migrated_database) == 0
+
+
+def test_replay_after_descendant_returns_original_receipt(
+    migrated_database: str, pg
+) -> None:
+    del pg
+    repo = _repo(migrated_database)
+    genesis = repo.publish_revision(genesis_command())
+    command_a = genesis_command(
+        parent_revision_id=genesis.revision.revision_id,
+        expected_parent_revision_id=genesis.revision.revision_id,
+        operation_ids=["op:descendant-a"],
+        payload={"revision": "a"},
+    )
+    receipt_a = repo.publish_publication(command_a, "publication:descendant-a")
+    command_b = genesis_command(
+        parent_revision_id=receipt_a.published_revision_id,
+        expected_parent_revision_id=receipt_a.published_revision_id,
+        operation_ids=["op:descendant-b"],
+        payload={"revision": "b"},
+    )
+    receipt_b = repo.publish_publication(command_b, "publication:descendant-b")
+    replayed_a = repo.publish_publication(command_a, "publication:descendant-a")
+    assert replayed_a == receipt_a
+    assert repo.get_head(SPACE).head_revision_id == receipt_b.published_revision_id  # type: ignore[union-attr]
     assert _receipt_count(migrated_database) == 2
 
 
