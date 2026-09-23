@@ -10,6 +10,7 @@ from dungeonmind.application.vnext.errors import (
     KnowledgePublicationOutcomeUnknownError,
 )
 from dungeonmind.application.vnext.publication import publish_governed_materialization
+from dungeonmind.domain.errors import ImmutableRevisionConflictError
 from dungeonmind.infrastructure.memory.vnext_knowledge import InMemoryKnowledgeRevisionRepository
 from tests.unit.test_vnext_cas_publication import (
     _materialize_bob,
@@ -83,3 +84,25 @@ def test_unavailable_recovery_is_typed_and_retry_safe() -> None:
             )
         finally:
             repo.get_publication_receipt = original  # type: ignore[method-assign]
+
+
+def test_immutable_revision_conflict_is_not_reclassified_as_unknown() -> None:
+    repo = InMemoryKnowledgeRevisionRepository()
+    repo.publish_revision(genesis_command())
+    _, _, materialization = _materialize_bob(repo)
+
+    class DeterministicConflict:
+        def publish_publication(self, command, publication_id):
+            del command, publication_id
+            raise ImmutableRevisionConflictError("deterministic zero-commit conflict")
+
+        def get_publication_receipt(self, space_id, publication_id):
+            del space_id, publication_id
+            return None
+
+    with pytest.raises(ImmutableRevisionConflictError, match="zero-commit"):
+        publish_governed_materialization(
+            materialization,
+            publication_id="prepared:conflict",
+            repository=DeterministicConflict(),
+        )

@@ -15,7 +15,7 @@ pr_body_template: |
 # HANDOFF — V5.3 durable publication replay and recovery
 
 **Created:** 2026-09-22
-**Status:** ACTIVE — Review Cycle 2 HOLD repair on exact head `103651aa870eb51dc7a97955f0d5d9ff5add6c40`
+**Status:** ACTIVE — Review Cycle 3 HOLD repair on exact head `9758a94a26fb1d86c28c06c06b93ed2c11990744`
 **Canonical handoff path:** `Docs/Handoffs/HANDOFF-v5-3-durable-publication-replay-recovery.md`
 **Repository:** `Drakosfire/DungeonMind`
 **Roadmap phase:** `V5.3`
@@ -683,34 +683,28 @@ WorldKeeper WK-3 implementation remains BLOCKED
 on DungeonMind prospective-reference atomic publication.
 ```
 
-## §13 Current implementation handback — Review Cycle 2 HOLD
+## §13 Current implementation handback — Review Cycle 3 HOLD
 
 ```text
 repository: Drakosfire/DungeonMind
 branch: kernel/v5-3-durable-publication-replay-recovery
 base: 01762848cbdd666b092d4cb26af558ba1468fa4d
-reviewed head: 103651aa870eb51dc7a97955f0d5d9ff5add6c40
+reviewed head: 9758a94a26fb1d86c28c06c06b93ed2c11990744
 PR: #74
 Review Cycle 1: HOLD — review 5292176272
 Review Cycle 2: HOLD — review 5292793905
+Review Cycle 3: HOLD — review 5293184984
 ```
 
-Cycle 1 blockers were repaired in commit `103651a`; Cycle 2 leaves this
-narrower repair contract:
+Cycle 1 and Cycle 2 blockers are closed. Cycle 3 leaves one narrow repair
+contract:
 
-1. Persistence-integrity corruption must propagate as
-   `PersistenceIntegrityError`, never be converted into `outcome_unknown`.
-2. PostgreSQL proof must cover same-ID concurrent replay, same-ID conflicting
-   command race, receipt/revision/head/event rollback, and replay after a
-   descendant.
-3. The response-loss cohort must assert one receipt for one publication, and
-   exact-head integration CI must pass.
-4. Canonical stewardship fields must remain current, including the PR #71
-   merge SHA and the V5.3 primary question.
-5. The approved five-path test-surface rebrief above must remain recorded.
+1. `ImmutableRevisionConflictError` is a deterministic zero-commit DungeonMind
+   failure and must remain typed rather than becoming `outcome_unknown` when
+   no receipt exists. Add focused application-level proof.
 
 Repair acceptance requires exact receipt cross-verification of publication ID,
 space, expected parent, command digest, payload digest, and published revision.
-The repair must not claim V5.3 acceptance until PostgreSQL evidence and CI are
-independently rerun on the repaired exact head. V5.4 remains entirely out of
-scope.
+The repair must not claim V5.3 acceptance until the focused regression and CI
+are independently rerun on the repaired exact head. V5.4 remains entirely out
+of scope.

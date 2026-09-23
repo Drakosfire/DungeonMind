@@ -15,7 +15,7 @@ from __future__ import annotations
 from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision, PublishKnowledgeRevisionCommand
 from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
 from dungeonmind.domain.canonical import canonical_sha256
-from dungeonmind.domain.errors import PersistenceIntegrityError
+from dungeonmind.domain.errors import ImmutableRevisionConflictError, PersistenceIntegrityError
 
 from .authority import revision_from_command
 from .builder import build_parsed_knowledge_revision
@@ -61,7 +61,7 @@ def publish_governed_materialization(
         receipt = repository.publish_publication(command, publication_id)
     except (KnowledgePublicationIdempotencyConflictError, KnowledgeStaleParentRevisionError):
         raise
-    except PersistenceIntegrityError:
+    except (ImmutableRevisionConflictError, PersistenceIntegrityError):
         raise
     except Exception as exc:
         try:
