@@ -15,8 +15,13 @@ from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
 
-from ...application.vnext.authority import commit_expected_parent, verify_stored_revision
+from ...application.vnext.authority import (
+    commit_expected_parent,
+    revision_from_command,
+    verify_stored_revision,
+)
 from ...application.vnext.errors import KnowledgePublicationIdempotencyConflictError
+from ...application.vnext.prospective import validate_prospective_result_bindings
 from ...application.vnext.records import KnowledgeHeadEvent, StoredKnowledgeRevision
 
 
@@ -205,6 +210,19 @@ class InMemoryKnowledgeRevisionRepository:
         prospective_request_sha256: str,
         result_bindings: Sequence[ProspectiveResultBinding],
     ) -> KnowledgeProspectivePublication:
+        validate_prospective_result_bindings(
+            command_graph_payload=command.graph_payload,
+            space_id=command.space_id,
+            publication_id=publication_id,
+            result_bindings=result_bindings,
+        )
+        candidate_result = KnowledgeProspectivePublicationResult(
+            space_id=command.space_id,
+            publication_id=publication_id,
+            prospective_request_sha256=prospective_request_sha256,
+            published_revision_id=revision_from_command(command).revision_id,
+            results=list(result_bindings),
+        )
         command_sha = canonical_sha256(command.model_dump(mode="json"))
         key = (command.space_id, publication_id)
         with self._lock:
@@ -225,6 +243,7 @@ class InMemoryKnowledgeRevisionRepository:
                     or existing_receipt.command_sha256 != command_sha
                     or existing_result.prospective_request_sha256
                     != prospective_request_sha256
+                    or existing_result != candidate_result
                 ):
                     raise KnowledgePublicationIdempotencyConflictError(
                         space_id=command.space_id, publication_id=publication_id
@@ -267,13 +286,7 @@ class InMemoryKnowledgeRevisionRepository:
                     published_revision_id=stored.revision.revision_id,
                     graph_payload_sha256=stored.graph_payload_sha256,
                 )
-                result = KnowledgeProspectivePublicationResult(
-                    space_id=command.space_id,
-                    publication_id=publication_id,
-                    prospective_request_sha256=prospective_request_sha256,
-                    published_revision_id=stored.revision.revision_id,
-                    results=list(result_bindings),
-                )
+                result = candidate_result
                 self._receipts[key] = receipt
                 self._prospective_results[key] = result
                 self._prospective_fingerprints[key] = canonical_sha256(

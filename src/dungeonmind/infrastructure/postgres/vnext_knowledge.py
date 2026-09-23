@@ -13,6 +13,7 @@ from ...application.vnext.authority import (
     verify_stored_revision,
 )
 from ...application.vnext.errors import KnowledgePublicationIdempotencyConflictError
+from ...application.vnext.prospective import validate_prospective_result_bindings
 from ...application.vnext.records import KnowledgeHeadEvent, StoredKnowledgeRevision
 from ...contracts.vnext.knowledge import (
     KnowledgeHead,
@@ -181,6 +182,19 @@ class PostgresKnowledgeRevisionRepository:
         prospective_request_sha256: str,
         result_bindings: Sequence[ProspectiveResultBinding],
     ) -> KnowledgeProspectivePublication:
+        validate_prospective_result_bindings(
+            command_graph_payload=command.graph_payload,
+            space_id=command.space_id,
+            publication_id=publication_id,
+            result_bindings=result_bindings,
+        )
+        candidate_result = KnowledgeProspectivePublicationResult(
+            space_id=command.space_id,
+            publication_id=publication_id,
+            prospective_request_sha256=prospective_request_sha256,
+            published_revision_id=revision_from_command(command).revision_id,
+            results=list(result_bindings),
+        )
         with self._database.transaction() as conn:
             _lock_space(conn, command.space_id, created_at=command.created_at)
             receipt = _read_receipt(conn, command.space_id, publication_id)
@@ -193,6 +207,7 @@ class PostgresKnowledgeRevisionRepository:
                     result is None
                     or receipt.command_sha256 != command_sha
                     or result.prospective_request_sha256 != prospective_request_sha256
+                    or result != candidate_result
                 ):
                     raise KnowledgePublicationIdempotencyConflictError(
                         space_id=command.space_id, publication_id=publication_id
@@ -218,13 +233,7 @@ class PostgresKnowledgeRevisionRepository:
                 published_revision_id=stored.revision.revision_id,
                 graph_payload_sha256=stored.graph_payload_sha256,
             )
-            result = KnowledgeProspectivePublicationResult(
-                space_id=command.space_id,
-                publication_id=publication_id,
-                prospective_request_sha256=prospective_request_sha256,
-                published_revision_id=stored.revision.revision_id,
-                results=list(result_bindings),
-            )
+            result = candidate_result
             _insert_receipt(conn, receipt)
             _insert_prospective_result(conn, result)
             if self._after_prospective_result_insert is not None:

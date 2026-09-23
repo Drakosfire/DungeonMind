@@ -103,6 +103,44 @@ def allocate_prospective_result_id(
     return f"{prefix}:{digest[:32]}"
 
 
+def validate_prospective_result_bindings(
+    *,
+    command_graph_payload: dict[str, Any],
+    space_id: str,
+    publication_id: str,
+    result_bindings: Sequence[ProspectiveResultBinding],
+) -> None:
+    """Verify port-supplied mappings before repository authority can mutate."""
+    entity_ids = {
+        item.get("entity_id") for item in command_graph_payload.get("entities", [])
+    }
+    assertion_ids = {
+        item.get("assertion_id")
+        for item in command_graph_payload.get("assertions", [])
+    }
+    for binding in result_bindings:
+        expected_id = allocate_prospective_result_id(
+            space_id=space_id,
+            publication_id=publication_id,
+            client_op_id=binding.client_op_id,
+            result_kind=binding.result_kind,
+        )
+        if binding.durable_id != expected_id:
+            _fail(
+                "prospective_result_allocation_mismatch",
+                client_op_id=binding.client_op_id,
+                durable_id=binding.durable_id,
+                expected_durable_id=expected_id,
+            )
+        ids = entity_ids if binding.result_kind == "entity" else assertion_ids
+        if binding.durable_id not in ids:
+            _fail(
+                "prospective_result_missing_from_command",
+                client_op_id=binding.client_op_id,
+                durable_id=binding.durable_id,
+            )
+
+
 def resolve_prospective_contribution(
     *,
     prospective_contribution: ProspectiveKnowledgeContribution,
@@ -314,8 +352,11 @@ def publish_prospective_contribution(
         semantic_profile=semantic_profile,
     )
     command = materialization.command
-    _verify_materialized_bindings(
-        command.graph_payload, resolved.committed_result_bindings
+    validate_prospective_result_bindings(
+        command_graph_payload=command.graph_payload,
+        space_id=command.space_id,
+        publication_id=publication_id,
+        result_bindings=resolved.committed_result_bindings,
     )
     expected_revision_id = revision_from_command(command).revision_id
     try:
@@ -443,22 +484,3 @@ def _verify_result_bindings(
         ids = entity_ids if binding.result_kind == "entity" else assertion_ids
         if binding.durable_id not in ids:
             raise PersistenceIntegrityError("prospective result binding missing from revision")
-
-
-def _verify_materialized_bindings(
-    graph_payload: dict[str, Any],
-    bindings: tuple[ProspectiveResultBinding, ...],
-) -> None:
-    """Reject false result mappings before the publication transaction begins."""
-    entity_ids = {item.get("entity_id") for item in graph_payload.get("entities", [])}
-    assertion_ids = {
-        item.get("assertion_id") for item in graph_payload.get("assertions", [])
-    }
-    for binding in bindings:
-        ids = entity_ids if binding.result_kind == "entity" else assertion_ids
-        if binding.durable_id not in ids:
-            _fail(
-                "prospective_result_missing_from_materialization",
-                client_op_id=binding.client_op_id,
-                durable_id=binding.durable_id,
-            )

@@ -894,3 +894,33 @@ durable boundary.
 No WorldKeeper runtime, V5.5 work, frozen V0 contract change, or allocation
 reservation/prediction API is included. Only Steward review may record V5.4
 acceptance.
+
+## 30. Review Cycle 2 repair handback
+
+```text
+PR: #75
+review: 5295874723
+reviewed head: ab7aeeeb0b13589ca32accad4f6221ba429c1542
+verdict: HOLD — one repository-boundary blocker
+status: REPAIR IMPLEMENTED — AWAITING EXACT-HEAD RE-REVIEW
+```
+
+The in-memory and PostgreSQL repository authorities now independently validate
+every supplied result binding before entering the publication lock/transaction:
+
+- recompute the deterministic V5.4 allocation from
+  `(space_id, publication_id, client_op_id, result_kind)`;
+- require the supplied durable ID to equal that allocation;
+- require that exact ID to exist in the command graph under the correct entity
+  or assertion kind;
+- construct and validate the complete prospective result record before any
+  revision, head, event, receipt, or result mutation;
+- require an exact result-record match on replay.
+
+Direct in-memory and PostgreSQL port tests forge `npc-7 -> ent:alice`, where
+`ent:alice` is pre-existing rather than the deterministic allocation. Both fail
+closed before mutation. The PostgreSQL proof retains exactly one genesis
+revision/event and zero receipts/results.
+
+This repair does not change contracts, allocation identity, WorldKeeper, or any
+post-V5.4 capability. Only Steward review may record V5.4 acceptance.

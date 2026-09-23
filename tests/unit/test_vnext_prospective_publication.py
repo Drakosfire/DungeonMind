@@ -8,6 +8,7 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 
+from dungeonmind.application.vnext.authority import revision_from_command
 from dungeonmind.application.vnext.errors import (
     GovernedMaterializationIntegrityError,
     KnowledgePublicationIdempotencyConflictError,
@@ -381,6 +382,54 @@ def test_ordinary_item_cannot_target_predicted_prospective_id(
     assert repo.get_head(SPACE) == head_before
     assert repo.head_events(SPACE) == events_before
     assert repo.get_publication_receipt(SPACE, publication_id) is None
+
+
+def test_repository_rejects_forged_result_binding_before_any_mutation() -> None:
+    repo, parent = _setup()
+    publication_id = "prepared:forged-binding"
+    contribution = _contribution([_entity(client_op_id="npc-7")])
+    resolved = resolve_prospective_contribution(
+        prospective_contribution=contribution,
+        dispositions=_accepted("create-1"),
+        publication_id=publication_id,
+        publication=_publication(parent.revision_id),
+        parent=parent,
+    )
+    contract, profile = _lab_descriptors()
+    from dungeonmind.application.vnext.materialization import materialize_governed_revision
+
+    materialized = materialize_governed_revision(
+        parent=parent,
+        contribution=resolved.canonical_contribution,
+        dispositions=_accepted("create-1"),
+        publication=_publication(parent.revision_id),
+        domain_contract=contract,
+        semantic_profile=profile,
+    )
+    child_id = revision_from_command(materialized.command).revision_id
+    head_before = repo.get_head(SPACE)
+    events_before = repo.head_events(SPACE)
+
+    with pytest.raises(ProspectivePublicationIntegrityError) as exc:
+        repo.publish_prospective_publication(
+            materialized.command,
+            publication_id,
+            resolved.prospective_request_sha256,
+            [
+                ProspectiveResultBinding(
+                    client_op_id="npc-7",
+                    result_kind="entity",
+                    durable_id="ent:alice",
+                )
+            ],
+        )
+
+    assert exc.value.reason == "prospective_result_allocation_mismatch"
+    assert repo.get_head(SPACE) == head_before
+    assert repo.head_events(SPACE) == events_before
+    assert repo.get_revision(SPACE, child_id) is None
+    assert repo.get_publication_receipt(SPACE, publication_id) is None
+    assert repo.get_prospective_publication(SPACE, publication_id) is None
 
 
 def test_worldkeeper_shape_publishes_and_exact_replay_is_stable() -> None:

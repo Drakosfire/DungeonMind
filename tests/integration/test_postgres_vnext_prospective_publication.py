@@ -18,6 +18,7 @@ from dungeonmind.application.vnext.prospective import (
     publish_prospective_contribution,
     resolve_prospective_contribution,
 )
+from dungeonmind.contracts.vnext.prospective import ProspectiveResultBinding
 from dungeonmind.domain.errors import PersistenceIntegrityError
 from dungeonmind.infrastructure.postgres.database import PostgresDatabase
 from dungeonmind.infrastructure.postgres.vnext_knowledge import (
@@ -141,6 +142,50 @@ def test_plain_v53_claim_conflicts(migrated_database: str, pg) -> None:
         plain_repo.get_prospective_publication(SPACE, "prepared:plain")
     with pytest.raises(KnowledgePublicationIdempotencyConflictError):
         _publish(plain_repo, plain_parent, contribution, "prepared:plain")
+
+
+def test_direct_repository_forged_binding_rolls_back_nothing(
+    migrated_database: str, pg
+) -> None:
+    del pg
+    repo, parent = _setup(migrated_database)
+    publication_id = "prepared:forged-binding"
+    contribution = _contribution([_entity(client_op_id="npc-7")])
+    resolved = resolve_prospective_contribution(
+        prospective_contribution=contribution,
+        dispositions=_accepted("create-1"),
+        publication_id=publication_id,
+        publication=_publication(parent.revision_id),
+        parent=parent,
+    )
+    contract, profile = _lab_descriptors()
+    materialized = materialize_governed_revision(
+        parent=parent,
+        contribution=resolved.canonical_contribution,
+        dispositions=_accepted("create-1"),
+        publication=_publication(parent.revision_id),
+        domain_contract=contract,
+        semantic_profile=profile,
+    )
+
+    with pytest.raises(PersistenceIntegrityError, match="prospective"):
+        repo.publish_prospective_publication(
+            materialized.command,
+            publication_id,
+            resolved.prospective_request_sha256,
+            [
+                ProspectiveResultBinding(
+                    client_op_id="npc-7",
+                    result_kind="entity",
+                    durable_id="ent:alice",
+                )
+            ],
+        )
+
+    assert repo.get_head(SPACE).head_revision_id == parent.revision_id  # type: ignore[union-attr]
+    assert repo.get_publication_receipt(SPACE, publication_id) is None
+    assert repo.get_prospective_publication(SPACE, publication_id) is None
+    assert _counts(migrated_database) == (1, 1, 0, 0)
 
 
 def test_same_id_same_request_concurrently_converges(migrated_database: str, pg) -> None:
