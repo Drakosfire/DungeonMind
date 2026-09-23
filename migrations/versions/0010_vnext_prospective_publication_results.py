@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0010_vnext_prospective_publication_results"
+revision: str = "0010_vnext_prospective_results"
 down_revision: str | None = "0009_vnext_publication_receipts"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

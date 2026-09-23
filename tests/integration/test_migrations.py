@@ -39,6 +39,7 @@ EXPECTED_TABLES = {
     "knowledge_heads",
     "knowledge_head_events",
     "knowledge_publication_receipts",
+    "knowledge_prospective_publication_results",
 }
 
 
@@ -75,7 +76,7 @@ def test_vector_extension_and_schema_tables(db) -> None:
             "SELECT version_num FROM dungeonmind.alembic_version"
         ).fetchone()
         assert version is not None
-        assert version["version_num"] == "0009_vnext_publication_receipts"
+        assert version["version_num"] == "0010_vnext_prospective_results"
 
         constraints = conn.execute(
             """
@@ -143,7 +144,7 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
             version = conn.execute(
                 "SELECT version_num FROM dungeonmind.alembic_version"
             ).fetchone()
-            assert version["version_num"] == "0009_vnext_publication_receipts"
+            assert version["version_num"] == "0010_vnext_prospective_results"
             tables = conn.execute(
                 """
                 SELECT COUNT(*) AS n

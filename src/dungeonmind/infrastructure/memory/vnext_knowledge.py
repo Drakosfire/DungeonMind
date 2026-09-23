@@ -188,6 +188,7 @@ class InMemoryKnowledgeRevisionRepository:
                 raise PersistenceIntegrityError("prospective result fingerprint without result")
             if result is None:
                 return None
+            assert receipt is not None
             return KnowledgeProspectivePublication(
                 publication_receipt=receipt,
                 prospective_result=result,

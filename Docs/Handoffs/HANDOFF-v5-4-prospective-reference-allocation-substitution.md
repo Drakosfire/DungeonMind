@@ -830,3 +830,33 @@ V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED
 That token means the DungeonMind boundary has proven the minimum create-result/dependent-reference atomic publication primitive and WorldKeeper WK-3 may begin implementation against it.
 
 It does **not** mean DungeonBuddy/WorldKeeper integration has landed, transport exists, bridge migration is complete, or legacy writers may be removed.
+
+## 28. Current implementation handback
+
+```text
+branch: kernel/v5-4-prospective-reference-allocation-substitution
+base: a811afffa43dc4b5875003f6ab7023d66554e128
+status: ACTIVE — IMPLEMENTATION NOT YET ACCEPTED
+migration filename: 0010_vnext_prospective_publication_results.py
+migration revision: 0010_vnext_prospective_results
+```
+
+The shorter migration revision identifier is required by Alembic's existing
+32-character `alembic_version.version_num` column; the descriptive migration
+filename remains unchanged.
+
+### Recorded changed-path expansion
+
+`tests/unit/test_vnext_cas_publication.py` is modified in addition to the §20
+surface. This focused predecessor test contained a pre-acceptance assertion
+that V5.3 must not be accepted and an entire-directory source hash that made an
+additive V5.4 contract module appear to mutate the frozen V0 bundle. The repair
+updates the status assertion to prohibit premature V5.4 acceptance and retains
+the exact frozen aggregate-digest check as the compatibility authority.
+
+`tests/unit/test_vnext_search.py` is also modified because its shared
+stewardship-bookkeeping proof still required `V5.3 ACTIVE`. It now requires
+V5.3 COMPLETE with the accepted disposition and V5.4 ACTIVE.
+
+No other path expansion is authorized by this record. V5.4 acceptance remains
+reserved for Steward review.

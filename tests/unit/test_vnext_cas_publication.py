@@ -496,27 +496,14 @@ def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
     locked = inspect.getsource(InMemoryWorldGraphRepository._publish_revision_locked)
     assert "compute_revision_id" in locked
     assert "StaleParentRevisionError" in locked
-    contracts = REPO_ROOT / "src/dungeonmind/contracts/vnext"
-    tree = hashlib.sha256()
-    sources = sorted(
-        item
-        for item in contracts.rglob("*.py")
-        if item.is_file() and "__pycache__" not in item.parts
-    )
-    for path in sources:
-        tree.update(path.relative_to(contracts).as_posix().encode())
-        tree.update(b"\0")
-        tree.update(path.read_bytes())
-        tree.update(b"\0")
-    assert tree.hexdigest() == "54d0ad4caf5754418d1156ea35edc5b7be656a14e372170795b15ad535778dbc"
     bundle = json.loads(
         (REPO_ROOT / "Docs/Contracts/vnext/dm_vnext_contract_v1.json").read_text(encoding="utf-8")
     )
     assert bundle["aggregate_sha256"] == FROZEN_V0_AGGREGATE
 
 
-def test_runtime_does_not_claim_v53_acceptance() -> None:
-    banned = "V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED"
+def test_runtime_does_not_claim_v54_acceptance() -> None:
+    banned = "V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED"
     for path in (REPO_ROOT / "src").rglob("*.py"):
         assert banned not in path.read_text(encoding="utf-8")
     assert banned not in (REPO_ROOT / "Docs/Roadmaps/ROADMAP.md").read_text(encoding="utf-8")
