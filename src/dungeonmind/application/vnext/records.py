@@ -264,7 +264,7 @@ class StoredKnowledgeRevision:
                 "stored graph payload digest disagrees with the revision envelope"
             )
         return StoredKnowledgeRevision(
-            revision=revision,
+            revision=revision.model_copy(deep=True),
             graph_payload_sha256=digest,
             _payload_json=payload_json,
         )
@@ -290,7 +290,7 @@ class PublishedKnowledgeRevision:
     @staticmethod
     def from_stored(stored: StoredKnowledgeRevision) -> PublishedKnowledgeRevision:
         return PublishedKnowledgeRevision(
-            revision=stored.revision,
+            revision=stored.revision.model_copy(deep=True),
             graph_payload_sha256=stored.graph_payload_sha256,
             _payload_json=stored._payload_json,
         )
@@ -300,4 +300,6 @@ class PublishedKnowledgeRevision:
         loaded = json.loads(self._payload_json)
         if not isinstance(loaded, dict):
             raise PersistenceIntegrityError("published graph payload is not an object")
+        if canonical_sha256(loaded) != self.graph_payload_sha256:
+            raise PersistenceIntegrityError("published graph payload digest drift")
         return loaded

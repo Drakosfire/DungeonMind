@@ -11,6 +11,15 @@ from ...application.vnext.authority import commit_expected_parent, verify_stored
 from ...application.vnext.records import KnowledgeHeadEvent, StoredKnowledgeRevision
 
 
+def _detached(stored: StoredKnowledgeRevision) -> StoredKnowledgeRevision:
+    """Return a revision the caller cannot use to mutate stored authority."""
+    return StoredKnowledgeRevision(
+        revision=stored.revision.model_copy(deep=True),
+        graph_payload_sha256=stored.graph_payload_sha256,
+        _payload_json=stored._payload_json,
+    )
+
+
 class InMemoryKnowledgeRevisionRepository:
     """One lock covers the atomic publication. Failed calls leave prior authority."""
 
@@ -32,7 +41,7 @@ class InMemoryKnowledgeRevisionRepository:
             if stored is None:
                 return None
             verify_stored_revision(stored)
-            return stored
+            return _detached(stored)
 
     def head_events(self, space_id: str) -> tuple[KnowledgeHeadEvent, ...]:
         with self._lock:
@@ -72,4 +81,4 @@ class InMemoryKnowledgeRevisionRepository:
                 self._heads.update(heads_before)
                 del self._events[events_before:]
                 raise
-            return stored
+            return _detached(stored)

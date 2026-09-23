@@ -24,6 +24,7 @@ from dungeonmind.application.vnext.records import StoredKnowledgeRevision
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.domain import DomainContractRef, Entity
 from dungeonmind.contracts.vnext.knowledge import (
+    KnowledgeRevision,
     MigrationOriginRef,
     PublishKnowledgeRevisionCommand,
 )
@@ -184,6 +185,48 @@ def test_governed_materialization_publishes_exact_revision() -> None:
     assert stored.graph_payload["entities"]
     assert contribution.model_dump(mode="json") == before_contribution
     assert [item.model_dump(mode="json") for item in dispositions] == before_dispositions
+
+
+def test_returned_revision_mutation_does_not_change_stored_authority() -> None:
+    repo = InMemoryKnowledgeRevisionRepository()
+    command = genesis_command()
+    returned = repo.publish_revision(command)
+    returned.revision.created_at = LATER
+    returned.revision.operation_ids.append("op:tamper")
+    stored = repo.get_revision(SPACE, returned.revision.revision_id)
+    assert stored is not None
+    assert stored.revision.created_at == NOW
+    assert list(stored.revision.operation_ids) == ["op:genesis"]
+    again = repo.get_revision(SPACE, returned.revision.revision_id)
+    assert again is not None
+    assert again.revision.created_at == NOW
+
+
+def test_publication_rejects_payload_bytes_behind_a_matching_digest() -> None:
+    parent = _parent()
+    materialization = _call(
+        parent=parent,
+        contribution=_contribution(parent, [_bob_item()]),
+        dispositions=_accepted("i1"),
+    )
+
+    class DigestFieldLie:
+        def publish_revision(self, command: PublishKnowledgeRevisionCommand) -> object:
+            expected = revision_from_command(command)
+            return _PayloadLie(expected)
+
+    class _PayloadLie:
+        def __init__(self, revision: KnowledgeRevision) -> None:
+            self.revision = revision
+            self.graph_payload_sha256 = revision.graph_payload_sha256
+            self._payload = {"entities": [], "assertions": [], "aliases": [], "evidence": []}
+
+        @property
+        def graph_payload(self) -> dict[str, list[object]]:
+            return json.loads(json.dumps(self._payload))
+
+    with pytest.raises(PersistenceIntegrityError, match="different graph payload"):
+        publish_governed_materialization(materialization, repository=DigestFieldLie())
 
 
 def test_stale_expected_parent_mutates_nothing() -> None:

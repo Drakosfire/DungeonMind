@@ -13,7 +13,7 @@ failure.
 from __future__ import annotations
 
 from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
-from dungeonmind.domain.canonical import canonical_sha256
+from dungeonmind.domain.canonical import canonical_json, canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
 
 from .authority import revision_from_command
@@ -51,6 +51,11 @@ def publish_governed_materialization(
     stored = repository.publish_revision(command)
     if stored.revision.model_dump(mode="json") != expected.model_dump(mode="json"):
         raise PersistenceIntegrityError("repository returned a different revision envelope")
+    returned_payload = stored.graph_payload
+    if canonical_json(returned_payload) != canonical_json(dict(command.graph_payload)):
+        raise PersistenceIntegrityError("repository returned a different graph payload")
+    if canonical_sha256(returned_payload) != payload_sha:
+        raise PersistenceIntegrityError("repository returned payload bytes whose digest disagrees")
     if stored.graph_payload_sha256 != payload_sha:
         raise PersistenceIntegrityError("repository returned a different payload digest")
     return PublishedKnowledgeRevision.from_stored(stored)
