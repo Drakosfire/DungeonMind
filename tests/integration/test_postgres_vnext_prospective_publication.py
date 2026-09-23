@@ -15,9 +15,11 @@ from dungeonmind.application.vnext.errors import (
 )
 from dungeonmind.application.vnext.materialization import materialize_governed_revision
 from dungeonmind.application.vnext.prospective import (
+    allocate_prospective_result_id,
     publish_prospective_contribution,
     resolve_prospective_contribution,
 )
+from dungeonmind.contracts.vnext.domain import Entity
 from dungeonmind.contracts.vnext.prospective import ProspectiveResultBinding
 from dungeonmind.domain.errors import PersistenceIntegrityError
 from dungeonmind.infrastructure.postgres.database import PostgresDatabase
@@ -183,6 +185,45 @@ def test_direct_repository_forged_binding_rolls_back_nothing(
         )
 
     assert repo.get_head(SPACE).head_revision_id == parent.revision_id  # type: ignore[union-attr]
+    assert repo.get_publication_receipt(SPACE, publication_id) is None
+    assert repo.get_prospective_publication(SPACE, publication_id) is None
+    assert _counts(migrated_database) == (1, 1, 0, 0)
+
+
+def test_direct_repository_parent_collision_rolls_back_nothing(
+    migrated_database: str, pg
+) -> None:
+    del pg
+    publication_id = "prepared:parent-collision"
+    allocated_id = allocate_prospective_result_id(
+        space_id=SPACE,
+        publication_id=publication_id,
+        client_op_id="npc-7",
+        result_kind="entity",
+    )
+    parent_payload = genesis_command().graph_payload
+    parent_payload["entities"].append(
+        Entity(entity_id=allocated_id).model_dump(mode="json")
+    )
+    parent_payload["entities"].sort(key=lambda item: item["entity_id"])
+    repo = _repo(migrated_database)
+    parent_stored = repo.publish_revision(genesis_command(payload=parent_payload))
+    command = genesis_command(
+        payload=parent_payload,
+        operation_ids=["op:parent-collision"],
+        parent_revision_id=parent_stored.revision.revision_id,
+        expected_parent_revision_id=parent_stored.revision.revision_id,
+    )
+    binding = ProspectiveResultBinding(
+        client_op_id="npc-7", result_kind="entity", durable_id=allocated_id
+    )
+
+    with pytest.raises(PersistenceIntegrityError, match="prospective"):
+        repo.publish_prospective_publication(
+            command, publication_id, "1" * 64, [binding]
+        )
+
+    assert repo.get_head(SPACE).head_revision_id == parent_stored.revision.revision_id  # type: ignore[union-attr]
     assert repo.get_publication_receipt(SPACE, publication_id) is None
     assert repo.get_prospective_publication(SPACE, publication_id) is None
     assert _counts(migrated_database) == (1, 1, 0, 0)

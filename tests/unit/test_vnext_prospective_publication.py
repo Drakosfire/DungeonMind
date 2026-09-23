@@ -27,7 +27,7 @@ from dungeonmind.contracts.vnext.contribution import (
     RetractAssertion,
     SupersedeAssertion,
 )
-from dungeonmind.contracts.vnext.domain import Assertion, LiteralValue
+from dungeonmind.contracts.vnext.domain import Assertion, Entity, LiteralValue
 from dungeonmind.contracts.vnext.prospective import (
     DurableEntityRef,
     KnowledgeProspectivePublication,
@@ -425,6 +425,47 @@ def test_repository_rejects_forged_result_binding_before_any_mutation() -> None:
         )
 
     assert exc.value.reason == "prospective_result_allocation_mismatch"
+    assert repo.get_head(SPACE) == head_before
+    assert repo.head_events(SPACE) == events_before
+    assert repo.get_revision(SPACE, child_id) is None
+    assert repo.get_publication_receipt(SPACE, publication_id) is None
+    assert repo.get_prospective_publication(SPACE, publication_id) is None
+
+
+def test_repository_rejects_allocated_id_already_present_in_parent() -> None:
+    publication_id = "prepared:parent-collision"
+    allocated_id = allocate_prospective_result_id(
+        space_id=SPACE,
+        publication_id=publication_id,
+        client_op_id="npc-7",
+        result_kind="entity",
+    )
+    parent_payload = genesis_command().graph_payload
+    parent_payload["entities"].append(
+        Entity(entity_id=allocated_id).model_dump(mode="json")
+    )
+    parent_payload["entities"].sort(key=lambda item: item["entity_id"])
+    repo = InMemoryKnowledgeRevisionRepository()
+    parent_stored = repo.publish_revision(genesis_command(payload=parent_payload))
+    command = genesis_command(
+        payload=parent_payload,
+        operation_ids=["op:parent-collision"],
+        parent_revision_id=parent_stored.revision.revision_id,
+        expected_parent_revision_id=parent_stored.revision.revision_id,
+    )
+    child_id = revision_from_command(command).revision_id
+    binding = ProspectiveResultBinding(
+        client_op_id="npc-7", result_kind="entity", durable_id=allocated_id
+    )
+    head_before = repo.get_head(SPACE)
+    events_before = repo.head_events(SPACE)
+
+    with pytest.raises(ProspectivePublicationIntegrityError) as exc:
+        repo.publish_prospective_publication(
+            command, publication_id, "1" * 64, [binding]
+        )
+
+    assert exc.value.reason == "identity_allocation_collision"
     assert repo.get_head(SPACE) == head_before
     assert repo.head_events(SPACE) == events_before
     assert repo.get_revision(SPACE, child_id) is None

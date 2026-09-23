@@ -924,3 +924,30 @@ revision/event and zero receipts/results.
 
 This repair does not change contracts, allocation identity, WorldKeeper, or any
 post-V5.4 capability. Only Steward review may record V5.4 acceptance.
+
+## 31. Review Cycle 3 repair handback
+
+```text
+PR: #75
+review: 5296218674
+reviewed head: 0f6b78f165079cc97a77876232bcbca34031ae8f
+verdict: HOLD — one create-new collision blocker
+status: REPAIR IMPLEMENTED — AWAITING EXACT-HEAD RE-REVIEW
+```
+
+Repository authority now completes the create-new invariant before publication:
+every validated deterministic binding must be absent from the exact immutable
+expected-parent graph and present in the child graph under the correct kind.
+The in-memory adapter performs this check under its publication lock. The
+PostgreSQL adapter reads the exact parent and performs the check in the same
+publication transaction before CAS, revision insertion, head advancement,
+event creation, receipt insertion, or result insertion.
+
+Direct in-memory and PostgreSQL tests construct a parent that already contains
+the correct deterministic allocation and a child that still contains that ID.
+Both repositories reject the binding as `identity_allocation_collision`; the
+child revision remains absent and PostgreSQL remains at one parent
+revision/event with zero receipts/results.
+
+This repair remains entirely within V5.4 repository authority and proof. Only
+Steward review may record V5.4 acceptance.

@@ -141,6 +141,33 @@ def validate_prospective_result_bindings(
             )
 
 
+def validate_prospective_result_absent_from_parent(
+    *,
+    parent_graph_payload: dict[str, Any],
+    result_bindings: Sequence[ProspectiveResultBinding],
+) -> None:
+    """Preserve create-new semantics at the repository authority boundary."""
+    parent_entity_ids = {
+        item.get("entity_id") for item in parent_graph_payload.get("entities", [])
+    }
+    parent_assertion_ids = {
+        item.get("assertion_id")
+        for item in parent_graph_payload.get("assertions", [])
+    }
+    for binding in result_bindings:
+        parent_ids = (
+            parent_entity_ids
+            if binding.result_kind == "entity"
+            else parent_assertion_ids
+        )
+        if binding.durable_id in parent_ids:
+            _fail(
+                "identity_allocation_collision",
+                client_op_id=binding.client_op_id,
+                durable_id=binding.durable_id,
+            )
+
+
 def resolve_prospective_contribution(
     *,
     prospective_contribution: ProspectiveKnowledgeContribution,

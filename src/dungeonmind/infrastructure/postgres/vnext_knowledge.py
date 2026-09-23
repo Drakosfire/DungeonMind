@@ -13,7 +13,10 @@ from ...application.vnext.authority import (
     verify_stored_revision,
 )
 from ...application.vnext.errors import KnowledgePublicationIdempotencyConflictError
-from ...application.vnext.prospective import validate_prospective_result_bindings
+from ...application.vnext.prospective import (
+    validate_prospective_result_absent_from_parent,
+    validate_prospective_result_bindings,
+)
 from ...application.vnext.records import KnowledgeHeadEvent, StoredKnowledgeRevision
 from ...contracts.vnext.knowledge import (
     KnowledgeHead,
@@ -197,6 +200,18 @@ class PostgresKnowledgeRevisionRepository:
         )
         with self._database.transaction() as conn:
             _lock_space(conn, command.space_id, created_at=command.created_at)
+            parent = (
+                None
+                if command.expected_parent_revision_id is None
+                else _read_revision(
+                    conn, command.space_id, command.expected_parent_revision_id
+                )
+            )
+            if parent is not None:
+                validate_prospective_result_absent_from_parent(
+                    parent_graph_payload=parent.graph_payload,
+                    result_bindings=result_bindings,
+                )
             receipt = _read_receipt(conn, command.space_id, publication_id)
             result = _read_prospective_result(conn, command.space_id, publication_id)
             command_sha = canonical_sha256(command.model_dump(mode="json"))
