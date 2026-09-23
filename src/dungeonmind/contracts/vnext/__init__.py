@@ -61,6 +61,20 @@ from .knowledge import (
     PublishKnowledgeRevisionCommand,
 )
 from .projection import FocusRef, ProjectionRequest, ProjectionSnapshot
+from .prospective import (
+    DurableEntityRef,
+    EntityOperand,
+    KnowledgeProspectivePublication,
+    KnowledgeProspectivePublicationResult,
+    ProspectiveAssertionValue,
+    ProspectiveContributionItem,
+    ProspectiveCreateAssertion,
+    ProspectiveCreateEntity,
+    ProspectiveEntityRef,
+    ProspectiveEntityRefValue,
+    ProspectiveKnowledgeContribution,
+    ProspectiveResultBinding,
+)
 from .publication import KnowledgePublicationReceipt
 from .source import EvidenceRefV3, SourceArtifactV3, SourceRevisionV2
 
@@ -94,7 +108,9 @@ __all__ = [
     "DomainContractRef",
     "DomainMetadataEntry",
     "DomainTemporalScope",
+    "DurableEntityRef",
     "Entity",
+    "EntityOperand",
     "EntityRefValue",
     "EpistemicBasis",
     "EvidenceRefV3",
@@ -105,6 +121,8 @@ __all__ = [
     "IdentityDecisionV3",
     "KnowledgeContribution",
     "KnowledgeHead",
+    "KnowledgeProspectivePublication",
+    "KnowledgeProspectivePublicationResult",
     "KnowledgePublicationReceipt",
     "KnowledgeRevision",
     "KnowledgeStanding",
@@ -118,6 +136,14 @@ __all__ = [
     "ProposeAssertion",
     "ProposeEntity",
     "ProposeIdentityDecision",
+    "ProspectiveAssertionValue",
+    "ProspectiveContributionItem",
+    "ProspectiveCreateAssertion",
+    "ProspectiveCreateEntity",
+    "ProspectiveEntityRef",
+    "ProspectiveEntityRefValue",
+    "ProspectiveKnowledgeContribution",
+    "ProspectiveResultBinding",
     "PublicVisibility",
     "PublishKnowledgeRevisionCommand",
     "QualifiedTerm",
