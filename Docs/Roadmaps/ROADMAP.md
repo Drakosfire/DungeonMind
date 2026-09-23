@@ -650,17 +650,29 @@ V5.3 adds one immutable receipt keyed by `(space_id, publication_id)` in the
 same atomic boundary as revision, head, and publish event. Exact retries replay
 the verified receipt; changed retries conflict; ambiguous attempts return a
 retry-safe outcome-unknown error. Recovery never infers success from head or
-history. Prospective references remain V5.4.
+history.
 
-Current V5.3 implementation base after PR #71:
+V5.3 is accepted as `V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED` on
+merged PR #74: accepted head
+`be1d4e3760965f2c95d7c8d776bf0cf49441be84`, four review cycles, final PASS
+`5293886209`, merge `a811afffa43dc4b5875003f6ab7023d66554e128`.
+
+### V5.4 — Prospective-reference allocation + substitution
+
+V5.4 is active and not yet accepted. It adds the minimum transaction-local
+create-result primitive needed for DungeonMind-owned entity/assertion ID
+allocation, complete substitution before V5.1 validation, and an atomic
+client-operation → durable-ID result mapping committed with the V5.3 receipt.
+
+Current V5.4 implementation base after PR #74:
 
 ```text
-01762848cbdd666b092d4cb26af558ba1468fa4d
+a811afffa43dc4b5875003f6ab7023d66554e128
 ```
 
-Authority: `Docs/Handoffs/HANDOFF-v5-2-expected-parent-cas-publication.md`
+Authority: `Docs/Handoffs/HANDOFF-v5-4-prospective-reference-allocation-substitution.md`
 
-V5.1 authority remains `Docs/Handoffs/HANDOFF-v5-1-generic-governed-materialization.md`.
+V5.3 authority remains `Docs/Handoffs/HANDOFF-v5-3-durable-publication-replay-recovery.md`.
 
 ### Low-hanging write optimization
 

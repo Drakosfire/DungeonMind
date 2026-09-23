@@ -15,7 +15,7 @@ pr_body_template: |
 # HANDOFF — V5.3 durable publication replay and recovery
 
 **Created:** 2026-09-22
-**Status:** ACTIVE — Review Cycle 3 HOLD repair on exact head `9758a94a26fb1d86c28c06c06b93ed2c11990744`
+**Status:** COMPLETE — `V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED`
 **Canonical handoff path:** `Docs/Handoffs/HANDOFF-v5-3-durable-publication-replay-recovery.md`
 **Repository:** `Drakosfire/DungeonMind`
 **Roadmap phase:** `V5.3`
@@ -708,3 +708,16 @@ space, expected parent, command digest, payload digest, and published revision.
 The repair must not claim V5.3 acceptance until the focused regression and CI
 are independently rerun on the repaired exact head. V5.4 remains entirely out
 of scope.
+
+## §14 Final Steward acceptance
+
+```text
+accepted head: be1d4e3760965f2c95d7c8d776bf0cf49441be84
+review cycles: 4
+final PASS review: 5293886209
+disposition: V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED
+merge: a811afffa43dc4b5875003f6ab7023d66554e128
+```
+
+V5.3 is complete. V5.4 prospective-reference allocation and substitution is
+the active roadmap slice; no V5.4 implementation is accepted by this record.

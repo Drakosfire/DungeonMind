@@ -97,6 +97,22 @@ class KnowledgePublicationIntegrityError(PersistenceIntegrityError):
         self.reason = reason
 
 
+class ProspectivePublicationIntegrityError(PersistenceIntegrityError):
+    """Fail closed when prospective allocation or substitution is invalid."""
+
+    code = "prospective_publication_integrity_error"
+
+    def __init__(self, reason: str, *, details: dict[str, Any] | None = None) -> None:
+        prospective_details: dict[str, Any] = {"reason": reason}
+        if details:
+            prospective_details.update(details)
+        super().__init__(
+            "prospective knowledge publication failed",
+            details=prospective_details,
+        )
+        self.reason = reason
+
+
 class KnowledgeStaleParentRevisionError(DungeonMindError):
     """CAS failure: expected parent is not the current native knowledge head."""
 

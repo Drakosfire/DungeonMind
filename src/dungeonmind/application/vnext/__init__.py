@@ -42,6 +42,7 @@ from .errors import (
     KnowledgeStaleParentRevisionError,
     LegacyCompatibilityIntegrityError,
     NeighborhoodReadIntegrityError,
+    ProspectivePublicationIntegrityError,
     RevisionStructuralIntegrityError,
     SearchReadIntegrityError,
 )
@@ -97,6 +98,12 @@ from .neighborhood import (
     NeighborhoodReadService,
     NeighborhoodResult,
     NeighborhoodWorkCounts,
+)
+from .prospective import (
+    ResolvedProspectiveContribution,
+    get_prospective_publication,
+    publish_prospective_contribution,
+    resolve_prospective_contribution,
 )
 from .provenance import InMemoryKnowledgeSourceReader, KnowledgeProvenanceSnapshot
 from .publication import get_publication_receipt, publish_governed_materialization
@@ -214,7 +221,9 @@ __all__ = [
     "ParsedUnknownTemporalScope",
     "ParsedUtcIntervalTemporalScope",
     "ParsedVisibility",
+    "ProspectivePublicationIntegrityError",
     "PublishedKnowledgeRevision",
+    "ResolvedProspectiveContribution",
     "RevisionStructuralIntegrityError",
     "SearchCompleteness",
     "SearchHit",
@@ -238,10 +247,13 @@ __all__ = [
     "decode_legacy_graph_revision",
     "decode_legacy_stored_graph_revision",
     "freeze_json_value",
+    "get_prospective_publication",
     "get_publication_receipt",
     "load_legacy_world_compat_manifest",
     "materialize_governed_revision",
     "publish_governed_materialization",
+    "publish_prospective_contribution",
+    "resolve_prospective_contribution",
     "thaw_json_value",
     "validate_stored_legacy_graph_revision",
     "verify_historical_semantic_parity",

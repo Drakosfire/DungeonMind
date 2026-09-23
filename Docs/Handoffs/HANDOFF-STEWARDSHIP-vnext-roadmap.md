@@ -4,8 +4,8 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `01762848cbdd666b092d4cb26af558ba1468fa4d` — merged PR #71; V5.3 implementation base
-**Last merged roadmap implementation:** PR #71 — `KERNEL: V5.2 native expected-parent CAS publication`
+**Current main anchor:** `a811afffa43dc4b5875003f6ab7023d66554e128` — merged PR #74; V5.4 implementation base
+**Last merged roadmap implementation:** PR #74 — `KERNEL: V5.3 durable publication replay and recovery`
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
@@ -63,7 +63,8 @@ V4   Neighborhood + evidence + anchor + indexed search   COMPLETE
 V5   Generic governed write contracts                    ACTIVE
   V5.1 Generic governed materialization                  COMPLETE
   V5.2 Expected-parent atomic CAS publication            COMPLETE
-  V5.3 Durable idempotent replay / recovery              ACTIVE
+  V5.3 Durable idempotent replay / recovery              COMPLETE
+  V5.4 Prospective-reference allocation + substitution   ACTIVE
 V6   DungeonBuddy domain implementation
 V7   Bridge-genesis migration
 V8   Joint semantic + performance acceptance
@@ -86,21 +87,24 @@ V4.3 COMPLETE — V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
 V5 ACTIVE
 V5.1 COMPLETE — V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED
 V5.2 COMPLETE — V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED
-V5.3 ACTIVE — durable publication replay / recovery implementation
+V5.3 COMPLETE — V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED
+V5.4 ACTIVE — implementation not yet accepted
+V5.3 COMPLETE — V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED
+V5.4 ACTIVE — implementation not yet accepted
 ```
 
 ### Current primary question
 
-**V5.3 — durable publication replay / recovery**
+**V5.4 — prospective-reference identity allocation + substitution**
 
-> Can DungeonMind durably bind one exact native publication command to one terminal receipt and recover that result by `(space_id, publication_id)` without misclassifying persistence corruption as an unknown outcome or inferring success from the current head?
+> Can DungeonMind accept one governed transaction containing create-new results referenced by dependent assertions before durable IDs exist, allocate those IDs under DungeonMind authority, substitute them into one canonical governed contribution, validate the complete resulting child, publish it through the V5.3 recoverable atomic publication path, and durably return the prospective/client-operation → durable-ID mapping without letting the caller predict, reserve, or reconcile durable identity?
 
-V5.2 owns native revision identity and the atomic publication boundary. It is not permission to implement durable replay, uncertain-outcome recovery, public write transport, or World writer replacement.
+V5.3 owns durable publication replay and recovery. V5.4 may add the minimum prospective-reference primitive and atomic result mapping; it is not permission to add transport, WorldKeeper runtime code, identity reconciliation, or bridge/cutover work.
 
 Current implementation base:
 
 ```text
-01762848cbdd666b092d4cb26af558ba1468fa4d
+a811afffa43dc4b5875003f6ab7023d66554e128
 ```
 
 ```text
@@ -149,7 +153,15 @@ V5.2:
   COMPLETE — V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED
 
 V5.3:
-  ACTIVE — durable replay / recovery implementation
+  COMPLETE — V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED
+  PR #74
+  accepted head be1d4e3760965f2c95d7c8d776bf0cf49441be84
+  review cycles 4
+  final PASS 5293886209
+  merge a811afffa43dc4b5875003f6ab7023d66554e128
+
+V5.4:
+  ACTIVE — implementation not yet accepted
 ```
 
 Do not reinterpret PR #64 as V4.1 runtime acceptance. PR #69 is the accepted V5.1 runtime merge. The V5.2 design/implementation handoff lands in this PR's first bookkeeping commit.
@@ -750,7 +762,7 @@ V5.2 COMPLETE — V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED
 ### Next primary question
 
 ```text
-Can DungeonMind durably bind one exact native publication command to one terminal receipt and recover that result by `(space_id, publication_id)` without inferring success from the current head?
+Can DungeonMind allocate durable entity/assertion IDs for transaction-local prospective creates, substitute dependent references before canonical validation, publish the complete child through V5.3, and durably return the exact client-operation → durable-ID mapping?
 ```
 
 ### Parallel work posture
@@ -761,7 +773,7 @@ safe / independent:
   contract-frozen Buddy/domain work that does not depend on V5.2 runtime
 
 active:
-  V5.3 durable replay / recovery
+  V5.4 prospective-reference allocation + substitution
 
 blocked until later accepted predecessors:
   bridge-genesis migration
@@ -772,7 +784,8 @@ blocked until later accepted predecessors:
 ### What remains false
 
 - V5.2 expected-parent CAS publication is accepted at PR #71 merge `01762848cbdd666b092d4cb26af558ba1468fa4d`;
-- V5.3 receipt/replay/recovery is implemented but not yet Steward-accepted;
+- V5.3 receipt/replay/recovery is accepted at PR #74 merge `a811afffa43dc4b5875003f6ab7023d66554e128`;
+- V5.4 prospective-reference publication is active but not yet Steward-accepted;
 - no public alias-discovery authority contract is accepted;
 - no bridge-genesis migration exists;
 - no current public World read cutover has occurred;
@@ -783,7 +796,7 @@ blocked until later accepted predecessors:
 
 ### Named next action
 
-Review and accept or rebrief V5.3 on `kernel/v5-3-durable-publication-replay-recovery` at the exact reviewed head. Require PostgreSQL receipt reconstruction, migration `0009`, independent-connection replay/CAS proof, typed unknown-outcome behavior, and the full canonical handoff before acceptance. Keep V5.4 prospective-reference work out of scope.
+Implement and review V5.4 on `kernel/v5-4-prospective-reference-allocation-substitution` from merged PR #74. Require deterministic Kernel allocation, complete substitution before V5.1 validation, atomic V5.3 receipt/result persistence, exact replay/recovery, PostgreSQL concurrency/rollback proof, and the canonical WorldKeeper unblock witness. Keep transport, WorldKeeper runtime code, identity reconciliation, and bridge/cutover work out of scope.
 
 ---
 
