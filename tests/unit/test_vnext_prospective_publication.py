@@ -21,8 +21,12 @@ from dungeonmind.application.vnext.prospective import (
     publish_prospective_contribution,
     resolve_prospective_contribution,
 )
-from dungeonmind.contracts.vnext.contribution import ContributionDisposition
-from dungeonmind.contracts.vnext.domain import LiteralValue
+from dungeonmind.contracts.vnext.contribution import (
+    ContributionDisposition,
+    RetractAssertion,
+    SupersedeAssertion,
+)
+from dungeonmind.contracts.vnext.domain import Assertion, LiteralValue
 from dungeonmind.contracts.vnext.prospective import (
     DurableEntityRef,
     KnowledgeProspectivePublication,
@@ -327,6 +331,58 @@ def test_allocator_collision_fails_create_new(monkeypatch) -> None:
     assert exc.value.reason == "identity_allocation_collision"
 
 
+@pytest.mark.parametrize("ordinary_kind", ["retract", "supersede"])
+def test_ordinary_item_cannot_target_predicted_prospective_id(
+    ordinary_kind: str,
+) -> None:
+    repo, parent = _setup()
+    publication_id = f"prepared:predicted-{ordinary_kind}"
+    predicted_id = allocate_prospective_result_id(
+        space_id=SPACE,
+        publication_id=publication_id,
+        client_op_id="assertion-op",
+        result_kind="assertion",
+    )
+    prospective = _assertion(
+        subject=DurableEntityRef(entity_id="ent:alice"),
+        value=LiteralValue(value="original"),
+        predicate="lab:title",
+    )
+    if ordinary_kind == "retract":
+        ordinary = RetractAssertion(
+            item_id="ordinary-1", target_assertion_id=predicted_id
+        )
+    else:
+        ordinary = SupersedeAssertion(
+            item_id="ordinary-1",
+            target_assertion_id=predicted_id,
+            replacement_assertion=Assertion(
+                assertion_id="asrt:replacement",
+                subject_entity_id="ent:alice",
+                predicate="lab:title",
+                value=LiteralValue(value="replacement"),
+                metadata=_meta(),
+            ),
+        )
+    contribution = _contribution([prospective, ordinary])
+    head_before = repo.get_head(SPACE)
+    events_before = repo.head_events(SPACE)
+
+    with pytest.raises(ProspectivePublicationIntegrityError) as exc:
+        _publish(
+            repo,
+            parent,
+            contribution,
+            _accepted("assert-1", "ordinary-1"),
+            publication_id,
+        )
+
+    assert exc.value.reason == "ordinary_item_targets_prospective_result"
+    assert repo.get_head(SPACE) == head_before
+    assert repo.head_events(SPACE) == events_before
+    assert repo.get_publication_receipt(SPACE, publication_id) is None
+
+
 def test_worldkeeper_shape_publishes_and_exact_replay_is_stable() -> None:
     repo, parent = _setup()
     contribution = _contribution(
@@ -387,12 +443,64 @@ def test_changed_request_and_plain_v53_claim_conflict() -> None:
     )
     plain_repo.publish_publication(materialized.command, "prepared:plain")
     with pytest.raises(KnowledgePublicationIdempotencyConflictError):
+        get_prospective_publication(
+            SPACE, "prepared:plain", repository=plain_repo
+        )
+    with pytest.raises(KnowledgePublicationIdempotencyConflictError):
         _publish(
             plain_repo,
             plain_parent,
             contribution,
             _accepted("create-1"),
             "prepared:plain",
+        )
+
+
+def test_ambiguous_failure_with_plain_v53_claim_is_idempotency_conflict() -> None:
+    real, parent = _setup()
+    contribution = _contribution([_entity()])
+    resolved = resolve_prospective_contribution(
+        prospective_contribution=contribution,
+        dispositions=_accepted("create-1"),
+        publication_id="prepared:claimed-during-recovery",
+        publication=_publication(parent.revision_id),
+        parent=parent,
+    )
+    contract, profile = _lab_descriptors()
+    from dungeonmind.application.vnext.materialization import materialize_governed_revision
+
+    materialized = materialize_governed_revision(
+        parent=parent,
+        contribution=resolved.canonical_contribution,
+        dispositions=_accepted("create-1"),
+        publication=_publication(parent.revision_id),
+        domain_contract=contract,
+        semantic_profile=profile,
+    )
+    real.publish_publication(
+        materialized.command, "prepared:claimed-during-recovery"
+    )
+
+    class LostResponse:
+        def publish_prospective_publication(self, *args):
+            raise RuntimeError("response lost")
+
+        def get_prospective_publication(self, *args):
+            return None
+
+        def get_publication_receipt(self, *args):
+            return real.get_publication_receipt(*args)
+
+        def get_revision(self, *args):
+            return real.get_revision(*args)
+
+    with pytest.raises(KnowledgePublicationIdempotencyConflictError):
+        _publish(
+            cast(Any, LostResponse()),
+            parent,
+            contribution,
+            _accepted("create-1"),
+            "prepared:claimed-during-recovery",
         )
 
 

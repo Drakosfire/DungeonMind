@@ -186,6 +186,10 @@ class InMemoryKnowledgeRevisionRepository:
                 raise PersistenceIntegrityError("prospective result fingerprint drift")
             if result is None and fingerprint is not None:
                 raise PersistenceIntegrityError("prospective result fingerprint without result")
+            if receipt is not None and result is None:
+                raise KnowledgePublicationIdempotencyConflictError(
+                    space_id=space_id, publication_id=publication_id
+                )
             if result is None:
                 return None
             assert receipt is not None

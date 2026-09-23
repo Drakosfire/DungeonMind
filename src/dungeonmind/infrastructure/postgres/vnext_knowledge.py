@@ -163,6 +163,10 @@ class PostgresKnowledgeRevisionRepository:
             result = _read_prospective_result(conn, space_id, publication_id)
             if result is not None and receipt is None:
                 raise PersistenceIntegrityError("prospective result exists without receipt")
+            if receipt is not None and result is None:
+                raise KnowledgePublicationIdempotencyConflictError(
+                    space_id=space_id, publication_id=publication_id
+                )
             if result is None:
                 return None
             return KnowledgeProspectivePublication(

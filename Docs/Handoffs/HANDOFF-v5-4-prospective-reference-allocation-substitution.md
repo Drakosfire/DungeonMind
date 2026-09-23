@@ -1,7 +1,7 @@
 # HANDOFF — V5.4 prospective-reference identity allocation + substitution
 
 **Provenance:** MIND  
-**Status:** DESIGN READY — dispatch from merged PR #74 after stewardship bookkeeping  
+**Status:** ACTIVE — PR #75 Review Cycle 1 repair; implementation not accepted
 **Repository:** `Drakosfire/DungeonMind`  
 **Roadmap phase:** `V5.4`  
 **Suggested branch:** `kernel/v5-4-prospective-reference-allocation-substitution`  
@@ -860,3 +860,37 @@ V5.3 COMPLETE with the accepted disposition and V5.4 ACTIVE.
 
 No other path expansion is authorized by this record. V5.4 acceptance remains
 reserved for Steward review.
+
+## 29. Review Cycle 1 repair handback
+
+```text
+PR: #75
+review: 5295516481
+reviewed head: 6b2d85e9ad710dbd89bd4cd2573d3ad231182ab8
+verdict: HOLD
+status: REPAIR IMPLEMENTED — AWAITING EXACT-HEAD RE-REVIEW
+```
+
+The repair remains entirely inside V5.4:
+
+- ordinary V1 items are rejected if they contain a durable ID allocated for a
+  prospective create in the same contribution;
+- committed result bindings are checked against the fully materialized graph
+  before the publication transaction begins, so a false durable mapping cannot
+  advance the head;
+- a V5.3 receipt without a V5.4 result is a deterministic
+  `KnowledgePublicationIdempotencyConflictError` in memory, PostgreSQL, direct
+  reads, and ambiguous-response recovery;
+- deterministic recovery-probe failures retain their original typed failure;
+- the deterministic allocator remains an internal V5.4 implementation detail
+  and is no longer exported from `dungeonmind.application.vnext`.
+
+Focused unit coverage proves retract and supersede attacks cause zero
+publication mutation and that ambiguous recovery cannot turn an already
+claimed publication identity into `outcome_unknown`. PostgreSQL coverage proves
+the receipt-without-result state is the same deterministic conflict at the
+durable boundary.
+
+No WorldKeeper runtime, V5.5 work, frozen V0 contract change, or allocation
+reservation/prediction API is included. Only Steward review may record V5.4
+acceptance.

@@ -138,6 +138,8 @@ def test_plain_v53_claim_conflicts(migrated_database: str, pg) -> None:
     )
     plain_repo.publish_publication(materialized.command, "prepared:plain")
     with pytest.raises(KnowledgePublicationIdempotencyConflictError):
+        plain_repo.get_prospective_publication(SPACE, "prepared:plain")
+    with pytest.raises(KnowledgePublicationIdempotencyConflictError):
         _publish(plain_repo, plain_parent, contribution, "prepared:plain")
 
 

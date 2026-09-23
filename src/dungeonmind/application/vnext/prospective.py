@@ -56,6 +56,23 @@ def _fail(reason: str, **details: Any) -> NoReturn:
     raise ProspectivePublicationIntegrityError(reason, details=details) from None
 
 
+def _find_allocated_id(value: Any, allocated_ids: set[str]) -> str | None:
+    """Find caller-supplied use of an ID reserved for prospective substitution."""
+    if isinstance(value, str):
+        return value if value in allocated_ids else None
+    if isinstance(value, dict):
+        for nested in value.values():
+            found = _find_allocated_id(nested, allocated_ids)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for nested in value:
+            found = _find_allocated_id(nested, allocated_ids)
+            if found is not None:
+                return found
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class ResolvedProspectiveContribution:
     canonical_contribution: KnowledgeContribution
@@ -172,6 +189,7 @@ def resolve_prospective_contribution(
 
     canonical_items: list[Any] = []
     bindings: list[ProspectiveResultBinding] = []
+    allocated_ids = set(allocated.values())
     for item in items:
         accepted = disposition_by_item[item.item_id] == "accepted"
         if isinstance(item, ProspectiveCreateEntity):
@@ -222,6 +240,15 @@ def resolve_prospective_contribution(
                     )
                 )
         else:
+            predicted_id = _find_allocated_id(
+                item.model_dump(mode="json"), allocated_ids
+            )
+            if predicted_id is not None:
+                _fail(
+                    "ordinary_item_targets_prospective_result",
+                    item_id=item.item_id,
+                    durable_id=predicted_id,
+                )
             canonical_items.append(item)
 
     canonical = KnowledgeContribution(
@@ -287,6 +314,9 @@ def publish_prospective_contribution(
         semantic_profile=semantic_profile,
     )
     command = materialization.command
+    _verify_materialized_bindings(
+        command.graph_payload, resolved.committed_result_bindings
+    )
     expected_revision_id = revision_from_command(command).revision_id
     try:
         aggregate = repository.publish_prospective_publication(
@@ -309,7 +339,12 @@ def publish_prospective_contribution(
                 publication_id,
                 repository=repository,
             )
-        except PersistenceIntegrityError:
+        except (
+            KnowledgePublicationIdempotencyConflictError,
+            KnowledgeStaleParentRevisionError,
+            ImmutableRevisionConflictError,
+            PersistenceIntegrityError,
+        ):
             raise
         except Exception as probe_exc:
             raise KnowledgePublicationOutcomeUnknownError(
@@ -344,6 +379,10 @@ def get_prospective_publication(
 ) -> KnowledgeProspectivePublication | None:
     aggregate = repository.get_prospective_publication(space_id, publication_id)
     if aggregate is None:
+        if get_publication_receipt(space_id, publication_id, repository=repository):
+            raise KnowledgePublicationIdempotencyConflictError(
+                space_id=space_id, publication_id=publication_id
+            )
         return None
     result = aggregate.prospective_result
     if result.space_id != space_id or result.publication_id != publication_id:
@@ -404,3 +443,22 @@ def _verify_result_bindings(
         ids = entity_ids if binding.result_kind == "entity" else assertion_ids
         if binding.durable_id not in ids:
             raise PersistenceIntegrityError("prospective result binding missing from revision")
+
+
+def _verify_materialized_bindings(
+    graph_payload: dict[str, Any],
+    bindings: tuple[ProspectiveResultBinding, ...],
+) -> None:
+    """Reject false result mappings before the publication transaction begins."""
+    entity_ids = {item.get("entity_id") for item in graph_payload.get("entities", [])}
+    assertion_ids = {
+        item.get("assertion_id") for item in graph_payload.get("assertions", [])
+    }
+    for binding in bindings:
+        ids = entity_ids if binding.result_kind == "entity" else assertion_ids
+        if binding.durable_id not in ids:
+            _fail(
+                "prospective_result_missing_from_materialization",
+                client_op_id=binding.client_op_id,
+                durable_id=binding.durable_id,
+            )

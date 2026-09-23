@@ -101,7 +101,6 @@ from .neighborhood import (
 )
 from .prospective import (
     ResolvedProspectiveContribution,
-    allocate_prospective_result_id,
     get_prospective_publication,
     publish_prospective_contribution,
     resolve_prospective_contribution,
@@ -234,7 +233,6 @@ __all__ = [
     "SearchResult",
     "SourceAnchor",
     "SourceAnchorResolution",
-    "allocate_prospective_result_id",
     "build_historical_semantic_witness",
     "build_parsed_knowledge_revision",
     "build_parsed_knowledge_revision_from_records",
