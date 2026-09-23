@@ -468,15 +468,15 @@ def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
         tree.update(b"\0")
         tree.update(path.read_bytes())
         tree.update(b"\0")
-    assert tree.hexdigest() == "cd8a0d7f770c1d87586125856c54d20c710f87df7428500b8cb391377a0facbe"
+    assert tree.hexdigest() == "54d0ad4caf5754418d1156ea35edc5b7be656a14e372170795b15ad535778dbc"
     bundle = json.loads(
         (REPO_ROOT / "Docs/Contracts/vnext/dm_vnext_contract_v1.json").read_text(encoding="utf-8")
     )
     assert bundle["aggregate_sha256"] == FROZEN_V0_AGGREGATE
 
 
-def test_runtime_does_not_claim_v52_acceptance() -> None:
-    banned = "V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED"
+def test_runtime_does_not_claim_v53_acceptance() -> None:
+    banned = "V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED"
     for path in (REPO_ROOT / "src").rglob("*.py"):
         assert banned not in path.read_text(encoding="utf-8")
     assert banned not in (REPO_ROOT / "Docs/Roadmaps/ROADMAP.md").read_text(encoding="utf-8")

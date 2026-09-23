@@ -4,7 +4,7 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `9f006bf77d72faabee8a3eef359b89a3d537b0c1` — merged PR #69; V5.2 implementation base  
+**Current main anchor:** `01762848cbdd666b092d4cb26af558ba1468fa4d` — merged PR #71; V5.3 implementation base
 **Last merged roadmap implementation:** PR #69 — `KERNEL: V5.1 generic governed materialization`  
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
@@ -145,11 +145,10 @@ V5.1:
   merge 9f006bf77d72faabee8a3eef359b89a3d537b0c1
 
 V5.2:
-  ACTIVE
-  IMPLEMENTATION NOT YET ACCEPTED
+  COMPLETE — V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED
 
 V5.3:
-  BLOCKED ON V5.2
+  ACTIVE — durable replay / recovery implementation
 ```
 
 Do not reinterpret PR #64 as V4.1 runtime acceptance. PR #69 is the accepted V5.1 runtime merge. The V5.2 design/implementation handoff lands in this PR's first bookkeeping commit.

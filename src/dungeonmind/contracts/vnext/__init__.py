@@ -61,6 +61,7 @@ from .knowledge import (
     PublishKnowledgeRevisionCommand,
 )
 from .projection import FocusRef, ProjectionRequest, ProjectionSnapshot
+from .publication import KnowledgePublicationReceipt
 from .source import EvidenceRefV3, SourceArtifactV3, SourceRevisionV2
 
 PUBLIC_CONTRACT_MODELS: tuple[type, ...] = (
@@ -104,6 +105,7 @@ __all__ = [
     "IdentityDecisionV3",
     "KnowledgeContribution",
     "KnowledgeHead",
+    "KnowledgePublicationReceipt",
     "KnowledgeRevision",
     "KnowledgeStanding",
     "LabelsAllVisibility",

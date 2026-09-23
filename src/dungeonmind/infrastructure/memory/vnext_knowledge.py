@@ -6,8 +6,11 @@ import threading
 from collections.abc import Callable
 
 from dungeonmind.contracts.vnext.knowledge import KnowledgeHead, PublishKnowledgeRevisionCommand
+from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
+from dungeonmind.domain.canonical import canonical_sha256
 
 from ...application.vnext.authority import commit_expected_parent, verify_stored_revision
+from ...application.vnext.errors import KnowledgePublicationIdempotencyConflictError
 from ...application.vnext.records import KnowledgeHeadEvent, StoredKnowledgeRevision
 
 
@@ -23,12 +26,19 @@ def _detached(stored: StoredKnowledgeRevision) -> StoredKnowledgeRevision:
 class InMemoryKnowledgeRevisionRepository:
     """One lock covers the atomic publication. Failed calls leave prior authority."""
 
-    def __init__(self, *, after_revision_insert: Callable[[], None] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        after_revision_insert: Callable[[], None] | None = None,
+        after_publication_commit: Callable[[], None] | None = None,
+    ) -> None:
         self._lock = threading.RLock()
         self._revisions: dict[tuple[str, str], StoredKnowledgeRevision] = {}
         self._heads: dict[str, KnowledgeHead] = {}
         self._events: list[KnowledgeHeadEvent] = []
+        self._receipts: dict[tuple[str, str], KnowledgePublicationReceipt] = {}
         self._after_revision_insert = after_revision_insert
+        self._after_publication_commit = after_publication_commit
 
     def get_head(self, space_id: str) -> KnowledgeHead | None:
         with self._lock:
@@ -82,3 +92,67 @@ class InMemoryKnowledgeRevisionRepository:
                 del self._events[events_before:]
                 raise
             return _detached(stored)
+
+    def get_publication_receipt(
+        self, space_id: str, publication_id: str
+    ) -> KnowledgePublicationReceipt | None:
+        with self._lock:
+            receipt = self._receipts.get((space_id, publication_id))
+            return None if receipt is None else receipt.model_copy(deep=True)
+
+    def publish_publication(
+        self, command: PublishKnowledgeRevisionCommand, publication_id: str
+    ) -> KnowledgePublicationReceipt:
+        command_sha = canonical_sha256(command.model_dump(mode="json"))
+        with self._lock:
+            key = (command.space_id, publication_id)
+            existing = self._receipts.get(key)
+            if existing is not None:
+                if existing.command_sha256 != command_sha:
+                    raise KnowledgePublicationIdempotencyConflictError(
+                        space_id=command.space_id, publication_id=publication_id
+                    )
+                return existing.model_copy(deep=True)
+            inserted: list[tuple[str, str]] = []
+            heads_before = dict(self._heads)
+            events_before = len(self._events)
+
+            def insert_revision(value: StoredKnowledgeRevision) -> None:
+                self._revisions[(value.revision.space_id, value.revision.revision_id)] = value
+                inserted.append((value.revision.space_id, value.revision.revision_id))
+                if self._after_revision_insert is not None:
+                    self._after_revision_insert()
+
+            def advance_head(head: KnowledgeHead, event: KnowledgeHeadEvent) -> None:
+                self._heads[head.space_id] = head
+                self._events.append(event)
+
+            try:
+                stored = commit_expected_parent(
+                    command,
+                    read_head=lambda: self._heads.get(command.space_id),
+                    read_revision=lambda revision_id: self._revisions.get(
+                        (command.space_id, revision_id)
+                    ),
+                    insert_revision=insert_revision,
+                    advance_head=advance_head,
+                )
+                receipt = KnowledgePublicationReceipt(
+                    space_id=command.space_id,
+                    publication_id=publication_id,
+                    command_sha256=command_sha,
+                    expected_parent_revision_id=command.expected_parent_revision_id,
+                    published_revision_id=stored.revision.revision_id,
+                    graph_payload_sha256=stored.graph_payload_sha256,
+                )
+                self._receipts[key] = receipt
+            except Exception:
+                for revision_key in inserted:
+                    self._revisions.pop(revision_key, None)
+                self._heads.clear()
+                self._heads.update(heads_before)
+                del self._events[events_before:]
+                raise
+            if self._after_publication_commit is not None:
+                self._after_publication_commit()
+            return receipt.model_copy(deep=True)
