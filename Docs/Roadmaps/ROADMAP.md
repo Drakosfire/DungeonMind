@@ -652,7 +652,7 @@ the verified receipt; changed retries conflict; ambiguous attempts return a
 retry-safe outcome-unknown error. Recovery never infers success from head or
 history. Prospective references remain V5.4.
 
-Current V5.2 implementation base after PR #69:
+Current V5.3 implementation base after PR #71:
 
 ```text
 01762848cbdd666b092d4cb26af558ba1468fa4d

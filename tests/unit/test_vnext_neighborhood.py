@@ -329,7 +329,7 @@ def test_01_implementation_base_recorded() -> None:
     assert "V4.3 COMPLETE" in steward
     assert "V5.1 COMPLETE" in steward
     assert "V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED" in steward
-    assert "V5.2 ACTIVE" in steward
+    assert "V5.2 COMPLETE" in steward
     assert "implementation now proceeding from current main" in handoff
 
 

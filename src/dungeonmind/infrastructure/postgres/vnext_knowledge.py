@@ -299,14 +299,17 @@ def _read_receipt(
     ).fetchone()
     if row is None:
         return None
+    fingerprint = row["record_fingerprint"]
+    receipt_data = dict(row)
+    receipt_data.pop("record_fingerprint", None)
     try:
-        receipt = KnowledgePublicationReceipt.model_validate(row)
+        receipt = KnowledgePublicationReceipt.model_validate(receipt_data)
     except Exception as exc:
         raise PersistenceIntegrityError(
             f"failed to reconstruct publication receipt: {exc}"
         ) from exc
-    fingerprint = canonical_sha256(receipt.model_dump(mode="json"))
-    if fingerprint != row["record_fingerprint"]:
+    expected_fingerprint = canonical_sha256(receipt.model_dump(mode="json"))
+    if expected_fingerprint != fingerprint:
         raise PersistenceIntegrityError("publication receipt fingerprint drift")
     return receipt
 

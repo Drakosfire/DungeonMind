@@ -14,7 +14,10 @@ import pytest
 
 from dungeonmind.application.vnext.authority import revision_from_command
 from dungeonmind.application.vnext.builder import build_parsed_knowledge_revision
-from dungeonmind.application.vnext.errors import KnowledgeStaleParentRevisionError
+from dungeonmind.application.vnext.errors import (
+    KnowledgePublicationOutcomeUnknownError,
+    KnowledgeStaleParentRevisionError,
+)
 from dungeonmind.application.vnext.materialization import (
     NATIVE_VNEXT_GRAPH_SCHEMA,
     decode_native_graph_payload,
@@ -29,7 +32,8 @@ from dungeonmind.contracts.vnext.knowledge import (
     MigrationOriginRef,
     PublishKnowledgeRevisionCommand,
 )
-from dungeonmind.domain.canonical import canonical_json
+from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
+from dungeonmind.domain.canonical import canonical_json, canonical_sha256
 from dungeonmind.domain.errors import (
     ImmutableRevisionConflictError,
     PersistenceIntegrityError,
@@ -64,6 +68,7 @@ V52_SOURCES = (
     "src/dungeonmind/infrastructure/memory/vnext_knowledge.py",
     "src/dungeonmind/infrastructure/postgres/vnext_knowledge.py",
     "migrations/versions/0008_vnext_knowledge_authority.py",
+    "migrations/versions/0009_vnext_publication_receipts.py",
 )
 BANNED_VOCABULARY = re.compile(
     r"\b(world_id|GM|PLAYER|campaign_id|ContributionReview|"
@@ -164,7 +169,11 @@ def test_governed_materialization_publishes_exact_revision() -> None:
     before_contribution = contribution.model_dump(mode="json")
     before_dispositions = [item.model_dump(mode="json") for item in dispositions]
 
-    published = publish_governed_materialization(materialization, repository=repo)
+    receipt = publish_governed_materialization(
+        materialization, publication_id="publication:exact", repository=repo
+    )
+    published = repo.get_revision(SPACE, receipt.published_revision_id)
+    assert published is not None
 
     assert published.graph_payload_sha256 == materialization.graph_payload_sha256
     assert published.revision.graph_payload_sha256 == materialization.graph_payload_sha256
@@ -213,9 +222,28 @@ def test_publication_rejects_payload_bytes_behind_a_matching_digest() -> None:
     )
 
     class DigestFieldLie:
-        def publish_revision(self, command: PublishKnowledgeRevisionCommand) -> object:
+        def publish_publication(
+            self, command: PublishKnowledgeRevisionCommand, publication_id: str
+        ) -> KnowledgePublicationReceipt:
+            del publication_id
             expected = revision_from_command(command)
-            return _PayloadLie(expected)
+            self._stored = _PayloadLie(expected)
+            return KnowledgePublicationReceipt(
+                space_id=command.space_id,
+                publication_id="publication:lie",
+                command_sha256=canonical_sha256(command.model_dump(mode="json")),
+                expected_parent_revision_id=command.expected_parent_revision_id,
+                published_revision_id=expected.revision_id,
+                graph_payload_sha256=expected.graph_payload_sha256,
+            )
+
+        def get_revision(self, space_id: str, revision_id: str) -> object:
+            del space_id, revision_id
+            return self._stored
+
+        def get_publication_receipt(self, space_id: str, publication_id: str):
+            del space_id, publication_id
+            return None
 
     class _PayloadLie:
         def __init__(self, revision: KnowledgeRevision) -> None:
@@ -227,8 +255,10 @@ def test_publication_rejects_payload_bytes_behind_a_matching_digest() -> None:
         def graph_payload(self) -> dict[str, list[object]]:
             return json.loads(json.dumps(self._payload))
 
-    with pytest.raises(PersistenceIntegrityError, match="different graph payload"):
-        publish_governed_materialization(materialization, repository=DigestFieldLie())
+    with pytest.raises(PersistenceIntegrityError, match="reconstruction mismatch"):
+        publish_governed_materialization(
+            materialization, publication_id="publication:lie", repository=DigestFieldLie()
+        )
 
 
 def test_stale_expected_parent_mutates_nothing() -> None:
@@ -393,10 +423,18 @@ def test_repository_failure_does_not_retry_or_probe() -> None:
             self.publish_calls = 0
             self.probes = 0
 
-        def publish_revision(self, command: PublishKnowledgeRevisionCommand):
+        def publish_publication(
+            self, command: PublishKnowledgeRevisionCommand, publication_id: str
+        ):
             del command
+            del publication_id
             self.publish_calls += 1
             raise PersistenceUnavailableError("down")
+
+        def get_publication_receipt(self, space_id: str, publication_id: str):
+            del space_id, publication_id
+            self.probes += 1
+            return None
 
         def get_head(self, space_id: str):
             del space_id
@@ -414,10 +452,12 @@ def test_repository_failure_does_not_retry_or_probe() -> None:
             raise AssertionError("event probe")
 
     probe = Probe()
-    with pytest.raises(PersistenceUnavailableError):
-        publish_governed_materialization(materialization, repository=probe)
+    with pytest.raises(KnowledgePublicationOutcomeUnknownError):
+        publish_governed_materialization(
+            materialization, publication_id="publication:unknown", repository=probe
+        )
     assert probe.publish_calls == 1
-    assert probe.probes == 0
+    assert probe.probes == 1
     assert contribution.model_dump(mode="json") == before
 
 

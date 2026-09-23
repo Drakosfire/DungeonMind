@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision, PublishKnowledgeRevisionCommand
 from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
-from dungeonmind.domain.canonical import canonical_json, canonical_sha256
+from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
 
 from .authority import revision_from_command
@@ -31,15 +31,15 @@ from .materialization import (
     decode_native_graph_payload,
 )
 from .ports import KnowledgeRevisionRepository
-from .records import PublishedKnowledgeRevision, StoredKnowledgeRevision
+from .records import StoredKnowledgeRevision
 
 
 def publish_governed_materialization(
     materialization: GovernedMaterializationResult,
     *,
     repository: KnowledgeRevisionRepository,
-    publication_id: str | None = None,
-) -> PublishedKnowledgeRevision | KnowledgePublicationReceipt:
+    publication_id: str,
+) -> KnowledgePublicationReceipt:
     """Publish one sealed V5.1 command under repository CAS."""
     command = materialization.command
     if command.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA:
@@ -55,41 +55,35 @@ def publish_governed_materialization(
     decoded = decode_native_graph_payload(command.graph_payload)
     expected: KnowledgeRevision = revision_from_command(command)
     build_parsed_knowledge_revision(revision=expected, decoded_content=decoded)
-    expected_revision = expected
-    if publication_id is not None:
-        if not publication_id.strip():
-            raise KnowledgePublicationIntegrityError("publication_id_blank")
+    if not publication_id.strip():
+        raise KnowledgePublicationIntegrityError("publication_id_blank")
+    try:
+        receipt = repository.publish_publication(command, publication_id)
+    except (KnowledgePublicationIdempotencyConflictError, KnowledgeStaleParentRevisionError):
+        raise
+    except Exception as exc:
         try:
-            receipt = repository.publish_publication(command, publication_id)
-        except (KnowledgePublicationIdempotencyConflictError, KnowledgeStaleParentRevisionError):
-            raise
-        except Exception as exc:
-            try:
-                recovered = get_publication_receipt(
-                    command.space_id, publication_id, repository=repository
-                )
-            except Exception as probe_exc:
-                raise KnowledgePublicationOutcomeUnknownError(
-                    space_id=command.space_id,
-                    publication_id=publication_id,
-                    expected_published_revision_id=expected_revision.revision_id,
-                    reason=f"publish={type(exc).__name__}; probe={type(probe_exc).__name__}",
-                ) from exc
-            if recovered is not None:
-                return recovered
-            raise
-        return _verify_receipt(receipt, command, repository=repository)
-    stored = repository.publish_revision(command)
-    if stored.revision.model_dump(mode="json") != expected.model_dump(mode="json"):
-        raise PersistenceIntegrityError("repository returned a different revision envelope")
-    returned_payload = stored.graph_payload
-    if canonical_json(returned_payload) != canonical_json(dict(command.graph_payload)):
-        raise PersistenceIntegrityError("repository returned a different graph payload")
-    if canonical_sha256(returned_payload) != payload_sha:
-        raise PersistenceIntegrityError("repository returned payload bytes whose digest disagrees")
-    if stored.graph_payload_sha256 != payload_sha:
-        raise PersistenceIntegrityError("repository returned a different payload digest")
-    return PublishedKnowledgeRevision.from_stored(stored)
+            recovered = get_publication_receipt(
+                command.space_id, publication_id, repository=repository
+            )
+        except Exception as probe_exc:
+            raise KnowledgePublicationOutcomeUnknownError(
+                space_id=command.space_id,
+                publication_id=publication_id,
+                expected_published_revision_id=expected.revision_id,
+                reason=f"publish={type(exc).__name__}; probe={type(probe_exc).__name__}",
+            ) from exc
+        if recovered is not None:
+            return recovered
+        raise KnowledgePublicationOutcomeUnknownError(
+            space_id=command.space_id,
+            publication_id=publication_id,
+            expected_published_revision_id=expected.revision_id,
+            reason=f"publish={type(exc).__name__}; receipt=missing",
+        ) from exc
+    return _verify_receipt(
+        receipt, command, publication_id=publication_id, repository=repository
+    )
 
 
 def _command_from_stored(stored: StoredKnowledgeRevision) -> PublishKnowledgeRevisionCommand:
@@ -112,10 +106,15 @@ def _verify_receipt(
     receipt: KnowledgePublicationReceipt,
     command: PublishKnowledgeRevisionCommand,
     *,
+    publication_id: str,
     repository: KnowledgeRevisionRepository,
 ) -> KnowledgePublicationReceipt:
     if receipt.space_id != command.space_id:
         raise PersistenceIntegrityError("publication receipt space drift")
+    if receipt.publication_id != publication_id:
+        raise PersistenceIntegrityError("publication receipt publication identity drift")
+    if receipt.expected_parent_revision_id != command.expected_parent_revision_id:
+        raise PersistenceIntegrityError("publication receipt expected parent drift")
     if receipt.command_sha256 != canonical_sha256(command.model_dump(mode="json")):
         raise PersistenceIntegrityError("publication receipt command digest mismatch")
     stored = repository.get_revision(command.space_id, receipt.published_revision_id)
@@ -141,6 +140,8 @@ def get_publication_receipt(
     receipt = repository.get_publication_receipt(space_id, publication_id)
     if receipt is None:
         return None
+    if receipt.space_id != space_id or receipt.publication_id != publication_id:
+        raise PersistenceIntegrityError("publication receipt identity column drift")
     stored = repository.get_revision(space_id, receipt.published_revision_id)
     if stored is None:
         raise PersistenceIntegrityError("publication receipt references missing revision")
@@ -149,4 +150,6 @@ def get_publication_receipt(
         raise PersistenceIntegrityError("publication receipt command digest mismatch")
     if stored.graph_payload_sha256 != receipt.graph_payload_sha256:
         raise PersistenceIntegrityError("publication receipt payload digest mismatch")
+    if stored.revision.parent_revision_id != receipt.expected_parent_revision_id:
+        raise PersistenceIntegrityError("publication receipt expected parent drift")
     return receipt
