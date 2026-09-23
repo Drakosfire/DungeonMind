@@ -125,3 +125,38 @@ class KnowledgeStaleParentRevisionError(DungeonMindError):
         self.space_id = space_id
         self.expected_parent_revision_id = expected_parent_revision_id
         self.actual_head_revision_id = actual_head_revision_id
+
+
+class KnowledgePublicationIdempotencyConflictError(DungeonMindError):
+    code = "knowledge_publication_idempotency_conflict"
+
+    def __init__(self, *, space_id: str, publication_id: str) -> None:
+        super().__init__(
+            "publication identity is already bound to a different command",
+            details={"space_id": space_id, "publication_id": publication_id},
+        )
+        self.space_id = space_id
+        self.publication_id = publication_id
+
+
+class KnowledgePublicationOutcomeUnknownError(DungeonMindError):
+    code = "knowledge_publication_outcome_unknown"
+
+    def __init__(
+        self, *, space_id: str, publication_id: str,
+        expected_published_revision_id: str, reason: str,
+    ) -> None:
+        super().__init__(
+            "knowledge publication outcome is unknown",
+            details={
+                "space_id": space_id,
+                "publication_id": publication_id,
+                "expected_published_revision_id": expected_published_revision_id,
+                "retry_safe": True,
+                "reason": reason,
+            },
+        )
+        self.space_id = space_id
+        self.publication_id = publication_id
+        self.expected_published_revision_id = expected_published_revision_id
+        self.retry_safe = True

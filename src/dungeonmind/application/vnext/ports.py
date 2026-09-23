@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from dungeonmind.contracts.vnext.knowledge import KnowledgeHead, PublishKnowledgeRevisionCommand
+from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
 
 from .provenance import KnowledgeProvenanceSnapshot
 from .records import KnowledgeHeadEvent, StoredKnowledgeRevision
@@ -41,5 +42,13 @@ class KnowledgeRevisionRepository(Protocol):
     def publish_revision(
         self, command: PublishKnowledgeRevisionCommand
     ) -> StoredKnowledgeRevision: ...
+
+    def publish_publication(
+        self, command: PublishKnowledgeRevisionCommand, publication_id: str
+    ) -> KnowledgePublicationReceipt: ...
+
+    def get_publication_receipt(
+        self, space_id: str, publication_id: str
+    ) -> KnowledgePublicationReceipt | None: ...
 
     def head_events(self, space_id: str) -> tuple[KnowledgeHeadEvent, ...]: ...

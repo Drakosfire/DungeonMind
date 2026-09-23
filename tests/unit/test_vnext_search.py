@@ -312,8 +312,8 @@ def test_01_bookkeeping_records_v43_complete_v51_active() -> None:
     assert "V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED" in steward
     assert "V5.1 COMPLETE" in steward
     assert "V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED" in steward
-    assert "V5.2 ACTIVE" in steward
-    assert "BLOCKED ON V5.2" in steward
+    assert "V5.2 COMPLETE" in steward
+    assert "V5.3 ACTIVE" in steward
 
 
 def test_02_frozen_v0_aggregate_remains_exact() -> None:

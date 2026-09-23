@@ -640,14 +640,22 @@ GovernedMaterializationResult
 → one atomic KnowledgeHead transition
 ```
 
-Native authority lives in `knowledge_spaces`, `knowledge_revisions`, `knowledge_heads`, and `knowledge_head_events`. It does not reuse World tables. Stale expected parents fail closed with no authority mutation. V5.2 does not provide a publication receipt, exact replay-as-success, or uncertain-outcome recovery.
+Native authority lives in `knowledge_spaces`, `knowledge_revisions`, `knowledge_heads`, and `knowledge_head_events`. It does not reuse World tables. Stale expected parents fail closed with no authority mutation.
 
-V5.3 remains blocked until V5.2 is accepted.
+V5.2 is accepted as `V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED` on merged PR #71, merge `01762848cbdd666b092d4cb26af558ba1468fa4d`.
 
-Current V5.2 implementation base after PR #69:
+### V5.3 — Durable publication replay / recovery
+
+V5.3 adds one immutable receipt keyed by `(space_id, publication_id)` in the
+same atomic boundary as revision, head, and publish event. Exact retries replay
+the verified receipt; changed retries conflict; ambiguous attempts return a
+retry-safe outcome-unknown error. Recovery never infers success from head or
+history. Prospective references remain V5.4.
+
+Current V5.3 implementation base after PR #71:
 
 ```text
-9f006bf77d72faabee8a3eef359b89a3d537b0c1
+01762848cbdd666b092d4cb26af558ba1468fa4d
 ```
 
 Authority: `Docs/Handoffs/HANDOFF-v5-2-expected-parent-cas-publication.md`

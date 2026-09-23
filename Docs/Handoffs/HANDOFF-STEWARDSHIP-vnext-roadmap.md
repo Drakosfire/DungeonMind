@@ -4,8 +4,8 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `9f006bf77d72faabee8a3eef359b89a3d537b0c1` — merged PR #69; V5.2 implementation base  
-**Last merged roadmap implementation:** PR #69 — `KERNEL: V5.1 generic governed materialization`  
+**Current main anchor:** `01762848cbdd666b092d4cb26af558ba1468fa4d` — merged PR #71; V5.3 implementation base
+**Last merged roadmap implementation:** PR #71 — `KERNEL: V5.2 native expected-parent CAS publication`
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
@@ -62,8 +62,8 @@ V4   Neighborhood + evidence + anchor + indexed search   COMPLETE
   V4.3 Deterministic indexed search                      COMPLETE
 V5   Generic governed write contracts                    ACTIVE
   V5.1 Generic governed materialization                  COMPLETE
-  V5.2 Expected-parent atomic CAS publication            ACTIVE
-  V5.3 Durable idempotent replay / recovery              BLOCKED ON V5.2
+  V5.2 Expected-parent atomic CAS publication            COMPLETE
+  V5.3 Durable idempotent replay / recovery              ACTIVE
 V6   DungeonBuddy domain implementation
 V7   Bridge-genesis migration
 V8   Joint semantic + performance acceptance
@@ -85,21 +85,22 @@ V4.2 COMPLETE — V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
 V4.3 COMPLETE — V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
 V5 ACTIVE
 V5.1 COMPLETE — V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED
-V5.2 ACTIVE — IMPLEMENTATION NOT YET ACCEPTED
+V5.2 COMPLETE — V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED
+V5.3 ACTIVE — durable publication replay / recovery implementation
 ```
 
 ### Current primary question
 
-**V5.2 — expected-parent atomic CAS publication**
+**V5.3 — durable publication replay / recovery**
 
-> Given one already-governed V5.1 materialization, can DungeonMind durably publish its exact `PublishKnowledgeRevisionCommand` as one immutable native-vNext `KnowledgeRevision` and atomically advance exactly one `KnowledgeHead` under expected-parent compare-and-swap semantics?
+> Can DungeonMind durably bind one exact native publication command to one terminal receipt and recover that result by `(space_id, publication_id)` without misclassifying persistence corruption as an unknown outcome or inferring success from the current head?
 
 V5.2 owns native revision identity and the atomic publication boundary. It is not permission to implement durable replay, uncertain-outcome recovery, public write transport, or World writer replacement.
 
 Current implementation base:
 
 ```text
-9f006bf77d72faabee8a3eef359b89a3d537b0c1
+01762848cbdd666b092d4cb26af558ba1468fa4d
 ```
 
 ```text
@@ -145,11 +146,10 @@ V5.1:
   merge 9f006bf77d72faabee8a3eef359b89a3d537b0c1
 
 V5.2:
-  ACTIVE
-  IMPLEMENTATION NOT YET ACCEPTED
+  COMPLETE — V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED
 
 V5.3:
-  BLOCKED ON V5.2
+  ACTIVE — durable replay / recovery implementation
 ```
 
 Do not reinterpret PR #64 as V4.1 runtime acceptance. PR #69 is the accepted V5.1 runtime merge. The V5.2 design/implementation handoff lands in this PR's first bookkeeping commit.
@@ -744,13 +744,13 @@ V4.2 COMPLETE — V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
 V4.3 COMPLETE — V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
 V5 ACTIVE
 V5.1 COMPLETE — V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED
-V5.2 ACTIVE — IMPLEMENTATION NOT YET ACCEPTED
+V5.2 COMPLETE — V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED
 ```
 
 ### Next primary question
 
 ```text
-Given one already-governed V5.1 materialization, can DungeonMind durably publish its exact PublishKnowledgeRevisionCommand as one immutable native-vNext KnowledgeRevision and atomically advance exactly one KnowledgeHead under expected-parent compare-and-swap semantics?
+Can DungeonMind durably bind one exact native publication command to one terminal receipt and recover that result by `(space_id, publication_id)` without inferring success from the current head?
 ```
 
 ### Parallel work posture
@@ -760,7 +760,7 @@ safe / independent:
   larger-scale benchmark characterization
   contract-frozen Buddy/domain work that does not depend on V5.2 runtime
 
-blocked until V5.2 acceptance:
+active:
   V5.3 durable replay / recovery
 
 blocked until later accepted predecessors:
@@ -771,8 +771,8 @@ blocked until later accepted predecessors:
 
 ### What remains false
 
-- no expected-parent CAS publisher is accepted yet;
-- no durable publication receipt / replay / recovery exists;
+- V5.2 expected-parent CAS publication is accepted at PR #71 merge `01762848cbdd666b092d4cb26af558ba1468fa4d`;
+- V5.3 receipt/replay/recovery is implemented but not yet Steward-accepted;
 - no public alias-discovery authority contract is accepted;
 - no bridge-genesis migration exists;
 - no current public World read cutover has occurred;
@@ -783,7 +783,7 @@ blocked until later accepted predecessors:
 
 ### Named next action
 
-Implement V5.2 on `kernel/v5-2-expected-parent-cas-publication` from current `main` `9f006bf77d72faabee8a3eef359b89a3d537b0c1`. Close V5.1 in this PR's first bookkeeping commit, then implement native revision identity and expected-parent atomic CAS publication only. Do not implement durable replay, uncertain-outcome recovery, public write transport, or World writer replacement. Do not claim `V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED`.
+Review and accept or rebrief V5.3 on `kernel/v5-3-durable-publication-replay-recovery` at the exact reviewed head. Require PostgreSQL receipt reconstruction, migration `0009`, independent-connection replay/CAS proof, typed unknown-outcome behavior, and the full canonical handoff before acceptance. Keep V5.4 prospective-reference work out of scope.
 
 ---
 

@@ -35,7 +35,9 @@ from .errors import (
     EntityReadIntegrityError,
     EvidenceReadIntegrityError,
     GovernedMaterializationIntegrityError,
+    KnowledgePublicationIdempotencyConflictError,
     KnowledgePublicationIntegrityError,
+    KnowledgePublicationOutcomeUnknownError,
     KnowledgeReadContextIntegrityError,
     KnowledgeStaleParentRevisionError,
     LegacyCompatibilityIntegrityError,
@@ -97,7 +99,7 @@ from .neighborhood import (
     NeighborhoodWorkCounts,
 )
 from .provenance import InMemoryKnowledgeSourceReader, KnowledgeProvenanceSnapshot
-from .publication import publish_governed_materialization
+from .publication import get_publication_receipt, publish_governed_materialization
 from .read_context import KnowledgeReadContext
 from .records import (
     ParsedAssertion,
@@ -173,7 +175,9 @@ __all__ = [
     "GovernedPublicationIdentity",
     "InMemoryKnowledgeSourceReader",
     "KnowledgeProvenanceSnapshot",
+    "KnowledgePublicationIdempotencyConflictError",
     "KnowledgePublicationIntegrityError",
+    "KnowledgePublicationOutcomeUnknownError",
     "KnowledgeReadContext",
     "KnowledgeReadContextIntegrityError",
     "KnowledgeStaleParentRevisionError",
@@ -234,6 +238,7 @@ __all__ = [
     "decode_legacy_graph_revision",
     "decode_legacy_stored_graph_revision",
     "freeze_json_value",
+    "get_publication_receipt",
     "load_legacy_world_compat_manifest",
     "materialize_governed_revision",
     "publish_governed_materialization",
