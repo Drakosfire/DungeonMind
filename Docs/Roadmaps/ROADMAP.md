@@ -1,8 +1,8 @@
 # DungeonMind — vNext Governed Knowledge Roadmap
 
 **Status:** current forward roadmap  
-**Updated:** 2026-09-24
-**Roadmap anchor:** DungeonMind `main` after PR #75 (`6edb9e40d1dc930f537c66deb1afbd1b99002844`)
+**Updated:** 2026-09-25
+**Roadmap anchor:** DungeonMind `main` after PR #77 (`a9051f02dfd95e051a83c1d74b26bb04a2b3e5bf`)
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -677,6 +677,27 @@ accepted head `c7700f98e62732cbd1c021270f5366a77c24ea9b`, final PASS
 `5296514025`, merge `6edb9e40d1dc930f537c66deb1afbd1b99002844`.
 
 V5 is complete. V6 consumer/domain implementation is active.
+
+### V6.K1 — authorized aliases in complete entity reads
+
+`V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED` is recorded for PR #76:
+substantive reviewed runtime head `91d2ebaf8aadf512a26ac209cfe8f6414063e732`,
+PASS review `5321738653`, merge `f3738f3af3e3c8e204668a3d87d240a32c0d3988`.
+The next active consumer step is DungeonMindBuddy V6.2 — complete-object read
+adaptation + World-object DTO preservation. V6.K1 does not authorize public
+alias search or a production route switch.
+
+### Parallel contract capability — semantic-profile V3
+
+`dm_semantic_profile_v3` is accepted as
+`SEMANTIC_PROFILE_V3_OPEN_PREDICATE_NAMESPACES_ACCEPTED` on merged PR #77:
+substantive reviewed head `0f709d76fdc53bac9c9258d1751463ae2c76ca71`,
+merge `a9051f02dfd95e051a83c1d74b26bb04a2b3e5bf`. ADR-0027 and the
+standalone V3 schema define scoped open predicate namespaces and allowed value
+kinds. V2 profiles and the frozen V0 contract bundle retain their meaning.
+An existing V2-pinned space cannot transition to V3 under this capability;
+that requires a separate accepted profile-transition design. This parallel
+record does not change completed V6.K1 or the next Buddy V6.2 step.
 
 V5.3 authority remains `Docs/Handoffs/HANDOFF-v5-3-durable-publication-replay-recovery.md`.
 

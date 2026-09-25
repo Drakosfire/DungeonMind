@@ -1,8 +1,9 @@
 # ADR-0027 — Versioned authored-predicate namespaces in vNext
 
-**Status:** Proposed for review
+**Status:** Accepted — `SEMANTIC_PROFILE_V3_OPEN_PREDICATE_NAMESPACES_ACCEPTED`
 **Scope:** Generic DungeonMind vNext semantic-profile admission
 **Predecessor:** ADR-0024 and the immutable `dm_semantic_profile_v2` contract
+**Evidence:** PR #77, substantively reviewed head `0f709d76fdc53bac9c9258d1751463ae2c76ca71` (`SEMANTIC_PROFILE_V3_SUBSTANTIVE_PASS`), merged as `a9051f02dfd95e051a83c1d74b26bb04a2b3e5bf`
 
 ## Problem
 

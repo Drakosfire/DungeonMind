@@ -4,8 +4,9 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `6edb9e40d1dc930f537c66deb1afbd1b99002844` — merged PR #75; V5.4 accepted
-**Last merged roadmap implementation:** PR #75 — `KERNEL: V5.4 prospective-reference identity allocation and substitution`
+**Current main anchor:** `a9051f02dfd95e051a83c1d74b26bb04a2b3e5bf` — merged PR #77; semantic-profile V3 parallel capability
+**Last merged roadmap implementation:** PR #76 — `KERNEL: authorize aliases in vNext complete-entity reads`
+**Last merged parallel contract capability:** PR #77 — versioned semantic-profile V3 open predicate namespaces
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
@@ -84,22 +85,35 @@ V4 COMPLETE
 V4.1 COMPLETE — V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
 V4.2 COMPLETE — V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
 V4.3 COMPLETE — V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
-V5 COMPLETE
 V5.1 COMPLETE — V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED
 V5.2 COMPLETE — V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED
 V5.3 COMPLETE — V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED
 V5.4 COMPLETE — V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED
+V6.K1 COMPLETE — V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED
+PARALLEL SEMANTIC-PROFILE V3 — SEMANTIC_PROFILE_V3_OPEN_PREDICATE_NAMESPACES_ACCEPTED
 ```
 
-### Current primary question
+The parallel V3 profile capability is accepted at PR #77: substantive reviewed
+head `0f709d76fdc53bac9c9258d1751463ae2c76ca71`, merge
+`a9051f02dfd95e051a83c1d74b26bb04a2b3e5bf`. ADR-0027 and the standalone
+V3 schema govern it. V2 semantics and the frozen V0 bundle are unchanged.
+Existing V2-pinned spaces have **no** accepted V2→V3 profile-transition
+capability; publication continues to inherit the exact parent profile ref.
+This parallel acceptance does not change completed V6.K1 or the next Buddy
+V6.2 step, and does not authorize migration, consumer mapping, or cutover.
 
-**V6.K1 — authorized identity aliases in complete entity reads**
+### Current next step
 
-> Can an exact vNext complete-entity read return the selected entity's authorized identity aliases without scanning unrelated aliases or crossing the Kernel/consumer authority boundary?
+**DungeonMindBuddy V6.2 — complete-object read adaptation + World-object DTO preservation.**
 
-V5 is complete. V6 consumer implementation is active; V6.K1 is the narrow Kernel prerequisite discovered by DungeonBuddy V6.2 design. It does not authorize alias search, Buddy DTO code, cutover, or performance optimization.
+V6.K1's Kernel prerequisite is complete: PR #76 merged at
+`f3738f3af3e3c8e204668a3d87d240a32c0d3988`, after substantive PASS
+review `5321738653` of head `91d2ebaf8aadf512a26ac209cfe8f6414063e732`.
+Its disposition is `V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED`.
+This does not authorize alias search, a Buddy DTO implementation in DungeonMind,
+cutover, or performance optimization.
 
-Current implementation base:
+V6.K1 implementation base (historical):
 
 ```text
 6edb9e40d1dc930f537c66deb1afbd1b99002844
@@ -756,19 +770,20 @@ V4 COMPLETE
 V4.1 COMPLETE — V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
 V4.2 COMPLETE — V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
 V4.3 COMPLETE — V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
-V5 ACTIVE
+V5 COMPLETE
 V5.1 COMPLETE — V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED
 V5.2 COMPLETE — V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED
 V5.3 COMPLETE — V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED
 V5.4 COMPLETE — V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED
 V5 COMPLETE
+V6.K1 COMPLETE — V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED
 V6 ACTIVE
 ```
 
 ### Next primary question
 
 ```text
-Can DungeonMind return Kernel-authorized aliases in exact complete-entity reads with entity-local work and generic evidence/source enforcement?
+Can DungeonMindBuddy V6.2 adapt the accepted exact complete-entity read into its complete World-object DTO without inventing alias or provenance authority?
 ```
 
 ### Parallel work posture
@@ -780,7 +795,7 @@ safe / independent:
 
 active:
   V6 consumer/domain implementation
-  V6.K1 authorized aliases in complete entity reads
+  DungeonMindBuddy V6.2 complete-object read adaptation + World-object DTO preservation
 
 blocked until later accepted predecessors:
   bridge-genesis migration
@@ -803,7 +818,9 @@ blocked until later accepted predecessors:
 
 ### Named next action
 
-Implement and review V6.K1 on `kernel/v6-k1-complete-entity-authorized-aliases` from merged PR #75. Require entity-local derived alias indexing, standing and generic evidence/source admission, alias-only support closure, digest/privacy non-interference, and no alias search or consumer code.
+Return the accepted V6.K1 complete-entity alias contract to DungeonMindBuddy
+V6.2 for complete-object read adaptation and World-object DTO preservation.
+Keep alias search, V2→V3 profile transition, and production cutover separate.
 
 ---
 
