@@ -53,7 +53,9 @@ from dungeonmind.contracts.vnext.domain import (
     Entity,
     EntityRefValue,
     LiteralValue,
+    OpenPredicateNamespace,
     SemanticProfileDescriptorV2,
+    SemanticProfileDescriptorV3,
     SemanticProfilePredicate,
 )
 from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
@@ -484,9 +486,10 @@ def _assertion_with_metadata(assertion_id: str, metadata: AssertionMetadata) -> 
 def _mini_context_for_assertions(
     assertions: list[Assertion],
     request: ProjectionRequest,
+    semantic_profile: SemanticProfileDescriptorV2 | None = None,
 ) -> KnowledgeReadContext:
     domain_contract = _org_domain_contract()
-    semantic_profile = _org_semantic_profile()
+    semantic_profile = semantic_profile or _org_semantic_profile()
     revision = KnowledgeRevision(
         space_id="space:org-memory",
         revision_id="rev:mini",
@@ -502,7 +505,7 @@ def _mini_context_for_assertions(
         semantic_profile_ref=SemanticProfileRef(
             profile_id=semantic_profile.profile_id,
             profile_revision=semantic_profile.profile_revision,
-            descriptor_sha256=ORG_PROFILE_DIGEST,
+            descriptor_sha256=canonical_sha256(semantic_profile.model_dump(mode="json")),
         ),
     )
     entities = [Entity(entity_id="priya"), Entity(entity_id="research-team")]
@@ -895,6 +898,37 @@ def test_33_unknown_predicate_excluded_when_profile_authoritative() -> None:
     )
     result = context.admit_candidates(["asrt:unknown-predicate"])
     assert result.excluded[0].reason == "semantic_profile"
+
+
+def test_v3_custom_relationship_is_readable_under_its_exact_pinned_profile() -> None:
+    profile = SemanticProfileDescriptorV3(
+        profile_id="organization.memory.profile",
+        profile_revision="2",
+        term_namespaces=["organization", "organization.custom"],
+        predicates=_org_semantic_profile().predicates,
+        open_predicate_namespaces=[
+            OpenPredicateNamespace(
+                namespace="organization.custom", allowed_value_kinds=["entity_ref"]
+            )
+        ],
+    )
+    assertion = Assertion(
+        assertion_id="asrt:custom",
+        subject_entity_id="priya",
+        predicate="organization.custom:works_at",
+        value=EntityRefValue(entity_id="research-team"),
+        metadata=_default_metadata(),
+    )
+    request = ProjectionRequest(
+        space_id="space:org-memory",
+        scope_selector=ScopeSelector(include_unscoped=True),
+        audience_labels=["organization:team"],
+        standing_selector=[KnowledgeStanding.ESTABLISHED],
+    )
+    context = _mini_context_for_assertions([assertion], request, profile)
+    assert isinstance(context.semantic_profile, SemanticProfileDescriptorV3)
+    result = context.admit_candidates([assertion.assertion_id])
+    assert result.admitted_assertion_ids == (assertion.assertion_id,)
 
 
 def test_34_disallowed_value_kind_excluded() -> None:

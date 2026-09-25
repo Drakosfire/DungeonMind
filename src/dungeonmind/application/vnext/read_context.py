@@ -7,7 +7,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from dungeonmind.contracts.vnext.domain import DomainContractDescriptor, SemanticProfileDescriptorV2
+from dungeonmind.contracts.vnext.domain import (
+    DomainContractDescriptor,
+    SemanticProfileDescriptorV2,
+    parse_semantic_profile_descriptor,
+)
 from dungeonmind.contracts.vnext.projection import ProjectionRequest
 from dungeonmind.domain.canonical import canonical_sha256
 
@@ -140,9 +144,7 @@ class KnowledgeReadContext:
 
     @property
     def semantic_profile(self) -> SemanticProfileDescriptorV2:
-        return SemanticProfileDescriptorV2.model_validate(
-            thaw_json_value(self._semantic_profile_dump)
-        )
+        return parse_semantic_profile_descriptor(thaw_json_value(self._semantic_profile_dump))
 
     def admit_candidates(self, candidate_assertion_ids: Sequence[str]) -> CandidateAdmissionResult:
         result, _provenance = self.evaluate_candidates(candidate_assertion_ids)

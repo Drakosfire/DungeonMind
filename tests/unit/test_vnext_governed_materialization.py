@@ -45,7 +45,9 @@ from dungeonmind.contracts.vnext.domain import (
     Entity,
     EntityRefValue,
     LiteralValue,
+    OpenPredicateNamespace,
     SemanticProfileDescriptorV2,
+    SemanticProfileDescriptorV3,
     SemanticProfilePredicate,
 )
 from dungeonmind.contracts.vnext.knowledge import (
@@ -168,6 +170,7 @@ def _parent(
     space_id: str = "space:lab",
     revision_id: str = "rev:parent",
     graph_schema: str = NATIVE_VNEXT_GRAPH_SCHEMA,
+    profile: SemanticProfileDescriptorV2 | None = None,
 ) -> ParsedKnowledgeRevision:
     if entities is None:
         entities = [Entity(entity_id="ent:alice")]
@@ -176,6 +179,8 @@ def _parent(
     if evidence is None:
         evidence = [_evidence()]
     contract_digest, profile_digest = _lab_digests()
+    if profile is not None:
+        profile_digest = canonical_sha256(profile.model_dump(mode="json"))
     revision = KnowledgeRevision(
         space_id=space_id,
         revision_id=revision_id,
@@ -189,8 +194,8 @@ def _parent(
             descriptor_sha256=contract_digest,
         ),
         semantic_profile_ref=SemanticProfileRef(
-            profile_id="lab.profile",
-            profile_revision="1",
+            profile_id=profile.profile_id if profile else "lab.profile",
+            profile_revision=profile.profile_revision if profile else "1",
             descriptor_sha256=profile_digest,
         ),
     )
@@ -1319,3 +1324,54 @@ def test_32_identity_supersession_fails_closed() -> None:
             dispositions=_accepted("i1"),
         )
     assert _reason(exc.value) == "identity_supersession_not_materializable_in_v5_1"
+
+
+def test_v3_authored_predicate_namespace_publishes_without_opening_other_terms() -> None:
+    profile = SemanticProfileDescriptorV3(
+        profile_id="lab.profile",
+        profile_revision="2",
+        term_namespaces=["lab", "lab.custom"],
+        predicates=[SemanticProfilePredicate(term="lab:title", allowed_value_kinds=["literal"])],
+        open_predicate_namespaces=[
+            OpenPredicateNamespace(namespace="lab.custom", allowed_value_kinds=["entity_ref"])
+        ],
+    )
+    parent = _parent(profile=profile)
+
+    def relationship(predicate: str, value: EntityRefValue | LiteralValue) -> Assertion:
+        return Assertion(
+            assertion_id="asrt:custom",
+            subject_entity_id="ent:alice",
+            predicate=predicate,
+            value=value,
+            metadata=_meta(),
+        )
+
+    def publish(assertion: Assertion):
+        return _call(
+            parent=parent,
+            semantic_profile=profile,
+            contribution=_contribution(
+                parent,
+                [
+                    ProposeEntity(item_id="i1", entity=Entity(entity_id="ent:bob")),
+                    ProposeAssertion(item_id="i2", assertion=assertion),
+                ],
+            ),
+            dispositions=_accepted("i1", "i2"),
+        )
+
+    result = publish(relationship("lab.custom:works_at", EntityRefValue(entity_id="ent:bob")))
+    assert result.command.semantic_profile_ref.profile_revision == "2"
+    assert any(
+        item["predicate"] == "lab.custom:works_at"
+        for item in result.command.graph_payload["assertions"]
+    )
+
+    for rejected in (
+        relationship("lab.custom:works_at", LiteralValue(value="Bob")),
+        relationship("lab:works_at", EntityRefValue(entity_id="ent:bob")),
+    ):
+        with pytest.raises(GovernedMaterializationIntegrityError) as exc:
+            publish(rejected)
+        assert _reason(exc.value) == "undeclared_semantic_profile"

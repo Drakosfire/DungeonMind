@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from collections.abc import Mapping
+from typing import Any, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from ..base import DungeonMindModel
 from .common import (
@@ -90,6 +91,50 @@ class SemanticProfileDescriptorV2(DungeonMindModel):
     @classmethod
     def _unique_classification(cls, value: list[str]) -> list[str]:
         return _unique(value, "classification_terms")
+
+
+class OpenPredicateNamespace(DungeonMindModel):
+    """A profile-owned, type-constrained namespace for authored predicates."""
+
+    namespace: str = Field(
+        min_length=1,
+        pattern=r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+    )
+    allowed_value_kinds: list[Literal["entity_ref", "literal", "term_ref"]] = Field(
+        min_length=1
+    )
+
+    @field_validator("allowed_value_kinds")
+    @classmethod
+    def _unique_kinds(cls, value: list[str]) -> list[str]:
+        return _unique(value, "allowed_value_kinds")
+
+
+class SemanticProfileDescriptorV3(SemanticProfileDescriptorV2):
+    """Versioned predicate namespace admission without changing V2 meaning."""
+
+    schema_version: Literal["dm_semantic_profile_v3"] = "dm_semantic_profile_v3"
+    open_predicate_namespaces: list[OpenPredicateNamespace] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_open_namespaces(self) -> SemanticProfileDescriptorV3:
+        namespaces = [item.namespace for item in self.open_predicate_namespaces]
+        _unique(namespaces, "open_predicate_namespaces")
+        if not set(namespaces).issubset(self.term_namespaces):
+            raise ValueError("open predicate namespaces must be declared term namespaces")
+        if any(item.term.split(":", 1)[0] in namespaces for item in self.predicates):
+            raise ValueError("fixed predicates cannot share an open predicate namespace")
+        return self
+
+
+def parse_semantic_profile_descriptor(
+    value: Mapping[str, Any],
+) -> SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3:
+    """Rehydrate the exact descriptor revision sealed by a KnowledgeRevision."""
+
+    if value.get("schema_version") == "dm_semantic_profile_v3":
+        return SemanticProfileDescriptorV3.model_validate(value)
+    return SemanticProfileDescriptorV2.model_validate(value)
 
 
 class Entity(DungeonMindModel):
