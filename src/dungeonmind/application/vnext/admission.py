@@ -330,8 +330,30 @@ def evidence_chain_passes(
     domain_contract: DomainContractDescriptor,
     memo: dict[str, str | None],
 ) -> str | None:
+    return evidence_refs_pass(
+        assertion.metadata.evidence_ref_ids,
+        parsed=parsed,
+        provenance=provenance,
+        audience=audience,
+        declared_labels=declared_labels,
+        domain_contract=domain_contract,
+        memo=memo,
+    )
+
+
+def evidence_refs_pass(
+    evidence_ref_ids: Sequence[str],
+    *,
+    parsed: ParsedKnowledgeRevision,
+    provenance: KnowledgeProvenanceSnapshot,
+    audience: frozenset[str],
+    declared_labels: frozenset[str],
+    domain_contract: DomainContractDescriptor,
+    memo: dict[str, str | None],
+) -> str | None:
+    """Apply one generic evidence/source gate to any evidence-reference sequence."""
     source_schemas = frozenset(domain_contract.source_annotation_schemas)
-    for evidence_ref_id in assertion.metadata.evidence_ref_ids:
+    for evidence_ref_id in evidence_ref_ids:
         if evidence_ref_id in memo:
             cached = memo[evidence_ref_id]
             if cached is not None:
@@ -407,6 +429,28 @@ def collect_evidence_dependencies(
             if evidence.source_revision_id:
                 revision_ids.add(evidence.source_revision_id)
 
+    return (
+        tuple(sorted(evidence_ids)),
+        tuple(sorted(artifact_ids)),
+        tuple(sorted(revision_ids)),
+    )
+
+
+def collect_evidence_ref_dependencies(
+    parsed: ParsedKnowledgeRevision,
+    evidence_ref_ids: Sequence[str],
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    """Resolve deterministic source dependencies for a direct evidence-ref set."""
+    evidence_ids = set(evidence_ref_ids)
+    artifact_ids: set[str] = set()
+    revision_ids: set[str] = set()
+    for evidence_ref_id in evidence_ids:
+        evidence = parsed.get_evidence(evidence_ref_id)
+        if evidence is None:
+            continue
+        artifact_ids.add(evidence.source_artifact_id)
+        if evidence.source_revision_id is not None:
+            revision_ids.add(evidence.source_revision_id)
     return (
         tuple(sorted(evidence_ids)),
         tuple(sorted(artifact_ids)),

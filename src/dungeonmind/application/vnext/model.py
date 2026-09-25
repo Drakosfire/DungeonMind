@@ -67,6 +67,7 @@ class ParsedKnowledgeRevision:
     evidence_supporters: FrozenDict[str, tuple[str, ...]]
 
     # Structural lookup indexes
+    aliases_by_entity: FrozenDict[str, tuple[str, ...]]
     alias_exact_index: FrozenDict[str, tuple[str, ...]]
     literal_exact_index: FrozenDict[tuple[str, str], tuple[str, ...]]
     lexical_candidate_index: FrozenDict[str, tuple[str, ...]]
@@ -131,6 +132,15 @@ class ParsedKnowledgeRevision:
 
     def get_alias(self, alias_id: str) -> ParsedIdentityAlias | None:
         return self.aliases_by_id.get(alias_id)
+
+    def get_entity_alias_ids(self, entity_id: str) -> tuple[str, ...]:
+        return self.aliases_by_entity.get(entity_id, ())
+
+    def get_entity_aliases(self, entity_id: str) -> tuple[ParsedIdentityAlias, ...]:
+        return tuple(
+            self.aliases_by_id[alias_id]
+            for alias_id in self.get_entity_alias_ids(entity_id)
+        )
 
     def get_evidence(self, evidence_ref_id: str) -> ParsedEvidenceRef | None:
         return self.evidence_by_id.get(evidence_ref_id)
