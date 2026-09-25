@@ -1,7 +1,7 @@
 # HANDOFF — V6.K1 authorized identity aliases in complete entity reads
 
 **Created:** 2026-09-24
-**Status:** ACTIVE — consumer-discovered Kernel prerequisite for DungeonBuddy V6.2
+**Status:** COMPLETE — `V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED`
 **Implementation repository:** `Drakosfire/DungeonMind`
 **DungeonMind base:** `6edb9e40d1dc930f537c66deb1afbd1b99002844` — merged PR #75
 **Consumer:** `Drakosfire/DungeonMindBuddy`
@@ -9,8 +9,10 @@
 **Frozen V0 aggregate:** `fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea`
 **Suggested branch:** `kernel/v6-k1-complete-entity-authorized-aliases`
 **Suggested PR title:** `KERNEL: authorize aliases in vNext complete-entity reads`
-**Blocked successor:** DungeonMindBuddy V6.2 — vNext complete-object read adaptation + DTO preservation
+**Next consumer step:** DungeonMindBuddy V6.2 — complete-object read adaptation + World-object DTO preservation
 **Acceptance token:** `V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED`
+**Substantive reviewed head:** `91d2ebaf8aadf512a26ac209cfe8f6414063e732` — PASS review `5321738653`
+**Merge:** PR #76, `f3738f3af3e3c8e204668a3d87d240a32c0d3988`
 
 ## 1. Mission
 
@@ -590,7 +592,7 @@ named successor
 
 ## 20. Acceptance and successor
 
-Only Steward review may record:
+Steward substantive review `5321738653` recorded and PR #76 merged:
 
 ```text
 V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED

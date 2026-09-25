@@ -746,16 +746,17 @@ def test_05_steward_records_v2_benchmark_structural_gate() -> None:
     assert bench["structural_gate"]["passes"] is True
 
 
-def test_06_steward_phase_v3_complete_v5_1_active() -> None:
+def test_06_steward_phase_records_completed_v5_and_v6_k1() -> None:
     text = STEWARD_PATH.read_text(encoding="utf-8")
     assert "V3 COMPLETE" in text
     assert "V4 COMPLETE" in text
     assert "V4.1 COMPLETE" in text
     assert "V4.2 COMPLETE" in text
     assert "V4.3 COMPLETE" in text
-    assert "V5 ACTIVE" in text
+    assert "V5 COMPLETE" in text
     assert "V5.1 COMPLETE" in text
     assert "V5.2 COMPLETE" in text
+    assert "V6.K1 COMPLETE — V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED" in text
 
 
 def test_07_frozen_v0_aggregate_remains_exact() -> None:

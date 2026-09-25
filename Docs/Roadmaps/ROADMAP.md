@@ -678,6 +678,15 @@ accepted head `c7700f98e62732cbd1c021270f5366a77c24ea9b`, final PASS
 
 V5 is complete. V6 consumer/domain implementation is active.
 
+### V6.K1 — authorized aliases in complete entity reads
+
+`V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED` is recorded for PR #76:
+substantive reviewed runtime head `91d2ebaf8aadf512a26ac209cfe8f6414063e732`,
+PASS review `5321738653`, merge `f3738f3af3e3c8e204668a3d87d240a32c0d3988`.
+The next active consumer step is DungeonMindBuddy V6.2 — complete-object read
+adaptation + World-object DTO preservation. V6.K1 does not authorize public
+alias search or a production route switch.
+
 ### Parallel contract capability — semantic-profile V3
 
 `dm_semantic_profile_v3` is accepted as
@@ -688,7 +697,7 @@ standalone V3 schema define scoped open predicate namespaces and allowed value
 kinds. V2 profiles and the frozen V0 contract bundle retain their meaning.
 An existing V2-pinned space cannot transition to V3 under this capability;
 that requires a separate accepted profile-transition design. This parallel
-record does not reorder or complete active V6.K1 → Buddy V6.2 work.
+record does not change completed V6.K1 or the next Buddy V6.2 step.
 
 V5.3 authority remains `Docs/Handoffs/HANDOFF-v5-3-durable-publication-replay-recovery.md`.
 
