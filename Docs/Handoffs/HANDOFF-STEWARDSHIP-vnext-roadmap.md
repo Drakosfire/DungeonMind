@@ -4,8 +4,8 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `a811afffa43dc4b5875003f6ab7023d66554e128` — merged PR #74; V5.4 implementation base
-**Last merged roadmap implementation:** PR #74 — `KERNEL: V5.3 durable publication replay and recovery`
+**Current main anchor:** `6edb9e40d1dc930f537c66deb1afbd1b99002844` — merged PR #75; V5.4 accepted
+**Last merged roadmap implementation:** PR #75 — `KERNEL: V5.4 prospective-reference identity allocation and substitution`
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
@@ -60,17 +60,17 @@ V4   Neighborhood + evidence + anchor + indexed search   COMPLETE
   V4.1 Bounded neighborhood                              COMPLETE
   V4.2 Evidence + anchor support                         COMPLETE
   V4.3 Deterministic indexed search                      COMPLETE
-V5   Generic governed write contracts                    ACTIVE
+V5   Generic governed write contracts                    COMPLETE
   V5.1 Generic governed materialization                  COMPLETE
   V5.2 Expected-parent atomic CAS publication            COMPLETE
   V5.3 Durable idempotent replay / recovery              COMPLETE
-  V5.4 Prospective-reference allocation + substitution   ACTIVE
-V6   DungeonBuddy domain implementation
+  V5.4 Prospective-reference allocation + substitution   COMPLETE
+V6   DungeonBuddy domain implementation                  ACTIVE
 V7   Bridge-genesis migration
 V8   Joint semantic + performance acceptance
 V9   Cutover
 V10  Remove old current/public paths; quarantine compatibility
-V11  Deeper storage optimization only if evidence still demands it
+V11  Post-cutover performance baseline + optimization handoff
 ```
 
 Current dispositions:
@@ -84,27 +84,25 @@ V4 COMPLETE
 V4.1 COMPLETE — V4_1_BOUNDED_NEIGHBORHOOD_ACCEPTED
 V4.2 COMPLETE — V4_2_EVIDENCE_SOURCE_ANCHORS_ACCEPTED
 V4.3 COMPLETE — V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
-V5 ACTIVE
+V5 COMPLETE
 V5.1 COMPLETE — V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED
 V5.2 COMPLETE — V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED
 V5.3 COMPLETE — V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED
-V5.4 ACTIVE — implementation not yet accepted
-V5.3 COMPLETE — V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED
-V5.4 ACTIVE — implementation not yet accepted
+V5.4 COMPLETE — V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED
 ```
 
 ### Current primary question
 
-**V5.4 — prospective-reference identity allocation + substitution**
+**V6.K1 — authorized identity aliases in complete entity reads**
 
-> Can DungeonMind accept one governed transaction containing create-new results referenced by dependent assertions before durable IDs exist, allocate those IDs under DungeonMind authority, substitute them into one canonical governed contribution, validate the complete resulting child, publish it through the V5.3 recoverable atomic publication path, and durably return the prospective/client-operation → durable-ID mapping without letting the caller predict, reserve, or reconcile durable identity?
+> Can an exact vNext complete-entity read return the selected entity's authorized identity aliases without scanning unrelated aliases or crossing the Kernel/consumer authority boundary?
 
-V5.3 owns durable publication replay and recovery. V5.4 may add the minimum prospective-reference primitive and atomic result mapping; it is not permission to add transport, WorldKeeper runtime code, identity reconciliation, or bridge/cutover work.
+V5 is complete. V6 consumer implementation is active; V6.K1 is the narrow Kernel prerequisite discovered by DungeonBuddy V6.2 design. It does not authorize alias search, Buddy DTO code, cutover, or performance optimization.
 
 Current implementation base:
 
 ```text
-a811afffa43dc4b5875003f6ab7023d66554e128
+6edb9e40d1dc930f537c66deb1afbd1b99002844
 ```
 
 ```text
@@ -161,7 +159,11 @@ V5.3:
   merge a811afffa43dc4b5875003f6ab7023d66554e128
 
 V5.4:
-  ACTIVE — implementation not yet accepted
+  COMPLETE — V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED
+  PR #75
+  accepted head c7700f98e62732cbd1c021270f5366a77c24ea9b
+  final PASS 5296514025
+  merge 6edb9e40d1dc930f537c66deb1afbd1b99002844
 ```
 
 Do not reinterpret PR #64 as V4.1 runtime acceptance. PR #69 is the accepted V5.1 runtime merge. The V5.2 design/implementation handoff lands in this PR's first bookkeeping commit.
@@ -757,12 +759,16 @@ V4.3 COMPLETE — V4_3_DETERMINISTIC_INDEXED_SEARCH_ACCEPTED
 V5 ACTIVE
 V5.1 COMPLETE — V5_1_GENERIC_GOVERNED_MATERIALIZATION_ACCEPTED
 V5.2 COMPLETE — V5_2_EXPECTED_PARENT_CAS_PUBLICATION_ACCEPTED
+V5.3 COMPLETE — V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED
+V5.4 COMPLETE — V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED
+V5 COMPLETE
+V6 ACTIVE
 ```
 
 ### Next primary question
 
 ```text
-Can DungeonMind allocate durable entity/assertion IDs for transaction-local prospective creates, substitute dependent references before canonical validation, publish the complete child through V5.3, and durably return the exact client-operation → durable-ID mapping?
+Can DungeonMind return Kernel-authorized aliases in exact complete-entity reads with entity-local work and generic evidence/source enforcement?
 ```
 
 ### Parallel work posture
@@ -773,7 +779,8 @@ safe / independent:
   contract-frozen Buddy/domain work that does not depend on V5.2 runtime
 
 active:
-  V5.4 prospective-reference allocation + substitution
+  V6 consumer/domain implementation
+  V6.K1 authorized aliases in complete entity reads
 
 blocked until later accepted predecessors:
   bridge-genesis migration
@@ -785,7 +792,7 @@ blocked until later accepted predecessors:
 
 - V5.2 expected-parent CAS publication is accepted at PR #71 merge `01762848cbdd666b092d4cb26af558ba1468fa4d`;
 - V5.3 receipt/replay/recovery is accepted at PR #74 merge `a811afffa43dc4b5875003f6ab7023d66554e128`;
-- V5.4 prospective-reference publication is active but not yet Steward-accepted;
+- V5.4 prospective-reference publication is accepted at PR #75 merge `6edb9e40d1dc930f537c66deb1afbd1b99002844`;
 - no public alias-discovery authority contract is accepted;
 - no bridge-genesis migration exists;
 - no current public World read cutover has occurred;
@@ -796,7 +803,7 @@ blocked until later accepted predecessors:
 
 ### Named next action
 
-Implement and review V5.4 on `kernel/v5-4-prospective-reference-allocation-substitution` from merged PR #74. Require deterministic Kernel allocation, complete substitution before V5.1 validation, atomic V5.3 receipt/result persistence, exact replay/recovery, PostgreSQL concurrency/rollback proof, and the canonical WorldKeeper unblock witness. Keep transport, WorldKeeper runtime code, identity reconciliation, and bridge/cutover work out of scope.
+Implement and review V6.K1 on `kernel/v6-k1-complete-entity-authorized-aliases` from merged PR #75. Require entity-local derived alias indexing, standing and generic evidence/source admission, alias-only support closure, digest/privacy non-interference, and no alias search or consumer code.
 
 ---
 
@@ -806,7 +813,7 @@ This handoff remains `ACTIVE` through the roadmap.
 
 It may be superseded only when either:
 
-1. V10/V11 completes and a new steady-state stewardship model is checked in; or
+1. V11 records `POST_CUTOVER_PERFORMANCE_BASELINE_ACCEPTED` and `VNEXT_ROADMAP_COMPLETE`, then activates a successor Steward handoff for `Docs/Roadmaps/ROADMAP-post-vnext-performance.md`; or
 2. the roadmap is deliberately replaced by a new canonical program with a successor Steward handoff.
 
 Landing this file does not complete stewardship.

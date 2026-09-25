@@ -1,8 +1,8 @@
 # DungeonMind — vNext Governed Knowledge Roadmap
 
 **Status:** current forward roadmap  
-**Updated:** 2026-09-18  
-**Roadmap anchor:** DungeonMind `main` after PR #68 (`bc115eb40f1601e5b6c6fda23ff05ee5bf06883d`)  
+**Updated:** 2026-09-24
+**Roadmap anchor:** DungeonMind `main` after PR #75 (`6edb9e40d1dc930f537c66deb1afbd1b99002844`)
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -223,7 +223,7 @@ V9   Cutover
  ↓
 V10  Remove old current/public paths; quarantine compatibility
  ↓
-V11  Deeper storage optimization only if evidence still demands it
+V11  Post-cutover performance baseline + optimization handoff
 ```
 
 The large-scale World-like / Rules-like benchmark expansion may proceed in parallel. It does not block V0.
@@ -659,7 +659,7 @@ merged PR #74: accepted head
 
 ### V5.4 — Prospective-reference allocation + substitution
 
-V5.4 is active and not yet accepted. It adds the minimum transaction-local
+V5.4 is complete and accepted. It adds the minimum transaction-local
 create-result primitive needed for DungeonMind-owned entity/assertion ID
 allocation, complete substitution before V5.1 validation, and an atomic
 client-operation → durable-ID result mapping committed with the V5.3 receipt.
@@ -671,6 +671,12 @@ a811afffa43dc4b5875003f6ab7023d66554e128
 ```
 
 Authority: `Docs/Handoffs/HANDOFF-v5-4-prospective-reference-allocation-substitution.md`
+
+Accepted as `V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED` on PR #75:
+accepted head `c7700f98e62732cbd1c021270f5366a77c24ea9b`, final PASS
+`5296514025`, merge `6edb9e40d1dc930f537c66deb1afbd1b99002844`.
+
+V5 is complete. V6 consumer/domain implementation is active.
 
 V5.3 authority remains `Docs/Handoffs/HANDOFF-v5-3-durable-publication-replay-recovery.md`.
 
@@ -875,11 +881,16 @@ Do not delete old database/migration history until a separate reconstructibility
 
 ---
 
-# V11 — Evidence-gated deeper storage optimization
+# V11 — Post-cutover performance baseline + optimization handoff
 
-**Primary question:** After lazy indexed reads and representation cleanup, is the physical immutable-snapshot storage model still the limiting cost?
+**Primary question:** What does the accepted post-cutover system cost at representative scale, and which measured bottleneck should the successor performance roadmap address first?
 
-Only enter this lane with measurements.
+V11 closes the finite vNext migration roadmap. It establishes the post-cutover
+semantic/performance baseline, records `POST_CUTOVER_PERFORMANCE_BASELINE_ACCEPTED`,
+hands optimization authority to `ROADMAP-post-vnext-performance.md`, and records
+`VNEXT_ROADMAP_COMPLETE`.
+
+Only enter physical-storage experiments through the successor roadmap and with measurements.
 
 Possible experiments:
 

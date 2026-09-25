@@ -1,7 +1,7 @@
 # HANDOFF — V5.4 prospective-reference identity allocation + substitution
 
 **Provenance:** MIND  
-**Status:** ACTIVE — PR #75 Review Cycle 1 repair; implementation not accepted
+**Status:** COMPLETE — `V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED`
 **Repository:** `Drakosfire/DungeonMind`  
 **Roadmap phase:** `V5.4`  
 **Suggested branch:** `kernel/v5-4-prospective-reference-allocation-substitution`  
@@ -15,6 +15,9 @@
 **V5.3 merge:** `a811afffa43dc4b5875003f6ab7023d66554e128`  
 **Current Alembic head:** `0009_vnext_publication_receipts`  
 **Frozen V0 aggregate:** `fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea`
+**Accepted implementation head:** `c7700f98e62732cbd1c021270f5366a77c24ea9b`
+**Final PASS review:** `5296514025`
+**Merge:** `6edb9e40d1dc930f537c66deb1afbd1b99002844`
 
 ## 1. Mission
 

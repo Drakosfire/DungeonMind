@@ -502,8 +502,10 @@ def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
     assert bundle["aggregate_sha256"] == FROZEN_V0_AGGREGATE
 
 
-def test_runtime_does_not_claim_v54_acceptance() -> None:
-    banned = "V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED"
+def test_v54_acceptance_is_recorded_only_in_control_plane() -> None:
+    accepted = "V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED"
     for path in (REPO_ROOT / "src").rglob("*.py"):
-        assert banned not in path.read_text(encoding="utf-8")
-    assert banned not in (REPO_ROOT / "Docs/Roadmaps/ROADMAP.md").read_text(encoding="utf-8")
+        assert accepted not in path.read_text(encoding="utf-8")
+    assert accepted in (REPO_ROOT / "Docs/Roadmaps/ROADMAP.md").read_text(
+        encoding="utf-8"
+    )

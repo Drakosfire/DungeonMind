@@ -467,6 +467,7 @@ def build_parsed_knowledge_revision_from_records(
     }
     assertion_evidence_builder: dict[str, tuple[str, ...]] = {}
     evidence_supporters_builder: dict[str, list[str]] = {evid: [] for evid in evidence_dict}
+    aliases_by_entity_builder: dict[str, list[str]] = {eid: [] for eid in entities_dict}
     alias_exact_builder: dict[str, set[str]] = {}
     literal_exact_builder: dict[tuple[str, str], list[str]] = {}
     lexical_candidate_builder: dict[str, set[str]] = {}
@@ -504,6 +505,7 @@ def build_parsed_knowledge_revision_from_records(
     # Index aliases
     for al_id in sorted(aliases_dict.keys()):
         al = aliases_dict[al_id]
+        aliases_by_entity_builder[al.entity_id].append(al_id)
         norm_alias = al.alias_text.strip().casefold()
         if norm_alias not in alias_exact_builder:
             alias_exact_builder[norm_alias] = set()
@@ -541,6 +543,12 @@ def build_parsed_knowledge_revision_from_records(
         {evid: tuple(sorted(aids)) for evid, aids in evidence_supporters_builder.items()}
     )
 
+    aliases_by_entity = FrozenDict(
+        {
+            entity_id: tuple(sorted(alias_ids))
+            for entity_id, alias_ids in aliases_by_entity_builder.items()
+        }
+    )
     alias_exact_index = FrozenDict(
         {norm_text: tuple(sorted(eids)) for norm_text, eids in alias_exact_builder.items()}
     )
@@ -583,6 +591,7 @@ def build_parsed_knowledge_revision_from_records(
         entity_adjacency=entity_adjacency,
         assertion_evidence=assertion_evidence,
         evidence_supporters=evidence_supporters,
+        aliases_by_entity=aliases_by_entity,
         alias_exact_index=alias_exact_index,
         literal_exact_index=literal_exact_index,
         lexical_candidate_index=lexical_candidate_index,

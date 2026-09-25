@@ -32,8 +32,10 @@ from dungeonmind.application.vnext.read_context import KnowledgeReadContext
 from dungeonmind.application.vnext.records import ParsedEntityRefValue
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.common import (
+    DomainMetadataEntry,
     EpistemicBasis,
     KnowledgeStanding,
+    LabelsAnyVisibility,
     PublicVisibility,
     ScopeBinding,
     ScopeSelector,
@@ -50,7 +52,7 @@ from dungeonmind.contracts.vnext.domain import (
     SemanticProfileDescriptorV2,
     SemanticProfilePredicate,
 )
-from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
+from dungeonmind.contracts.vnext.knowledge import IdentityAlias, KnowledgeRevision
 from dungeonmind.contracts.vnext.projection import FocusRef, ProjectionRequest
 from dungeonmind.contracts.vnext.source import EvidenceRefV3, SourceArtifactV3, SourceRevisionV2
 from dungeonmind.domain.canonical import canonical_sha256
@@ -114,6 +116,7 @@ def _lab_context(
     entities: list[Entity],
     assertions: list[Assertion],
     evidence: list[EvidenceRefV3],
+    aliases: list[IdentityAlias] | None = None,
     artifacts: dict[str, SourceArtifactV3] | None = None,
     revisions: dict[str, SourceRevisionV2] | None = None,
     request: ProjectionRequest | None = None,
@@ -169,6 +172,7 @@ def _lab_context(
         entities=entities,
         assertions=assertions,
         evidence=evidence,
+        aliases=aliases or [],
     )
     reader = InMemoryKnowledgeSourceReader(artifacts=artifacts, revisions=revisions)
     resolved_request = request or ProjectionRequest(
@@ -1829,3 +1833,290 @@ def test_92_no_v43_search_api_exported() -> None:
     assert "source_anchor" not in exported.lower()
     assert "anchor_search" not in exported.lower()
     assert "search(" not in exported.lower()
+
+
+# --- V6.K1 authorized aliases in complete entity reads ---
+
+
+def _alias_context(
+    *,
+    aliases: list[IdentityAlias],
+    artifacts: dict[str, SourceArtifactV3] | None = None,
+    revisions: dict[str, SourceRevisionV2] | None = None,
+    evidence: list[EvidenceRefV3] | None = None,
+    request: ProjectionRequest | None = None,
+    entities: list[Entity] | None = None,
+) -> tuple[KnowledgeReadContext, InMemoryKnowledgeSourceReader]:
+    return _lab_context(
+        entities=entities or [Entity(entity_id="entity:organization:ada-lab")],
+        assertions=[],
+        aliases=aliases,
+        evidence=evidence or [],
+        artifacts=artifacts or {},
+        revisions=revisions or {},
+        request=request,
+    )
+
+
+def _supported_alias_context(
+    *,
+    visibility: PublicVisibility | LabelsAnyVisibility | None = None,
+    status: str = "active",
+    alias_standing: KnowledgeStanding = KnowledgeStanding.ESTABLISHED,
+    request_standing: list[KnowledgeStanding] | None = None,
+    revision_artifact_id: str = "source:ada",
+    include_artifact: bool = True,
+    include_revision: bool = True,
+) -> tuple[KnowledgeReadContext, InMemoryKnowledgeSourceReader]:
+    artifact = SourceArtifactV3(
+        source_artifact_id="source:ada",
+        source_classification="test:directory",
+        current_revision_id="source-revision:ada",
+        authority="primary",
+        visibility=visibility or PublicVisibility(),
+        status=status,
+    )
+    revision = SourceRevisionV2(
+        source_revision_id="source-revision:ada",
+        source_artifact_id=revision_artifact_id,
+        content_sha256="a" * 64,
+        body_storage="inline",
+        created_at=datetime(2026, 9, 24, tzinfo=UTC),
+    )
+    evidence = EvidenceRefV3(
+        evidence_ref_id="evidence:ada",
+        source_artifact_id="source:ada",
+        source_revision_id="source-revision:ada",
+        evidence_role="support",
+        can_open_source=True,
+        can_highlight_span=False,
+    )
+    alias = IdentityAlias(
+        alias_id="alias:ada",
+        entity_id="entity:organization:ada-lab",
+        alias_text="Ada",
+        evidence_ref_ids=["evidence:ada"],
+        standing=alias_standing,
+    )
+    request = ProjectionRequest(
+        space_id="space:lab",
+        revision_id="rev:lab",
+        scope_selector=ScopeSelector(include_unscoped=True),
+        audience_labels=["test:audience"],
+        standing_selector=request_standing or [KnowledgeStanding.ESTABLISHED],
+    )
+    return _alias_context(
+        aliases=[alias],
+        evidence=[evidence],
+        artifacts={artifact.source_artifact_id: artifact} if include_artifact else {},
+        revisions={revision.source_revision_id: revision} if include_revision else {},
+        request=request,
+    )
+
+
+def test_v6_k1_alias_index_is_sorted_immutable_and_entity_local() -> None:
+    entities = [Entity(entity_id="entity:selected")]
+    entities.extend(Entity(entity_id=f"entity:decoy:{index:05d}") for index in range(10_000))
+    aliases = [
+        IdentityAlias(
+            alias_id="alias:selected:z",
+            entity_id="entity:selected",
+            alias_text="Selected Z",
+            standing=KnowledgeStanding.ESTABLISHED,
+        ),
+        IdentityAlias(
+            alias_id="alias:selected:a",
+            entity_id="entity:selected",
+            alias_text="Selected A",
+            standing=KnowledgeStanding.ESTABLISHED,
+        ),
+    ]
+    aliases.extend(
+        IdentityAlias(
+            alias_id=f"alias:decoy:{index:05d}",
+            entity_id=f"entity:decoy:{index:05d}",
+            alias_text=f"Decoy {index}",
+            standing=KnowledgeStanding.ESTABLISHED,
+        )
+        for index in range(10_000)
+    )
+    context, _reader = _alias_context(aliases=aliases, entities=entities)
+    assert context.parsed.get_entity_alias_ids("entity:selected") == (
+        "alias:selected:a",
+        "alias:selected:z",
+    )
+    with pytest.raises(TypeError):
+        context.parsed.aliases_by_entity["entity:selected"] = ()  # type: ignore[index]
+
+    result = _SVC.get_complete_entity(context, "entity:selected")
+    assert [item.alias_id for item in result.aliases] == [
+        "alias:selected:a",
+        "alias:selected:z",
+    ]
+    assert result.work.alias_candidates == 2
+    assert result.work.aliases_returned == 2
+    assert result.work.alias_evidence_ids_consulted == 0
+
+
+def test_v6_k1_evidence_backed_alias_returns_alias_only_support() -> None:
+    context, _reader = _supported_alias_context()
+    result = _SVC.get_complete_entity(context, "entity:organization:ada-lab")
+    assert [item.alias_id for item in result.aliases] == ["alias:ada"]
+    assert [item.evidence_ref_id for item in result.evidence] == ["evidence:ada"]
+    assert [item.source_artifact_id for item in result.source_artifacts] == ["source:ada"]
+    assert [item.source_revision_id for item in result.source_revisions] == [
+        "source-revision:ada"
+    ]
+    assert result.work.alias_candidates == 1
+    assert result.work.alias_evidence_ids_consulted == 1
+    assert result.work.provenance_snapshot_calls == 2
+
+
+@pytest.mark.parametrize(
+    ("context_factory", "expected_aliases"),
+    [
+        (
+            lambda: _supported_alias_context(
+                visibility=LabelsAnyVisibility(labels=["test:hidden"])
+            )[0],
+            0,
+        ),
+        (lambda: _supported_alias_context(status="superseded")[0], 0),
+        (lambda: _supported_alias_context(include_artifact=False)[0], 0),
+        (lambda: _supported_alias_context(include_revision=False)[0], 0),
+        (
+            lambda: _supported_alias_context(revision_artifact_id="source:other")[0],
+            0,
+        ),
+        (
+            lambda: _supported_alias_context(
+                alias_standing=KnowledgeStanding.PROVISIONAL
+            )[0],
+            0,
+        ),
+        (
+            lambda: _supported_alias_context(
+                alias_standing=KnowledgeStanding.PROVISIONAL,
+                request_standing=[
+                    KnowledgeStanding.ESTABLISHED,
+                    KnowledgeStanding.PROVISIONAL,
+                ],
+            )[0],
+            1,
+        ),
+    ],
+)
+def test_v6_k1_alias_admission_fails_closed(
+    context_factory: Any,
+    expected_aliases: int,
+) -> None:
+    result = _SVC.get_complete_entity(
+        context_factory(), "entity:organization:ada-lab"
+    )
+    assert len(result.aliases) == expected_aliases
+
+
+def test_v6_k1_evidence_less_alias_returns_without_alias_source_work() -> None:
+    context, _reader = _alias_context(
+        aliases=[
+            IdentityAlias(
+                alias_id="alias:org-directory-name",
+                entity_id="entity:organization:ada-lab",
+                alias_text="Ada Research Laboratory",
+                standing=KnowledgeStanding.ESTABLISHED,
+            )
+        ]
+    )
+    result = _SVC.get_complete_entity(context, "entity:organization:ada-lab")
+    assert [item.alias_text for item in result.aliases] == ["Ada Research Laboratory"]
+    assert result.evidence == ()
+    assert result.work.alias_evidence_ids_consulted == 0
+    assert result.work.artifact_ids_requested == 0
+    assert result.work.revision_ids_requested == 0
+
+
+def test_v6_k1_hidden_alias_does_not_perturb_visible_digest() -> None:
+    hidden_context, _reader = _supported_alias_context(
+        visibility=LabelsAnyVisibility(labels=["test:hidden"])
+    )
+    no_alias_context, _reader = _alias_context(aliases=[])
+    hidden = _SVC.get_complete_entity(
+        hidden_context, "entity:organization:ada-lab"
+    )
+    absent = _SVC.get_complete_entity(
+        no_alias_context, "entity:organization:ada-lab"
+    )
+    assert hidden.aliases == absent.aliases == ()
+    assert hidden.evidence == absent.evidence == ()
+    assert hidden.result_digest == absent.result_digest
+
+
+def test_v6_k1_visible_alias_content_and_standing_bind_digest() -> None:
+    established, _reader = _supported_alias_context()
+    provisional, _reader = _supported_alias_context(
+        alias_standing=KnowledgeStanding.PROVISIONAL,
+        request_standing=[KnowledgeStanding.ESTABLISHED, KnowledgeStanding.PROVISIONAL],
+    )
+    established_result = _SVC.get_complete_entity(
+        established, "entity:organization:ada-lab"
+    )
+    provisional_result = _SVC.get_complete_entity(
+        provisional, "entity:organization:ada-lab"
+    )
+    assert established_result.result_digest != provisional_result.result_digest
+
+
+@pytest.mark.parametrize("metadata_owner", ["evidence", "artifact"])
+def test_v6_k1_alias_support_requires_declared_annotation_schema(
+    metadata_owner: str,
+) -> None:
+    metadata = [DomainMetadataEntry(schema="test:undeclared", payload={})]
+    artifact = SourceArtifactV3(
+        source_artifact_id="source:ada",
+        source_classification="test:directory",
+        current_revision_id="source-revision:ada",
+        authority="primary",
+        visibility=PublicVisibility(),
+        status="active",
+        domain_metadata=metadata if metadata_owner == "artifact" else [],
+    )
+    revision = SourceRevisionV2(
+        source_revision_id="source-revision:ada",
+        source_artifact_id="source:ada",
+        content_sha256="a" * 64,
+        body_storage="inline",
+        created_at=datetime(2026, 9, 24, tzinfo=UTC),
+    )
+    evidence = EvidenceRefV3(
+        evidence_ref_id="evidence:ada",
+        source_artifact_id="source:ada",
+        source_revision_id="source-revision:ada",
+        evidence_role="support",
+        can_open_source=True,
+        can_highlight_span=False,
+        domain_metadata=metadata if metadata_owner == "evidence" else [],
+    )
+    context, _reader = _alias_context(
+        aliases=[
+            IdentityAlias(
+                alias_id="alias:ada",
+                entity_id="entity:organization:ada-lab",
+                alias_text="Ada",
+                evidence_ref_ids=["evidence:ada"],
+                standing=KnowledgeStanding.ESTABLISHED,
+            )
+        ],
+        evidence=[evidence],
+        artifacts={"source:ada": artifact},
+        revisions={"source-revision:ada": revision},
+    )
+    result = _SVC.get_complete_entity(context, "entity:organization:ada-lab")
+    assert result.aliases == ()
+    assert result.evidence == ()
+
+
+def test_v6_k1_basic_entity_read_does_not_expose_aliases() -> None:
+    context, _reader = _supported_alias_context()
+    result = _SVC.get_entity(context, "entity:organization:ada-lab")
+    assert not hasattr(result, "aliases")
+    assert result.work.alias_candidates == 0
