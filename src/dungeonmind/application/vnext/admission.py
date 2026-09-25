@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from dungeonmind.contracts.vnext.common import KnowledgeStanding
-from dungeonmind.contracts.vnext.domain import DomainContractDescriptor, SemanticProfileDescriptorV2
+from dungeonmind.contracts.vnext.domain import (
+    DomainContractDescriptor,
+    SemanticProfileDescriptorV2,
+    SemanticProfileDescriptorV3,
+)
 from dungeonmind.contracts.vnext.projection import ProjectionRequest
 from dungeonmind.contracts.vnext.source import SourceArtifactV3
 from dungeonmind.domain.canonical import canonical_sha256
@@ -283,11 +287,23 @@ def semantic_profile_passes(
     *,
     semantic_profile: SemanticProfileDescriptorV2,
 ) -> str | None:
-    if not semantic_profile.predicates:
+    if (
+        not isinstance(semantic_profile, SemanticProfileDescriptorV3)
+        and not semantic_profile.predicates
+    ):
         return None
     predicate_map = {item.term: item for item in semantic_profile.predicates}
     spec = predicate_map.get(assertion.predicate)
     if spec is None:
+        if isinstance(semantic_profile, SemanticProfileDescriptorV3):
+            namespace = assertion.predicate.split(":", 1)[0]
+            for rule in semantic_profile.open_predicate_namespaces:
+                if namespace == rule.namespace:
+                    return (
+                        None
+                        if assertion.value.kind in rule.allowed_value_kinds
+                        else "semantic_profile"
+                    )
         return "semantic_profile"
     value_kind = assertion.value.kind
     if value_kind not in spec.allowed_value_kinds:

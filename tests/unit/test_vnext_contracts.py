@@ -297,6 +297,78 @@ def test_semantic_profile_predicate_value_kinds() -> None:
         )
 
 
+def test_v3_open_predicate_namespace_is_explicit_and_type_constrained() -> None:
+    from dungeonmind.contracts.vnext.domain import (
+        OpenPredicateNamespace,
+        SemanticProfileDescriptorV3,
+        parse_semantic_profile_descriptor,
+    )
+
+    profile = SemanticProfileDescriptorV3(
+        profile_id="organization.memory",
+        profile_revision="2",
+        term_namespaces=["organization", "organization.custom"],
+        predicates=[
+            SemanticProfilePredicate(term="organization:title", allowed_value_kinds=["literal"])
+        ],
+        open_predicate_namespaces=[
+            OpenPredicateNamespace(
+                namespace="organization.custom", allowed_value_kinds=["entity_ref"]
+            )
+        ],
+    )
+    assert parse_semantic_profile_descriptor(profile.model_dump(mode="json")) == profile
+    assert profile.schema_version == "dm_semantic_profile_v3"
+
+    with pytest.raises(ValidationError):
+        SemanticProfileDescriptorV3(
+            profile_id="organization.memory",
+            profile_revision="2",
+            term_namespaces=["organization"],
+            open_predicate_namespaces=[
+                OpenPredicateNamespace(
+                    namespace="organization.custom", allowed_value_kinds=["entity_ref"]
+                )
+            ],
+        )
+    with pytest.raises(ValidationError):
+        SemanticProfileDescriptorV3(
+            profile_id="organization.memory",
+            profile_revision="2",
+            term_namespaces=["organization.custom"],
+            open_predicate_namespaces=[
+                OpenPredicateNamespace(
+                    namespace="organization.custom", allowed_value_kinds=["entity_ref"]
+                ),
+                OpenPredicateNamespace(
+                    namespace="organization.custom", allowed_value_kinds=["entity_ref"]
+                ),
+            ],
+        )
+    with pytest.raises(ValidationError):
+        SemanticProfileDescriptorV3(
+            profile_id="organization.memory",
+            profile_revision="2",
+            term_namespaces=["organization.custom"],
+            predicates=[
+                SemanticProfilePredicate(
+                    term="organization.custom:reserved", allowed_value_kinds=["literal"]
+                )
+            ],
+            open_predicate_namespaces=[
+                OpenPredicateNamespace(
+                    namespace="organization.custom", allowed_value_kinds=["entity_ref"]
+                )
+            ],
+        )
+
+
+def test_v3_semantic_profile_schema_is_checked_in() -> None:
+    from scripts.generate_semantic_profile_v3_schema import main as schema_main
+
+    assert schema_main([]) == 0
+
+
 def test_source_and_evidence_are_domain_generic() -> None:
     artifact = SourceArtifactV3(
         source_artifact_id="src:doc",
