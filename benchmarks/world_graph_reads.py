@@ -65,6 +65,8 @@ from dungeonmind.contracts.projection_v2 import ScopeModeV2, WorldGraphProjectio
 from dungeonmind.contracts.vocabulary import Visibility
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.infrastructure.memory import (
+    InMemoryContributionRepository,
+    InMemoryReviewedWorldInitializationRepository,
     InMemorySourceRepository,
     InMemoryWorldGraphRepository,
 )
@@ -388,6 +390,11 @@ def build_environment(*, size: int, seed: int) -> BenchEnvironment:
         sources=sources,
         graph_reader=VersionedUnionGraphSnapshotReader(
             profile_registry=StaticSemanticProfileRegistry([descriptor])
+        ),
+        reviewed_world_initializations=InMemoryReviewedWorldInitializationRepository(
+            world_graph,
+            sources,
+            InMemoryContributionRepository(),
         ),
     )
     retrieval = WorldGraphRetrievalService(projection=projection, sources=sources)
