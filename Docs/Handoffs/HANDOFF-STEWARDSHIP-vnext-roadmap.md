@@ -153,8 +153,9 @@ already provides the required generic evidence/anchor APIs; the remaining work
 is a Buddy-owned acceptance proof, not an identified Kernel runtime prerequisite.
 
 Design authority: Buddy
-`Docs/Plans/HANDOFF-v6-5-native-evidence-anchor-preservation.md`, at its pinned
-design ref. MIND must accept this checkpoint correction and coordinate Buddy
+`Docs/Plans/HANDOFF-v6-5-native-evidence-anchor-preservation.md`, pinned at
+Buddy design commit `1c43888fc29c4d2e8e9354f103f1cdcb6b1b10d3`. MIND must
+accept this checkpoint correction and coordinate Buddy
 sequencing with DEMO before activation. V7 remains undispatched until the full
 V6 preservation receipt is independently accepted. Native source-anchor identity
 and revalidation are the V4.2 contract; source-body UI hydration remains a later

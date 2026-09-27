@@ -791,6 +791,7 @@ evidence lookup and source-anchor creation/revalidation under its actual domain
 context, including role/scope exclusion and fresh-source drift. DungeonMind
 V4.2 already supplies the APIs. Buddy's proposed
 `Docs/Plans/HANDOFF-v6-5-native-evidence-anchor-preservation.md` is proof-only
+at Buddy design commit `1c43888fc29c4d2e8e9354f103f1cdcb6b1b10d3`
 and BLOCKED pending owner activation; runtime defects, if found, return to
 their owning repository. It must consolidate the entire V6 list above and audit
 that native execution does not depend on legacy TTRPG semantics. Historical
