@@ -1,8 +1,8 @@
 # DungeonMind — vNext Governed Knowledge Roadmap
 
 **Status:** current forward roadmap  
-**Updated:** 2026-09-25
-**Roadmap anchor:** DungeonMind `main` after PR #77 (`a9051f02dfd95e051a83c1d74b26bb04a2b3e5bf`)
+**Updated:** 2026-09-27
+**Roadmap anchor:** DungeonMind `main` after PR #79 (`4d11686d679029ae4ef0902a13edc0509c0ce476`)
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -683,9 +683,11 @@ V5 is complete. V6 consumer/domain implementation is active.
 `V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED` is recorded for PR #76:
 substantive reviewed runtime head `91d2ebaf8aadf512a26ac209cfe8f6414063e732`,
 PASS review `5321738653`, merge `f3738f3af3e3c8e204668a3d87d240a32c0d3988`.
-The next active consumer step is DungeonMindBuddy V6.2 — complete-object read
-adaptation + World-object DTO preservation. V6.K1 does not authorize public
-alias search or a production route switch.
+Buddy V6.1 / #749 and V6.2 / #767 are now complete, as are PLAY-1 / #773 and
+PLAY-2 / #779. Their exact accepted refs and scope are recorded in the current
+stewardship handoff §2. The remaining named V6 proof is Buddy native
+evidence/anchor preservation; its V6.5 handoff is a BLOCKED design. V6.K1 does
+not authorize public alias search or a production route switch.
 
 ### Parallel contract capability — semantic-profile V3
 
@@ -697,7 +699,10 @@ standalone V3 schema define scoped open predicate namespaces and allowed value
 kinds. V2 profiles and the frozen V0 contract bundle retain their meaning.
 An existing V2-pinned space cannot transition to V3 under this capability;
 that requires a separate accepted profile-transition design. This parallel
-record does not change completed V6.K1 or the next Buddy V6.2 step.
+record does not authorize migration or cutover. PR #78 finalized its authority
+and regression tests at merge `54a419f99057d96e0c4e7620d8bd8ccc6816fb62`.
+PR #79 established the current governance anchor and benchmark import guard;
+neither merge is an additional V6 runtime capability.
 
 V5.3 authority remains `Docs/Handoffs/HANDOFF-v5-3-durable-publication-replay-recovery.md`.
 
@@ -765,6 +770,37 @@ complete object/evidence/anchors
 ```
 
 The generic Kernel must contain no `GM`, `PLAYER`, `campaign_id`, `NPC`, or fictional-time implementation dependency after this boundary is complete.
+
+### Current V6 acceptance checkpoint — 2026-09-27
+
+- V6.0.1 / Buddy #747 corrected the domain evidence/source metadata contract.
+- V6.1 / Buddy #749 merged `7a63c8b39937776ddede24d3d76001ef59fd37c4`:
+  real Buddy context preserves world/campaign/cross-campaign admission,
+  GM/player authorization labels and non-authoritative session focus.
+- V6.2 / Buddy #767 merged `f30b4c906bb179b25f00207c40cb38c0debdc264`:
+  native complete-object DTO, temporal and evidence metadata preservation.
+- PLAY-1 / Buddy #773 merged `7fe771e86df2e796484b058aa2e6a8e7c94c9fb9`:
+  in-memory governed Buddy/WorldKeeper consumer composition.
+- PLAY-2 / Buddy #779 merged `2ccc96ff2a7d76328578609d5289fd3babcf6442`:
+  isolated PostgreSQL composition accepted by PRIME review `5331441470` on
+  head `2d5ab6ade1d89ec608c941093819ea36404fd18e`. This proves persistent
+  publication/replay/concurrency, not production routing or source admission.
+
+**V6 exit remains unaccepted.** The missing Buddy preservation witness is native
+evidence lookup and source-anchor creation/revalidation under its actual domain
+context, including role/scope exclusion and fresh-source drift. DungeonMind
+V4.2 already supplies the APIs. Buddy's proposed
+`Docs/Plans/HANDOFF-v6-5-native-evidence-anchor-preservation.md` is proof-only
+and BLOCKED pending owner activation; runtime defects, if found, return to
+their owning repository. It must consolidate the entire V6 list above and audit
+that native execution does not depend on legacy TTRPG semantics. Historical
+compatibility readers remain governed by the existing V1/V10 obligations.
+
+The DEMO first-World endpoint preparation repair is independently Buddy-owned
+at handoff commit `6e5bd19c68a0b8bbe2657f2d0e60c9f3df95fba2`; it is not a
+Kernel prerequisite. V7 is not dispatched by the PLAY-2 merge or this status
+correction. Source-body UI hydration and production switching remain later
+consumer/cutover obligations.
 
 ---
 
