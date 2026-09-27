@@ -28,8 +28,9 @@ def test_v3_parallel_authority_is_accepted_and_does_not_claim_transition() -> No
         assert MERGE in authority
     assert "**no** accepted V2→V3 profile-transition" in steward
     assert "cannot transition to V3 under this capability" in roadmap
-    assert "**DungeonMindBuddy V6.2 — complete-object read adaptation" in steward
-    assert "next active consumer step is DungeonMindBuddy V6.2" in roadmap
+    assert "**Buddy V6.5 — native evidence/anchor preservation" in steward
+    assert "V6 exit remains unaccepted" in roadmap
+    assert "V7 is not dispatched" in roadmap
 
 
 def test_v6_k1_is_complete_without_changing_v3_parallel_boundary() -> None:
