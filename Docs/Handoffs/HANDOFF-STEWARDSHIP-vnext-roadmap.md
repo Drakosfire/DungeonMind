@@ -4,9 +4,12 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `a9051f02dfd95e051a83c1d74b26bb04a2b3e5bf` — merged PR #77; semantic-profile V3 parallel capability
+**Current main anchor:** `4d11686d679029ae4ef0902a13edc0509c0ce476` — merged PR #79
 **Last merged roadmap implementation:** PR #76 — `KERNEL: authorize aliases in vNext complete-entity reads`
 **Last merged parallel contract capability:** PR #77 — versioned semantic-profile V3 open predicate namespaces
+**Authority finalization:** PR #78 — `54a419f99057d96e0c4e7620d8bd8ccc6816fb62`; V3 documents and regression tests, no new consumer runtime requirement
+**Governance anchor:** PR #79 — shared agent operating law and benchmark import guard; no additional V6 semantic capability
+**Consumer checkpoint:** Buddy V6.1, V6.2, PLAY-1 and PLAY-2 merged; V6 evidence/anchor preservation acceptance remains open
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
@@ -91,6 +94,11 @@ V5.3 COMPLETE — V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED
 V5.4 COMPLETE — V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED
 V6.K1 COMPLETE — V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED
 PARALLEL SEMANTIC-PROFILE V3 — SEMANTIC_PROFILE_V3_OPEN_PREDICATE_NAMESPACES_ACCEPTED
+Buddy V6.1 COMPLETE — V6_1_DUNGEONBUDDY_DOMAIN_RUNTIME_ACCEPTED
+Buddy V6.2 COMPLETE — V6_2_VNEXT_COMPLETE_OBJECT_DTO_PRESERVATION_ACCEPTED
+Buddy PLAY-1 COMPLETE — in-memory governed consumer composition
+Buddy PLAY-2 COMPLETE — isolated PostgreSQL composition accepted at #779
+V6 EXIT NOT YET ACCEPTED — Buddy native evidence/anchor preservation witness remains
 ```
 
 The parallel V3 profile capability is accepted at PR #77: substantive reviewed
@@ -99,12 +107,63 @@ head `0f709d76fdc53bac9c9258d1751463ae2c76ca71`, merge
 V3 schema govern it. V2 semantics and the frozen V0 bundle are unchanged.
 Existing V2-pinned spaces have **no** accepted V2→V3 profile-transition
 capability; publication continues to inherit the exact parent profile ref.
-This parallel acceptance does not change completed V6.K1 or the next Buddy
-V6.2 step, and does not authorize migration, consumer mapping, or cutover.
+PR #78 finalized that authority at reviewed head
+`19cf798d9b8ed9c63eb41d585b5e6ad46d99f5a0`, merge
+`54a419f99057d96e0c4e7620d8bd8ccc6816fb62`. It did not itself authorize
+migration or cutover. Buddy subsequently accepted the consumer work below.
+
+Cross-repository accepted facts (re-anchored 2026-09-27):
+
+- Buddy V6.0.1 / #747 corrected evidence metadata ownership, merge
+  `99b8d431d6558f4d6028c736d41ebaa97af84ca5`; DomainContract revision 2.
+- Buddy V6.1 / #749: head `9e2abbae42acc847b214460644caef2448637495`,
+  review `5312320001`, merge `7a63c8b39937776ddede24d3d76001ef59fd37c4`.
+  This proves domain mapping, admission, role labels and focus behavior.
+- Buddy V6.2 / #767: head `69fedb9918c602a92af32d74453a2b00ed2b73da`,
+  review `5324647959`, merge `f30b4c906bb179b25f00207c40cb38c0debdc264`.
+  This proves dormant complete-object DTO and evidence metadata adaptation.
+- Buddy PLAY-1 / #773: head `5a1736c55988e4b852bbcc2f0ada36d493fa5668`,
+  review `5327172769`, merge `7fe771e86df2e796484b058aa2e6a8e7c94c9fb9`.
+  This is in-memory Buddy/WorldKeeper governed consumer mapping.
+- Buddy PLAY-2 / #779: head `2d5ab6ade1d89ec608c941093819ea36404fd18e`,
+  PRIME Cycle 2 review `5331441470`, merge
+  `2ccc96ff2a7d76328578609d5289fd3babcf6442`. Four PostgreSQL witnesses
+  passed with zero skips; 54 PLAY-1/V6.2 regressions passed in independent
+  review. Persistent composition, replay, exact child, concurrency and integrity
+  are accepted; production routing/source admission are not claimed.
+- WorldKeeper WK-5 / #7 merged `8a5efb96b69dc9ca136288ecc80f67c1ed027bd1`;
+  V3 compatibility / #8 merged `a0a70db275cf6c5f3876fe7b4d2a557de12388f5`.
+  Current main is `662a028fb1882719c4c3e192134a1a6b7a58026c`.
+- Buddy at #779 retains DungeonMind `0f709d76fdc53bac9c9258d1751463ae2c76ca71`
+  and WorldKeeper `49a8620f066ce7ef8972a699020c012f50af9158`. The latter
+  composition uses the explicit V3 custom-predicate profile; it does not migrate
+  a V2-pinned World or supersede V6.1's base profile.
 
 ### Current next step
 
-**DungeonMindBuddy V6.2 — complete-object read adaptation + World-object DTO preservation.**
+**Buddy V6.5 — native evidence/anchor preservation and V6 exit receipt; BLOCKED design pending owner activation.**
+
+The V6 preservation list includes complete object/evidence/anchors. V6.1 and
+V6.2 cover scope, role, focus, fictional-time and complete-object/evidence
+metadata. No accepted Buddy witness yet exercises native
+`EvidenceReadService.get_assertion_evidence`, `get_evidence` and
+`resolve_source_anchor` through Buddy's actual domain context. PLAY-2 expressly
+does not prove source admission or source-content persistence. DungeonMind V4.2
+already provides the required generic evidence/anchor APIs; the remaining work
+is a Buddy-owned acceptance proof, not an identified Kernel runtime prerequisite.
+
+Design authority: Buddy
+`Docs/Plans/HANDOFF-v6-5-native-evidence-anchor-preservation.md`, pinned at
+Buddy design commit `1c43888fc29c4d2e8e9354f103f1cdcb6b1b10d3`. MIND must
+accept this checkpoint correction and coordinate Buddy
+sequencing with DEMO before activation. V7 remains undispatched until the full
+V6 preservation receipt is independently accepted. Native source-anchor identity
+and revalidation are the V4.2 contract; source-body UI hydration remains a later
+consumer/cutover concern, not an added V6 browser requirement.
+
+The first-World endpoint preparation defect observed by DEMO is separately
+Buddy-owned under design commit `6e5bd19c68a0b8bbe2657f2d0e60c9f3df95fba2`.
+It requires no Kernel vocabulary widening or API change and is not this V6 gate.
 
 V6.K1's Kernel prerequisite is complete: PR #76 merged at
 `f3738f3af3e3c8e204668a3d87d240a32c0d3988`, after substantive PASS
@@ -778,12 +837,15 @@ V5.4 COMPLETE — V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED
 V5 COMPLETE
 V6.K1 COMPLETE — V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED
 V6 ACTIVE
+Buddy V6.1 / V6.2 / PLAY-1 / PLAY-2 COMPLETE at the accepted refs in §2
+V6.5 evidence/anchor preservation acceptance NOT YET PROVEN
+V7 NOT DISPATCHED
 ```
 
 ### Next primary question
 
 ```text
-Can DungeonMindBuddy V6.2 adapt the accepted exact complete-entity read into its complete World-object DTO without inventing alias or provenance authority?
+Can Buddy's accepted domain context preserve native evidence/anchor identity, visibility, scope and fresh-source revalidation, closing the final named V6 proof without production cutover?
 ```
 
 ### Parallel work posture
@@ -795,7 +857,10 @@ safe / independent:
 
 active:
   V6 consumer/domain implementation
-  DungeonMindBuddy V6.2 complete-object read adaptation + World-object DTO preservation
+
+designed / blocked:
+  Buddy V6.5 native evidence/anchor preservation acceptance
+  activation requires current-state reconciliation and Buddy steward scheduling
 
 blocked until later accepted predecessors:
   bridge-genesis migration
@@ -812,15 +877,18 @@ blocked until later accepted predecessors:
 - no bridge-genesis migration exists;
 - no current public World read cutover has occurred;
 - no historical-reader quarantine/deletion is authorized;
-- no DungeonBuddy runtime repin/cutover has occurred;
+- Buddy has accepted runtime pins and dormant vNext adapters; no production vNext cutover has occurred;
+- V6 native evidence/anchor preservation has no accepted Buddy receipt yet;
 - larger 50k/100k characterization remains incomplete;
 - deeper storage optimization is not authorized.
 
 ### Named next action
 
-Return the accepted V6.K1 complete-entity alias contract to DungeonMindBuddy
-V6.2 for complete-object read adaptation and World-object DTO preservation.
-Keep alias search, V2→V3 profile transition, and production cutover separate.
+Accept/reconcile this two-document current-state correction, settle Buddy's
+PLAY-2 status with its owner, then activate the bounded Buddy V6.5 proof at a
+fresh exact base after a lease/scheduling check. Its outcome returns to MIND for
+the V6 exit judgment. Only then design V7's first bridge-genesis slice. Keep
+alias search, V2→V3 profile transition and production cutover separate.
 
 ---
 
