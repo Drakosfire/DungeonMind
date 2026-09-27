@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 
-from dungeonmind.domain.canonical import canonical_sha256
+from dungeonmind.domain.canonical import canonical_json, canonical_sha256
 
 from .entity_reads import (
     EntityReadCompleteness,
@@ -20,8 +20,8 @@ from .read_context import KnowledgeReadContext
 from .records import ParsedAssertion, ParsedEvidenceRef
 from .source_anchors import (
     SourceAnchor,
+    _SourceAuthorizationIdentity,
     build_source_anchor,
-    compute_anchor_identity_digest,
     decode_anchor_token,
     evidence_location_payload,
     visible_source_payload,
@@ -243,14 +243,19 @@ def _source_support_for_evidence(
     *,
     evidence: Sequence[ParsedEvidenceRef],
     snapshot: KnowledgeProvenanceSnapshot | None,
-) -> tuple[tuple[EntityReadSourceArtifact, ...], tuple[EntityReadSourceRevision, ...]]:
+) -> tuple[
+    tuple[EntityReadSourceArtifact, ...],
+    tuple[EntityReadSourceRevision, ...],
+    tuple[_SourceAuthorizationIdentity, ...],
+]:
     if snapshot is None:
-        return (), ()
+        return (), (), ()
     artifact_ids = [record.source_artifact_id for record in evidence]
     revision_ids = [
         record.source_revision_id for record in evidence if record.source_revision_id is not None
     ]
     artifacts: list[EntityReadSourceArtifact] = []
+    authorizations: list[_SourceAuthorizationIdentity] = []
     for artifact_id in sorted(set(artifact_ids)):
         artifact = snapshot.get_artifact(artifact_id)
         if artifact is None:
@@ -262,6 +267,14 @@ def _source_support_for_evidence(
                 current_revision_id=artifact.current_revision_id,
                 source_classification=artifact.source_classification,
                 authority=artifact.authority,
+            )
+        )
+        authorizations.append(
+            _SourceAuthorizationIdentity(
+                source_artifact_id=artifact.source_artifact_id,
+                visibility_json=canonical_json(
+                    artifact.visibility.model_dump(mode="json")
+                ),
             )
         )
     revisions: list[EntityReadSourceRevision] = []
@@ -276,7 +289,7 @@ def _source_support_for_evidence(
                 content_sha256=revision.content_sha256,
             )
         )
-    return tuple(artifacts), tuple(revisions)
+    return tuple(artifacts), tuple(revisions), tuple(authorizations)
 
 
 def _complete() -> EntityReadCompleteness:
@@ -384,7 +397,7 @@ class EvidenceReadService:
                 )
             evidence_records.append(record)
         evidence_tuple = tuple(sorted(evidence_records, key=lambda item: item.evidence_ref_id))
-        artifacts, revisions = _source_support_for_evidence(
+        artifacts, revisions, authorizations = _source_support_for_evidence(
             evidence=evidence_tuple, snapshot=snapshot
         )
         anchors = tuple(
@@ -393,6 +406,7 @@ class EvidenceReadService:
                 evidence=item,
                 source_artifacts=artifacts,
                 source_revisions=revisions,
+                source_authorizations=authorizations,
                 admitted_supporter_assertion_ids=(requested,),
             )
             for item in evidence_tuple
@@ -492,13 +506,16 @@ class EvidenceReadService:
                     f"admitted supporter missing from parsed revision: {assertion_id}"
                 )
             supporters.append(assertion)
-        artifacts, revisions = _source_support_for_evidence(evidence=(record,), snapshot=snapshot)
+        artifacts, revisions, authorizations = _source_support_for_evidence(
+            evidence=(record,), snapshot=snapshot
+        )
         anchors = (
             build_source_anchor(
                 context=context,
                 evidence=record,
                 source_artifacts=artifacts,
                 source_revisions=revisions,
+                source_authorizations=authorizations,
                 admitted_supporter_assertion_ids=admitted_ids,
             ),
         )
@@ -540,22 +557,16 @@ class EvidenceReadService:
         if parsed_token is None:
             _record_trace(_empty_trace())
             return self._unresolved_anchor(identity=identity, requested=requested)
-        evidence_ref_id, identity_digest = parsed_token
+        evidence_ref_id, _identity_digest = parsed_token
         lookup = self.get_evidence(context, evidence_ref_id)
         trace = _captured_trace()
         _record_trace(_with_anchors(trace, constructed=trace.anchors_constructed, revalidated=1))
         if not lookup.available or lookup.evidence is None or not lookup.anchors:
             return self._unresolved_anchor(identity=identity, requested=requested)
-        current_digest = compute_anchor_identity_digest(
-            context=context,
-            evidence=lookup.evidence,
-            source_artifacts=lookup.source_artifacts,
-            source_revisions=lookup.source_revisions,
-        )
-        if current_digest != identity_digest:
+        current_anchor = lookup.anchors[0]
+        if current_anchor.anchor_id != requested:
             return self._unresolved_anchor(identity=identity, requested=requested)
         completeness = _complete()
-        current_anchor = lookup.anchors[0]
         return SourceAnchorResolution(
             identity=identity,
             requested_anchor_id=requested,
