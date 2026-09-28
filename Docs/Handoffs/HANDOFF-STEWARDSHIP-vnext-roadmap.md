@@ -4,13 +4,13 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `3ebdefaf1303089f21d3c94f2759df2d9274a71f` — PR #84 settlement; V6 preservation and native genesis authority reconciled
-**Last merged native prerequisite:** PR #83 — head `decf694fc7304c30e82eae77a30247066c0f954a`, PRIME Cycle 2 PASS `5333897671`
+**Current main anchor:** `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc` — PR #85; atomic native text-source/evidence admission accepted
+**Last merged native prerequisite:** PR #85 — head `0803faf9f84b44148291c68c8dd115f73c68d464`, PRIME Cycle 2 PASS `5334796956`, merge `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`
 **Last merged roadmap prerequisite repair:** PR #81 — private source-visibility binding in native anchor identity
 **Last merged parallel contract capability:** PR #77 — versioned semantic-profile V3 open predicate namespaces
 **Authority finalization:** PR #78 — `54a419f99057d96e0c4e7620d8bd8ccc6816fb62`; V3 documents and regression tests, no new consumer runtime requirement
 **Governance anchor:** PR #79 — shared agent operating law and benchmark import guard; no additional V6 semantic capability
-**Consumer checkpoint:** Buddy V6.5 / #780 merged; V6 preservation accepted; empty native initialization library accepted; DEMO adoption pending, V7 undispatched
+**Consumer checkpoint:** Buddy V6.5 / #780 merged; V6 preservation, empty native initialization and native text-source/evidence admission accepted; DEMO product adoption pending, V7 undispatched
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
@@ -870,14 +870,14 @@ V6 COMPLETE — V6_DUNGEONBUDDY_PRESERVATION_ACCEPTED
 Buddy V6.1 / V6.2 / PLAY-1 / PLAY-2 COMPLETE at the accepted refs in §2
 Buddy V6.5 / #780 COMPLETE — 98 passed, zero skips, PRIME Cycle 2 PASS
 NATIVE empty new-space genesis COMPLETE — PR #83 accepted; DEMO adoption pending
-NATIVE text-source/evidence admission — implementation PR in progress; exact-head PRIME review pending
+NATIVE text-source/evidence admission COMPLETE — PR #85 accepted; see §2 and its durable report
 V7 NOT DISPATCHED
 ```
 
 ### Next primary question
 
 ```text
-Can the approved V1 native text-source/evidence design be implemented as one atomic, replayable DungeonMind capability and proved through the exact pinned WorldKeeper prepare/commit boundary without claiming source freshness or product acceptance?
+What is the smallest DEMO-owned product journey that consumes accepted native source/evidence admission through Keeper and proves a real ordinary graph journey, while separately identifying whether source freshness across prepare/commit is required before J3?
 ```
 
 ### Parallel work posture
@@ -888,10 +888,9 @@ safe / independent:
   contract-frozen Buddy/domain work that does not depend on V5.2 runtime
 
 active:
-  DungeonMind NATIVE text-source/evidence V1 implementation on
-  codex/native-source-evidence-admission; implementation proof complete,
-  exact-head PRIME review pending; no acceptance or merge yet
-  DEMO coordinates adoption/verification of accepted empty-native initialization
+  no DungeonMind runtime implementation lease
+  DEMO coordinates adoption of accepted empty-native initialization and
+  native source/evidence admission into its real product workflow
 
 designed / blocked:
   mutable source lifecycle and freshness binding across Keeper prepare/commit
@@ -914,22 +913,21 @@ blocked until later accepted predecessors:
 - no historical-reader quarantine/deletion is authorized;
 - Buddy has accepted runtime pins and dormant vNext adapters; no production vNext cutover has occurred;
 - public empty native initialization is accepted at PR #83; DEMO product adoption is unproved;
-- the V1 native source/evidence implementation is not accepted until PRIME exact-head review and authorized merge; no mutable source lifecycle or prepare/commit freshness proof exists;
+- native V1 source/evidence admission is accepted at PR #85; no mutable source lifecycle or source-freshness binding across Keeper prepare/commit exists;
 - World-only durable Plan semantics and ordinary native Agent citations remain product gaps;
 - larger 50k/100k characterization remains incomplete;
 - deeper storage optimization is not authorized.
 
 ### Named next action
 
-Obtain PRIME's exact-head review for the active DungeonMind native
-text-source/evidence admission implementation PR; repair any bounded review
-findings within its lease and do not call V1 accepted before PRIME PASS and
-authorized merge. Then return the accepted API, migration, replay/access limits,
-and Keeper witness facts to MIND/PRIME and coordinate consumer verification with
-DEMO. DEMO owns true World-only Plan and product routing. Keep V7 undispatched,
-with bridge-genesis obligations intact for existing Worlds. Mutable source
-lifecycle, prepare/commit freshness, alias search, profile transition and
-production cutover stay separate.
+PR #85 is accepted and its API, migration, replay/access limits and exact Keeper
+witness are recorded in its handoff/report. Coordinate the smallest real DEMO
+consumer journey with the owning product lane; ask ARCHITECTURE/PRIME to resolve
+whether a separately designed source-freshness binding is necessary before that
+journey or only before J3. DEMO owns true World-only Plan and product routing.
+Keep V7 undispatched, with bridge-genesis obligations intact for existing
+Worlds. Mutable source lifecycle, source-fresh governed-write safety, alias
+search, profile transition and production cutover stay separate.
 
 ---
 

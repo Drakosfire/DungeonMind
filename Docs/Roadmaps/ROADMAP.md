@@ -2,7 +2,7 @@
 
 **Status:** current forward roadmap  
 **Updated:** 2026-09-28
-**Roadmap anchor:** DungeonMind `main` after PR #84 settlement (`3ebdefaf1303089f21d3c94f2759df2d9274a71f`); V6 preservation and native genesis authority reconciled
+**Roadmap anchor:** DungeonMind `main` after PR #85 (`7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`); native text-source/evidence admission accepted
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -10,14 +10,17 @@ This document replaces the earlier L.1–L.6 forward lanes as the canonical exec
 
 ## Current active slice
 
-DungeonMind's approved NATIVE V1 text-source/evidence admission implementation
-is in progress on `codex/native-source-evidence-admission`. Its implementation
-proof is complete locally, including exact pinned WorldKeeper PostgreSQL
-consumer proof; the PR and independent PRIME exact-head review are pending.
-This slice is not accepted until PRIME PASS and authorized merge. It does not
-prove source lifecycle, freshness across Keeper prepare/commit, Buddy saved-file
-authenticity, DEMO adoption, J3 or V7 readiness. Keep existing bridge-genesis,
-cutover and product obligations unchanged.
+DungeonMind NATIVE V1 text-source/evidence admission is accepted at PR #85:
+reviewed head `0803faf9f84b44148291c68c8dd115f73c68d464`, PRIME Cycle 2 PASS
+`5334796956`, merge anchor `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`. Core,
+integration (including the exact pinned WorldKeeper consumer), and benchmark
+smoke are green. The merge proves atomic admission, replay/recovery and
+context-bound preview for this immutable V1 slice. It does not prove source
+lifecycle, source freshness across Keeper prepare/commit, Buddy saved-file
+authenticity, DEMO adoption, J3 or V7 readiness. The next handoff must resolve
+the smallest DEMO-owned product consumer journey and whether source freshness
+is a prerequisite for that journey or only for J3. Existing bridge-genesis,
+cutover and product obligations remain unchanged.
 
 Historical cutover, critique, K0/K1 planning, and R.1/R.2/R.3 records remain valuable evidence and are not rewritten. The current production implementation is still the World Graph architecture; this roadmap describes the deliberate breaking transition to vNext.
 

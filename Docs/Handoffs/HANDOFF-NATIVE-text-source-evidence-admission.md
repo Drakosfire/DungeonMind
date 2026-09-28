@@ -2,7 +2,7 @@
 
 **Created:** 2026-09-27
 
-**Status:** IMPLEMENTATION PR OPEN — exact-head PRIME review pending; not accepted
+**Status:** COMPLETE — `NATIVE_TEXT_SOURCE_EVIDENCE_ADMISSION_ACCEPTED`
 
 **Owner:** DungeonMind; ARCHITECTURE designs, MIND stewards implementation, PRIME controls acceptance/merge
 
@@ -21,6 +21,8 @@
 **PRIME disposition:** DESIGN PASS, 2026-09-28; recorded from PRIME's explicit review of the approved checkpoint and its exact base above. No separate GitHub design review ID or design PR was required.
 
 **Implementation activation:** one bounded DungeonMind implementation PR is authorized from the activated branch `codex/native-source-evidence-admission`, based on this approved checkpoint and current `main` `3ebdefaf1303089f21d3c94f2759df2d9274a71f`. No runtime code was present when this activation was recorded.
+
+**Acceptance:** PR #85 merged at `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`; reviewed head `0803faf9f84b44148291c68c8dd115f73c68d464`; PRIME Cycle 2 PASS `5334796956`; exact-head CI run `36386951061` passed core, integration (including the pinned WorldKeeper consumer witness), and benchmark smoke.
 
 **Execution authorization:** PRIME authorizes only the V1 source/evidence admission and context-bound admitted-source preview capability specified here, including its machine-readable contract, ADR and owning-boundary proofs. This does not authorize source lifecycle, source-fresh governed writes, Keeper changes, Buddy changes, DEMO adoption or J3 activation.
 
@@ -298,8 +300,9 @@ persistent `54330`/`54331` DEMO pair.
 
 Implementation evidence and exact commands/results are recorded in
 [`REPORT-NATIVE-text-source-evidence-admission.md`](../Reports/REPORT-NATIVE-text-source-evidence-admission.md).
-PRIME's exact-head review is still required; implementation proof is not
-acceptance, and no future merge identity is pre-recorded here.
+The report and this handoff record acceptance only for this bounded V1
+capability. Source freshness across Keeper prepare/commit, source lifecycle,
+Buddy saved-document authenticity, DEMO adoption, J3 and V7 remain open.
 
 ## §7 Merge-blocking proof at the owning boundaries
 
