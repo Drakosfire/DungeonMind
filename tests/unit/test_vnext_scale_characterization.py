@@ -15,21 +15,36 @@ def _valid_document() -> dict:
     for shape in SHAPES:
         for size in SIZES:
             for operation in BASE_OPERATIONS:
-                matrix.append(
-                    {
+                matrix.append({
                         "shape": shape,
                         "size": size,
                         "operation": operation,
                         "adapter": "memory",
+                        "api_family": (
+                            "native_vnext"
+                            if operation == "tiny_delta_publication"
+                            else "classic_v6_world_graph"
+                        ),
                         "disposition": "measured",
                         "input_sha256": "a" * 64,
                         "result_sha256": "b" * 64,
                         "samples_seconds": [0.001],
-                    }
-                )
+                        "median_seconds": 0.001,
+                        "peak_tracemalloc_bytes": 1,
+                    })
+                matrix.append({
+                    "shape": shape,
+                    "size": size,
+                    "operation": operation,
+                    "adapter": "postgresql",
+                    "api_family": "inactive_postgresql",
+                    "disposition": "not_measured",
+                    "reason": "No PostgreSQL target authorized by PR #91 activation.",
+                })
     return {
         "schema": "dungeonmind.vnext-scale-characterization.v1",
         "matrix": matrix,
+        "acceptance_status": "ACCEPTED",
         "postgresql": {
             "activated": False,
             "disposition": "not_measured",
@@ -90,6 +105,21 @@ def test_validator_rejects_malformed_digest_and_silent_disposition() -> None:
     doc["matrix"][0]["result_sha256"] = "not-a-digest"
     with pytest.raises(ValueError, match="malformed result_sha256"):
         validate(doc)
+
+
+def test_validator_rejects_missing_postgresql_cells_and_invalid_samples() -> None:
+    doc = _valid_document()
+    doc["matrix"] = [row for row in doc["matrix"] if row["adapter"] != "postgresql"]
+    with pytest.raises(ValueError, match="missing matrix cells"):
+        validate(doc)
+    doc = _valid_document()
+    doc["matrix"][0]["samples_seconds"] = [-1]
+    with pytest.raises(ValueError, match="finite nonnegative"):
+        validate(doc)
+    doc = _valid_document()
+    doc["acceptance_status"] = "MAYBE"
+    with pytest.raises(ValueError, match="unknown acceptance status"):
+        validate(doc)
     doc = _valid_document()
     doc["matrix"][0]["disposition"] = "not_measured"
     with pytest.raises(ValueError, match="must state reason"):
@@ -100,10 +130,14 @@ def test_validator_requires_accepted_large_scale_core_operations() -> None:
     doc = _valid_document()
     for row in doc["matrix"]:
         if (
-            row["shape"] == "world_like"
-            and row["size"] == 100_000
-            and row["operation"] in REQUIRED_CORE
+                row["shape"] == "world_like"
+                and row["size"] == 100_000
+                and row["adapter"] == "memory"
+                and row["operation"] in REQUIRED_CORE
         ):
             row["disposition"] = "resource_limited"
             row["reason"] = "Recorded bounded resource result."
     validate(doc)
+    doc["matrix"][0]["samples_seconds"] = [-1]
+    with pytest.raises(ValueError, match="finite nonnegative"):
+        validate(doc)

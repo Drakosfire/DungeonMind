@@ -6,7 +6,7 @@
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
 **Current main anchor:** `ccd06cb119c834a3d7950d5109b85c7b6a683430` — PR #92 post-#91 state-sync merge; #91 remains the active bounded memory-only characterization authority; V7 implementation remains blocked
 **Last merged activation:** PR #91 — head `d7758b8910fa156d2d9afaa2462485839d0de49a`, PRIME PASS `5340325390`, merge `37d8afefd0580a68b0d66f54876d9776d554d8bc`; six-path memory-only lease; PostgreSQL not authorized
-**Last merged control-plane re-anchor:** PR #92 — head `74282dbc2d06c60ae3f7713a9ca48206fe27d689`, PRIME Cycle 2 PASS `5340374159`, merge `ccd06cb119c834a3d7950d5109b85c7b6a683430`
+**Last merged control-plane re-anchor:** PR #92 — head `74282dbc2d06c60ae3f7713a9ca48206fe27d689`, PRIME Cycle 2 PASS `5340390691`, merge `ccd06cb119c834a3d7950d5109b85c7b6a683430`
 **Last merged parallel characterization handoff:** PR #89 — head `93c2e0e50544189c4298e70a52c663c825439a88`, PRIME Cycle 2 PASS `5340172526`, merge `16022e37757f6c6c61458c6c90ef94857cab93f7`; design only, no implementation/DB authority
 **Last merged native prerequisite:** PR #85 — head `0803faf9f84b44148291c68c8dd115f73c68d464`, PRIME Cycle 2 PASS `5334796956`, merge `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`
 **Last merged roadmap prerequisite repair:** PR #81 — private source-visibility binding in native anchor identity
@@ -925,8 +925,8 @@ blocked until later accepted predecessors:
 - PR #87 merged a V7 design checkpoint only; no owner-approved legacy mapping/freeze/export exists and no V7 implementation or migration is authorized;
 - World-only durable Plan semantics and ordinary native Agent citations remain product gaps;
 - PR #89 accepts the design handoff and PR #91 activates only the exact six-path/runtime/workload/resource memory-only lease; PostgreSQL remains unauthorized;
-- an unmerged characterization candidate reports 72 in-memory cells measured across both shapes at 100/1k/10k; it is `INCOMPLETE_REBRIEF_REQUIRED`, unreviewed, and not accepted;
-- 50k/100k were not attempted because no enforceable 8-GiB peak-RSS limit is available; PostgreSQL remains unauthorized; V8/V11 acceptance is false;
+- PRIME authorized PR #93 for partial disposition `PARTIAL_MEMORY_BASELINE_THROUGH_10K`; final exact-head review remains pending;
+- 72 memory cells across both shapes at 100/1k/10k are measured; 50k/100k are explicitly deferred under that bounded waiver, not accepted; PostgreSQL remains unauthorized; V8/V11 acceptance is false;
 - larger 50k/100k characterization remains incomplete;
 - deeper storage optimization is not authorized.
 

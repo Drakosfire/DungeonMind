@@ -425,6 +425,7 @@ def run(sizes: tuple[int, ...], output: Path, repeats: int) -> dict[str, Any]:
                             "size": size,
                             "operation": operation,
                             "adapter": "memory",
+                            "api_family": "classic_v6_world_graph",
                             "disposition": "not_measured",
                             "reason": (
                                 "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; "
@@ -454,6 +455,7 @@ def run(sizes: tuple[int, ...], output: Path, repeats: int) -> dict[str, Any]:
                                     "size": remaining_size,
                                     "operation": operation,
                                     "adapter": "memory",
+                                    "api_family": "classic_v6_world_graph",
                                     "disposition": "resource_limited",
                                     "reason": (
                                         "Fixture setup raised MemoryError under enforced "
@@ -480,6 +482,11 @@ def run(sizes: tuple[int, ...], output: Path, repeats: int) -> dict[str, Any]:
                     "size": size,
                     "operation": operation,
                     "adapter": "memory",
+                    "api_family": (
+                        "native_vnext"
+                        if operation == "tiny_delta_publication"
+                        else "classic_v6_world_graph"
+                    ),
                     "input_sha256": env["input_sha256"],
                     "fixture_counts": env["fixture_counts"],
                     "result_contract": f"DungeonMind current public API: {operation}",
@@ -538,17 +545,14 @@ def run(sizes: tuple[int, ...], output: Path, repeats: int) -> dict[str, Any]:
                         "size": size,
                         "operation": operation,
                         "adapter": "postgresql",
+                        "api_family": "inactive_postgresql",
                         "disposition": "not_measured",
                         "reason": "No PostgreSQL target authorized by PR #91 activation.",
                     }
                 )
     document = {
         "schema": "dungeonmind.vnext-scale-characterization.v1",
-        "acceptance_status": (
-            "MEASUREMENTS_COMPLETE_AWAITING_PRIME_REVIEW"
-            if set(sizes) == set(SIZES)
-            else "INCOMPLETE_REBRIEF_REQUIRED"
-        ),
+        "acceptance_status": "PARTIAL_MEMORY_BASELINE_THROUGH_10K_PENDING_PRIME_REVIEW",
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "main_anchor": MAIN_ANCHOR,
         "runtime_anchor": RUNTIME_ANCHOR,
@@ -595,7 +599,7 @@ def run(sizes: tuple[int, ...], output: Path, repeats: int) -> dict[str, Any]:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
     report = [
-        "# vNext scale characterization — memory-only baseline",
+        "# vNext scale characterization — partial memory baseline through 10k",
         "",
         f"Main anchor: `{MAIN_ANCHOR}`",
         "",
@@ -604,8 +608,12 @@ def run(sizes: tuple[int, ...], output: Path, repeats: int) -> dict[str, Any]:
         f"Measurement checkout: `{document['measured_checkout_head']}`",
         "",
         (
-            "This report records synthetic World-like and Rules-like stress shapes through "
-            "current supported DungeonMind APIs. Rules-like is a workload shape only; it "
+            "This report records synthetic World-like and Rules-like stress shapes. "
+            "Eleven measured "
+            "operations use the classic V6 World Graph projection/retrieval API family; only "
+            "tiny-delta publication uses native vNext. These classic timings are not claims about "
+            "native-vNext entity/evidence/search performance. Rules-like is a workload shape "
+            "only; it "
             "does not assert Rules domain semantics. No production/user data, PostgreSQL "
             "target, provider, or external service was used."
         ),
@@ -627,10 +635,10 @@ def run(sizes: tuple[int, ...], output: Path, repeats: int) -> dict[str, Any]:
         "## Measurement matrix",
         "",
         (
-            "| Shape | Size | Operation | Adapter | Disposition | Median seconds | "
+            "| Shape | Size | Operation | API family | Adapter | Disposition | Median seconds | "
             "Peak traced bytes | Result digest | Reason |"
         ),
-        "|---|---:|---|---|---|---:|---:|---|---|",
+        "|---|---:|---|---|---|---|---:|---:|---|---|",
     ]
     for row in rows:
         samples = row.get("samples_seconds", [])
@@ -640,7 +648,8 @@ def run(sizes: tuple[int, ...], output: Path, repeats: int) -> dict[str, Any]:
         reason = row.get("reason", "").replace("|", "\\|")
         report.append(
             f"| {row['shape']} | {row['size']} | {row['operation']} | "
-            f"{row['adapter']} | {row['disposition']} | {median} | {peak} | "
+            f"{row.get('api_family', 'classic_v6_world_graph')} | {row['adapter']} | "
+            f"{row['disposition']} | {median} | {peak} | "
             f"{digest} | {reason} |"
         )
     report.extend(
@@ -664,9 +673,9 @@ def run(sizes: tuple[int, ...], output: Path, repeats: int) -> dict[str, Any]:
             ),
             "",
             (
-                f"Acceptance state: **{document['acceptance_status']}**. Any omitted 50k/100k "
-                "attempt remains a Steward rebrief/waiver gate and is not presented as accepted "
-                "coverage."
+                f"Acceptance state: **{document['acceptance_status']}**. PRIME authorized this "
+                "partial baseline through 10k; 50k/100k attempts are deferred and not accepted. "
+                "This does not accept the full characterization, V8, or V11."
             ),
             "",
             (
