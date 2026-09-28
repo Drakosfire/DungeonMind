@@ -1,19 +1,24 @@
 # HANDOFF — NATIVE: initialize one empty native KnowledgeSpace
 
 **Created:** 2026-09-27
-**Status:** DESIGNED / BLOCKED — MIND design adoption, V6 state sync and fresh activation required
+**Status:** ACTIVE — bounded DungeonMind implementation lease
 **Owner/repository:** DungeonMind; MIND is designing steward, PRIME controls merge
 **Consumer:** Buddy DEMO-J3 fresh-World doorway; no consumer implementation authorized here
 **Design base:** DungeonMind `b83baf82c381b1929c2c7989326d667200ff544c`
+**Accepted design/control-plane merge:** PR #82, reviewed head `280427c74e9773a2c7a4c9ca05055be6d53a7934`, PRIME Cycle 2 PASS `5333657469`, merge `107483f1c4593df8e5599b033fdf2b72a46f3f51`
+**Implementation base:** `107483f1c4593df8e5599b033fdf2b72a46f3f51`
+**Active branch:** `codex/native-empty-genesis`
 **Buddy checkpoint:** `11d7b5801b51f664e7a6eeafcb2aa2b0f5922b71`
 **Accepted WorldKeeper consumer pin:** `49a8620f066ce7ef8972a699020c012f50af9158`
 **PR topology after activation:** serial — one assigned DungeonMind initialization PR
 **Suggested branch/title:** `codex/native-empty-knowledge-space-genesis` / `NATIVE: initialize an empty native KnowledgeSpace`
 **Phase placement:** post-V6 native-new-space prerequisite supporting DEMO-J3, not V7 migration
 
-This pinned design is not an ACTIVE write lease. It authorizes neither runtime
-implementation nor another PR. The author inspected accepted code/contracts and
-review evidence; no new runtime witness has been executed or claimed.
+PR #82 accepted this design and the V6 state sync. MIND re-anchored the runtime
+lane on its exact merge, confirmed no open colliding DungeonMind implementation
+PR, and activated one serial owner-correct lease. PostgreSQL proof is confined
+to the repository's disposable migrated integration fixture/CI service; DEMO's
+persistent database pair and consumer repositories remain outside the lease.
 
 ## 1. Decision and accepted capability inventory
 

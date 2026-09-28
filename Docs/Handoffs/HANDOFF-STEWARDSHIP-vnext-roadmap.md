@@ -4,12 +4,12 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `b83baf82c381b1929c2c7989326d667200ff544c` — merged PR #81; proposed post-V6 control-plane sync
+**Current main anchor:** `107483f1c4593df8e5599b033fdf2b72a46f3f51` — merged PR #82; empty-native-genesis design accepted
 **Last merged roadmap prerequisite repair:** PR #81 — private source-visibility binding in native anchor identity
 **Last merged parallel contract capability:** PR #77 — versioned semantic-profile V3 open predicate namespaces
 **Authority finalization:** PR #78 — `54a419f99057d96e0c4e7620d8bd8ccc6816fb62`; V3 documents and regression tests, no new consumer runtime requirement
 **Governance anchor:** PR #79 — shared agent operating law and benchmark import guard; no additional V6 semantic capability
-**Consumer checkpoint:** Buddy V6.5 / #780 merged; V6 preservation accepted; fresh-native DEMO initialization design BLOCKED, V7 undispatched
+**Consumer checkpoint:** Buddy V6.5 / #780 merged; V6 preservation accepted; fresh-native DEMO initialization ACTIVE, V7 undispatched
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
@@ -70,7 +70,7 @@ V5   Generic governed write contracts                    COMPLETE
   V5.3 Durable idempotent replay / recovery              COMPLETE
   V5.4 Prospective-reference allocation + substitution   COMPLETE
 V6   DungeonBuddy domain implementation                  COMPLETE
-NATIVE Empty new-space genesis prerequisite               DESIGNED / BLOCKED
+NATIVE Empty new-space genesis prerequisite               ACTIVE
 V7   Bridge-genesis migration
 V8   Joint semantic + performance acceptance
 V9   Cutover
@@ -101,7 +101,7 @@ Buddy PLAY-1 COMPLETE — in-memory governed consumer composition
 Buddy PLAY-2 COMPLETE — isolated PostgreSQL composition accepted at #779
 Buddy V6.5 COMPLETE — native evidence/anchor preservation accepted at #780
 V6 COMPLETE — V6_DUNGEONBUDDY_PRESERVATION_ACCEPTED
-NATIVE EMPTY GENESIS DESIGNED / BLOCKED — owner adoption/sync/activation required
+NATIVE EMPTY GENESIS ACTIVE — serial DungeonMind implementation lane
 V7 NOT DISPATCHED
 ```
 
@@ -162,8 +162,7 @@ Buddy now pins DungeonMind to #81 merge and retains WorldKeeper
 `49a8620f066ce7ef8972a699020c012f50af9158`. PLAY-2 remains pinned historical
 composition evidence, not ordinary production routing or source ingestion proof.
 
-**Proposed next DungeonMind capability: empty native KnowledgeSpace genesis;
-DESIGNED / BLOCKED pending MIND adoption, state sync and fresh activation.**
+**Active DungeonMind capability: empty native KnowledgeSpace genesis.**
 Authority: `Docs/Handoffs/HANDOFF-NATIVE-empty-knowledge-space-genesis.md` in this
 pinned design branch. This is a post-V6 native-new-space prerequisite for
 DEMO-J3, not V7 migration. Container allocation, explicit domain/profile identity
@@ -863,7 +862,7 @@ V6.K1 COMPLETE — V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED
 V6 COMPLETE — V6_DUNGEONBUDDY_PRESERVATION_ACCEPTED
 Buddy V6.1 / V6.2 / PLAY-1 / PLAY-2 COMPLETE at the accepted refs in §2
 Buddy V6.5 / #780 COMPLETE — 98 passed, zero skips, PRIME Cycle 2 PASS
-NATIVE empty new-space genesis DESIGNED / BLOCKED
+NATIVE empty new-space genesis ACTIVE
 V7 NOT DISPATCHED
 ```
 
@@ -881,11 +880,11 @@ safe / independent:
   contract-frozen Buddy/domain work that does not depend on V5.2 runtime
 
 active:
-  no new implementation lease granted by this state-sync proposal
+  DungeonMind empty native KnowledgeSpace genesis
+  branch codex/native-empty-genesis; base 107483f1c4593df8e5599b033fdf2b72a46f3f51
 
 designed / blocked:
-  DungeonMind empty native KnowledgeSpace genesis
-  activation requires owner adoption, V6 state sync and fresh lease/runtime check
+  authentic native source/evidence admission successor (not dispatched)
 
 blocked until later accepted predecessors:
   bridge-genesis migration

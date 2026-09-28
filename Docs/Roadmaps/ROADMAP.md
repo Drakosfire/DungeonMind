@@ -812,15 +812,15 @@ at handoff commit `6e5bd19c68a0b8bbe2657f2d0e60c9f3df95fba2`; it is not a
 Kernel prerequisite. V7 is not dispatched by V6 acceptance or this status sync.
 Source-body UI hydration and production switching remain later obligations.
 
-### Selected fresh-native DEMO prerequisite — designed, not dispatched
+### Selected fresh-native DEMO prerequisite — active
 
 DEMO's selected first-customer path starts a **new** empty World, not migration
 of the earlier Of Conks history. The proposed next DungeonMind slice is
 [`HANDOFF-NATIVE-empty-knowledge-space-genesis.md`](../Handoffs/HANDOFF-NATIVE-empty-knowledge-space-genesis.md):
 one public empty-native-genesis operation over accepted CAS/receipt mechanics.
-It is a post-V6 native-new-space prerequisite supporting DEMO-J3, **DESIGNED /
-BLOCKED** pending MIND adoption, complete predecessor sync and fresh activation.
-It is not an ACTIVE lease or V7 dispatch.
+PR #82 accepted the design and completed predecessor sync at merge
+`107483f1c4593df8e5599b033fdf2b72a46f3f51`. It is now one serial, bounded
+DungeonMind implementation lease supporting DEMO-J3. It is not V7 dispatch.
 
 Buddy container creation allocates a product identity/source directory, not
 native authority/domain/profile identity. Repository `publish_revision` permits
