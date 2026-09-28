@@ -4,7 +4,8 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `5984dc353e7f638ad03e8d2be670757d8d7bbfcf` — PR #87; V7 design checkpoint merged, implementation remains blocked
+**Current main anchor:** `16022e37757f6c6c61458c6c90ef94857cab93f7` — PR #89; refreshed parallel-scale design handoff accepted, implementation not activated; V7 implementation remains blocked
+**Last merged parallel characterization handoff:** PR #89 — head `93c2e0e50544189c4298e70a52c663c825439a88`, PRIME Cycle 2 PASS `5340172526`, merge `16022e37757f6c6c61458c6c90ef94857cab93f7`; design only, no implementation/DB authority
 **Last merged native prerequisite:** PR #85 — head `0803faf9f84b44148291c68c8dd115f73c68d464`, PRIME Cycle 2 PASS `5334796956`, merge `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`
 **Last merged roadmap prerequisite repair:** PR #81 — private source-visibility binding in native anchor identity
 **Last merged parallel contract capability:** PR #77 — versioned semantic-profile V3 open predicate namespaces
@@ -885,7 +886,8 @@ Does DEMO's ordinary fresh-World journey require a human review/mutation interva
 
 ```text
 safe / independent:
-  larger-scale benchmark characterization
+  larger-scale benchmark characterization under accepted PR #89 design;
+  implementation remains inactive until exact-path/runtime/resource/DB activation
   contract-frozen Buddy/domain work that does not depend on V5.2 runtime
 
 active:
@@ -919,6 +921,7 @@ blocked until later accepted predecessors:
 - Buddy PR #785 remains an open draft with implementation PASS but MERGE HOLD pending the authorized live generation/navigation/reload witness; it is a separate J4 statblock-draft slice;
 - PR #87 merged a V7 design checkpoint only; no owner-approved legacy mapping/freeze/export exists and no V7 implementation or migration is authorized;
 - World-only durable Plan semantics and ordinary native Agent citations remain product gaps;
+- PR #89 accepts only a parallel-characterization design handoff; the measurement lane has no implementation lease or DB authority until an exact Steward activation record exists;
 - larger 50k/100k characterization remains incomplete;
 - deeper storage optimization is not authorized.
 
