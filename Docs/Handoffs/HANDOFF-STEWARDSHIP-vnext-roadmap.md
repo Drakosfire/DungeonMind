@@ -4,7 +4,8 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `a6b1f190ae289e5a13d1f1747cf8affc9f978610` — PR #90; PR #89 scale-characterization design accepted, memory-only activation proposed in #91 but inactive; V7 implementation remains blocked
+**Current main anchor:** `37d8afefd0580a68b0d66f54876d9776d554d8bc` — PR #91; bounded memory-only characterization activation accepted; implementation may proceed only within the recorded lease; V7 implementation remains blocked
+**Last merged activation:** PR #91 — head `d7758b8910fa156d2d9afaa2462485839d0de49a`, PRIME PASS `5340325390`, merge `37d8afefd0580a68b0d66f54876d9776d554d8bc`; six-path memory-only lease; PostgreSQL not authorized
 **Last merged control-plane re-anchor:** PR #90 — head `9c53151513f20d140cbea0416ae0d5c97edbcd51`, PRIME PASS `5340234500`, merge `a6b1f190ae289e5a13d1f1747cf8affc9f978610`
 **Last merged parallel characterization handoff:** PR #89 — head `93c2e0e50544189c4298e70a52c663c825439a88`, PRIME Cycle 2 PASS `5340172526`, merge `16022e37757f6c6c61458c6c90ef94857cab93f7`; design only, no implementation/DB authority
 **Last merged native prerequisite:** PR #85 — head `0803faf9f84b44148291c68c8dd115f73c68d464`, PRIME Cycle 2 PASS `5334796956`, merge `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`
@@ -888,7 +889,8 @@ Does DEMO's ordinary fresh-World journey require a human review/mutation interva
 ```text
 safe / independent:
   larger-scale benchmark characterization under accepted PR #89 design;
-  memory-only activation proposal is PR #91 and remains inactive until that exact bounded record is PRIME-reviewed and merged; PostgreSQL is not activated
+  implementation lease is active under PR #91's exact six-path memory-only record;
+  PostgreSQL is not activated
   contract-frozen Buddy/domain work that does not depend on V5.2 runtime
 
 active:
@@ -922,7 +924,8 @@ blocked until later accepted predecessors:
 - Buddy PR #785 remains an open draft with implementation PASS but MERGE HOLD pending the authorized live generation/navigation/reload witness; it is a separate J4 statblock-draft slice;
 - PR #87 merged a V7 design checkpoint only; no owner-approved legacy mapping/freeze/export exists and no V7 implementation or migration is authorized;
 - World-only durable Plan semantics and ordinary native Agent citations remain product gaps;
-- PR #89 accepts only the design handoff; proposed PR #91 activation is not effective until accepted and merged, authorizes only its exact file/runtime/workload/resource scope, and excludes PostgreSQL;
+- PR #89 accepts the design handoff and PR #91 activates only the exact six-path/runtime/workload/resource memory-only lease; PostgreSQL remains unauthorized;
+- no characterization measurements exist yet and V8/V11 acceptance is false;
 - larger 50k/100k characterization remains incomplete;
 - deeper storage optimization is not authorized.
 
