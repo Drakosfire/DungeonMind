@@ -2,7 +2,7 @@
 
 **Status:** current forward roadmap  
 **Updated:** 2026-09-28
-**Roadmap anchor:** DungeonMind `main` after PR #90 merge (`a6b1f190ae289e5a13d1f1747cf8affc9f978610`); PR #89 accepted the parallel characterization design only; V7 implementation remains blocked
+**Roadmap anchor:** DungeonMind `main` after PR #91 merge (`37d8afefd0580a68b0d66f54876d9776d554d8bc`); PR #89 design and PR #91 memory-only activation accepted; no measurements yet; V7 implementation remains blocked
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -1039,7 +1039,7 @@ Do not adopt a graph database, distributed cache, or event log merely because vN
 
 # Parallel measurement lane
 
-The larger K0.3-style benchmark expansion is retained as an evidence project, not a front-door blocker. Its current-authority design handoff is accepted at PR #89 (head `93c2e0e50544189c4298e70a52c663c825439a88`, PRIME Cycle 2 PASS `5340172526`, merge `16022e37757f6c6c61458c6c90ef94857cab93f7`). A bounded memory-only activation is proposed in PR #91, based on main `a6b1f190ae289e5a13d1f1747cf8affc9f978610` and runtime code `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`; it is not effective until PR #91 is PRIME-reviewed and merged. PostgreSQL remains unactivated. No measurements or V8/V11 acceptance are claimed.
+The larger K0.3-style benchmark expansion is retained as an evidence project, not a front-door blocker. Its current-authority design handoff is accepted at PR #89 (head `93c2e0e50544189c4298e70a52c663c825439a88`, PRIME Cycle 2 PASS `5340172526`, merge `16022e37757f6c6c61458c6c90ef94857cab93f7`). A bounded memory-only activation is accepted at PR #91 (head `d7758b8910fa156d2d9afaa2462485839d0de49a`, PRIME PASS `5340325390`, merge `37d8afefd0580a68b0d66f54876d9776d554d8bc`) against runtime code `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`. Implementation may proceed only within that exact allowlist, workload, and resource envelope. PostgreSQL remains unactivated; no measurements or V8/V11 acceptance are claimed.
 
 Desired deterministic workload shapes:
 
