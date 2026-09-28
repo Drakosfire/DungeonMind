@@ -95,9 +95,9 @@ The exact layout may change if ownership stays clear. The artifact must include:
 
 Do not produce a single aggregate performance score or universal latency pass threshold. The report explains environment comparability and limits; benchmark output is not a promise of future service-level performance.
 
-## 5. Proposed implementation envelope — NOT ACTIVATED
+## 5. Accepted implementation envelope — bounded by PR #91
 
-Design acceptance or merge of PR #89 alone does **not** authorize implementation, benchmark execution against a database, or edits to any implementation path. This activation proposal becomes effective only if PR #91 is independently reviewed PASS at its exact head and merged. Until then, make no code, fixture, report, benchmark, or database changes under this proposal.
+PR #89's design acceptance alone granted no implementation authority. PR #91 has now passed independent PRIME review at exact head `d7758b8910fa156d2d9afaa2462485839d0de49a` and merged at `37d8afefd0580a68b0d66f54876d9776d554d8bc`; the bounded memory-only activation below is effective. Edit only the exact allowlisted paths and obey the recorded runtime, workload, and resource bounds. PostgreSQL remains explicitly inactive: no database connection or migration is authorized.
 
 ### Accepted bounded activation (PR #91)
 
@@ -132,7 +132,7 @@ Before implementation begins, the Steward must publish a bounded activation reco
 
 If exact paths, measured runtime, or conditional database target are not approved in that activation record, stop before editing or contacting a database. Do not treat the proposed names below as permission.
 
-After activation only, the proposed envelope is:
+The accepted active envelope is:
 
 - benchmark, synthetic-fixture, validator, test, and report/artifact files named in the activation allowlist;
 - benchmark-only repair of a demonstrated harness/API-construction drift, using real current dependencies and keeping setup outside timed regions;
