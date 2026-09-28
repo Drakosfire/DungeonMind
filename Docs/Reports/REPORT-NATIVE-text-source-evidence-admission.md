@@ -1,7 +1,8 @@
 # Native text-source and evidence admission — implementation evidence
 
 **Disposition:** implementation complete; PRIME exact-head review pending
-**PR:** pending
+**PR:** [#85](https://github.com/Drakosfire/DungeonMind/pull/85) — open
+**Reviewed candidate head:** `1a29633122405ee46ca4a58970670d291e4ccf11`
 **Design checkpoint:** `86e8f22d007df99de577cb412301c5a6d4e2d597`
 **Implementation branch:** `codex/native-source-evidence-admission`
 **Implementation base:** `3ebdefaf1303089f21d3c94f2759df2d9274a71f` (PR #84 settlement)
