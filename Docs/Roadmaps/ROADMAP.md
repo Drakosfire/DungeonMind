@@ -2,7 +2,7 @@
 
 **Status:** current forward roadmap  
 **Updated:** 2026-09-28
-**Roadmap anchor:** DungeonMind `main` after PR #91 merge (`37d8afefd0580a68b0d66f54876d9776d554d8bc`); PR #89 design and PR #91 memory-only activation accepted; no measurements yet; V7 implementation remains blocked
+**Roadmap anchor:** DungeonMind `main` after PR #92 merge (`ccd06cb119c834a3d7950d5109b85c7b6a683430`); PR #91 memory-only characterization activation remains in force; the current result candidate has 72 measured cells through 10k but is unreviewed and incomplete; V7 implementation remains blocked
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -1039,7 +1039,7 @@ Do not adopt a graph database, distributed cache, or event log merely because vN
 
 # Parallel measurement lane
 
-The larger K0.3-style benchmark expansion is retained as an evidence project, not a front-door blocker. Its current-authority design handoff is accepted at PR #89 (head `93c2e0e50544189c4298e70a52c663c825439a88`, PRIME Cycle 2 PASS `5340172526`, merge `16022e37757f6c6c61458c6c90ef94857cab93f7`). A bounded memory-only activation is accepted at PR #91 (head `d7758b8910fa156d2d9afaa2462485839d0de49a`, PRIME PASS `5340325390`, merge `37d8afefd0580a68b0d66f54876d9776d554d8bc`) against runtime code `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`. Implementation may proceed only within that exact allowlist, workload, and resource envelope. PostgreSQL remains unactivated; no measurements or V8/V11 acceptance are claimed.
+The larger K0.3-style benchmark expansion is retained as an evidence project, not a front-door blocker. Its current-authority design handoff is accepted at PR #89 (head `93c2e0e50544189c4298e70a52c663c825439a88`, PRIME Cycle 2 PASS `5340172526`, merge `16022e37757f6c6c61458c6c90ef94857cab93f7`). A bounded memory-only activation is accepted at PR #91 (head `d7758b8910fa156d2d9afaa2462485839d0de49a`, PRIME PASS `5340325390`, merge `37d8afefd0580a68b0d66f54876d9776d554d8bc`) against runtime code `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`. PR #92's post-activation control-plane merge is `ccd06cb119c834a3d7950d5109b85c7b6a683430`; it does not change the measured runtime or widen the #91 lease. The current implementation candidate records 72 measured memory cells across both shapes at 100/1k/10k, but remains unreviewed and `INCOMPLETE_REBRIEF_REQUIRED`. 50k/100k were not attempted because this host has no enforceable 8-GiB peak-RSS limit; PostgreSQL remains unactivated. No V8/V11 acceptance is claimed.
 
 Desired deterministic workload shapes:
 
