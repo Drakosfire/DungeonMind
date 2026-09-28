@@ -1,0 +1,726 @@
+{
+  "aggregate_sha256": "ee4c22a5bc5438913120e6c9ba0f6dce54c07bb0ce99d5969bebbcd79587978a",
+  "contracts": [
+    {
+      "name": "NativeTextSourceAdmissionV1",
+      "schema": {
+        "$defs": {
+          "DomainMetadataEntry": {
+            "additionalProperties": false,
+            "properties": {
+              "payload": {
+                "title": "Payload"
+              },
+              "schema": {
+                "minLength": 3,
+                "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*:[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+                "title": "Schema",
+                "type": "string"
+              }
+            },
+            "required": [
+              "schema",
+              "payload"
+            ],
+            "title": "DomainMetadataEntry",
+            "type": "object"
+          },
+          "LabelsAllVisibility": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "labels_all",
+                "default": "labels_all",
+                "title": "Kind",
+                "type": "string"
+              },
+              "labels": {
+                "items": {
+                  "minLength": 3,
+                  "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*:[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+                  "type": "string"
+                },
+                "minItems": 1,
+                "title": "Labels",
+                "type": "array"
+              }
+            },
+            "required": [
+              "labels"
+            ],
+            "title": "LabelsAllVisibility",
+            "type": "object"
+          },
+          "LabelsAnyVisibility": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "labels_any",
+                "default": "labels_any",
+                "title": "Kind",
+                "type": "string"
+              },
+              "labels": {
+                "items": {
+                  "minLength": 3,
+                  "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*:[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+                  "type": "string"
+                },
+                "minItems": 1,
+                "title": "Labels",
+                "type": "array"
+              }
+            },
+            "required": [
+              "labels"
+            ],
+            "title": "LabelsAnyVisibility",
+            "type": "object"
+          },
+          "NativeTextEvidenceSpanRequestV1": {
+            "additionalProperties": false,
+            "description": "One caller-local byte interval requested as native evidence.",
+            "properties": {
+              "client_ref": {
+                "minLength": 1,
+                "title": "Client Ref",
+                "type": "string"
+              },
+              "domain_metadata": {
+                "items": {
+                  "$ref": "#/$defs/DomainMetadataEntry"
+                },
+                "title": "Domain Metadata",
+                "type": "array"
+              },
+              "end_byte": {
+                "exclusiveMinimum": 0,
+                "title": "End Byte",
+                "type": "integer"
+              },
+              "evidence_role": {
+                "enum": [
+                  "support",
+                  "contradiction",
+                  "context"
+                ],
+                "title": "Evidence Role",
+                "type": "string"
+              },
+              "expected_slice_sha256": {
+                "maxLength": 64,
+                "minLength": 64,
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Expected Slice Sha256",
+                "type": "string"
+              },
+              "start_byte": {
+                "minimum": 0,
+                "title": "Start Byte",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "client_ref",
+              "evidence_role",
+              "start_byte",
+              "end_byte",
+              "expected_slice_sha256"
+            ],
+            "title": "NativeTextEvidenceSpanRequestV1",
+            "type": "object"
+          },
+          "NativeTextSourceOriginV1": {
+            "additionalProperties": false,
+            "description": "Optional opaque link to the caller's separately owned immutable revision.",
+            "properties": {
+              "namespace": {
+                "minLength": 1,
+                "title": "Namespace",
+                "type": "string"
+              },
+              "object_id": {
+                "minLength": 1,
+                "title": "Object Id",
+                "type": "string"
+              },
+              "revision_id": {
+                "minLength": 1,
+                "title": "Revision Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "namespace",
+              "object_id",
+              "revision_id"
+            ],
+            "title": "NativeTextSourceOriginV1",
+            "type": "object"
+          },
+          "PublicVisibility": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "public",
+                "default": "public",
+                "title": "Kind",
+                "type": "string"
+              }
+            },
+            "title": "PublicVisibility",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "One bounded operation creating one immutable text artifact/revision.",
+        "properties": {
+          "admission_id": {
+            "minLength": 1,
+            "title": "Admission Id",
+            "type": "string"
+          },
+          "authority": {
+            "enum": [
+              "primary",
+              "derived",
+              "reference"
+            ],
+            "title": "Authority",
+            "type": "string"
+          },
+          "body_text": {
+            "title": "Body Text",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "domain_metadata": {
+            "items": {
+              "$ref": "#/$defs/DomainMetadataEntry"
+            },
+            "title": "Domain Metadata",
+            "type": "array"
+          },
+          "expected_body_sha256": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Body Sha256",
+            "type": "string"
+          },
+          "expected_parent_revision_id": {
+            "minLength": 1,
+            "title": "Expected Parent Revision Id",
+            "type": "string"
+          },
+          "foreign_refs": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Foreign Refs",
+            "type": "array"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/NativeTextSourceOriginV1"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "schema_version": {
+            "const": "dm_native_text_source_admission_v1",
+            "default": "dm_native_text_source_admission_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_classification": {
+            "minLength": 3,
+            "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*:[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+            "title": "Source Classification",
+            "type": "string"
+          },
+          "space_id": {
+            "minLength": 1,
+            "title": "Space Id",
+            "type": "string"
+          },
+          "spans": {
+            "items": {
+              "$ref": "#/$defs/NativeTextEvidenceSpanRequestV1"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Spans",
+            "type": "array"
+          },
+          "visibility": {
+            "discriminator": {
+              "mapping": {
+                "labels_all": "#/$defs/LabelsAllVisibility",
+                "labels_any": "#/$defs/LabelsAnyVisibility",
+                "public": "#/$defs/PublicVisibility"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/PublicVisibility"
+              },
+              {
+                "$ref": "#/$defs/LabelsAnyVisibility"
+              },
+              {
+                "$ref": "#/$defs/LabelsAllVisibility"
+              }
+            ],
+            "title": "Visibility"
+          }
+        },
+        "required": [
+          "space_id",
+          "admission_id",
+          "expected_parent_revision_id",
+          "created_at",
+          "body_text",
+          "expected_body_sha256",
+          "source_classification",
+          "authority",
+          "visibility",
+          "spans"
+        ],
+        "title": "NativeTextSourceAdmissionV1",
+        "type": "object"
+      }
+    },
+    {
+      "name": "NativeUtf8SpanProofV1",
+      "schema": {
+        "additionalProperties": false,
+        "description": "Immutable typed proof binding one EvidenceRefV3 to exact UTF-8 bytes.",
+        "properties": {
+          "end_byte": {
+            "exclusiveMinimum": 0,
+            "title": "End Byte",
+            "type": "integer"
+          },
+          "evidence_ref_id": {
+            "minLength": 1,
+            "title": "Evidence Ref Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "dm_native_utf8_span_v1",
+            "default": "dm_native_utf8_span_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "slice_sha256": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Slice Sha256",
+            "type": "string"
+          },
+          "source_revision_id": {
+            "minLength": 1,
+            "title": "Source Revision Id",
+            "type": "string"
+          },
+          "span_id": {
+            "minLength": 1,
+            "title": "Span Id",
+            "type": "string"
+          },
+          "start_byte": {
+            "minimum": 0,
+            "title": "Start Byte",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "span_id",
+          "source_revision_id",
+          "evidence_ref_id",
+          "start_byte",
+          "end_byte",
+          "slice_sha256"
+        ],
+        "title": "NativeUtf8SpanProofV1",
+        "type": "object"
+      }
+    },
+    {
+      "name": "NativeSourceAdmissionReceiptV1",
+      "schema": {
+        "$defs": {
+          "KnowledgePublicationReceipt": {
+            "additionalProperties": false,
+            "properties": {
+              "command_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Command Sha256",
+                "type": "string"
+              },
+              "expected_parent_revision_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Expected Parent Revision Id"
+              },
+              "graph_payload_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "title": "Graph Payload Sha256",
+                "type": "string"
+              },
+              "publication_id": {
+                "minLength": 1,
+                "title": "Publication Id",
+                "type": "string"
+              },
+              "published_revision_id": {
+                "minLength": 1,
+                "title": "Published Revision Id",
+                "type": "string"
+              },
+              "schema_version": {
+                "const": "dm_knowledge_publication_receipt_v1",
+                "default": "dm_knowledge_publication_receipt_v1",
+                "title": "Schema Version",
+                "type": "string"
+              },
+              "space_id": {
+                "minLength": 1,
+                "title": "Space Id",
+                "type": "string"
+              },
+              "status": {
+                "const": "published",
+                "default": "published",
+                "title": "Status",
+                "type": "string"
+              }
+            },
+            "required": [
+              "space_id",
+              "publication_id",
+              "command_sha256",
+              "published_revision_id",
+              "graph_payload_sha256"
+            ],
+            "title": "KnowledgePublicationReceipt",
+            "type": "object"
+          },
+          "NativeTextSourceAdmissionBindingV1": {
+            "additionalProperties": false,
+            "description": "Durable resolution from one caller-local span reference to Kernel IDs.",
+            "properties": {
+              "client_ref": {
+                "minLength": 1,
+                "title": "Client Ref",
+                "type": "string"
+              },
+              "evidence_ref_id": {
+                "minLength": 1,
+                "title": "Evidence Ref Id",
+                "type": "string"
+              },
+              "span_id": {
+                "minLength": 1,
+                "title": "Span Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "client_ref",
+              "span_id",
+              "evidence_ref_id"
+            ],
+            "title": "NativeTextSourceAdmissionBindingV1",
+            "type": "object"
+          },
+          "NativeTextSourceOriginV1": {
+            "additionalProperties": false,
+            "description": "Optional opaque link to the caller's separately owned immutable revision.",
+            "properties": {
+              "namespace": {
+                "minLength": 1,
+                "title": "Namespace",
+                "type": "string"
+              },
+              "object_id": {
+                "minLength": 1,
+                "title": "Object Id",
+                "type": "string"
+              },
+              "revision_id": {
+                "minLength": 1,
+                "title": "Revision Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "namespace",
+              "object_id",
+              "revision_id"
+            ],
+            "title": "NativeTextSourceOriginV1",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Companion receipt for the source records committed with one native child.",
+        "properties": {
+          "admission_id": {
+            "minLength": 1,
+            "title": "Admission Id",
+            "type": "string"
+          },
+          "bindings": {
+            "items": {
+              "$ref": "#/$defs/NativeTextSourceAdmissionBindingV1"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Bindings",
+            "type": "array"
+          },
+          "command_sha256": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Command Sha256",
+            "type": "string"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/NativeTextSourceOriginV1"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "publication_receipt": {
+            "$ref": "#/$defs/KnowledgePublicationReceipt"
+          },
+          "published_revision_id": {
+            "minLength": 1,
+            "title": "Published Revision Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "dm_native_source_admission_receipt_v1",
+            "default": "dm_native_source_admission_receipt_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "minLength": 1,
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "source_authority_epoch": {
+            "minimum": 1,
+            "title": "Source Authority Epoch",
+            "type": "integer"
+          },
+          "source_revision_id": {
+            "minLength": 1,
+            "title": "Source Revision Id",
+            "type": "string"
+          },
+          "space_id": {
+            "minLength": 1,
+            "title": "Space Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "published",
+            "default": "published",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "space_id",
+          "admission_id",
+          "command_sha256",
+          "source_authority_epoch",
+          "source_artifact_id",
+          "source_revision_id",
+          "published_revision_id",
+          "bindings",
+          "publication_receipt"
+        ],
+        "title": "NativeSourceAdmissionReceiptV1",
+        "type": "object"
+      }
+    },
+    {
+      "name": "NativeTextSourceAccessV1",
+      "schema": {
+        "additionalProperties": false,
+        "description": "Authorized source preview, or a deliberately non-disclosing miss.",
+        "properties": {
+          "body_sha256": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Body Sha256"
+          },
+          "body_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Body Text"
+          },
+          "evidence_ref_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Evidence Ref Id"
+          },
+          "schema_version": {
+            "const": "dm_native_source_access_v1",
+            "default": "dm_native_source_access_v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Artifact Id"
+          },
+          "source_authority_epoch": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Authority Epoch"
+          },
+          "source_revision_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Revision Id"
+          },
+          "span_end_byte": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Span End Byte"
+          },
+          "span_sha256": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Span Sha256"
+          },
+          "span_start_byte": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Span Start Byte"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "NativeTextSourceAccessV1",
+        "type": "object"
+      }
+    }
+  ],
+  "schema": "dm_native_source_admission_contract_v1"
+}

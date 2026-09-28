@@ -4,7 +4,7 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `031b6650d0a506cf40f0189fc5cfac055ac37308` — merged PR #83; public empty native initialization accepted
+**Current main anchor:** `3ebdefaf1303089f21d3c94f2759df2d9274a71f` — PR #84 settlement; V6 preservation and native genesis authority reconciled
 **Last merged native prerequisite:** PR #83 — head `decf694fc7304c30e82eae77a30247066c0f954a`, PRIME Cycle 2 PASS `5333897671`
 **Last merged roadmap prerequisite repair:** PR #81 — private source-visibility binding in native anchor identity
 **Last merged parallel contract capability:** PR #77 — versioned semantic-profile V3 open predicate namespaces
@@ -870,13 +870,14 @@ V6 COMPLETE — V6_DUNGEONBUDDY_PRESERVATION_ACCEPTED
 Buddy V6.1 / V6.2 / PLAY-1 / PLAY-2 COMPLETE at the accepted refs in §2
 Buddy V6.5 / #780 COMPLETE — 98 passed, zero skips, PRIME Cycle 2 PASS
 NATIVE empty new-space genesis COMPLETE — PR #83 accepted; DEMO adoption pending
+NATIVE text-source/evidence admission — implementation PR in progress; exact-head PRIME review pending
 V7 NOT DISPATCHED
 ```
 
 ### Next primary question
 
 ```text
-How can authentic versioned imported or authored bytes become durable native source records and exact admitted evidence in a parent, with typed locator, content digest, visibility, replay and fresh revalidation, so Keeper can prepare the first real change?
+Can the approved V1 native text-source/evidence design be implemented as one atomic, replayable DungeonMind capability and proved through the exact pinned WorldKeeper prepare/commit boundary without claiming source freshness or product acceptance?
 ```
 
 ### Parallel work posture
@@ -887,12 +888,14 @@ safe / independent:
   contract-frozen Buddy/domain work that does not depend on V5.2 runtime
 
 active:
-  no DungeonMind runtime implementation lease
+  DungeonMind NATIVE text-source/evidence V1 implementation on
+  codex/native-source-evidence-admission; implementation proof complete,
+  exact-head PRIME review pending; no acceptance or merge yet
   DEMO coordinates adoption/verification of accepted empty-native initialization
 
 designed / blocked:
-  native source/evidence admission requires a bounded architecture design
-  no successor implementation dispatched
+  mutable source lifecycle and freshness binding across Keeper prepare/commit
+  remain separate future designs; they are not part of this V1 implementation
 
 blocked until later accepted predecessors:
   bridge-genesis migration
@@ -911,19 +914,22 @@ blocked until later accepted predecessors:
 - no historical-reader quarantine/deletion is authorized;
 - Buddy has accepted runtime pins and dormant vNext adapters; no production vNext cutover has occurred;
 - public empty native initialization is accepted at PR #83; DEMO product adoption is unproved;
-- no ordinary authentic native source/evidence admission/body-verification path is accepted;
+- the V1 native source/evidence implementation is not accepted until PRIME exact-head review and authorized merge; no mutable source lifecycle or prepare/commit freshness proof exists;
 - World-only durable Plan semantics and ordinary native Agent citations remain product gaps;
 - larger 50k/100k characterization remains incomplete;
 - deeper storage optimization is not authorized.
 
 ### Named next action
 
-Settle PR #83's accepted handoff/report/current authority, coordinate its
-consumer contract proof with DEMO, and obtain a bounded architecture design
-for authentic native source/evidence admission. Return that design checkpoint
-to PRIME before implementation. DEMO owns true World-only Plan and product routing. Keep
-V7 undispatched, with bridge-genesis obligations intact for existing Worlds.
-Alias search, profile transition, source bodies and production cutover stay separate.
+Obtain PRIME's exact-head review for the active DungeonMind native
+text-source/evidence admission implementation PR; repair any bounded review
+findings within its lease and do not call V1 accepted before PRIME PASS and
+authorized merge. Then return the accepted API, migration, replay/access limits,
+and Keeper witness facts to MIND/PRIME and coordinate consumer verification with
+DEMO. DEMO owns true World-only Plan and product routing. Keep V7 undispatched,
+with bridge-genesis obligations intact for existing Worlds. Mutable source
+lifecycle, prepare/commit freshness, alias search, profile transition and
+production cutover stay separate.
 
 ---
 

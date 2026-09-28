@@ -41,6 +41,8 @@ from .errors import (
     KnowledgeReadContextIntegrityError,
     KnowledgeStaleParentRevisionError,
     LegacyCompatibilityIntegrityError,
+    NativeTextSourceAccessIntegrityError,
+    NativeTextSourceAdmissionIntegrityError,
     NeighborhoodReadIntegrityError,
     ProspectivePublicationIntegrityError,
     RevisionStructuralIntegrityError,
@@ -91,6 +93,14 @@ from .model import (
     ParsedKnowledgeRevision,
     compute_compatibility_key,
     compute_semantic_digest,
+)
+from .native_source_access import (
+    NativeTextSourceAccessContext,
+    open_admitted_native_text,
+    open_native_text_source_access_context,
+)
+from .native_source_admission import (
+    publish_native_text_source_evidence,
 )
 from .neighborhood import (
     MAX_NEIGHBORHOOD_SEED_COUNT,
@@ -191,6 +201,9 @@ __all__ = [
     "KnowledgeStaleParentRevisionError",
     "LegacyCompatibilityIntegrityError",
     "LegacyCompatibilityManifest",
+    "NativeTextSourceAccessContext",
+    "NativeTextSourceAccessIntegrityError",
+    "NativeTextSourceAdmissionIntegrityError",
     "NeighborhoodLayerWork",
     "NeighborhoodReadIdentity",
     "NeighborhoodReadIntegrityError",
@@ -253,7 +266,10 @@ __all__ = [
     "initialize_empty_knowledge_space",
     "load_legacy_world_compat_manifest",
     "materialize_governed_revision",
+    "open_admitted_native_text",
+    "open_native_text_source_access_context",
     "publish_governed_materialization",
+    "publish_native_text_source_evidence",
     "publish_prospective_contribution",
     "resolve_prospective_contribution",
     "thaw_json_value",

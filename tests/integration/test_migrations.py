@@ -40,6 +40,9 @@ EXPECTED_TABLES = {
     "knowledge_head_events",
     "knowledge_publication_receipts",
     "knowledge_prospective_publication_results",
+    "knowledge_native_source_authority",
+    "knowledge_native_source_admissions",
+    "knowledge_native_source_spans",
 }
 
 
@@ -56,9 +59,7 @@ def _admin_url(url: str) -> str:
 @pytest.mark.integration
 def test_vector_extension_and_schema_tables(db) -> None:
     with db.connect() as conn:
-        ext = conn.execute(
-            "SELECT 1 FROM pg_extension WHERE extname = 'vector'"
-        ).fetchone()
+        ext = conn.execute("SELECT 1 FROM pg_extension WHERE extname = 'vector'").fetchone()
         assert ext is not None
 
         rows = conn.execute(
@@ -72,11 +73,9 @@ def test_vector_extension_and_schema_tables(db) -> None:
         missing = EXPECTED_TABLES - names
         assert not missing, f"missing tables: {sorted(missing)}"
 
-        version = conn.execute(
-            "SELECT version_num FROM dungeonmind.alembic_version"
-        ).fetchone()
+        version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
         assert version is not None
-        assert version["version_num"] == "0010_vnext_prospective_results"
+        assert version["version_num"] == "0011_native_source_v1"
 
         constraints = conn.execute(
             """
@@ -85,17 +84,12 @@ def test_vector_extension_and_schema_tables(db) -> None:
             WHERE conrelid = 'dungeonmind.finalized_review_publications'::regclass
             """
         ).fetchall()
-        constraint_text = "\n".join(
-            row["definition"].replace('"', "") for row in constraints
-        )
+        constraint_text = "\n".join(row["definition"].replace('"', "") for row in constraints)
         assert "PRIMARY KEY (world_id, operation_id)" in constraint_text
         assert "UNIQUE (world_id, review_id)" in constraint_text
         assert "UNIQUE (world_id, published_revision_id)" in constraint_text
         assert "FOREIGN KEY (world_id, reviewed_contribution_id)" in constraint_text
-        assert (
-            "REFERENCES graph_contributions(world_id, contribution_id)"
-            in constraint_text
-        )
+        assert "REFERENCES graph_contributions(world_id, contribution_id)" in constraint_text
 
 
 @pytest.mark.integration
@@ -141,10 +135,8 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
 
         database = PostgresDatabase(target)
         with database.connect() as conn:
-            version = conn.execute(
-                "SELECT version_num FROM dungeonmind.alembic_version"
-            ).fetchone()
-            assert version["version_num"] == "0010_vnext_prospective_results"
+            version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
+            assert version["version_num"] == "0011_native_source_v1"
             tables = conn.execute(
                 """
                 SELECT COUNT(*) AS n

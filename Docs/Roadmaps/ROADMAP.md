@@ -1,12 +1,23 @@
 # DungeonMind — vNext Governed Knowledge Roadmap
 
 **Status:** current forward roadmap  
-**Updated:** 2026-09-27
-**Roadmap anchor:** DungeonMind `main` after PR #83 (`031b6650d0a506cf40f0189fc5cfac055ac37308`); public empty native initialization accepted
+**Updated:** 2026-09-28
+**Roadmap anchor:** DungeonMind `main` after PR #84 settlement (`3ebdefaf1303089f21d3c94f2759df2d9274a71f`); V6 preservation and native genesis authority reconciled
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
 This document replaces the earlier L.1–L.6 forward lanes as the canonical execution roadmap.
+
+## Current active slice
+
+DungeonMind's approved NATIVE V1 text-source/evidence admission implementation
+is in progress on `codex/native-source-evidence-admission`. Its implementation
+proof is complete locally, including exact pinned WorldKeeper PostgreSQL
+consumer proof; the PR and independent PRIME exact-head review are pending.
+This slice is not accepted until PRIME PASS and authorized merge. It does not
+prove source lifecycle, freshness across Keeper prepare/commit, Buddy saved-file
+authenticity, DEMO adoption, J3 or V7 readiness. Keep existing bridge-genesis,
+cutover and product obligations unchanged.
 
 Historical cutover, critique, K0/K1 planning, and R.1/R.2/R.3 records remain valuable evidence and are not rewritten. The current production implementation is still the World Graph architecture; this roadmap describes the deliberate breaking transition to vNext.
 

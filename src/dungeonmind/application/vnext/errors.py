@@ -113,6 +113,26 @@ class ProspectivePublicationIntegrityError(PersistenceIntegrityError):
         self.reason = reason
 
 
+class NativeTextSourceAdmissionIntegrityError(PersistenceIntegrityError):
+    """Fail closed when one native source admission is structurally invalid."""
+
+    code = "native_text_source_admission_integrity_error"
+
+    def __init__(self, reason: str) -> None:
+        super().__init__("native text source admission failed integrity validation")
+        self.reason = reason
+
+
+class NativeTextSourceAccessIntegrityError(PersistenceIntegrityError):
+    """Fail closed when admitted native source storage is corrupt or inconsistent."""
+
+    code = "native_text_source_access_integrity_error"
+
+    def __init__(self, reason: str) -> None:
+        super().__init__("native text source storage failed integrity validation")
+        self.reason = reason
+
+
 class KnowledgeStaleParentRevisionError(DungeonMindError):
     """CAS failure: expected parent is not the current native knowledge head."""
 
