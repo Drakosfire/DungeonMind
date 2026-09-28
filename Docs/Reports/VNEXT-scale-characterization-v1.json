@@ -1,0 +1,2989 @@
+{
+  "acceptance_status": "INCOMPLETE_REBRIEF_REQUIRED",
+  "environment": {
+    "command": "benchmarks/vnext_scale_characterization.py --sizes 100 1000 10000 --repeats 3 --output /tmp/VNEXT-scale-characterization-v1.json",
+    "cpu_count": 8,
+    "implementation": "CPython",
+    "machine": "x86_64",
+    "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.39",
+    "python": "3.13.1 (main, Jan 14 2025, 22:47:38) [Clang 19.1.6 ]"
+  },
+  "generated_at_utc": "2026-09-28T18:08:58.192250+00:00",
+  "generator_version": "vnext-scale-fixtures-1",
+  "main_anchor": "ccd06cb119c834a3d7950d5109b85c7b6a683430",
+  "matrix": [
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "5da9dff45d7d8e2a676d009555990e220c7ad45a46b98868b55fea94c361e273",
+      "median_seconds": 0.020289788997615688,
+      "operation": "cold_parse",
+      "peak_tracemalloc_bytes": 2669196,
+      "result_contract": "DungeonMind current public API: cold_parse",
+      "result_sha256": "4a10b6972d1d11da77abdc1da2a8af46d3e642d399d9aa9f889fee907e79e7e7",
+      "samples_seconds": [
+        0.019248832992161624,
+        0.020706648007035255,
+        0.020289788997615688
+      ],
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "5da9dff45d7d8e2a676d009555990e220c7ad45a46b98868b55fea94c361e273",
+      "median_seconds": 0.12047860500751995,
+      "operation": "full_projection",
+      "peak_tracemalloc_bytes": 4684405,
+      "result_contract": "DungeonMind current public API: full_projection",
+      "result_sha256": "4ebdd78c45c0c5a72e61fa8f46a983a3e266600d0ac10d581ae546b394807cee",
+      "samples_seconds": [
+        0.11929757200414315,
+        0.12047860500751995,
+        0.12148105799860787
+      ],
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "5da9dff45d7d8e2a676d009555990e220c7ad45a46b98868b55fea94c361e273",
+      "median_seconds": 0.12991939300263766,
+      "operation": "exact_entity",
+      "peak_tracemalloc_bytes": 4684901,
+      "result_contract": "DungeonMind current public API: exact_entity",
+      "result_sha256": "9c6bc36d4a97ca2074104fab59dc24e12f4094dd5fbb898f7b05ac4c107e45ca",
+      "samples_seconds": [
+        0.1422537139878841,
+        0.12147336400812492,
+        0.12991939300263766
+      ],
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "5da9dff45d7d8e2a676d009555990e220c7ad45a46b98868b55fea94c361e273",
+      "median_seconds": 0.1269416459981585,
+      "operation": "complete_entity",
+      "peak_tracemalloc_bytes": 4684717,
+      "result_contract": "DungeonMind current public API: complete_entity",
+      "result_sha256": "12e914daa54ffc63b9c6b3eeb4315bacfed061df88a074b80dd7ea7c41f1613e",
+      "samples_seconds": [
+        0.12053232399921399,
+        0.1269416459981585,
+        0.12751549799577333
+      ],
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "5da9dff45d7d8e2a676d009555990e220c7ad45a46b98868b55fea94c361e273",
+      "median_seconds": 0.31268761699902825,
+      "operation": "neighborhood_d1",
+      "peak_tracemalloc_bytes": 4685005,
+      "result_contract": "DungeonMind current public API: neighborhood_d1",
+      "result_sha256": "5bdf0611cc2d64ea5a9a931eef39add3ca9676c3cc4f0a55db3a09c94d237684",
+      "samples_seconds": [
+        0.31268761699902825,
+        0.42083612699934747,
+        0.2029111690062564
+      ],
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "5da9dff45d7d8e2a676d009555990e220c7ad45a46b98868b55fea94c361e273",
+      "median_seconds": 0.15972337900893763,
+      "operation": "neighborhood_d2",
+      "peak_tracemalloc_bytes": 4684957,
+      "result_contract": "DungeonMind current public API: neighborhood_d2",
+      "result_sha256": "eb37e4f17ac89b3a5ba1d9733193399f9d954d53a7d75dea05a01c3a0638b263",
+      "samples_seconds": [
+        0.20953251399623696,
+        0.15972337900893763,
+        0.13284689099236857
+      ],
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "5da9dff45d7d8e2a676d009555990e220c7ad45a46b98868b55fea94c361e273",
+      "median_seconds": 0.1198579729971243,
+      "operation": "evidence",
+      "peak_tracemalloc_bytes": 4684941,
+      "result_contract": "DungeonMind current public API: evidence",
+      "result_sha256": "44f94f8cefd72b0d91d3f988ac9f87ce24a61d9b13134dcf3721a83a0ecdb582",
+      "samples_seconds": [
+        0.10104186000535265,
+        0.12777009699493647,
+        0.1198579729971243
+      ],
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "5da9dff45d7d8e2a676d009555990e220c7ad45a46b98868b55fea94c361e273",
+      "median_seconds": 0.14034715900197625,
+      "operation": "source_anchor",
+      "peak_tracemalloc_bytes": 4912199,
+      "result_contract": "DungeonMind current public API: source_anchor",
+      "result_sha256": "60de132aa898ec70283d95630591f65189e347c2b54bed78953f0d915be62cbc",
+      "samples_seconds": [
+        0.12254357899655588,
+        0.14034715900197625,
+        0.14613398800429422
+      ],
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "5da9dff45d7d8e2a676d009555990e220c7ad45a46b98868b55fea94c361e273",
+      "median_seconds": 0.15033259500341956,
+      "operation": "deterministic_search",
+      "peak_tracemalloc_bytes": 4684741,
+      "result_contract": "DungeonMind current public API: deterministic_search",
+      "result_sha256": "74871300a3d3d5d3f91182990e96a6884da8d40b704ea8cad9b505316876cfe3",
+      "samples_seconds": [
+        0.1336018550064182,
+        0.15033259500341956,
+        0.265442064992385
+      ],
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "5da9dff45d7d8e2a676d009555990e220c7ad45a46b98868b55fea94c361e273",
+      "median_seconds": 0.0014906720025464892,
+      "operation": "source_snapshot",
+      "peak_tracemalloc_bytes": 31619,
+      "result_contract": "DungeonMind current public API: source_snapshot",
+      "result_sha256": "b5eef6a1ca7bd72de03009c393241c61843bd39d7f16afbc2253c62759d6c73f",
+      "samples_seconds": [
+        0.0014906720025464892,
+        0.001279315009014681,
+        0.0021923940075794235
+      ],
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "delta_entities_per_sample": 1,
+      "disposition": "measured",
+      "fixture_counts": {
+        "native_parent_entities": 100
+      },
+      "input_sha256": "5ef8720b57212c7c6f91950a5ce053cefd98960191ae1663dfd45c30944c187a",
+      "median_seconds": 0.014309762002085336,
+      "memory_sample_parent_entity_count": 103,
+      "operation": "tiny_delta_publication",
+      "parent_entity_counts_before_samples": [
+        100,
+        101,
+        102
+      ],
+      "peak_tracemalloc_bytes": 315927,
+      "publication_receipt_sha256_samples": [
+        "bb4292a1e404aadd69797df43ec266181c6bc886d3443fcefaaaeec2abd4eead",
+        "5cefa89aac88a97ddc4b4ea61cf61ee5c7f6ee45852560d142fc636f147f3e40",
+        "6ce0862937ec79c7412656e30837c4a4e13a83b6dee3db72d517dfd287e4ff37",
+        "4a3be6312cb2dbfcda1629efd7efb0b937d29ea666b57998ec13124f5c25ae51"
+      ],
+      "result_contract": "materialize_governed_revision + publish_governed_materialization",
+      "result_sha256": "2834bec7d28d4454c6113b46d8fe18c3d6cd821205ac2734627f7fde0de2aba6",
+      "samples_seconds": [
+        0.019860180997056887,
+        0.014309762002085336,
+        0.014089800999499857
+      ],
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "5da9dff45d7d8e2a676d009555990e220c7ad45a46b98868b55fea94c361e273",
+      "median_seconds": 0.03568640300363768,
+      "operation": "canonical_serialize_hash",
+      "peak_tracemalloc_bytes": 1471036,
+      "result_contract": "DungeonMind current public API: canonical_serialize_hash",
+      "result_sha256": "04054efa63b4ace742007fdbc0fcff060dab1b4a267f87a25f4d5c5701ff9c86",
+      "samples_seconds": [
+        0.04043417399225291,
+        0.03568640300363768,
+        0.03302019299007952
+      ],
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "721ac462ffb4ee0364ec5f42e15bb9d00d9df0e560858410d0ac9e12180c781c",
+      "median_seconds": 0.29241689199989196,
+      "operation": "cold_parse",
+      "peak_tracemalloc_bytes": 26859440,
+      "result_contract": "DungeonMind current public API: cold_parse",
+      "result_sha256": "5d8e37a7a266e7c8279dfc5f7feb41b904116566fe03afa37755dec4aa4aa9dd",
+      "samples_seconds": [
+        0.2247548319865018,
+        0.29805259199929424,
+        0.29241689199989196
+      ],
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "721ac462ffb4ee0364ec5f42e15bb9d00d9df0e560858410d0ac9e12180c781c",
+      "median_seconds": 1.3617671030078782,
+      "operation": "full_projection",
+      "peak_tracemalloc_bytes": 46183133,
+      "result_contract": "DungeonMind current public API: full_projection",
+      "result_sha256": "13aa54ed09355a242e7ef91b5cef8de64d74e02ddd1c8a8c4912b3056b81aa66",
+      "samples_seconds": [
+        1.3621313809999265,
+        1.3617671030078782,
+        1.184062462998554
+      ],
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "721ac462ffb4ee0364ec5f42e15bb9d00d9df0e560858410d0ac9e12180c781c",
+      "median_seconds": 1.3125824299931992,
+      "operation": "exact_entity",
+      "peak_tracemalloc_bytes": 46183725,
+      "result_contract": "DungeonMind current public API: exact_entity",
+      "result_sha256": "ed0f8bcf9bec3c3d24fa8c2bf9e72d00507200c5a9eccb8f6d78ff0f08f40131",
+      "samples_seconds": [
+        1.435517631995026,
+        1.3125824299931992,
+        1.248935921001248
+      ],
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "721ac462ffb4ee0364ec5f42e15bb9d00d9df0e560858410d0ac9e12180c781c",
+      "median_seconds": 1.2014819189935224,
+      "operation": "complete_entity",
+      "peak_tracemalloc_bytes": 46183725,
+      "result_contract": "DungeonMind current public API: complete_entity",
+      "result_sha256": "ea0537dc888e8ad2acf520da054c7a5728faeafff84be213783a6afbdb9a9e34",
+      "samples_seconds": [
+        1.2014819189935224,
+        1.194494802999543,
+        1.218337916987366
+      ],
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "721ac462ffb4ee0364ec5f42e15bb9d00d9df0e560858410d0ac9e12180c781c",
+      "median_seconds": 1.247005404002266,
+      "operation": "neighborhood_d1",
+      "peak_tracemalloc_bytes": 46184077,
+      "result_contract": "DungeonMind current public API: neighborhood_d1",
+      "result_sha256": "3c199fe43ea783de8b2ccab649b6e10976393c92e38bfb9c8a86666eceef28fc",
+      "samples_seconds": [
+        1.434867944000871,
+        1.1801132090040483,
+        1.247005404002266
+      ],
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "721ac462ffb4ee0364ec5f42e15bb9d00d9df0e560858410d0ac9e12180c781c",
+      "median_seconds": 1.237965477994294,
+      "operation": "neighborhood_d2",
+      "peak_tracemalloc_bytes": 46184077,
+      "result_contract": "DungeonMind current public API: neighborhood_d2",
+      "result_sha256": "5f8973aa57d093b30780e7cef9191e54e50865fc0cfad58bb91b17fa949c4988",
+      "samples_seconds": [
+        1.131460311007686,
+        1.237965477994294,
+        1.4569707580085378
+      ],
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "721ac462ffb4ee0364ec5f42e15bb9d00d9df0e560858410d0ac9e12180c781c",
+      "median_seconds": 0.912500448001083,
+      "operation": "evidence",
+      "peak_tracemalloc_bytes": 46184013,
+      "result_contract": "DungeonMind current public API: evidence",
+      "result_sha256": "2d1ac385402cbfaba5b5c64d9ac70dd93c0b6efab2707c4c22dab470b8a1ac3c",
+      "samples_seconds": [
+        0.912500448001083,
+        0.912062003990286,
+        1.164217520999955
+      ],
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "721ac462ffb4ee0364ec5f42e15bb9d00d9df0e560858410d0ac9e12180c781c",
+      "median_seconds": 1.2545742680085823,
+      "operation": "source_anchor",
+      "peak_tracemalloc_bytes": 48434245,
+      "result_contract": "DungeonMind current public API: source_anchor",
+      "result_sha256": "28f55a96e2458f687f27f14e12c1818070045e3004fb831df830aa876ed3ce60",
+      "samples_seconds": [
+        1.2545742680085823,
+        1.1480080650071613,
+        1.5695182900090003
+      ],
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "721ac462ffb4ee0364ec5f42e15bb9d00d9df0e560858410d0ac9e12180c781c",
+      "median_seconds": 1.6806701909954427,
+      "operation": "deterministic_search",
+      "peak_tracemalloc_bytes": 46183861,
+      "result_contract": "DungeonMind current public API: deterministic_search",
+      "result_sha256": "ebda0d296c60186c887fbc1601680ddf93543139e1c8885950ecee5613cfc709",
+      "samples_seconds": [
+        1.4852280429913662,
+        1.7965793659968767,
+        1.6806701909954427
+      ],
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "721ac462ffb4ee0364ec5f42e15bb9d00d9df0e560858410d0ac9e12180c781c",
+      "median_seconds": 0.0007322080055018887,
+      "operation": "source_snapshot",
+      "peak_tracemalloc_bytes": 31619,
+      "result_contract": "DungeonMind current public API: source_snapshot",
+      "result_sha256": "b5eef6a1ca7bd72de03009c393241c61843bd39d7f16afbc2253c62759d6c73f",
+      "samples_seconds": [
+        0.0008315189916174859,
+        0.0006905560003360733,
+        0.0007322080055018887
+      ],
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "delta_entities_per_sample": 1,
+      "disposition": "measured",
+      "fixture_counts": {
+        "native_parent_entities": 1000
+      },
+      "input_sha256": "c1d9fb6fcc51367f00b8518d5cf366c9a0329703a4f58e405ff598c4d9867791",
+      "median_seconds": 0.07916296199255157,
+      "memory_sample_parent_entity_count": 1003,
+      "operation": "tiny_delta_publication",
+      "parent_entity_counts_before_samples": [
+        1000,
+        1001,
+        1002
+      ],
+      "peak_tracemalloc_bytes": 2838075,
+      "publication_receipt_sha256_samples": [
+        "861813c43297167228ff9bc9d0d0220a0052bf92dd0080a249de5bd79837e066",
+        "fe2c443adebf8de3886a06c52abee77d206631ed35bedddac5cff70899fbfa36",
+        "2dc3799af5e0b491b404115175735c89d7fc0ec113a7a5a6fe2f95000f6b9a33",
+        "9a3a36d6e8c9b244b89205d40a15a74a506f14669fb58c3355d4ca6ff98e729a"
+      ],
+      "result_contract": "materialize_governed_revision + publish_governed_materialization",
+      "result_sha256": "7c7ac0aca4ee3972aff594a7009f72d2f99e7ac1876447572b5637c918b14622",
+      "samples_seconds": [
+        0.08176900500257034,
+        0.07916296199255157,
+        0.07387297399691306
+      ],
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "721ac462ffb4ee0364ec5f42e15bb9d00d9df0e560858410d0ac9e12180c781c",
+      "median_seconds": 0.2951947000110522,
+      "operation": "canonical_serialize_hash",
+      "peak_tracemalloc_bytes": 14686360,
+      "result_contract": "DungeonMind current public API: canonical_serialize_hash",
+      "result_sha256": "8313884343d1be692583736699807ac534d63a7b0ccab13ab4228261852c23f9",
+      "samples_seconds": [
+        0.2951947000110522,
+        0.3524979759968119,
+        0.2449786409997614
+      ],
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "35a04feddea6bdd8183930ea4599f77481dc7eb47f66bacd7835ac3ab1dae0a0",
+      "median_seconds": 7.141210836009122,
+      "operation": "cold_parse",
+      "peak_tracemalloc_bytes": 265823288,
+      "result_contract": "DungeonMind current public API: cold_parse",
+      "result_sha256": "2823d186e30ae664b9b58a29b64eb281c46b379c1e3209e3cbc79089d36b12bd",
+      "samples_seconds": [
+        7.141210836009122
+      ],
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "35a04feddea6bdd8183930ea4599f77481dc7eb47f66bacd7835ac3ab1dae0a0",
+      "median_seconds": 18.76543606200721,
+      "operation": "full_projection",
+      "peak_tracemalloc_bytes": 459644221,
+      "result_contract": "DungeonMind current public API: full_projection",
+      "result_sha256": "6153a56c21bc4ad7aa98884a336e9691e3122d99dccb2283d7ea284f81c6d6bc",
+      "samples_seconds": [
+        18.76543606200721
+      ],
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "35a04feddea6bdd8183930ea4599f77481dc7eb47f66bacd7835ac3ab1dae0a0",
+      "median_seconds": 19.99693168301019,
+      "operation": "exact_entity",
+      "peak_tracemalloc_bytes": 459644813,
+      "result_contract": "DungeonMind current public API: exact_entity",
+      "result_sha256": "a150c6a2976593a433ff2c0c29f21b0ae9be365594d8e443c7615b5f805ef01a",
+      "samples_seconds": [
+        19.99693168301019
+      ],
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "35a04feddea6bdd8183930ea4599f77481dc7eb47f66bacd7835ac3ab1dae0a0",
+      "median_seconds": 17.60864962999767,
+      "operation": "complete_entity",
+      "peak_tracemalloc_bytes": 459644813,
+      "result_contract": "DungeonMind current public API: complete_entity",
+      "result_sha256": "e9eae4f1e85df35808b6f43fae8839224f5bbec7ae2fc7fcc4f215dfd1cdedec",
+      "samples_seconds": [
+        17.60864962999767
+      ],
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "35a04feddea6bdd8183930ea4599f77481dc7eb47f66bacd7835ac3ab1dae0a0",
+      "median_seconds": 16.909949687003973,
+      "operation": "neighborhood_d1",
+      "peak_tracemalloc_bytes": 459645165,
+      "result_contract": "DungeonMind current public API: neighborhood_d1",
+      "result_sha256": "22080c4b9d22cf3cbabcd0c6e93ef7c05d39e7bab97a2ab73844d6be2da98814",
+      "samples_seconds": [
+        16.909949687003973
+      ],
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "35a04feddea6bdd8183930ea4599f77481dc7eb47f66bacd7835ac3ab1dae0a0",
+      "median_seconds": 17.16331797899329,
+      "operation": "neighborhood_d2",
+      "peak_tracemalloc_bytes": 459645165,
+      "result_contract": "DungeonMind current public API: neighborhood_d2",
+      "result_sha256": "7e2629b050f90f3a0a151d65139daf831fa8f285f29ad0e65dc7299e91119ce1",
+      "samples_seconds": [
+        17.16331797899329
+      ],
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "35a04feddea6bdd8183930ea4599f77481dc7eb47f66bacd7835ac3ab1dae0a0",
+      "median_seconds": 16.385967166002956,
+      "operation": "evidence",
+      "peak_tracemalloc_bytes": 459645077,
+      "result_contract": "DungeonMind current public API: evidence",
+      "result_sha256": "b462fe4e1bb01fdbe9eda672962276267c317b67374e21e4e8cb54a5c377376a",
+      "samples_seconds": [
+        16.385967166002956
+      ],
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "35a04feddea6bdd8183930ea4599f77481dc7eb47f66bacd7835ac3ab1dae0a0",
+      "median_seconds": 19.15597988999798,
+      "operation": "source_anchor",
+      "peak_tracemalloc_bytes": 485791249,
+      "result_contract": "DungeonMind current public API: source_anchor",
+      "result_sha256": "23fe769471d6b23517c93a758ee489f2d38f1a4870e626eb7e957c95bae280bb",
+      "samples_seconds": [
+        19.15597988999798
+      ],
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "35a04feddea6bdd8183930ea4599f77481dc7eb47f66bacd7835ac3ab1dae0a0",
+      "median_seconds": 25.026288836001186,
+      "operation": "deterministic_search",
+      "peak_tracemalloc_bytes": 459644949,
+      "result_contract": "DungeonMind current public API: deterministic_search",
+      "result_sha256": "6d5cf188f7695383107ed2c7ec1c72f59c1ac11512921b23710a74cad79c9a5d",
+      "samples_seconds": [
+        25.026288836001186
+      ],
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "35a04feddea6bdd8183930ea4599f77481dc7eb47f66bacd7835ac3ab1dae0a0",
+      "median_seconds": 0.001064827010850422,
+      "operation": "source_snapshot",
+      "peak_tracemalloc_bytes": 31619,
+      "result_contract": "DungeonMind current public API: source_snapshot",
+      "result_sha256": "b5eef6a1ca7bd72de03009c393241c61843bd39d7f16afbc2253c62759d6c73f",
+      "samples_seconds": [
+        0.001064827010850422
+      ],
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "delta_entities_per_sample": 1,
+      "disposition": "measured",
+      "fixture_counts": {
+        "native_parent_entities": 10000
+      },
+      "input_sha256": "0415a0693b93093a8bfebdeb43b75e7059a64821f1e771f58f15a2ece2ca6e11",
+      "median_seconds": 3.038715572009096,
+      "memory_sample_parent_entity_count": 10001,
+      "operation": "tiny_delta_publication",
+      "parent_entity_counts_before_samples": [
+        10000
+      ],
+      "peak_tracemalloc_bytes": 27255463,
+      "publication_receipt_sha256_samples": [
+        "65f3c3f8f6eebd82d0f0d7c15f970ab8a3cb6d0f3e77a649c704eb425cfdf671",
+        "856ccdbb1b823e0ec0923b1e42b999b5c7ed0a3c4023241efe24a4ef19c55311"
+      ],
+      "result_contract": "materialize_governed_revision + publish_governed_materialization",
+      "result_sha256": "83f2389121d63a9f69ede8796fd9605fe17b29340201070674012f3b695f051d",
+      "samples_seconds": [
+        3.038715572009096
+      ],
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "35a04feddea6bdd8183930ea4599f77481dc7eb47f66bacd7835ac3ab1dae0a0",
+      "median_seconds": 3.4930520489870105,
+      "operation": "canonical_serialize_hash",
+      "peak_tracemalloc_bytes": 146837456,
+      "result_contract": "DungeonMind current public API: canonical_serialize_hash",
+      "result_sha256": "8207a4e80efd6eaa9d26d524f197d2657bc53884919446a9f189f4ce9435bbe3",
+      "samples_seconds": [
+        3.4930520489870105
+      ],
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "d31c0cf98cbdb39bbd46e3ab64ed0cd709039dc85ac91178ddcd0689f56ed3ba",
+      "median_seconds": 0.025160740988212638,
+      "operation": "cold_parse",
+      "peak_tracemalloc_bytes": 2671556,
+      "result_contract": "DungeonMind current public API: cold_parse",
+      "result_sha256": "4e2098bc58c9a72162d7a9daab2c5a78c854ff590b29fab24098f7ed7592524a",
+      "samples_seconds": [
+        0.021628322996548377,
+        0.026941108008031733,
+        0.025160740988212638
+      ],
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "d31c0cf98cbdb39bbd46e3ab64ed0cd709039dc85ac91178ddcd0689f56ed3ba",
+      "median_seconds": 0.12188422700273804,
+      "operation": "full_projection",
+      "peak_tracemalloc_bytes": 4692205,
+      "result_contract": "DungeonMind current public API: full_projection",
+      "result_sha256": "d97613d3bc05a6f4b7f9e8ee6caf45f1871438389105c2128cfc6ce66b2cb529",
+      "samples_seconds": [
+        0.11881236000044737,
+        0.1274882049910957,
+        0.12188422700273804
+      ],
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "d31c0cf98cbdb39bbd46e3ab64ed0cd709039dc85ac91178ddcd0689f56ed3ba",
+      "median_seconds": 0.1276514349883655,
+      "operation": "exact_entity",
+      "peak_tracemalloc_bytes": 4692797,
+      "result_contract": "DungeonMind current public API: exact_entity",
+      "result_sha256": "e5fba6a061cf33f84021fd3016a620058e58d5cbb0558637bf9b61969823b17a",
+      "samples_seconds": [
+        0.1276514349883655,
+        0.12937422799586784,
+        0.12483105399587657
+      ],
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "d31c0cf98cbdb39bbd46e3ab64ed0cd709039dc85ac91178ddcd0689f56ed3ba",
+      "median_seconds": 0.13141851099499036,
+      "operation": "complete_entity",
+      "peak_tracemalloc_bytes": 4692797,
+      "result_contract": "DungeonMind current public API: complete_entity",
+      "result_sha256": "539b502c09ce888efc3ee71c0c01585730133f73104d1233d3eb8bee2e9dc052",
+      "samples_seconds": [
+        0.1642282829998294,
+        0.13141851099499036,
+        0.12261887200293131
+      ],
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "d31c0cf98cbdb39bbd46e3ab64ed0cd709039dc85ac91178ddcd0689f56ed3ba",
+      "median_seconds": 0.12488072999985889,
+      "operation": "neighborhood_d1",
+      "peak_tracemalloc_bytes": 4693149,
+      "result_contract": "DungeonMind current public API: neighborhood_d1",
+      "result_sha256": "2a6599206820ca78f2f71aba3296159535efaedb1ccae4d41d4cd6809c0064ca",
+      "samples_seconds": [
+        0.12488072999985889,
+        0.11485651299881283,
+        0.12680089399509598
+      ],
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "d31c0cf98cbdb39bbd46e3ab64ed0cd709039dc85ac91178ddcd0689f56ed3ba",
+      "median_seconds": 0.12645641999552026,
+      "operation": "neighborhood_d2",
+      "peak_tracemalloc_bytes": 4693149,
+      "result_contract": "DungeonMind current public API: neighborhood_d2",
+      "result_sha256": "26d8b6639123918aaaa73dbc77400417eeb24ce948effc52ccde317382ac95cd",
+      "samples_seconds": [
+        0.12645641999552026,
+        0.1220003010093933,
+        0.1352562090032734
+      ],
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "d31c0cf98cbdb39bbd46e3ab64ed0cd709039dc85ac91178ddcd0689f56ed3ba",
+      "median_seconds": 0.1190664210007526,
+      "operation": "evidence",
+      "peak_tracemalloc_bytes": 4693013,
+      "result_contract": "DungeonMind current public API: evidence",
+      "result_sha256": "7d588e285f8c99a3953162b0ae5062c29edd873697e1b97ae9c461e5b9b119d3",
+      "samples_seconds": [
+        0.11018476299068425,
+        0.12072059500496835,
+        0.1190664210007526
+      ],
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "d31c0cf98cbdb39bbd46e3ab64ed0cd709039dc85ac91178ddcd0689f56ed3ba",
+      "median_seconds": 0.16064419099711813,
+      "operation": "source_anchor",
+      "peak_tracemalloc_bytes": 4927879,
+      "result_contract": "DungeonMind current public API: source_anchor",
+      "result_sha256": "f7c17df6f2b9371a8f368abf04d09694eb10332a79774bb32ac17280b0e1a790",
+      "samples_seconds": [
+        0.15011573801166378,
+        0.16064419099711813,
+        0.17207290999067482
+      ],
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "d31c0cf98cbdb39bbd46e3ab64ed0cd709039dc85ac91178ddcd0689f56ed3ba",
+      "median_seconds": 0.15945355099393055,
+      "operation": "deterministic_search",
+      "peak_tracemalloc_bytes": 4692933,
+      "result_contract": "DungeonMind current public API: deterministic_search",
+      "result_sha256": "c8c1eb87f7e6e35e3fed1569da625282c7c5cb9af653ef01d1db1a602285f5bd",
+      "samples_seconds": [
+        0.15439977499772795,
+        0.15945355099393055,
+        0.18716591699921992
+      ],
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "d31c0cf98cbdb39bbd46e3ab64ed0cd709039dc85ac91178ddcd0689f56ed3ba",
+      "median_seconds": 0.0011524060100782663,
+      "operation": "source_snapshot",
+      "peak_tracemalloc_bytes": 31619,
+      "result_contract": "DungeonMind current public API: source_snapshot",
+      "result_sha256": "b5eef6a1ca7bd72de03009c393241c61843bd39d7f16afbc2253c62759d6c73f",
+      "samples_seconds": [
+        0.0011524060100782663,
+        0.001281649005250074,
+        0.0010481729987077415
+      ],
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "delta_entities_per_sample": 1,
+      "disposition": "measured",
+      "fixture_counts": {
+        "native_parent_entities": 100
+      },
+      "input_sha256": "4d800ec3f85c44b7ef223e6fdcc39d40801b70e24f160cd390286346be8d7b4f",
+      "median_seconds": 0.011362086996086873,
+      "memory_sample_parent_entity_count": 103,
+      "operation": "tiny_delta_publication",
+      "parent_entity_counts_before_samples": [
+        100,
+        101,
+        102
+      ],
+      "peak_tracemalloc_bytes": 315927,
+      "publication_receipt_sha256_samples": [
+        "dc39d0775ad4078ec675b62d8a8554782cd15dc8b0b2b2ac62563d1d92f740e2",
+        "40b7f6dd59b839f4184808058480ef0e644044a20fb3bb4062c5eeb9db4a81f8",
+        "63e4389a543e7f7a11419e442c931107e8cb2780e64898995ce24b0132c27755",
+        "585e53928e599121abea0ce99e87107256a13a2460928aaab0febd45da7c92d2"
+      ],
+      "result_contract": "materialize_governed_revision + publish_governed_materialization",
+      "result_sha256": "0aad2c04f08ed3eade0ae651dec47b701ae7263be339f5616106e512478ffb8f",
+      "samples_seconds": [
+        0.010929855998256244,
+        0.012626130992430262,
+        0.011362086996086873
+      ],
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 250,
+        "objects": 100,
+        "relationships": 150
+      },
+      "input_sha256": "d31c0cf98cbdb39bbd46e3ab64ed0cd709039dc85ac91178ddcd0689f56ed3ba",
+      "median_seconds": 0.03473651999956928,
+      "operation": "canonical_serialize_hash",
+      "peak_tracemalloc_bytes": 1475236,
+      "result_contract": "DungeonMind current public API: canonical_serialize_hash",
+      "result_sha256": "4b8a9216581adddd2a34bfbb2f7b3e44f06216ca743c86ac20c4fe3c2b36a2c4",
+      "samples_seconds": [
+        0.04756072998861782,
+        0.03473651999956928,
+        0.034431353997206315
+      ],
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "66c754d8ca619e79cae4df63c896d3b0ab04bb9da60d0d7d9dca1cbe3268b713",
+      "median_seconds": 0.28306735400110483,
+      "operation": "cold_parse",
+      "peak_tracemalloc_bytes": 26883440,
+      "result_contract": "DungeonMind current public API: cold_parse",
+      "result_sha256": "a6eee2754543530c457c0de1474dc77be31d3bbae9027b4a0a9fd61e16f2abcd",
+      "samples_seconds": [
+        0.28306735400110483,
+        0.2630854739982169,
+        0.3087702810007613
+      ],
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "66c754d8ca619e79cae4df63c896d3b0ab04bb9da60d0d7d9dca1cbe3268b713",
+      "median_seconds": 1.3541251930000726,
+      "operation": "full_projection",
+      "peak_tracemalloc_bytes": 46183133,
+      "result_contract": "DungeonMind current public API: full_projection",
+      "result_sha256": "a8c8cfd574eda0db2d2c64e1713f72f45b5675b978f131cfc6b5526765e46e23",
+      "samples_seconds": [
+        1.3685785179986851,
+        1.2064909279870335,
+        1.3541251930000726
+      ],
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "66c754d8ca619e79cae4df63c896d3b0ab04bb9da60d0d7d9dca1cbe3268b713",
+      "median_seconds": 1.548569738995866,
+      "operation": "exact_entity",
+      "peak_tracemalloc_bytes": 46183725,
+      "result_contract": "DungeonMind current public API: exact_entity",
+      "result_sha256": "5b3ede4d874467a8fd0bd5512206cc06c239a35ed98fd853e6158a7d6d2946c1",
+      "samples_seconds": [
+        1.2111119170003803,
+        1.548569738995866,
+        2.214819178014295
+      ],
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "66c754d8ca619e79cae4df63c896d3b0ab04bb9da60d0d7d9dca1cbe3268b713",
+      "median_seconds": 1.3921226579986978,
+      "operation": "complete_entity",
+      "peak_tracemalloc_bytes": 46183725,
+      "result_contract": "DungeonMind current public API: complete_entity",
+      "result_sha256": "5503a6cfe1ef33af35afc006e754dbeecbac3cbca2a2549f75f3e04c74cdaa48",
+      "samples_seconds": [
+        1.3378889669984346,
+        1.4408096840052167,
+        1.3921226579986978
+      ],
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "66c754d8ca619e79cae4df63c896d3b0ab04bb9da60d0d7d9dca1cbe3268b713",
+      "median_seconds": 1.2942805159982527,
+      "operation": "neighborhood_d1",
+      "peak_tracemalloc_bytes": 46184077,
+      "result_contract": "DungeonMind current public API: neighborhood_d1",
+      "result_sha256": "9913bfe7fb704de626ec0db09bb8818c29df39feb37ceafb798e7dce61ca054d",
+      "samples_seconds": [
+        1.2942805159982527,
+        1.2119694639986847,
+        1.3558963719988242
+      ],
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "66c754d8ca619e79cae4df63c896d3b0ab04bb9da60d0d7d9dca1cbe3268b713",
+      "median_seconds": 1.248561341999448,
+      "operation": "neighborhood_d2",
+      "peak_tracemalloc_bytes": 46184077,
+      "result_contract": "DungeonMind current public API: neighborhood_d2",
+      "result_sha256": "fb92b21e291b59c35c78918cbb6b236320126262e6c0eb4235e0a62881607171",
+      "samples_seconds": [
+        1.248561341999448,
+        1.3036793930077692,
+        1.1746543569897767
+      ],
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "66c754d8ca619e79cae4df63c896d3b0ab04bb9da60d0d7d9dca1cbe3268b713",
+      "median_seconds": 1.4103656959923683,
+      "operation": "evidence",
+      "peak_tracemalloc_bytes": 46183893,
+      "result_contract": "DungeonMind current public API: evidence",
+      "result_sha256": "44b89f4651e1926f4f78e9a063343d738fa8b5176acb67a2e2240584ee4a48e2",
+      "samples_seconds": [
+        1.5740623849997064,
+        1.4103656959923683,
+        1.1894020780018764
+      ],
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "66c754d8ca619e79cae4df63c896d3b0ab04bb9da60d0d7d9dca1cbe3268b713",
+      "median_seconds": 1.339941430996987,
+      "operation": "source_anchor",
+      "peak_tracemalloc_bytes": 48674861,
+      "result_contract": "DungeonMind current public API: source_anchor",
+      "result_sha256": "59c6e75d07e6869f2f441dc5b5710b904cff992cbdbbdb0874250ae2de97f95d",
+      "samples_seconds": [
+        1.339941430996987,
+        1.2678875889978372,
+        1.4341927409986965
+      ],
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "66c754d8ca619e79cae4df63c896d3b0ab04bb9da60d0d7d9dca1cbe3268b713",
+      "median_seconds": 2.0763875569973607,
+      "operation": "deterministic_search",
+      "peak_tracemalloc_bytes": 46183861,
+      "result_contract": "DungeonMind current public API: deterministic_search",
+      "result_sha256": "4d95edaa633eb9871fe9f4a732d24d417fafae5019c6c12b133b835742606d86",
+      "samples_seconds": [
+        1.9568911520036636,
+        2.0763875569973607,
+        2.208752402002574
+      ],
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "66c754d8ca619e79cae4df63c896d3b0ab04bb9da60d0d7d9dca1cbe3268b713",
+      "median_seconds": 0.0014547759928973392,
+      "operation": "source_snapshot",
+      "peak_tracemalloc_bytes": 31619,
+      "result_contract": "DungeonMind current public API: source_snapshot",
+      "result_sha256": "b5eef6a1ca7bd72de03009c393241c61843bd39d7f16afbc2253c62759d6c73f",
+      "samples_seconds": [
+        0.0014765920059289783,
+        0.0014547759928973392,
+        0.0013905220112064853
+      ],
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "delta_entities_per_sample": 1,
+      "disposition": "measured",
+      "fixture_counts": {
+        "native_parent_entities": 1000
+      },
+      "input_sha256": "84978f387980eec6c09ec75119366aabfe02a4a22c438d24145c15e1e1bddc5a",
+      "median_seconds": 0.07402334999642335,
+      "memory_sample_parent_entity_count": 1003,
+      "operation": "tiny_delta_publication",
+      "parent_entity_counts_before_samples": [
+        1000,
+        1001,
+        1002
+      ],
+      "peak_tracemalloc_bytes": 2838075,
+      "publication_receipt_sha256_samples": [
+        "5c5d5738fce88462f928e6b5f2aaa41478408caf0bff0b88a06f401706b2963f",
+        "ab26eba6ff3ff797946d3e53e86e6d129bdfefee694ec005c6868e4f0c0bdb87",
+        "25aa4b9ba61e2248a955278edc22bf0fe112f75dab748ff421727fabbc8fbf07",
+        "1deb0bdc43b40b55b3df64edbd2b332478ab076f455b5123eb378564bd2c5e96"
+      ],
+      "result_contract": "materialize_governed_revision + publish_governed_materialization",
+      "result_sha256": "9ffead83ffd5cddec2eb0cbb9d8413f80214e601caa33934a238d27f3c4e1b0a",
+      "samples_seconds": [
+        0.07975156599422917,
+        0.0729882410087157,
+        0.07402334999642335
+      ],
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 2500,
+        "objects": 1000,
+        "relationships": 1500
+      },
+      "input_sha256": "66c754d8ca619e79cae4df63c896d3b0ab04bb9da60d0d7d9dca1cbe3268b713",
+      "median_seconds": 0.344619176001288,
+      "operation": "canonical_serialize_hash",
+      "peak_tracemalloc_bytes": 14728360,
+      "result_contract": "DungeonMind current public API: canonical_serialize_hash",
+      "result_sha256": "a9ed5c8fb5efd40713beb7af975d8b3ccd4db7a6e42e3d029921400cca4da1bd",
+      "samples_seconds": [
+        0.344619176001288,
+        0.35319940600311384,
+        0.33567596699867863
+      ],
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "8f7cae71de8a275e0d10e440ff1b745c1435b39f7e551901849a936aeb7bb320",
+      "median_seconds": 7.207197569994605,
+      "operation": "cold_parse",
+      "peak_tracemalloc_bytes": 266063288,
+      "result_contract": "DungeonMind current public API: cold_parse",
+      "result_sha256": "7c1dc6daae8a5bbbcf404706aedba9b2668f5c7fb4f02e469b5c138ad55ded8d",
+      "samples_seconds": [
+        7.207197569994605
+      ],
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "8f7cae71de8a275e0d10e440ff1b745c1435b39f7e551901849a936aeb7bb320",
+      "median_seconds": 19.88533356899279,
+      "operation": "full_projection",
+      "peak_tracemalloc_bytes": 460692797,
+      "result_contract": "DungeonMind current public API: full_projection",
+      "result_sha256": "612c5a6b7801fd35fadbb238a5b0cc2d533c72161d21577e87c7335a253bb90e",
+      "samples_seconds": [
+        19.88533356899279
+      ],
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "8f7cae71de8a275e0d10e440ff1b745c1435b39f7e551901849a936aeb7bb320",
+      "median_seconds": 19.465566247992683,
+      "operation": "exact_entity",
+      "peak_tracemalloc_bytes": 460693389,
+      "result_contract": "DungeonMind current public API: exact_entity",
+      "result_sha256": "d70e3cfbcea5152b53e4545bbd4b2f416d947a8971dea5344d64d6ba19dc7e23",
+      "samples_seconds": [
+        19.465566247992683
+      ],
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "8f7cae71de8a275e0d10e440ff1b745c1435b39f7e551901849a936aeb7bb320",
+      "median_seconds": 24.363628191000316,
+      "operation": "complete_entity",
+      "peak_tracemalloc_bytes": 460693389,
+      "result_contract": "DungeonMind current public API: complete_entity",
+      "result_sha256": "97b79fabc3250a7eae5e44ff2b4fb41797f39073debbf1c7332a0ebf1631d3ac",
+      "samples_seconds": [
+        24.363628191000316
+      ],
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "8f7cae71de8a275e0d10e440ff1b745c1435b39f7e551901849a936aeb7bb320",
+      "median_seconds": 18.49066704600409,
+      "operation": "neighborhood_d1",
+      "peak_tracemalloc_bytes": 460693741,
+      "result_contract": "DungeonMind current public API: neighborhood_d1",
+      "result_sha256": "e90d0f3c17093679e58eebe12172be0115df20b31ef901992fe644dc48206430",
+      "samples_seconds": [
+        18.49066704600409
+      ],
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "8f7cae71de8a275e0d10e440ff1b745c1435b39f7e551901849a936aeb7bb320",
+      "median_seconds": 17.96219809599279,
+      "operation": "neighborhood_d2",
+      "peak_tracemalloc_bytes": 460693741,
+      "result_contract": "DungeonMind current public API: neighborhood_d2",
+      "result_sha256": "1b9e8a42006dc1035393192a94d4833d6f5edaf7c84a65d9deb65114caa68b62",
+      "samples_seconds": [
+        17.96219809599279
+      ],
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "8f7cae71de8a275e0d10e440ff1b745c1435b39f7e551901849a936aeb7bb320",
+      "median_seconds": 16.851910140991095,
+      "operation": "evidence",
+      "peak_tracemalloc_bytes": 460693533,
+      "result_contract": "DungeonMind current public API: evidence",
+      "result_sha256": "957e703bfe2a07ce74429a2b46fc574549b6a5460a25ad4dc5262c98390d9a60",
+      "samples_seconds": [
+        16.851910140991095
+      ],
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "8f7cae71de8a275e0d10e440ff1b745c1435b39f7e551901849a936aeb7bb320",
+      "median_seconds": 18.49915609699383,
+      "operation": "source_anchor",
+      "peak_tracemalloc_bytes": 489204665,
+      "result_contract": "DungeonMind current public API: source_anchor",
+      "result_sha256": "47a3720f248178ad2492b65a8d07aa760d4a2a6415e9574a83b0d839e507bd15",
+      "samples_seconds": [
+        18.49915609699383
+      ],
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "8f7cae71de8a275e0d10e440ff1b745c1435b39f7e551901849a936aeb7bb320",
+      "median_seconds": 22.925149182003224,
+      "operation": "deterministic_search",
+      "peak_tracemalloc_bytes": 460693525,
+      "result_contract": "DungeonMind current public API: deterministic_search",
+      "result_sha256": "ccf54bce44b48b3da6318971b2a7d6ce694f824995791673c26a1a08c02e567a",
+      "samples_seconds": [
+        22.925149182003224
+      ],
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "8f7cae71de8a275e0d10e440ff1b745c1435b39f7e551901849a936aeb7bb320",
+      "median_seconds": 0.001295134992687963,
+      "operation": "source_snapshot",
+      "peak_tracemalloc_bytes": 31619,
+      "result_contract": "DungeonMind current public API: source_snapshot",
+      "result_sha256": "b5eef6a1ca7bd72de03009c393241c61843bd39d7f16afbc2253c62759d6c73f",
+      "samples_seconds": [
+        0.001295134992687963
+      ],
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "delta_entities_per_sample": 1,
+      "disposition": "measured",
+      "fixture_counts": {
+        "native_parent_entities": 10000
+      },
+      "input_sha256": "b8d6ff127be687b85fb51d3b9c7688a55e801453a35521601446d2010f036579",
+      "median_seconds": 2.142253994999919,
+      "memory_sample_parent_entity_count": 10001,
+      "operation": "tiny_delta_publication",
+      "parent_entity_counts_before_samples": [
+        10000
+      ],
+      "peak_tracemalloc_bytes": 27255463,
+      "publication_receipt_sha256_samples": [
+        "2a3a73ec6817f4c28ce3d2bfcaafd4d43e3c253b31fac60d6af99b86e99e5762",
+        "865f3489f0d370bd3bed7775b8349fa99b336ed090bf2da45eb7230040f7c91c"
+      ],
+      "result_contract": "materialize_governed_revision + publish_governed_materialization",
+      "result_sha256": "55f17d6dc27772b7d75cbe1145e25ff19b8a6ef792ab1c7a9d5208f28515eef4",
+      "samples_seconds": [
+        2.142253994999919
+      ],
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "measured",
+      "fixture_counts": {
+        "evidence_refs": 25000,
+        "objects": 10000,
+        "relationships": 15000
+      },
+      "input_sha256": "8f7cae71de8a275e0d10e440ff1b745c1435b39f7e551901849a936aeb7bb320",
+      "median_seconds": 2.8542521110066446,
+      "operation": "canonical_serialize_hash",
+      "peak_tracemalloc_bytes": 147257456,
+      "result_contract": "DungeonMind current public API: canonical_serialize_hash",
+      "result_sha256": "201fae019b4b0f9bb7b57d177bdbda4134217c5387a19ff86030c4543920a21a",
+      "samples_seconds": [
+        2.8542521110066446
+      ],
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "memory",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "Not attempted: this host has no enforceable 8 GiB peak-RSS limit; PR #91 activation prohibits 50k/100k until revised activation/waiver.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "world_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 1000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 10000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 50000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "cold_parse",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "full_projection",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "exact_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "complete_entity",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d1",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "neighborhood_d2",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "evidence",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_anchor",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "deterministic_search",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "source_snapshot",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "tiny_delta_publication",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100000
+    },
+    {
+      "adapter": "postgresql",
+      "disposition": "not_measured",
+      "operation": "canonical_serialize_hash",
+      "reason": "No PostgreSQL target authorized by PR #91 activation.",
+      "shape": "rules_like",
+      "size": 100000
+    }
+  ],
+  "measured_checkout_head": "ccd06cb119c834a3d7950d5109b85c7b6a683430",
+  "postgresql": {
+    "activated": false,
+    "disposition": "not_measured",
+    "reason": "No PostgreSQL target authorized by PR #91 activation."
+  },
+  "resource_envelope": {
+    "execution": "sequential",
+    "host_enforcement": {
+      "peak_rss_cgroup_hard_limit_bytes": null,
+      "peak_rss_enforced": false,
+      "timeout_seconds": 5400,
+      "virtual_address_space_ulimit_bytes": 8589934592
+    },
+    "peak_rss_limit_bytes": 8589934592,
+    "wall_time_limit_seconds": 5400
+  },
+  "runtime_anchor": "7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc",
+  "schema": "dungeonmind.vnext-scale-characterization.v1",
+  "seed": 20260928,
+  "workload_parameters": {
+    "repeat_count_10000": 1,
+    "repeat_count_100_1000": 3,
+    "repeat_count_50k_100k": 1,
+    "sequential": true,
+    "shapes": [
+      "world_like",
+      "rules_like"
+    ],
+    "sizes": [
+      100,
+      1000,
+      10000
+    ]
+  }
+}
