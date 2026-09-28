@@ -1,8 +1,9 @@
 # HANDOFF — vNext parallel scale characterization
 
-**Status:** DESIGN CHECKPOINT — not an implementation lease  
+**Status:** DESIGN ACCEPTED — no implementation lease  
 **Owner:** DungeonMind  
-**Current main anchor:** `8111557b2f8ac797cf9d4f7de54e559d57f22c1d` (PR #88)  
+**Design PR base main anchor:** `8111557b2f8ac797cf9d4f7de54e559d57f22c1d` (PR #88)
+**Accepted design:** PR #89 head `93c2e0e50544189c4298e70a52c663c825439a88`; PRIME Cycle 2 PASS `5340172526`; merge `16022e37757f6c6c61458c6c90ef94857cab93f7`  
 **Current production-code anchor:** `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc` (accepted native source admission, PR #85)  
 **Authority:** `Docs/Roadmaps/ROADMAP.md`, §“Parallel measurement lane”; `Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`; `Docs/Architecture/AUTHORITY.md`  
 **One-line mission:** establish a reproducible, semantically identified scale/cost baseline for the accepted current runtime, to inform V8 comparison and V11 post-cutover measurement, without changing runtime behavior or delaying V0.

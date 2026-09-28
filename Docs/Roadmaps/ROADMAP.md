@@ -2,7 +2,7 @@
 
 **Status:** current forward roadmap  
 **Updated:** 2026-09-28
-**Roadmap anchor:** DungeonMind `main` after PR #87 (`5984dc353e7f638ad03e8d2be670757d8d7bbfcf`); V7 design checkpoint merged, implementation remains blocked
+**Roadmap anchor:** DungeonMind `main` after PR #89 merge (`16022e37757f6c6c61458c6c90ef94857cab93f7`); PR #89 accepts the parallel characterization design handoff only; V7 implementation remains blocked
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -1039,7 +1039,7 @@ Do not adopt a graph database, distributed cache, or event log merely because vN
 
 # Parallel measurement lane
 
-The larger K0.3-style benchmark expansion is retained as an evidence project, not a front-door blocker.
+The larger K0.3-style benchmark expansion is retained as an evidence project, not a front-door blocker. Its current-authority design handoff is accepted at PR #89 (head `93c2e0e50544189c4298e70a52c663c825439a88`, PRIME Cycle 2 PASS `5340172526`, merge `16022e37757f6c6c61458c6c90ef94857cab93f7`). This is design-only: no measurements, implementation lease, database execution, or V8/V11 acceptance. Before edits or DB contact, Steward must record the exact base/runtime, file allowlist, workload/adapter cohort, resource envelope, and any approved disposable PG target in a bounded activation record.
 
 Desired deterministic workload shapes:
 
