@@ -8,7 +8,7 @@
 
 **Disposition:** no demonstrated new DungeonMind runtime prerequisite for the bounded immutable-source composition. Return the accepted contract; next proof/adoption is consumer-owned, not another Kernel feature.
 
-**Design repository/base:** DungeonMind `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc` (PR #85 merge).
+**Design repository/base:** DungeonMind `daed279792402aa813c647251d21724c68768b03` (accepted PR #86 settlement); runtime authority remains PR #85 merge `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`.
 
 **Prospective proof repository/base:** DungeonMindBuddy `132cb80bea50ef2814074a52832ab763286a1900`; re-anchor before any dispatch.
 
@@ -51,11 +51,12 @@ Buddy #779's previous HOLD is closed: Cycle 2 PASS `5331441470`, reviewed head
 not an ordinary production caller or real source producer. #780/V6.5 preserves
 native evidence/anchors. Do not reopen these accepted findings as new work.
 
-DungeonMind #86 is documentation-only settlement at
-`4f8c13da695ce59d44aaf8278df6666f5e11d30e`; it owns the existing source handoff,
-report, steward handoff and roadmap. Their stale pre-merge headers on #85's main
-are its responsibility. This checkpoint changes none of those four files and
-does not repeat settlement or create a competing status ledger.
+DungeonMind #86's documentation-only settlement head
+`4f8c13da695ce59d44aaf8278df6666f5e11d30e` merged during the final anchor check
+as `daed279792402aa813c647251d21724c68768b03`. It settled the existing source
+handoff, report, steward handoff and roadmap. This branch incorporates that real
+accepted main, changes none of those four files relative to it, and does not
+repeat settlement or create a competing status ledger.
 
 ## 2. What is product integration, not a demonstrated Kernel defect
 
@@ -184,8 +185,9 @@ does not claim the installed product dependency advanced.
 
 Live lanes at capture: Buddy #785 `07ec031a…` (serial DEMO), #786 `614bb686…`
 (statblock compatibility), #781 `cf7f5698…` (interaction proof), Rules #763–765
-(#763 holds dependency files), UI #760/#761. DM #86 owns four sync documents;
-Keeper has none. This BLOCKED proposal reserves no paths. Default serial DEMO
+(#763 holds dependency files), UI #760/#761. DM #86 released its four sync paths
+by merging at the final anchor; Keeper has none. This BLOCKED proposal reserves
+no paths. Default serial DEMO
 means no additional proof PR while #785 remains open unless PRIME explicitly
 records a parallel-independent exception and safe runtime ownership. Re-check
 actual paths and dispositions before activation; branch separation alone is not
