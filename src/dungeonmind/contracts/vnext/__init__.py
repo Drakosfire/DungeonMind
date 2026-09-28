@@ -62,6 +62,18 @@ from .knowledge import (
     MigrationOriginRef,
     PublishKnowledgeRevisionCommand,
 )
+from .native_source import (
+    MAX_NATIVE_TEXT_BYTES,
+    MAX_NATIVE_TEXT_SPANS,
+    NATIVE_TEXT_BODY_STORAGE,
+    NativeSourceAdmissionReceiptV1,
+    NativeTextEvidenceSpanRequestV1,
+    NativeTextSourceAccessV1,
+    NativeTextSourceAdmissionBindingV1,
+    NativeTextSourceAdmissionV1,
+    NativeTextSourceOriginV1,
+    NativeUtf8SpanProofV1,
+)
 from .projection import FocusRef, ProjectionRequest, ProjectionSnapshot
 from .prospective import (
     DurableEntityRef,
@@ -101,6 +113,9 @@ PUBLIC_CONTRACT_MODELS: tuple[type, ...] = (
 )
 
 __all__ = [
+    "MAX_NATIVE_TEXT_BYTES",
+    "MAX_NATIVE_TEXT_SPANS",
+    "NATIVE_TEXT_BODY_STORAGE",
     "PUBLIC_CONTRACT_MODELS",
     "Assertion",
     "AssertionMetadata",
@@ -132,6 +147,13 @@ __all__ = [
     "LabelsAnyVisibility",
     "LiteralValue",
     "MigrationOriginRef",
+    "NativeSourceAdmissionReceiptV1",
+    "NativeTextEvidenceSpanRequestV1",
+    "NativeTextSourceAccessV1",
+    "NativeTextSourceAdmissionBindingV1",
+    "NativeTextSourceAdmissionV1",
+    "NativeTextSourceOriginV1",
+    "NativeUtf8SpanProofV1",
     "NonBlankId",
     "OpenPredicateNamespace",
     "ProjectionRequest",

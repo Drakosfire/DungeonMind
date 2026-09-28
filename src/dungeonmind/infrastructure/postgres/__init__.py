@@ -23,6 +23,7 @@ from .semantic import (
     PostgresSemanticSearch,
 )
 from .threads import PostgresMindThreadRepository
+from .vnext_sources import PostgresNativeSourceEvidenceRepository
 from .world_identity_reconciliation import PostgresWorldIdentityReconciliationRepository
 
 __all__ = [
@@ -34,6 +35,7 @@ __all__ = [
     "PostgresFinalizedReviewPublicationRepository",
     "PostgresIdentityDecisionRepository",
     "PostgresMindThreadRepository",
+    "PostgresNativeSourceEvidenceRepository",
     "PostgresRetrievalSessionRepository",
     "PostgresReviewedWorldInitializationRepository",
     "PostgresSemanticDocumentRepository",

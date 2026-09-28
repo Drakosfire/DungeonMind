@@ -2,7 +2,7 @@
 
 **Created:** 2026-09-27
 
-**Status:** DESIGN PASS — bounded MIND implementation activated; implementation pending
+**Status:** IMPLEMENTATION PR OPEN — exact-head PRIME review pending; not accepted
 
 **Owner:** DungeonMind; ARCHITECTURE designs, MIND stewards implementation, PRIME controls acceptance/merge
 
@@ -257,7 +257,6 @@ src/dungeonmind/infrastructure/memory/vnext_sources.py
 src/dungeonmind/infrastructure/postgres/vnext_sources.py
 migrations/versions/0011_vnext_native_source_admission.py
 tests/unit/test_vnext_native_source_admission.py
-tests/unit/test_vnext_native_source_access.py
 tests/integration/test_postgres_vnext_native_source_admission.py
 scripts/verify_native_source_evidence_consumer.py
 Docs/Contracts/vnext/dm_native_source_admission_v1.json
@@ -296,6 +295,11 @@ Re-anchor live main and open PRs again before opening the implementation PR, and
 record any change to base, branch or competing leases. Use an isolated disposable
 PostgreSQL target owned by this implementation lane; do not connect to Buddy's
 persistent `54330`/`54331` DEMO pair.
+
+Implementation evidence and exact commands/results are recorded in
+[`REPORT-NATIVE-text-source-evidence-admission.md`](../Reports/REPORT-NATIVE-text-source-evidence-admission.md).
+PRIME's exact-head review is still required; implementation proof is not
+acceptance, and no future merge identity is pre-recorded here.
 
 ## §7 Merge-blocking proof at the owning boundaries
 

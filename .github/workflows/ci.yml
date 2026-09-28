@@ -84,6 +84,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check out exact accepted WorldKeeper consumer pin
+        uses: actions/checkout@v4
+        with:
+          repository: Drakosfire/WorldKeeper
+          ref: 49a8620f066ce7ef8972a699020c012f50af9158
+          path: .ci/worldkeeper
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -106,3 +113,9 @@ jobs:
 
       - name: Integration tests
         run: uv run pytest -m integration
+
+      - name: Native source admission through actual WorldKeeper
+        run: >-
+          PYTHONPATH=src:.ci/worldkeeper/src
+          uv run python scripts/verify_native_source_evidence_consumer.py
+          --keeper-source .ci/worldkeeper

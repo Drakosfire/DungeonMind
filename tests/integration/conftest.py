@@ -21,6 +21,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 TRUNCATE_SQL = """
 TRUNCATE TABLE
+    dungeonmind.knowledge_native_source_spans,
+    dungeonmind.knowledge_native_source_admissions,
     dungeonmind.knowledge_head_events,
     dungeonmind.knowledge_heads,
     dungeonmind.knowledge_revisions,
@@ -78,8 +80,7 @@ def migrated_database(database_url: str) -> str:
     )
     if result.returncode != 0:
         pytest.fail(
-            "alembic upgrade head failed:\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+            f"alembic upgrade head failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
     return database_url
 
