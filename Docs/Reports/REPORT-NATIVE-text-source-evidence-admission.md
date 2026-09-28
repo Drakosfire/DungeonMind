@@ -1,8 +1,9 @@
 # Native text-source and evidence admission — implementation evidence
 
-**Disposition:** implementation complete; PRIME exact-head review pending
+**Disposition:** bounded Cycle 1 repair implemented; PRIME exact-head re-review pending
 **PR:** [#85](https://github.com/Drakosfire/DungeonMind/pull/85) — open
-**Reviewed candidate head:** `1a29633122405ee46ca4a58970670d291e4ccf11`
+**Exact review head:** use the current head recorded on PR #85 and in PRIME's
+review request; this report intentionally does not pin a prior revision.
 **Design checkpoint:** `86e8f22d007df99de577cb412301c5a6d4e2d597`
 **Implementation branch:** `codex/native-source-evidence-admission`
 **Implementation base:** `3ebdefaf1303089f21d3c94f2759df2d9274a71f` (PR #84 settlement)
@@ -17,6 +18,11 @@ same durable allocation after a descendant. Context-bound preview verifies
 exact revision membership, visibility, status and body/span digests; unavailable
 cases are non-disclosing and stored corruption fails closed.
 
+The PostgreSQL proof also injects a lost response after the transaction has
+committed. The public admission operation recovers the original companion
+receipt; a fresh repository instance then verifies exact replay without another
+child, head event, admission row or source-epoch increment.
+
 This does not establish mutable source lifecycle, source freshness across Keeper
 prepare/commit, Buddy saved-document authenticity, DEMO adoption, J3, or V7.
 No Keeper, Buddy, dependency manifest, frozen source/evidence contract or
@@ -27,13 +33,12 @@ native authority tables after `0010_vnext_prospective_results`.
 
 - Core: `2046 passed, 11 skipped, 253 deselected` via
   `PYTHONPATH=src UV_CACHE_DIR=/tmp/dm-uv-cache pytest -m 'not integration'`.
-- PostgreSQL integration: `252 passed, 12 skipped, 2046 deselected` via
-  `PYTHONPATH=src DUNGEONMIND_DATABASE_URL=... pytest -m integration` against
-  disposable `pgvector/pgvector:0.8.6-pg16`; no required source-admission or
-  migration proof skipped.
-- Focused source admission/migration rerun: `9 passed` on PostgreSQL, including
-  injected rollback stages, same-ID concurrent replay, distinct-ID parent race,
-  and replay after a descendant.
+- PostgreSQL integration on the preceding reviewed head: `252 passed, 12 skipped,
+  2046 deselected`. The final-head CI rerun is required after this repair.
+- Focused source-admission/migration rerun after the repair: `10 passed` against
+  disposable `pgvector/pgvector:0.8.6-pg16`, including injected rollback stages,
+  lost post-commit response recovery, fresh-repository exact replay, same-ID
+  concurrent replay, distinct-ID parent race, and replay after a descendant.
 - `ruff check .`: pass.
 - `pyright src` with the repository virtual environment: `0 errors, 0 warnings`.
 - Exact WorldKeeper witness: `NATIVE_SOURCE_KEEPER_CONSUMER_WITNESS_PASS` at

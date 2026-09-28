@@ -102,6 +102,83 @@ def test_postgres_commits_exact_source_and_replays_after_descendant(pg):
     assert repository.get_head(request.space_id).head_revision_id != receipt.published_revision_id
 
 
+def test_postgres_lost_post_commit_response_recovers_and_replays_fresh_repository(pg):
+    hook_calls = 0
+
+    def lose_response_after_commit() -> None:
+        nonlocal hook_calls
+        hook_calls += 1
+        if hook_calls == 1:
+            raise RuntimeError("injected response loss after commit")
+
+    repository = PostgresNativeSourceEvidenceRepository(
+        pg.database,
+        after_publication_commit=lose_response_after_commit,
+    )
+    domain, profile, genesis = _init(repository)
+    request = _request(
+        space_id="space:postgres-native-source",
+        parent_revision_id=genesis.published_revision_id,
+    )
+    events_before = _knowledge(repository).head_events(request.space_id)
+    epoch_before = repository.open_native_source_view(request.space_id).epoch
+
+    # The repository commits, then loses the response. The public operation
+    # must recover the exact companion receipt instead of reporting failure.
+    recovered = publish_native_text_source_evidence(
+        repository=repository,
+        request=request,
+        domain_contract=domain,
+        semantic_profile=profile,
+    )
+    assert hook_calls == 1
+    assert recovered.published_revision_id != genesis.published_revision_id
+    assert recovered.publication_receipt.published_revision_id == recovered.published_revision_id
+
+    # Simulate a process/repository restart and exact retry. No second child,
+    # event, admission row or epoch increment may be introduced.
+    fresh_repository = _repository(pg)
+    assert (
+        fresh_repository.get_native_source_admission_receipt(
+            request.space_id, request.admission_id
+        )
+        == recovered
+    )
+    assert (
+        fresh_repository.get_publication_receipt(request.space_id, request.admission_id)
+        == recovered.publication_receipt
+    )
+    head_after_commit = fresh_repository.get_head(request.space_id)
+    events_after_commit = _knowledge(fresh_repository).head_events(request.space_id)
+    epoch_after_commit = fresh_repository.open_native_source_view(request.space_id).epoch
+    assert head_after_commit is not None
+    assert head_after_commit.head_revision_id == recovered.published_revision_id
+    assert len(events_after_commit) == len(events_before) + 1
+    assert epoch_after_commit == epoch_before + 1
+
+    replay = publish_native_text_source_evidence(
+        repository=fresh_repository,
+        request=request,
+        domain_contract=domain,
+        semantic_profile=profile,
+    )
+    assert replay == recovered
+    assert fresh_repository.get_head(request.space_id) == head_after_commit
+    assert _knowledge(fresh_repository).head_events(request.space_id) == events_after_commit
+    assert fresh_repository.open_native_source_view(request.space_id).epoch == epoch_after_commit
+    with pg.database.transaction() as conn:
+        assert (
+            conn.execute(
+                """
+                SELECT COUNT(*) AS n FROM dungeonmind.knowledge_native_source_admissions
+                WHERE space_id = %s AND admission_id = %s
+                """,
+                (request.space_id, request.admission_id),
+            ).fetchone()["n"]
+            == 1
+        )
+
+
 @pytest.mark.parametrize("failure_stage", ["revision", "publication_receipt", "source", "receipt"])
 def test_postgres_failure_rolls_back_child_receipts_event_and_epoch(pg, failure_stage: str):
     domain, profile = _domain(), _profile()
