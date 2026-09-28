@@ -72,6 +72,7 @@ V5   Generic governed write contracts                    COMPLETE
   V5.4 Prospective-reference allocation + substitution   COMPLETE
 V6   DungeonBuddy domain implementation                  COMPLETE
 NATIVE Empty new-space genesis prerequisite               COMPLETE
+NATIVE Immutable text-source/evidence admission            COMPLETE
 V7   Bridge-genesis migration
 V8   Joint semantic + performance acceptance
 V9   Cutover
