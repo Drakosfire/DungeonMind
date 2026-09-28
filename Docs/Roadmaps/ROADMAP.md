@@ -2,7 +2,7 @@
 
 **Status:** current forward roadmap  
 **Updated:** 2026-09-28
-**Roadmap anchor:** DungeonMind `main` after PR #85 (`7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`); native text-source/evidence admission accepted
+**Roadmap anchor:** DungeonMind `main` after PR #87 (`5984dc353e7f638ad03e8d2be670757d8d7bbfcf`); V7 design checkpoint merged, implementation remains blocked
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -17,10 +17,15 @@ integration (including the exact pinned WorldKeeper consumer), and benchmark
 smoke are green. The merge proves atomic admission, replay/recovery and
 context-bound preview for this immutable V1 slice. It does not prove source
 lifecycle, source freshness across Keeper prepare/commit, Buddy saved-file
-authenticity, DEMO adoption, J3 or V7 readiness. The next handoff must resolve
-the smallest DEMO-owned product consumer journey and whether source freshness
-is a prerequisite for that journey or only for J3. Existing bridge-genesis,
-cutover and product obligations remain unchanged.
+authenticity, DEMO adoption, J3 or V7 readiness. PR #87 adds the accepted V7 design checkpoint only; it grants no implementation,
+freeze/export, migration, or cutover authority. DEMO's 2026-09-28 cross-repo
+checkpoint confirms #85 satisfies MIND's source-admission prerequisite for a
+bounded immutable one-shot; no MIND API/proof blocker was identified. The product
+journey still needs Buddy-owned APP-STATE source-revision → explicit admission →
+supported assertion with admitted evidence → reopen/read proof. Whether an
+intervening human review/mutation interval is required remains a user product
+decision; if required, source-freshness binding needs a separate design. Existing
+bridge-genesis, cutover and product obligations remain unchanged.
 
 Historical cutover, critique, K0/K1 planning, and R.1/R.2/R.3 records remain valuable evidence and are not rewritten. The current production implementation is still the World Graph architecture; this roadmap describes the deliberate breaking transition to vNext.
 
@@ -839,8 +844,11 @@ Cycle 1 HOLD `5333812913` was closed by the bounded proof repair.
 Independent proof passed 104 required unit cases plus 10 reviewer probes and
 36 PostgreSQL cases, zero skips. Core, integration and benchmark CI passed.
 The implementation lease is released. DEMO adoption remains a consumer gate;
-V7 is not dispatched. Native source/evidence admission needs a bounded design
-checkpoint returned to PRIME before implementation.
+V7 is not dispatched. Native source/evidence admission is accepted at PR #85;
+DEMO's 2026-09-28 checkpoint identifies Buddy's APP-STATE source-revision →
+admission → supported assertion/evidence → reopened graph journey as the next
+product proof, with no current MIND API/proof blocker. A required human review /
+mutation interval would need a separately designed source-freshness binding.
 
 Buddy container creation allocates a product identity/source directory, not
 native authority/domain/profile identity. Repository `publish_revision` permits

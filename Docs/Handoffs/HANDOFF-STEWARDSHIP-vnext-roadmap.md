@@ -4,13 +4,13 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc` — PR #85; atomic native text-source/evidence admission accepted
+**Current main anchor:** `5984dc353e7f638ad03e8d2be670757d8d7bbfcf` — PR #87; V7 design checkpoint merged, implementation remains blocked
 **Last merged native prerequisite:** PR #85 — head `0803faf9f84b44148291c68c8dd115f73c68d464`, PRIME Cycle 2 PASS `5334796956`, merge `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`
 **Last merged roadmap prerequisite repair:** PR #81 — private source-visibility binding in native anchor identity
 **Last merged parallel contract capability:** PR #77 — versioned semantic-profile V3 open predicate namespaces
 **Authority finalization:** PR #78 — `54a419f99057d96e0c4e7620d8bd8ccc6816fb62`; V3 documents and regression tests, no new consumer runtime requirement
 **Governance anchor:** PR #79 — shared agent operating law and benchmark import guard; no additional V6 semantic capability
-**Consumer checkpoint:** Buddy V6.5 / #780 merged; V6 preservation, empty native initialization and native text-source/evidence admission accepted; DEMO product adoption pending, V7 undispatched
+**Consumer checkpoint:** Buddy V6.5 / #780 merged; Buddy PLAY-2 / #779 accepted at head `2d5ab6ade1d89ec608c941093819ea36404fd18e`, PRIME Cycle 2 PASS `5331441470`, merge `2ccc96ff2a7d76328578609d5289fd3babcf6442` (isolated persistent composition only); DEMO ordinary journey still unproved, V7 undispatched
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
@@ -73,7 +73,7 @@ V5   Generic governed write contracts                    COMPLETE
 V6   DungeonBuddy domain implementation                  COMPLETE
 NATIVE Empty new-space genesis prerequisite               COMPLETE
 NATIVE Immutable text-source/evidence admission            COMPLETE
-V7   Bridge-genesis migration
+V7   Bridge-genesis migration — DESIGN CHECKPOINT MERGED / IMPLEMENTATION BLOCKED
 V8   Joint semantic + performance acceptance
 V9   Cutover
 V10  Remove old current/public paths; quarantine compatibility
@@ -868,7 +868,7 @@ V5.4 COMPLETE — V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED
 V5 COMPLETE
 V6.K1 COMPLETE — V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED
 V6 COMPLETE — V6_DUNGEONBUDDY_PRESERVATION_ACCEPTED
-Buddy V6.1 / V6.2 / PLAY-1 / PLAY-2 COMPLETE at the accepted refs in §2
+Buddy V6.1 / V6.2 / PLAY-1 / PLAY-2 COMPLETE at the accepted refs in §2; #779 proves isolated persistent composition only
 Buddy V6.5 / #780 COMPLETE — 98 passed, zero skips, PRIME Cycle 2 PASS
 NATIVE empty new-space genesis COMPLETE — PR #83 accepted; DEMO adoption pending
 NATIVE text-source/evidence admission COMPLETE — PR #85 accepted; see §2 and its durable report
@@ -878,7 +878,7 @@ V7 NOT DISPATCHED
 ### Next primary question
 
 ```text
-What is the smallest DEMO-owned product journey that consumes accepted native source/evidence admission through Keeper and proves a real ordinary graph journey, while separately identifying whether source freshness across prepare/commit is required before J3?
+Does DEMO's ordinary fresh-World journey require a human review/mutation interval between source admission and Keeper commit, or is an immediate immutable one-shot sufficient? The MIND prerequisite is accepted; the remaining end-to-end proof is Buddy-owned.
 ```
 
 ### Parallel work posture
@@ -915,6 +915,9 @@ blocked until later accepted predecessors:
 - Buddy has accepted runtime pins and dormant vNext adapters; no production vNext cutover has occurred;
 - public empty native initialization is accepted at PR #83; DEMO product adoption is unproved;
 - native V1 source/evidence admission is accepted at PR #85; no mutable source lifecycle or source-freshness binding across Keeper prepare/commit exists;
+- Buddy PR #779 proves isolated persistent Buddy→WorldKeeper→DungeonMind composition only; DEMO has not verified the ordinary fresh-World product journey;
+- Buddy PR #785 remains an open draft with implementation PASS but MERGE HOLD pending the authorized live generation/navigation/reload witness; it is a separate J4 statblock-draft slice;
+- PR #87 merged a V7 design checkpoint only; no owner-approved legacy mapping/freeze/export exists and no V7 implementation or migration is authorized;
 - World-only durable Plan semantics and ordinary native Agent citations remain product gaps;
 - larger 50k/100k characterization remains incomplete;
 - deeper storage optimization is not authorized.
@@ -922,13 +925,18 @@ blocked until later accepted predecessors:
 ### Named next action
 
 PR #85 is accepted and its API, migration, replay/access limits and exact Keeper
-witness are recorded in its handoff/report. Coordinate the smallest real DEMO
-consumer journey with the owning product lane; ask ARCHITECTURE/PRIME to resolve
-whether a separately designed source-freshness binding is necessary before that
-journey or only before J3. DEMO owns true World-only Plan and product routing.
-Keep V7 undispatched, with bridge-genesis obligations intact for existing
-Worlds. Mutable source lifecycle, source-fresh governed-write safety, alias
-search, profile transition and production cutover stay separate.
+witness are recorded in its handoff/report. DEMO confirms that #85 satisfies the
+MIND prerequisite for an immediate immutable one-shot; no MIND API/proof blocker
+is currently identified. The next product proof is Buddy-owned: exact persisted
+APP-STATE source revision → explicit #85 admission → supported assertion with
+that admitted evidence → reopened ordinary graph and preview. Obtain the user's
+decision on whether human review/mutation delay is required before commit; if so,
+return for a separate source-freshness design. Keep #779's isolated composition
+acceptance and #785's live-witness gate scoped separately. DEMO owns true
+World-only Plan and product routing. Keep V7 undispatched: PR #87 merged design
+only, while legacy mapping and coherent freeze/export authority remain
+unapproved. Mutable source lifecycle, alias search, profile transition and
+production cutover stay separate.
 
 ---
 
