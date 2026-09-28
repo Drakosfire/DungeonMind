@@ -13,7 +13,12 @@ from dungeonmind.application.vnext.source_anchors import (
     decode_anchor_token,
     encode_anchor_token,
 )
-from dungeonmind.contracts.vnext.common import KnowledgeStanding, LabelsAllVisibility, ScopeBinding
+from dungeonmind.contracts.vnext.common import (
+    KnowledgeStanding,
+    LabelsAllVisibility,
+    LabelsAnyVisibility,
+    ScopeBinding,
+)
 from dungeonmind.contracts.vnext.domain import Entity
 from tests.unit.test_vnext_evidence_reads import (
     _SVC,
@@ -139,6 +144,7 @@ def test_05_supporter_ids_are_not_anchor_identity() -> None:
         evidence=result.evidence,
         source_artifacts=result.source_artifacts,
         source_revisions=result.source_revisions,
+        source_authorizations=(),
         admitted_supporter_assertion_ids=("asrt:a",),
     )
     second = build_source_anchor(
@@ -146,6 +152,7 @@ def test_05_supporter_ids_are_not_anchor_identity() -> None:
         evidence=result.evidence,
         source_artifacts=result.source_artifacts,
         source_revisions=result.source_revisions,
+        source_authorizations=(),
         admitted_supporter_assertion_ids=("asrt:a", "asrt:extra"),
     )
     assert first.anchor_id == second.anchor_id
@@ -155,6 +162,7 @@ def test_05_supporter_ids_are_not_anchor_identity() -> None:
         evidence=result.evidence,
         source_artifacts=result.source_artifacts,
         source_revisions=result.source_revisions,
+        source_authorizations=(),
     )
     assert decode_anchor_token(first.anchor_id) == (result.evidence.evidence_ref_id, digest)
 
@@ -264,6 +272,65 @@ def test_11_changed_source_and_locator_invalidate_old_anchor() -> None:
     original_hit = _SVC.get_evidence(original, "evidence:lab")
     moved = _SVC.resolve_source_anchor(located, original_hit.anchors[0].anchor_id)
     assert moved.resolved is False
+
+
+def test_11a_changed_visible_source_policy_invalidates_old_anchor() -> None:
+    context, reader = _visible_lab()
+    created = _SVC.get_evidence(context, "evidence:lab")
+    artifact = reader._artifacts["src:lab"]
+    reader._artifacts["src:lab"] = artifact.model_copy(
+        update={"visibility": LabelsAllVisibility(labels=["test:audience"])}
+    )
+
+    fresh_context = _rebind(context, reader)
+    fresh_evidence = _SVC.get_evidence(fresh_context, "evidence:lab")
+    stale_anchor = _SVC.resolve_source_anchor(
+        fresh_context, created.anchors[0].anchor_id
+    )
+
+    assert fresh_evidence.available is True
+    assert not hasattr(fresh_evidence.source_artifacts[0], "visibility")
+    assert fresh_evidence.anchors[0].anchor_id != created.anchors[0].anchor_id
+    assert stale_anchor.resolved is False
+    assert stale_anchor.anchor is None
+    assert stale_anchor.evidence is None
+
+
+def test_11b_source_policy_identity_does_not_leak_through_public_results() -> None:
+    context, reader = _visible_lab()
+    created = _SVC.get_evidence(context, "evidence:lab")
+    artifact = reader._artifacts["src:lab"]
+    reader._artifacts["src:lab"] = artifact.model_copy(
+        update={
+            "visibility": LabelsAnyVisibility(
+                labels=["test:audience", "test:hidden"]
+            )
+        }
+    )
+
+    admitted_context = _rebind(context, reader)
+    admitted = _SVC.get_evidence(admitted_context, "evidence:lab")
+    assert admitted.available is True
+    assert not hasattr(admitted.source_artifacts[0], "visibility")
+    assert "test:hidden" not in repr(admitted)
+    assert not _SVC.resolve_source_anchor(
+        admitted_context, created.anchors[0].anchor_id
+    ).resolved
+
+    reader._artifacts["src:lab"] = artifact.model_copy(
+        update={
+            "visibility": LabelsAllVisibility(
+                labels=["test:audience", "test:hidden"]
+            )
+        }
+    )
+    denied = _SVC.get_evidence(_rebind(context, reader), "evidence:lab")
+    assert denied.available is False
+    assert denied.evidence is None
+    assert denied.source_artifacts == ()
+    assert denied.source_revisions == ()
+    assert denied.anchors == ()
+    assert "test:hidden" not in repr(denied)
 
 
 def test_12_manufactured_anchor_does_not_bypass_v2() -> None:

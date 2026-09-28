@@ -36,6 +36,14 @@ class SourceAnchor:
     admitted_supporter_assertion_ids: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _SourceAuthorizationIdentity:
+    """Immutable, non-returned source policy identity used only by anchor tokens."""
+
+    source_artifact_id: str
+    visibility_json: str
+
+
 def context_binding_digest(context: KnowledgeReadContext) -> str:
     parsed = context.parsed
     return canonical_sha256(
@@ -102,12 +110,20 @@ def compute_anchor_identity_digest(
     evidence: ParsedEvidenceRef,
     source_artifacts: Sequence[EntityReadSourceArtifact],
     source_revisions: Sequence[EntityReadSourceRevision],
+    source_authorizations: Sequence[_SourceAuthorizationIdentity],
 ) -> str:
     payload = {
         "schema": ANCHOR_SCHEMA_VERSION,
         "context_binding_digest": context_binding_digest(context),
         **evidence_location_payload(evidence),
         **visible_source_payload(source_artifacts, source_revisions),
+        "source_authorizations": [
+            {
+                "source_artifact_id": item.source_artifact_id,
+                "visibility_json": item.visibility_json,
+            }
+            for item in source_authorizations
+        ],
     }
     return canonical_sha256(payload)
 
@@ -161,6 +177,7 @@ def build_source_anchor(
     evidence: ParsedEvidenceRef,
     source_artifacts: Sequence[EntityReadSourceArtifact],
     source_revisions: Sequence[EntityReadSourceRevision],
+    source_authorizations: Sequence[_SourceAuthorizationIdentity],
     admitted_supporter_assertion_ids: Sequence[str],
 ) -> SourceAnchor:
     identity_digest = compute_anchor_identity_digest(
@@ -168,6 +185,7 @@ def build_source_anchor(
         evidence=evidence,
         source_artifacts=source_artifacts,
         source_revisions=source_revisions,
+        source_authorizations=source_authorizations,
     )
     return SourceAnchor(
         anchor_id=encode_anchor_token(
