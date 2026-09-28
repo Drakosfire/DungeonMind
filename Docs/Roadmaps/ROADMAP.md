@@ -2,7 +2,7 @@
 
 **Status:** current forward roadmap  
 **Updated:** 2026-09-27
-**Roadmap anchor:** DungeonMind `main` after PR #81 (`b83baf82c381b1929c2c7989326d667200ff544c`); proposed post-V6 control-plane sync
+**Roadmap anchor:** DungeonMind `main` after PR #82 (`107483f1c4593df8e5599b033fdf2b72a46f3f51`); empty-native-genesis implementation active at PR #83
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -815,7 +815,7 @@ Source-body UI hydration and production switching remain later obligations.
 ### Selected fresh-native DEMO prerequisite — active
 
 DEMO's selected first-customer path starts a **new** empty World, not migration
-of the earlier Of Conks history. The proposed next DungeonMind slice is
+of the earlier Of Conks history. The active DungeonMind slice is
 [`HANDOFF-NATIVE-empty-knowledge-space-genesis.md`](../Handoffs/HANDOFF-NATIVE-empty-knowledge-space-genesis.md):
 one public empty-native-genesis operation over accepted CAS/receipt mechanics.
 PR #82 accepted the design and completed predecessor sync at merge

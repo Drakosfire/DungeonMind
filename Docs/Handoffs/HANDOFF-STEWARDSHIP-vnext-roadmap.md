@@ -164,7 +164,7 @@ composition evidence, not ordinary production routing or source ingestion proof.
 
 **Active DungeonMind capability: empty native KnowledgeSpace genesis.**
 Authority: `Docs/Handoffs/HANDOFF-NATIVE-empty-knowledge-space-genesis.md` in this
-pinned design branch. This is a post-V6 native-new-space prerequisite for
+active implementation PR #83. This is a post-V6 native-new-space prerequisite for
 DEMO-J3, not V7 migration. Container allocation, explicit domain/profile identity
 and native authority are distinct. The operation creates only an empty native
 parent/head/receipt with no source/evidence or object seeding. It needs no
@@ -178,11 +178,12 @@ Authentic native source/evidence admission, real World-only durable Plan state
 native Agent citations after restart remain separately designed product/authority
 obligations. Keeper's accepted evidence-in-parent boundary may not be bypassed.
 
-Before dispatch, MIND accepts/re-reads both current-state documents and coordinates
-Buddy V6.5 handoff/report/current-state settlement with DEMO. At Buddy #780 the
-report still claims awaiting Cycle 2 and the handoff is ACTIVE; acceptance releases
-that completed lease. Preserve evidence and record exact review/merge rather
-than re-executing or inflating review cycles. No runtime/PR dispatch is implicit.
+PR #82 accepted the design and V6 state sync. MIND activated PR #83 from that
+merge; PRIME Cycle 1 HOLD `5333812913` requires bounded proof completion.
+DEMO confirms its roadmap/mirror records accepted #780; remaining historical
+Buddy handoff/report settlement belongs in
+the next authorized owning-repository update. The completed V6.5 lease is
+released. Preserve its exact accepted evidence and review/merge references.
 
 The first-World endpoint preparation defect observed by DEMO is separately
 Buddy-owned under design commit `6e5bd19c68a0b8bbe2657f2d0e60c9f3df95fba2`.
@@ -910,11 +911,9 @@ blocked until later accepted predecessors:
 
 ### Named next action
 
-Adopt/reconcile this two-document V6 exit sync and coordinate Buddy #780
-settlement with DEMO. Review the bounded empty-native-genesis handoff and, only
-after explicit adoption and a fresh anchor/serial lease/runtime check, activate
-one DungeonMind implementation lane. Send its frozen merge-ready head/evidence
-to PRIME. After it settles, re-anchor and design authentic native source/evidence
+Finish PR #83's bounded acceptance proof and return its frozen head/evidence
+to PRIME for Cycle 2. After accepted merge, settle the handoff and current
+authority, then re-anchor and design authentic native source/evidence
 admission; DEMO separately owns true World-only Plan and product routing. Keep
 V7 undispatched, with bridge-genesis obligations intact for existing Worlds.
 Alias search, profile transition, source bodies and production cutover stay separate.

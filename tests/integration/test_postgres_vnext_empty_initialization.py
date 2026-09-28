@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from dungeonmind.application.vnext import initialize_empty_knowledge_space
 from dungeonmind.application.vnext.builder import build_parsed_knowledge_revision
 from dungeonmind.application.vnext.errors import (
+    KnowledgePublicationIdempotencyConflictError,
     KnowledgePublicationOutcomeUnknownError,
     KnowledgeStaleParentRevisionError,
 )
@@ -29,6 +30,7 @@ from dungeonmind.contracts.vnext.domain import (
     Entity,
     SemanticProfileDescriptorV2,
 )
+from dungeonmind.domain.errors import PersistenceIntegrityError
 from dungeonmind.infrastructure.postgres.database import PostgresDatabase
 from dungeonmind.infrastructure.postgres.vnext_knowledge import (
     PostgresKnowledgeRevisionRepository,
@@ -91,6 +93,49 @@ def _authority_counts(database_url: str, space_ids: tuple[str, ...]) -> tuple[in
     return int(revisions["n"]), int(events["n"]), int(receipts["n"])
 
 
+def _namespace_head_counts(database_url: str, space_id: str) -> tuple[int, int]:
+    with PostgresDatabase(database_url).connect() as conn:
+        row = conn.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM dungeonmind.knowledge_spaces WHERE space_id = %s) AS spaces,
+                (SELECT COUNT(*) FROM dungeonmind.knowledge_heads WHERE space_id = %s) AS heads
+            """,
+            (space_id, space_id),
+        ).fetchone()
+    assert row is not None
+    return int(row["spaces"]), int(row["heads"])
+
+
+def _assert_no_source_or_legacy_rows(database_url: str) -> None:
+    with PostgresDatabase(database_url).connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT 'source_artifacts' AS table_name, COUNT(*) AS n
+            FROM dungeonmind.source_artifacts
+            UNION ALL SELECT 'source_revisions', COUNT(*) FROM dungeonmind.source_revisions
+            UNION ALL SELECT 'evidence_refs', COUNT(*) FROM dungeonmind.evidence_refs
+            UNION ALL SELECT 'worlds', COUNT(*) FROM dungeonmind.worlds
+            UNION ALL SELECT 'campaigns', COUNT(*) FROM dungeonmind.campaigns
+            UNION ALL SELECT 'graph_revisions', COUNT(*) FROM dungeonmind.graph_revisions
+            UNION ALL SELECT 'world_graph_heads', COUNT(*) FROM dungeonmind.world_graph_heads
+            UNION ALL SELECT 'world_graph_head_events', COUNT(*)
+                FROM dungeonmind.world_graph_head_events
+            """
+        ).fetchall()
+    assert len(rows) == 8
+    assert {row["table_name"]: int(row["n"]) for row in rows} == {
+        "source_artifacts": 0,
+        "source_revisions": 0,
+        "evidence_refs": 0,
+        "worlds": 0,
+        "campaigns": 0,
+        "graph_revisions": 0,
+        "world_graph_heads": 0,
+        "world_graph_head_events": 0,
+    }
+
+
 def test_two_spaces_initialize_in_one_database_and_survive_reconnect(
     migrated_database: str, pg
 ) -> None:
@@ -114,6 +159,8 @@ def test_two_spaces_initialize_in_one_database_and_survive_reconnect(
         assert stored.graph_payload == {
             "entities": [], "assertions": [], "aliases": [], "evidence": []
         }
+        assert _namespace_head_counts(migrated_database, space_id) == (1, 1)
+    _assert_no_source_or_legacy_rows(migrated_database)
 
 
 def test_concurrent_distinct_initializations_create_one_root_without_orphan(
@@ -162,6 +209,8 @@ def test_transaction_failure_leaves_no_namespace_authority(
         )
     assert _repo(migrated_database).get_head("space:rollback-empty") is None
     assert _authority_counts(migrated_database, ("space:rollback-empty",)) == (0, 0, 0)
+    assert _namespace_head_counts(migrated_database, "space:rollback-empty") == (0, 0)
+    _assert_no_source_or_legacy_rows(migrated_database)
 
 
 def test_commit_success_response_loss_recovers_exact_receipt(
@@ -242,3 +291,101 @@ def test_replay_after_governed_descendant_does_not_rewind_postgres_head(
     assert _initialize(migrated_database, space_id, "init:descendant") == original
     assert repo.get_head(space_id).head_revision_id == descendant.published_revision_id  # type: ignore[union-attr]
     assert _authority_counts(migrated_database, (space_id,)) == (2, 2, 2)
+
+
+def test_same_initialization_concurrent_replay_returns_one_receipt(
+    migrated_database: str, pg
+) -> None:
+    del pg
+    barrier = threading.Barrier(2)
+    receipts = []
+    errors: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            barrier.wait(timeout=5)
+            receipts.append(_initialize(migrated_database, "space:same-intent", "init:same"))
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=run) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=15)
+    assert all(not thread.is_alive() for thread in threads)
+    assert errors == []
+    assert len(receipts) == 2 and receipts[0] == receipts[1]
+    assert _authority_counts(migrated_database, ("space:same-intent",)) == (1, 1, 1)
+    assert _namespace_head_counts(migrated_database, "space:same-intent") == (1, 1)
+    _assert_no_source_or_legacy_rows(migrated_database)
+
+
+def test_changed_time_same_postgres_intent_preserves_all_authority(
+    migrated_database: str, pg
+) -> None:
+    del pg
+    space_id = "space:changed-time"
+    original = _initialize(migrated_database, space_id, "init:changed-time")
+    repo = _repo(migrated_database)
+    with pytest.raises(KnowledgePublicationIdempotencyConflictError):
+        initialize_empty_knowledge_space(
+            repository=repo,
+            space_id=space_id,
+            initialization_id="init:changed-time",
+            created_at=NOW + timedelta(seconds=1),
+            domain_contract=_domain(),
+            semantic_profile=_profile(),
+        )
+    assert repo.get_publication_receipt(space_id, "init:changed-time") == original
+    assert _authority_counts(migrated_database, (space_id,)) == (1, 1, 1)
+    assert _namespace_head_counts(migrated_database, space_id) == (1, 1)
+
+
+@pytest.mark.parametrize(
+    "fault", ["receipt_missing", "receipt_corrupt", "revision_missing", "probe_down"]
+)
+def test_postgres_recovery_faults_fail_closed_and_preserve_committed_authority(
+    migrated_database: str, pg, fault
+) -> None:
+    del pg
+    space_id = "space:recovery-fault"
+    real = _repo(migrated_database)
+    original = _initialize(migrated_database, space_id, "init:recovery-fault")
+    publish_error = RuntimeError("lost publication response")
+
+    class FaultedReads:
+        def publish_publication(self, *_args):
+            raise publish_error
+
+        def get_publication_receipt(self, *args):
+            if fault == "receipt_missing":
+                return None
+            if fault == "probe_down":
+                raise RuntimeError("receipt probe unavailable")
+            receipt = real.get_publication_receipt(*args)
+            assert receipt is not None
+            if fault == "receipt_corrupt":
+                return receipt.model_copy(update={"graph_payload_sha256": "0" * 64})
+            return receipt
+
+        def get_revision(self, *args):
+            if fault == "revision_missing":
+                return None
+            return real.get_revision(*args)
+
+    # Inject failure only at the read/transport seam; SQL remains read-only.
+    expected_error = (
+        KnowledgePublicationOutcomeUnknownError
+        if fault in {"receipt_missing", "probe_down"}
+        else PersistenceIntegrityError
+    )
+    with pytest.raises(expected_error) as caught:
+        _initialize(
+            migrated_database, space_id, "init:recovery-fault", repo=FaultedReads()
+        )
+    if expected_error is KnowledgePublicationOutcomeUnknownError:
+        assert caught.value.__cause__ is publish_error
+    assert real.get_publication_receipt(space_id, "init:recovery-fault") == original
+    assert _authority_counts(migrated_database, (space_id,)) == (1, 1, 1)
+    assert _namespace_head_counts(migrated_database, space_id) == (1, 1)

@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
+from pydantic import ValidationError
 
-from dungeonmind.application.vnext import initialize_empty_knowledge_space
+from dungeonmind.application.vnext import (
+    AlwaysAdmitPolicy,
+    EntityReadService,
+    KnowledgeReadContext,
+    SearchReadService,
+    initialize_empty_knowledge_space,
+)
 from dungeonmind.application.vnext.builder import build_parsed_knowledge_revision
 from dungeonmind.application.vnext.errors import (
     KnowledgePublicationIdempotencyConflictError,
@@ -20,6 +27,7 @@ from dungeonmind.application.vnext.materialization import (
     materialize_governed_revision,
 )
 from dungeonmind.application.vnext.publication import publish_governed_materialization
+from dungeonmind.contracts.vnext.common import ScopeSelector
 from dungeonmind.contracts.vnext.contribution import (
     ContributionDisposition,
     KnowledgeContribution,
@@ -32,7 +40,9 @@ from dungeonmind.contracts.vnext.domain import (
     SemanticProfileDescriptorV2,
     SemanticProfileDescriptorV3,
 )
+from dungeonmind.contracts.vnext.projection import ProjectionRequest
 from dungeonmind.domain.canonical import canonical_sha256
+from dungeonmind.domain.errors import ImmutableRevisionConflictError, PersistenceIntegrityError
 from dungeonmind.infrastructure.memory.vnext_knowledge import InMemoryKnowledgeRevisionRepository
 
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)
@@ -259,3 +269,187 @@ def test_initialization_replay_after_governed_descendant_does_not_rewind_head() 
     assert replayed == original
     assert repo.get_head("space:empty").head_revision_id == descendant.published_revision_id  # type: ignore[union-attr]
     assert len(repo.head_events("space:empty")) == 2
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"space_id": None},
+        {"initialization_id": 7},
+        {"created_at": "2026-09-28T12:00:00Z"},
+        {"domain_contract": {}},
+        {"semantic_profile": {}},
+    ],
+)
+def test_unsupported_inputs_never_enter_repository(overrides) -> None:
+    class NoRepositoryCalls:
+        def publish_publication(self, *_args):
+            pytest.fail("invalid input reached repository mutation")
+
+    arguments = dict(
+        repository=NoRepositoryCalls(),
+        space_id="space:empty",
+        initialization_id="init:empty",
+        created_at=NOW,
+        domain_contract=_domain(),
+        semantic_profile=_profile_v2(),
+    )
+    arguments.update(overrides)
+    with pytest.raises(KnowledgePublicationIntegrityError):
+        initialize_empty_knowledge_space(**arguments)
+
+
+@pytest.mark.parametrize("descriptor_kind", ["domain", "v2", "v3"])
+def test_mutated_invalid_descriptor_is_revalidated_before_publication(descriptor_kind) -> None:
+    domain = _domain()
+    profile = _profile_v3() if descriptor_kind == "v3" else _profile_v2()
+    if descriptor_kind == "domain":
+        domain.scope_axes.append("unqualified")
+    else:
+        profile.term_namespaces.clear()
+    repo = InMemoryKnowledgeRevisionRepository()
+    with pytest.raises(ValidationError):
+        _initialize(repo, domain=domain, profile=profile)
+    assert repo.get_head("space:empty") is None
+    assert repo.head_events("space:empty") == ()
+    assert repo.get_publication_receipt("space:empty", "init:empty") is None
+
+
+@pytest.mark.parametrize("profile", [_profile_v2(), _profile_v3()])
+def test_empty_native_entity_and_search_reads_do_not_request_sources(profile) -> None:
+    repo = InMemoryKnowledgeRevisionRepository()
+    receipt = _initialize(repo, profile=profile)
+    stored = repo.get_revision("space:empty", receipt.published_revision_id)
+    assert stored is not None
+    parsed = build_parsed_knowledge_revision(
+        revision=stored.revision,
+        decoded_content=decode_native_graph_payload(stored.graph_payload),
+    )
+
+    class NoSourceReads:
+        def open_coherent_view(self):
+            return self
+
+        def get_provenance_snapshot(self, **_kwargs):
+            pytest.fail("empty native read requested source authority")
+
+    context = KnowledgeReadContext(
+        parsed=parsed,
+        request=ProjectionRequest(
+            space_id="space:empty",
+            revision_id=receipt.published_revision_id,
+            scope_selector=ScopeSelector(include_unscoped=True),
+        ),
+        domain_contract=_domain(),
+        semantic_profile=profile,
+        domain_policy=AlwaysAdmitPolicy(policy_id=_domain().admission_policy_id),
+        source_reader=NoSourceReads(),
+    )
+    service = EntityReadService()
+    for result in (
+        service.get_entity(context, "entity:absent"),
+        service.get_complete_entity(context, "entity:absent"),
+    ):
+        assert not result.found
+        assert result.entity is None
+        assert result.assertions == result.evidence == ()
+        assert result.source_artifacts == result.source_revisions == ()
+        assert result.work.provenance_snapshot_calls == 0
+    assert SearchReadService().search_entities(context, "absent").hits == ()
+
+
+@pytest.mark.parametrize("corruption", ["receipt", "revision_missing"])
+def test_corrupt_recovery_fails_as_integrity_error(corruption) -> None:
+    real = InMemoryKnowledgeRevisionRepository()
+    receipt = _initialize(real)
+    if corruption == "receipt":
+        real._receipts[("space:empty", "init:empty")] = receipt.model_copy(
+            update={"graph_payload_sha256": "0" * 64}
+        )
+    else:
+        real._revisions.clear()
+    head_before = real.get_head("space:empty")
+    events_before = real.head_events("space:empty")
+    receipts_before = dict(real._receipts)
+    revisions_before = dict(real._revisions)
+
+    class FailedPublication:
+        def publish_publication(self, *_args):
+            raise RuntimeError("publication response unavailable")
+
+        def get_publication_receipt(self, *args):
+            return real.get_publication_receipt(*args)
+
+        def get_revision(self, *args):
+            return real.get_revision(*args)
+
+    with pytest.raises(PersistenceIntegrityError):
+        _initialize(FailedPublication())
+    assert real.get_head("space:empty") == head_before
+    assert real.head_events("space:empty") == events_before
+    assert real._receipts == receipts_before
+    assert real._revisions == revisions_before
+
+
+@pytest.mark.parametrize("probe_fails", [False, True])
+def test_unknown_outcome_preserves_publish_cause(probe_fails) -> None:
+    publish_error = RuntimeError("ambiguous response")
+
+    class UnavailablePublication:
+        def publish_publication(self, *_args):
+            raise publish_error
+
+        def get_publication_receipt(self, *_args):
+            if probe_fails:
+                raise RuntimeError("probe unavailable")
+            return None
+
+    with pytest.raises(KnowledgePublicationOutcomeUnknownError) as caught:
+        _initialize(UnavailablePublication())
+    assert caught.value.__cause__ is publish_error
+    assert caught.value.retry_safe
+
+
+@pytest.mark.parametrize("error", [ImmutableRevisionConflictError, PersistenceIntegrityError])
+def test_known_zero_commit_failure_keeps_original_error_without_recovery(error) -> None:
+    original = error("deterministic failure")
+
+    class DeterministicFailure:
+        def publish_publication(self, *_args):
+            raise original
+
+        def get_publication_receipt(self, *_args):
+            pytest.fail("deterministic failure should not probe recovery")
+
+    with pytest.raises(error) as caught:
+        _initialize(DeterministicFailure())
+    assert caught.value is original
+
+
+def test_changed_timestamp_same_initialization_is_conflict_without_mutation() -> None:
+    repo = InMemoryKnowledgeRevisionRepository()
+    original = _initialize(repo)
+    with pytest.raises(KnowledgePublicationIdempotencyConflictError):
+        _initialize(repo, created_at=NOW + timedelta(seconds=1))
+    assert len(repo.head_events("space:empty")) == 1
+    assert repo.get_publication_receipt("space:empty", "init:empty") == original
+
+
+def test_recovery_cannot_return_receipt_for_different_requested_command() -> None:
+    real = InMemoryKnowledgeRevisionRepository()
+    original = _initialize(real)
+
+    class LostOutcome:
+        def publish_publication(self, *_args):
+            raise RuntimeError("response unavailable")
+
+        def get_publication_receipt(self, *args):
+            return real.get_publication_receipt(*args)
+
+        def get_revision(self, *args):
+            return real.get_revision(*args)
+
+    with pytest.raises(PersistenceIntegrityError, match="command digest mismatch"):
+        _initialize(LostOutcome(), created_at=NOW + timedelta(seconds=1))
+    assert real.get_publication_receipt("space:empty", "init:empty") == original
+    assert len(real.head_events("space:empty")) == 1
