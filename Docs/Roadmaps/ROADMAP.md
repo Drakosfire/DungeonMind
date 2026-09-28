@@ -2,7 +2,7 @@
 
 **Status:** current forward roadmap  
 **Updated:** 2026-09-27
-**Roadmap anchor:** DungeonMind `main` after PR #79 (`4d11686d679029ae4ef0902a13edc0509c0ce476`)
+**Roadmap anchor:** DungeonMind `main` after PR #81 (`b83baf82c381b1929c2c7989326d667200ff544c`); proposed post-V6 control-plane sync
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -676,7 +676,8 @@ Accepted as `V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED` on PR #75:
 accepted head `c7700f98e62732cbd1c021270f5366a77c24ea9b`, final PASS
 `5296514025`, merge `6edb9e40d1dc930f537c66deb1afbd1b99002844`.
 
-V5 is complete. V6 consumer/domain implementation is active.
+V5 and V6 are complete. The post-V6 native-new-space prerequisite is designed
+but blocked; V7 migration is not dispatched.
 
 ### V6.K1 — authorized aliases in complete entity reads
 
@@ -685,9 +686,10 @@ substantive reviewed runtime head `91d2ebaf8aadf512a26ac209cfe8f6414063e732`,
 PASS review `5321738653`, merge `f3738f3af3e3c8e204668a3d87d240a32c0d3988`.
 Buddy V6.1 / #749 and V6.2 / #767 are now complete, as are PLAY-1 / #773 and
 PLAY-2 / #779. Their exact accepted refs and scope are recorded in the current
-stewardship handoff §2. The remaining named V6 proof is Buddy native
-evidence/anchor preservation; its V6.5 handoff is a BLOCKED design. V6.K1 does
-not authorize public alias search or a production route switch.
+stewardship handoff §2. Buddy V6.5 / #780 now accepts native evidence/anchor
+preservation and closes V6 at `11d7b5801b51f664e7a6eeafcb2aa2b0f5922b71`.
+V6.K1 and that acceptance do not authorize public alias search or a production
+route switch.
 
 ### Parallel contract capability — semantic-profile V3
 
@@ -786,22 +788,55 @@ The generic Kernel must contain no `GM`, `PLAYER`, `campaign_id`, `NPC`, or fict
   head `2d5ab6ade1d89ec608c941093819ea36404fd18e`. This proves persistent
   publication/replay/concurrency, not production routing or source admission.
 
-**V6 exit remains unaccepted.** The missing Buddy preservation witness is native
-evidence lookup and source-anchor creation/revalidation under its actual domain
-context, including role/scope exclusion and fresh-source drift. DungeonMind
-V4.2 already supplies the APIs. Buddy's proposed
-`Docs/Plans/HANDOFF-v6-5-native-evidence-anchor-preservation.md` is proof-only
-at Buddy design commit `1c43888fc29c4d2e8e9354f103f1cdcb6b1b10d3`
-and BLOCKED pending owner activation; runtime defects, if found, return to
-their owning repository. It must consolidate the entire V6 list above and audit
-that native execution does not depend on legacy TTRPG semantics. Historical
-compatibility readers remain governed by the existing V1/V10 obligations.
+- DungeonMind #81 repaired source-visibility anchor identity without changing
+  public source DTO semantics: head `6a0a51f49a1f72bc336444908cff824c26516325`,
+  PRIME Cycle 2 PASS `5331842204`, merge
+  `b83baf82c381b1929c2c7989326d667200ff544c`.
+- Buddy V6.5 / #780: reviewed head
+  `dd1accc35e63e518555894db769a23c2a9c75171`, PRIME Cycle 2 PASS
+  `5333525840`, merge `11d7b5801b51f664e7a6eeafcb2aa2b0f5922b71`.
+  Fifteen focused witnesses plus 83 regressions passed: **98 tests, zero skips**.
+  The accepted receipt is Buddy `Docs/Reports/REPORT-v6-preservation-acceptance.md`.
+  Buddy pins DungeonMind to the #81 merge and retains WorldKeeper
+  `49a8620f066ce7ef8972a699020c012f50af9158`.
+
+**V6 COMPLETE — `V6_DUNGEONBUDDY_PRESERVATION_ACCEPTED`.** The proof exercises
+native evidence lookup/anchor identity and fresh source/visibility/locator
+revalidation through Buddy's domain context, with full preservation accounting
+and native execution boundary audit. It does not prove source-body UI hydration,
+authentic native source ingestion, ordinary native Agent routing or cutover.
+Historical compatibility readers retain the V1/V10 obligations.
 
 The DEMO first-World endpoint preparation repair is independently Buddy-owned
 at handoff commit `6e5bd19c68a0b8bbe2657f2d0e60c9f3df95fba2`; it is not a
-Kernel prerequisite. V7 is not dispatched by the PLAY-2 merge or this status
-correction. Source-body UI hydration and production switching remain later
-consumer/cutover obligations.
+Kernel prerequisite. V7 is not dispatched by V6 acceptance or this status sync.
+Source-body UI hydration and production switching remain later obligations.
+
+### Selected fresh-native DEMO prerequisite — designed, not dispatched
+
+DEMO's selected first-customer path starts a **new** empty World, not migration
+of the earlier Of Conks history. The proposed next DungeonMind slice is
+[`HANDOFF-NATIVE-empty-knowledge-space-genesis.md`](../Handoffs/HANDOFF-NATIVE-empty-knowledge-space-genesis.md):
+one public empty-native-genesis operation over accepted CAS/receipt mechanics.
+It is a post-V6 native-new-space prerequisite supporting DEMO-J3, **DESIGNED /
+BLOCKED** pending MIND adoption, complete predecessor sync and fresh activation.
+It is not an ACTIVE lease or V7 dispatch.
+
+Buddy container creation allocates a product identity/source directory, not
+native authority/domain/profile identity. Repository `publish_revision` permits
+parentless publication but is not a product initialization API. PLAY-2 seeds a
+synthetic parent/evidence; Keeper needs a native parent with admitted evidence.
+Neither is authentic first-source admission. The new operation publishes only
+an empty native genesis with explicit caller-selected descriptor identity, and
+never provisions a database per World.
+
+True World-only durable Plan state (current create still requires campaign ID),
+authentic versioned native source/evidence admission with typed locator/digest/
+visibility, World-only Keeper product composition and ordinary native Agent
+read/citation after restart remain separately owned gaps. No wrapper, fake
+campaign, evidence seeding or dual-write is accepted to hide them. Re-anchor and
+design one successor at a time after this capability settles. V7/V8/V9 remain
+required for existing durable Worlds and their production cutover.
 
 ---
 
