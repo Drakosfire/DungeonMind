@@ -2,7 +2,7 @@
 
 **Created:** 2026-09-27
 
-**Status:** DESIGN CHECKPOINT / BLOCKED — PRIME design judgment required; no runtime lease
+**Status:** DESIGN PASS — bounded MIND implementation activated; implementation pending
 
 **Owner:** DungeonMind; ARCHITECTURE designs, MIND stewards implementation, PRIME controls acceptance/merge
 
@@ -16,7 +16,13 @@
 
 **Prospective title:** `NATIVE: atomically admit text sources and evidence`
 
-**Execution authorization:** none in this checkpoint; approval is not inferred from publication of this file.
+**Approved design checkpoint:** `86e8f22d007df99de577cb412301c5a6d4e2d597`
+
+**PRIME disposition:** DESIGN PASS, 2026-09-28; recorded from PRIME's explicit review of the approved checkpoint and its exact base above. No separate GitHub design review ID or design PR was required.
+
+**Implementation activation:** one bounded DungeonMind implementation PR is authorized from the activated branch `codex/native-source-evidence-admission`, based on this approved checkpoint and current `main` `3ebdefaf1303089f21d3c94f2759df2d9274a71f`. No runtime code was present when this activation was recorded.
+
+**Execution authorization:** PRIME authorizes only the V1 source/evidence admission and context-bound admitted-source preview capability specified here, including its machine-readable contract, ADR and owning-boundary proofs. This does not authorize source lifecycle, source-fresh governed writes, Keeper changes, Buddy changes, DEMO adoption or J3 activation.
 
 ## §1 One capability and its falsifier
 
@@ -232,7 +238,14 @@ existing publication errors where their meaning is exact; define any needed nati
 source integrity/access error in the companion boundary. Do not leak source text,
 private policy labels or raw storage diagnostics in public failures.
 
-## §6 Prospective implementation lease — inactive
+## §6 Activated implementation lease — one DungeonMind PR
+
+Activation was recorded after re-anchoring current DungeonMind `main` at
+`3ebdefaf1303089f21d3c94f2759df2d9274a71f` and confirming no open DungeonMind
+implementation PR. The Buddy #785 lease is in another repository and does not
+overlap this MIND-owned capability. Use branch `codex/native-source-evidence-admission`.
+The machine-readable V1 contract and ADR ship with this implementation; no
+contract-only or separate design PR is required.
 
 New paths:
 
@@ -279,9 +292,10 @@ explicit naming adjustment, not competing version numbers.
 PR #84 already settled #83; no routine docs-only bookkeeping or repeated genesis
 settlement is required. The implementation's authority edits describe this new
 contract and current in-flight slice, never its future merge SHA/completion.
-Before activation inspect live main/open PRs/leases; pin fresh base, approved
-handoff ref, isolated branch/check-out and disposable runtime ownership. No branch,
-lease or successor PR is allocated merely by this design checkpoint.
+Re-anchor live main and open PRs again before opening the implementation PR, and
+record any change to base, branch or competing leases. Use an isolated disposable
+PostgreSQL target owned by this implementation lane; do not connect to Buddy's
+persistent `54330`/`54331` DEMO pair.
 
 ## §7 Merge-blocking proof at the owning boundaries
 
@@ -363,11 +377,24 @@ UI hydration, later-turn reads and restart in the same persistent DEMO DB pair.
 V7/V8/V9 obligations for existing durable Worlds are unchanged. E5Q execution
 parity and the deferred extraction semantic-ownership review remain separate lanes.
 
-PRIME checkpoint question: **Approve this additive first-source contract and its
-bounded atomic admission/preview invariant, with source-fresh governed-write and
-Buddy adoption explicitly unaccepted; or require that freshness prerequisite to
-be designed before this implementation may activate?** Either disposition must
-be recorded before allocating the runtime lane. No approval means no dispatch.
+PRIME decision: **DESIGN PASS** for this bounded immutable V1 capability. PRIME
+approved the additive typed companion family; exact UTF-8 bytes and typed span /
+digest proof; evidence membership in the exact native child; one transaction for
+source, head and both receipts; scoped deterministic allocation and replay; and
+context-bound, non-disclosing admitted-source preview. Historical contribution,
+source and evidence schema meanings remain unchanged. The proposed 1 MiB and
+1–64 span limits are V1 input bounds and must be validated before Buddy product
+acceptance.
+
+The actual Keeper witness establishes that the returned evidence IDs can support
+the exact native child without seeded evidence. It does not bind source-body
+digest or mutable source-policy epoch across prepare/commit. That freshness gap
+does not block this one-admission primitive and remains an explicit prerequisite
+before any freshness-sensitive governed-write/J3 claim. A newly admitted source
+does not authenticate Buddy's separate saved file; Buddy remains authoritative
+for its selected bytes/revision and must later prove its own digest binding.
+Source lifecycle, fresh-source governed-write safety, ordinary native citations,
+DEMO adoption and J3 remain explicitly unaccepted.
 
 ## Stop conditions
 
