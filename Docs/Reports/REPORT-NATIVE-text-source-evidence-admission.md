@@ -1,9 +1,10 @@
 # Native text-source and evidence admission — implementation evidence
 
-**Disposition:** bounded Cycle 1 repair implemented; PRIME exact-head re-review pending
-**PR:** [#85](https://github.com/Drakosfire/DungeonMind/pull/85) — open
-**Exact review head:** use the current head recorded on PR #85 and in PRIME's
-review request; this report intentionally does not pin a prior revision.
+**Disposition:** `NATIVE_TEXT_SOURCE_EVIDENCE_ADMISSION_ACCEPTED`
+**PR:** [#85](https://github.com/Drakosfire/DungeonMind/pull/85) — merged
+**Accepted head:** `0803faf9f84b44148291c68c8dd115f73c68d464`
+**PRIME review:** Cycle 2 PASS `5334796956`
+**Merge:** `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`
 **Design checkpoint:** `86e8f22d007df99de577cb412301c5a6d4e2d597`
 **Implementation branch:** `codex/native-source-evidence-admission`
 **Implementation base:** `3ebdefaf1303089f21d3c94f2759df2d9274a71f` (PR #84 settlement)
@@ -31,10 +32,12 @@ native authority tables after `0010_vnext_prospective_results`.
 
 ## Owning-boundary evidence
 
-- Core: `2046 passed, 11 skipped, 253 deselected` via
-  `PYTHONPATH=src UV_CACHE_DIR=/tmp/dm-uv-cache pytest -m 'not integration'`.
-- PostgreSQL integration on the preceding reviewed head: `252 passed, 12 skipped,
-  2046 deselected`. The final-head CI rerun is required after this repair.
+- Exact-head CI core: `2046 passed, 3 skipped` in run `36386951061`.
+- Exact-head CI PostgreSQL integration: `308 passed, 1 skipped, 2116 deselected`
+  in run `36386951061`; this includes the pinned WorldKeeper consumer witness.
+- Local core rerun: `2046 passed, 11 skipped, 253 deselected` under Python 3.13;
+  sandbox-blocked uv-cache/socket tests passed when rerun with those restrictions
+  removed. CI's Python 3.12 result above is the acceptance count.
 - Focused source-admission/migration rerun after the repair: `10 passed` against
   disposable `pgvector/pgvector:0.8.6-pg16`, including injected rollback stages,
   lost post-commit response recovery, fresh-repository exact replay, same-ID
@@ -58,8 +61,7 @@ core rerun then passed.
 
 ## Acceptance boundary
 
-These are implementation proofs, not PRIME acceptance. The implementation PR
-must receive an independent exact-head PRIME review. Until that review and
-authorized merge are recorded, the handoff remains active and the roadmap must
-not claim the capability accepted. The design's separate Keeper freshness gap
-and later product/roadmap gates remain open.
+PRIME accepted this bounded capability at exact head
+`0803faf9f84b44148291c68c8dd115f73c68d464`; PR #85 merged at
+`7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`. The design's separate Keeper
+freshness gap and later product/roadmap gates remain open.
