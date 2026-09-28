@@ -16,7 +16,7 @@
 
 **Prospective branch/title:** `codex/v7-bridge-genesis` / `V7: migrate frozen authority into bridge genesis`
 
-**Execution authority:** none. This artifact is a pinned design checkpoint, not an ACTIVE write lease, a consumer cutover, or permission to open a PR.
+**Execution authority:** none. This artifact is a pinned design checkpoint, not an ACTIVE write lease, an implementation PR, a consumer cutover, or permission to migrate production authority.
 
 ## §1 One invariant and roadmap placement
 
@@ -444,11 +444,10 @@ V7 complete, activate an unresolved lease, or invent a merge SHA/review-cycle co
 If MIND/PRIME explicitly choose a reviewed control-plane design PR, these narrowly
 scoped corrections belong with that design landing. Such a PR is not a roadmap
 runtime implementation merge. Otherwise use an authorized guarded steward closure.
-No routine documentation PR is opened by the implementation worker, and no design
-PR is opened by this task under its no-PR instruction. The current single-file
-design checkpoint intentionally leaves ROADMAP/steward/runtime unchanged; its
-current-state correction must land before V7 code activates, not wait for the
-implementation PR. Record that closure's exact accepted ref at activation.
+PR #87 is the single-file design checkpoint only; it intentionally leaves
+ROADMAP/steward/runtime unchanged. The current-state correction must land before
+V7 code activates, not wait for the implementation PR. Record that closure's
+exact accepted ref at activation.
 
 After implementation merges, re-anchor and settle V7 handoff/report/roadmap/
 steward facts through the next authorized consuming slice or a guarded steward
