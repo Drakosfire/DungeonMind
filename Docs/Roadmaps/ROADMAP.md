@@ -2,7 +2,7 @@
 
 **Status:** current forward roadmap  
 **Updated:** 2026-09-27
-**Roadmap anchor:** DungeonMind `main` after PR #82 (`107483f1c4593df8e5599b033fdf2b72a46f3f51`); empty-native-genesis implementation active at PR #83
+**Roadmap anchor:** DungeonMind `main` after PR #83 (`031b6650d0a506cf40f0189fc5cfac055ac37308`); public empty native initialization accepted
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -812,15 +812,21 @@ at handoff commit `6e5bd19c68a0b8bbe2657f2d0e60c9f3df95fba2`; it is not a
 Kernel prerequisite. V7 is not dispatched by V6 acceptance or this status sync.
 Source-body UI hydration and production switching remain later obligations.
 
-### Selected fresh-native DEMO prerequisite — active
+### Selected fresh-native DEMO prerequisite — library accepted
 
 DEMO's selected first-customer path starts a **new** empty World, not migration
-of the earlier Of Conks history. The active DungeonMind slice is
+of the earlier Of Conks history. The accepted DungeonMind capability is
 [`HANDOFF-NATIVE-empty-knowledge-space-genesis.md`](../Handoffs/HANDOFF-NATIVE-empty-knowledge-space-genesis.md):
 one public empty-native-genesis operation over accepted CAS/receipt mechanics.
-PR #82 accepted the design and completed predecessor sync at merge
-`107483f1c4593df8e5599b033fdf2b72a46f3f51`. It is now one serial, bounded
-DungeonMind implementation lease supporting DEMO-J3. It is not V7 dispatch.
+PR #82 accepted the design at `107483f1c4593df8e5599b033fdf2b72a46f3f51`.
+PR #83 accepted head `decf694fc7304c30e82eae77a30247066c0f954a`, PRIME
+Cycle 2 PASS `5333897671`, merge `031b6650d0a506cf40f0189fc5cfac055ac37308`.
+Cycle 1 HOLD `5333812913` was closed by the bounded proof repair.
+Independent proof passed 104 required unit cases plus 10 reviewer probes and
+36 PostgreSQL cases, zero skips. Core, integration and benchmark CI passed.
+The implementation lease is released. DEMO adoption remains a consumer gate;
+V7 is not dispatched. Native source/evidence admission needs a bounded design
+checkpoint returned to PRIME before implementation.
 
 Buddy container creation allocates a product identity/source directory, not
 native authority/domain/profile identity. Repository `publish_revision` permits
