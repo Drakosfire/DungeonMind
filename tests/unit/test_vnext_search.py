@@ -303,7 +303,7 @@ def _visible_lab() -> KnowledgeReadContext:
     return context
 
 
-def test_01_bookkeeping_records_v43_complete_v51_active() -> None:
+def test_01_bookkeeping_records_v43_through_v6_complete() -> None:
     steward = STEWARD_PATH.read_text(encoding="utf-8")
     assert IMPLEMENTATION_BASE in steward
     assert "V4.2 COMPLETE" in steward
@@ -317,7 +317,8 @@ def test_01_bookkeeping_records_v43_complete_v51_active() -> None:
     assert "V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED" in steward
     assert "V5.4 COMPLETE" in steward
     assert "V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED" in steward
-    assert "V6 ACTIVE" in steward
+    assert "V6 COMPLETE — V6_DUNGEONBUDDY_PRESERVATION_ACCEPTED" in steward
+    assert "V7 NOT DISPATCHED" in steward
 
 
 def test_02_frozen_v0_aggregate_remains_exact() -> None:
