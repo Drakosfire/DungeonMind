@@ -1,13 +1,21 @@
 # HANDOFF — NATIVE: atomic text-source and evidence admission
 
-**Created:** 2026-09-27  
-**Status:** DESIGN CHECKPOINT / BLOCKED — PRIME design judgment required; no runtime lease  
-**Owner:** DungeonMind; ARCHITECTURE designs, MIND stewards implementation, PRIME controls acceptance/merge  
-**Accepted design base:** `3ebdefaf1303089f21d3c94f2759df2d9274a71f` — PR #84 settlement  
-**Accepted runtime predecessor:** PR #83 merge `031b6650d0a506cf40f0189fc5cfac055ac37308`, reviewed head `decf694fc7304c30e82eae77a30247066c0f954a`, Cycle 2 PASS `5333897671`  
-**Settlement acceptance:** PR #84 head `6d149fcd5515e48d4b55b2c63beeddf9f7901283`, PRIME PASS `5333942899`  
-**Prospective topology:** serial, one DungeonMind implementation PR after activation  
-**Prospective title:** `NATIVE: atomically admit text sources and evidence`  
+**Created:** 2026-09-27
+
+**Status:** DESIGN CHECKPOINT / BLOCKED — PRIME design judgment required; no runtime lease
+
+**Owner:** DungeonMind; ARCHITECTURE designs, MIND stewards implementation, PRIME controls acceptance/merge
+
+**Accepted design base:** `3ebdefaf1303089f21d3c94f2759df2d9274a71f` — PR #84 settlement
+
+**Accepted runtime predecessor:** PR #83 merge `031b6650d0a506cf40f0189fc5cfac055ac37308`, reviewed head `decf694fc7304c30e82eae77a30247066c0f954a`, Cycle 2 PASS `5333897671`
+
+**Settlement acceptance:** PR #84 head `6d149fcd5515e48d4b55b2c63beeddf9f7901283`, PRIME PASS `5333942899`
+
+**Prospective topology:** serial, one DungeonMind implementation PR after activation
+
+**Prospective title:** `NATIVE: atomically admit text sources and evidence`
+
 **Execution authorization:** none in this checkpoint; approval is not inferred from publication of this file.
 
 ## §1 One capability and its falsifier
