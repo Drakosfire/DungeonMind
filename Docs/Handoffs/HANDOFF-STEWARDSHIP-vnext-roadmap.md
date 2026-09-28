@@ -4,12 +4,12 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `4d11686d679029ae4ef0902a13edc0509c0ce476` — merged PR #79
-**Last merged roadmap implementation:** PR #76 — `KERNEL: authorize aliases in vNext complete-entity reads`
+**Current main anchor:** `b83baf82c381b1929c2c7989326d667200ff544c` — merged PR #81; proposed post-V6 control-plane sync
+**Last merged roadmap prerequisite repair:** PR #81 — private source-visibility binding in native anchor identity
 **Last merged parallel contract capability:** PR #77 — versioned semantic-profile V3 open predicate namespaces
 **Authority finalization:** PR #78 — `54a419f99057d96e0c4e7620d8bd8ccc6816fb62`; V3 documents and regression tests, no new consumer runtime requirement
 **Governance anchor:** PR #79 — shared agent operating law and benchmark import guard; no additional V6 semantic capability
-**Consumer checkpoint:** Buddy V6.1, V6.2, PLAY-1 and PLAY-2 merged; V6 evidence/anchor preservation acceptance remains open
+**Consumer checkpoint:** Buddy V6.5 / #780 merged; V6 preservation accepted; fresh-native DEMO initialization design BLOCKED, V7 undispatched
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
@@ -69,7 +69,8 @@ V5   Generic governed write contracts                    COMPLETE
   V5.2 Expected-parent atomic CAS publication            COMPLETE
   V5.3 Durable idempotent replay / recovery              COMPLETE
   V5.4 Prospective-reference allocation + substitution   COMPLETE
-V6   DungeonBuddy domain implementation                  ACTIVE
+V6   DungeonBuddy domain implementation                  COMPLETE
+NATIVE Empty new-space genesis prerequisite               DESIGNED / BLOCKED
 V7   Bridge-genesis migration
 V8   Joint semantic + performance acceptance
 V9   Cutover
@@ -98,7 +99,10 @@ Buddy V6.1 COMPLETE — V6_1_DUNGEONBUDDY_DOMAIN_RUNTIME_ACCEPTED
 Buddy V6.2 COMPLETE — V6_2_VNEXT_COMPLETE_OBJECT_DTO_PRESERVATION_ACCEPTED
 Buddy PLAY-1 COMPLETE — in-memory governed consumer composition
 Buddy PLAY-2 COMPLETE — isolated PostgreSQL composition accepted at #779
-V6 EXIT NOT YET ACCEPTED — Buddy native evidence/anchor preservation witness remains
+Buddy V6.5 COMPLETE — native evidence/anchor preservation accepted at #780
+V6 COMPLETE — V6_DUNGEONBUDDY_PRESERVATION_ACCEPTED
+NATIVE EMPTY GENESIS DESIGNED / BLOCKED — owner adoption/sync/activation required
+V7 NOT DISPATCHED
 ```
 
 The parallel V3 profile capability is accepted at PR #77: substantive reviewed
@@ -139,27 +143,47 @@ Cross-repository accepted facts (re-anchored 2026-09-27):
   composition uses the explicit V3 custom-predicate profile; it does not migrate
   a V2-pinned World or supersede V6.1's base profile.
 
-### Current next step
+### V6 exit and current next step
 
-**Buddy V6.5 — native evidence/anchor preservation and V6 exit receipt; BLOCKED design pending owner activation.**
+DungeonMind #81 is accepted at reviewed head
+`6a0a51f49a1f72bc336444908cff824c26516325`, PRIME Cycle 2 PASS `5331842204`,
+merge `b83baf82c381b1929c2c7989326d667200ff544c`. It binds source visibility
+privately into anchor identity; public source DTO/result semantics stay unchanged.
 
-The V6 preservation list includes complete object/evidence/anchors. V6.1 and
-V6.2 cover scope, role, focus, fictional-time and complete-object/evidence
-metadata. No accepted Buddy witness yet exercises native
-`EvidenceReadService.get_assertion_evidence`, `get_evidence` and
-`resolve_source_anchor` through Buddy's actual domain context. PLAY-2 expressly
-does not prove source admission or source-content persistence. DungeonMind V4.2
-already provides the required generic evidence/anchor APIs; the remaining work
-is a Buddy-owned acceptance proof, not an identified Kernel runtime prerequisite.
+Buddy #780 is accepted at reviewed head
+`dd1accc35e63e518555894db769a23c2a9c75171`, PRIME Cycle 2 PASS `5333525840`,
+merge `11d7b5801b51f664e7a6eeafcb2aa2b0f5922b71`. Independent owning-boundary
+review records 15 V6.5 tests plus 83 required regressions: **98 passed, zero
+skips**. Buddy's `Docs/Reports/REPORT-v6-preservation-acceptance.md` supplies the
+full V6 receipt: native evidence/anchor identity, context-bound exclusion and
+fresh source/visibility/locator revalidation join the accepted domain/object/
+persistent-write proofs. `V6_DUNGEONBUDDY_PRESERVATION_ACCEPTED` is recorded.
+Buddy now pins DungeonMind to #81 merge and retains WorldKeeper
+`49a8620f066ce7ef8972a699020c012f50af9158`. PLAY-2 remains pinned historical
+composition evidence, not ordinary production routing or source ingestion proof.
 
-Design authority: Buddy
-`Docs/Plans/HANDOFF-v6-5-native-evidence-anchor-preservation.md`, pinned at
-Buddy design commit `1c43888fc29c4d2e8e9354f103f1cdcb6b1b10d3`. MIND must
-accept this checkpoint correction and coordinate Buddy
-sequencing with DEMO before activation. V7 remains undispatched until the full
-V6 preservation receipt is independently accepted. Native source-anchor identity
-and revalidation are the V4.2 contract; source-body UI hydration remains a later
-consumer/cutover concern, not an added V6 browser requirement.
+**Proposed next DungeonMind capability: empty native KnowledgeSpace genesis;
+DESIGNED / BLOCKED pending MIND adoption, state sync and fresh activation.**
+Authority: `Docs/Handoffs/HANDOFF-NATIVE-empty-knowledge-space-genesis.md` in this
+pinned design branch. This is a post-V6 native-new-space prerequisite for
+DEMO-J3, not V7 migration. Container allocation, explicit domain/profile identity
+and native authority are distinct. The operation creates only an empty native
+parent/head/receipt with no source/evidence or object seeding. It needs no
+campaign/recap/import and allocates no database per space.
+
+The selected new-World path does not need to preserve old Of Conks IDs/history.
+Existing durable Worlds still require V7's exact freeze/manifest/bridge genesis,
+then V8/V9. Nothing in this proposal authorizes their switch, reset or dual-write.
+Authentic native source/evidence admission, real World-only durable Plan state
+(not World slug in campaign_id), World-only Keeper composition and ordinary
+native Agent citations after restart remain separately designed product/authority
+obligations. Keeper's accepted evidence-in-parent boundary may not be bypassed.
+
+Before dispatch, MIND accepts/re-reads both current-state documents and coordinates
+Buddy V6.5 handoff/report/current-state settlement with DEMO. At Buddy #780 the
+report still claims awaiting Cycle 2 and the handoff is ACTIVE; acceptance releases
+that completed lease. Preserve evidence and record exact review/merge rather
+than re-executing or inflating review cycles. No runtime/PR dispatch is implicit.
 
 The first-World endpoint preparation defect observed by DEMO is separately
 Buddy-owned under design commit `6e5bd19c68a0b8bbe2657f2d0e60c9f3df95fba2`.
@@ -836,16 +860,17 @@ V5.3 COMPLETE — V5_3_DURABLE_PUBLICATION_REPLAY_RECOVERY_ACCEPTED
 V5.4 COMPLETE — V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED
 V5 COMPLETE
 V6.K1 COMPLETE — V6_K1_COMPLETE_ENTITY_AUTHORIZED_ALIASES_ACCEPTED
-V6 ACTIVE
+V6 COMPLETE — V6_DUNGEONBUDDY_PRESERVATION_ACCEPTED
 Buddy V6.1 / V6.2 / PLAY-1 / PLAY-2 COMPLETE at the accepted refs in §2
-V6.5 evidence/anchor preservation acceptance NOT YET PROVEN
+Buddy V6.5 / #780 COMPLETE — 98 passed, zero skips, PRIME Cycle 2 PASS
+NATIVE empty new-space genesis DESIGNED / BLOCKED
 V7 NOT DISPATCHED
 ```
 
 ### Next primary question
 
 ```text
-Can Buddy's accepted domain context preserve native evidence/anchor identity, visibility, scope and fresh-source revalidation, closing the final named V6 proof without production cutover?
+Can DungeonMind expose a bounded empty-native-genesis operation with explicit descriptor identity, one atomic receipt and truthful replay, without sources, fixture seeding, existing-World migration or product cutover?
 ```
 
 ### Parallel work posture
@@ -856,11 +881,11 @@ safe / independent:
   contract-frozen Buddy/domain work that does not depend on V5.2 runtime
 
 active:
-  V6 consumer/domain implementation
+  no new implementation lease granted by this state-sync proposal
 
 designed / blocked:
-  Buddy V6.5 native evidence/anchor preservation acceptance
-  activation requires current-state reconciliation and Buddy steward scheduling
+  DungeonMind empty native KnowledgeSpace genesis
+  activation requires owner adoption, V6 state sync and fresh lease/runtime check
 
 blocked until later accepted predecessors:
   bridge-genesis migration
@@ -878,17 +903,22 @@ blocked until later accepted predecessors:
 - no current public World read cutover has occurred;
 - no historical-reader quarantine/deletion is authorized;
 - Buddy has accepted runtime pins and dormant vNext adapters; no production vNext cutover has occurred;
-- V6 native evidence/anchor preservation has no accepted Buddy receipt yet;
+- no public empty-native-initialization operation is accepted;
+- no ordinary authentic native source/evidence admission/body-verification path is accepted;
+- World-only durable Plan semantics and ordinary native Agent citations remain product gaps;
 - larger 50k/100k characterization remains incomplete;
 - deeper storage optimization is not authorized.
 
 ### Named next action
 
-Accept/reconcile this two-document current-state correction, settle Buddy's
-PLAY-2 status with its owner, then activate the bounded Buddy V6.5 proof at a
-fresh exact base after a lease/scheduling check. Its outcome returns to MIND for
-the V6 exit judgment. Only then design V7's first bridge-genesis slice. Keep
-alias search, V2→V3 profile transition and production cutover separate.
+Adopt/reconcile this two-document V6 exit sync and coordinate Buddy #780
+settlement with DEMO. Review the bounded empty-native-genesis handoff and, only
+after explicit adoption and a fresh anchor/serial lease/runtime check, activate
+one DungeonMind implementation lane. Send its frozen merge-ready head/evidence
+to PRIME. After it settles, re-anchor and design authentic native source/evidence
+admission; DEMO separately owns true World-only Plan and product routing. Keep
+V7 undispatched, with bridge-genesis obligations intact for existing Worlds.
+Alias search, profile transition, source bodies and production cutover stay separate.
 
 ---
 
