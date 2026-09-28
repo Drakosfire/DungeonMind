@@ -1,10 +1,10 @@
 # HANDOFF — vNext parallel scale characterization
 
-**Status:** DESIGN ACCEPTED — memory-only activation proposed in PR #91; inactive until merge  
+**Status:** IMPLEMENTATION ACTIVE — bounded memory-only lease accepted at PR #91  
 **Owner:** DungeonMind  
 **Design PR base main anchor:** `8111557b2f8ac797cf9d4f7de54e559d57f22c1d` (PR #88)
 **Accepted design:** PR #89 head `93c2e0e50544189c4298e70a52c663c825439a88`; PRIME Cycle 2 PASS `5340172526`; merge `16022e37757f6c6c61458c6c90ef94857cab93f7`  
-**Activation proposal:** PR #91; proposed only, effective only after exact-head PRIME PASS and merge  
+**Accepted activation:** PR #91 head `d7758b8910fa156d2d9afaa2462485839d0de49a`; PRIME PASS `5340325390`; merge `37d8afefd0580a68b0d66f54876d9776d554d8bc`  
 **Current production-code anchor:** `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc` (accepted native source admission, PR #85)  
 **Authority:** `Docs/Roadmaps/ROADMAP.md`, §“Parallel measurement lane”; `Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`; `Docs/Architecture/AUTHORITY.md`  
 **One-line mission:** establish a reproducible, semantically identified scale/cost baseline for the accepted current runtime, to inform V8 comparison and V11 post-cutover measurement, without changing runtime behavior or delaying V0.
@@ -99,9 +99,9 @@ Do not produce a single aggregate performance score or universal latency pass th
 
 Design acceptance or merge of PR #89 alone does **not** authorize implementation, benchmark execution against a database, or edits to any implementation path. This activation proposal becomes effective only if PR #91 is independently reviewed PASS at its exact head and merged. Until then, make no code, fixture, report, benchmark, or database changes under this proposal.
 
-### Bounded activation proposal (PR #91)
+### Accepted bounded activation (PR #91)
 
-If accepted and merged, the activation is:
+This exact bounded lease is effective at main merge `37d8afefd0580a68b0d66f54876d9776d554d8bc`:
 
 - **Base main:** `a6b1f190ae289e5a13d1f1747cf8affc9f978610` (PR #90 merge).
 - **Runtime measured:** `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc` (accepted PR #85 runtime); the comparison from this anchor through #90 is documentation-only, with no production-source, migration, dependency, lockfile, or runtime-configuration paths changed.
