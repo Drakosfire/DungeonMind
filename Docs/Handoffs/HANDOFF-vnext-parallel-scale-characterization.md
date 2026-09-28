@@ -1,9 +1,10 @@
 # HANDOFF — vNext parallel scale characterization
 
-**Status:** DESIGN ACCEPTED — no implementation lease  
+**Status:** DESIGN ACCEPTED — memory-only activation proposed in PR #91; inactive until merge  
 **Owner:** DungeonMind  
 **Design PR base main anchor:** `8111557b2f8ac797cf9d4f7de54e559d57f22c1d` (PR #88)
 **Accepted design:** PR #89 head `93c2e0e50544189c4298e70a52c663c825439a88`; PRIME Cycle 2 PASS `5340172526`; merge `16022e37757f6c6c61458c6c90ef94857cab93f7`  
+**Activation proposal:** PR #91; proposed only, effective only after exact-head PRIME PASS and merge  
 **Current production-code anchor:** `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc` (accepted native source admission, PR #85)  
 **Authority:** `Docs/Roadmaps/ROADMAP.md`, §“Parallel measurement lane”; `Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`; `Docs/Architecture/AUTHORITY.md`  
 **One-line mission:** establish a reproducible, semantically identified scale/cost baseline for the accepted current runtime, to inform V8 comparison and V11 post-cutover measurement, without changing runtime behavior or delaying V0.
@@ -96,7 +97,30 @@ Do not produce a single aggregate performance score or universal latency pass th
 
 ## 5. Proposed implementation envelope — NOT ACTIVATED
 
-Design acceptance or merge of this handoff does **not** authorize implementation, benchmark execution against a database, or edits to any implementation path. While this remains a design checkpoint, make no code, fixture, report, or database changes under its proposed lease.
+Design acceptance or merge of PR #89 alone does **not** authorize implementation, benchmark execution against a database, or edits to any implementation path. This activation proposal becomes effective only if PR #91 is independently reviewed PASS at its exact head and merged. Until then, make no code, fixture, report, benchmark, or database changes under this proposal.
+
+### Bounded activation proposal (PR #91)
+
+If accepted and merged, the activation is:
+
+- **Base main:** `a6b1f190ae289e5a13d1f1747cf8affc9f978610` (PR #90 merge).
+- **Runtime measured:** `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc` (accepted PR #85 runtime); the comparison from this anchor through #90 is documentation-only, with no production-source, migration, dependency, lockfile, or runtime-configuration paths changed.
+- **Adapter:** in-memory only. **PostgreSQL is explicitly not activated**; no database connection or migration is authorized. PG matrix rows are recorded as not measured because no target is authorized.
+- **Mandatory measurements:** both shapes, every applicable in-memory operation, sizes 100/1k/10k. Attempt both shapes at 50k/100k for full projection, exact/complete entity, depth-1/depth-2 neighborhood, evidence, source-anchor, and deterministic search. Run the independent semantic preflight before any timed case. Other large-scale rows follow §3 disposition and approved-waiver rules.
+- **Exact path allowlist:**
+  ```
+  benchmarks/vnext_scale_characterization.py             create
+  benchmarks/vnext_scale_fixtures.py                     create
+  benchmarks/vnext_scale_validate.py                     create
+  tests/unit/test_vnext_scale_characterization.py        create
+  Docs/Reports/VNEXT-scale-characterization-v1.json      create
+  Docs/Reports/REPORT-vnext-scale-characterization.md   create
+  ```
+  No other path may be changed. In particular, no PostgreSQL integration test, `tests/conftest.py`, existing benchmark, production source, migration, contract, dependency, lockfile, or runtime configuration is authorized.
+- **Resource envelope:** sequential execution only; one full benchmark attempt capped at 90 minutes wall time and 8 GiB peak RSS. Enforce both limits where supported. If the host cannot enforce the memory limit, do not attempt 50k/100k; return for an explicit revised activation/waiver. Any 50k/100k limit reached is recorded with exact case, elapsed time, RSS/host limit and disposition. No unbounded retries or concurrent runs.
+- **Data/cost boundary:** synthetic in-process fixtures only; no production/user data, live service, PostgreSQL, provider, paid call, or external resource.
+
+This activation does not accept a result in advance. The implementation PR must still prove the gates in §6, and cannot broaden this allowlist or resource envelope without a new Steward/PRIME-reviewed activation.
 
 Before implementation begins, the Steward must publish a bounded activation record pinned to the accepted main and this handoff. It must name:
 
@@ -131,7 +155,7 @@ The implementation PR must provide exact commands and results for:
 1. deterministic fixture/artifact regeneration twice, with byte-identical identity fields and result digests;
 2. validator rejection of missing/duplicate cells, malformed digests, silent omissions, and invalid dispositions;
 3. focused unit tests and the full relevant core test suite;
-4. the normal benchmark-smoke command, if its current failure lies within the benchmark-only repair lease;
+4. the normal benchmark-smoke command as a no-regression check; if it fails and needs any path outside the activation allowlist, stop and request a revised activation;
 5. the current checked-in semantic tests/oracle actually available at the selected runtime anchor, named by exact path and ref;
 6. PG rows only when the authorized disposable integration target exists, with zero persistent residue;
 7. `git diff --check` and an explicit proof that production paths, migrations, dependency manifests, and runtime config are unchanged.
