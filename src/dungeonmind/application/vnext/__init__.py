@@ -62,6 +62,7 @@ from .frozen_json import (
     freeze_json_value,
     thaw_json_value,
 )
+from .initialization import initialize_empty_knowledge_space
 from .legacy_compat import (
     COMPATIBILITY_DOMAIN_CONTRACT_ID,
     COMPATIBILITY_DOMAIN_CONTRACT_REVISION,
@@ -249,6 +250,7 @@ __all__ = [
     "freeze_json_value",
     "get_prospective_publication",
     "get_publication_receipt",
+    "initialize_empty_knowledge_space",
     "load_legacy_world_compat_manifest",
     "materialize_governed_revision",
     "publish_governed_materialization",

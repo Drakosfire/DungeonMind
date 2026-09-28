@@ -57,6 +57,21 @@ def publish_governed_materialization(
     build_parsed_knowledge_revision(revision=expected, decoded_content=decoded)
     if not publication_id.strip():
         raise KnowledgePublicationIntegrityError("publication_id_blank")
+    return _publish_validated_command(
+        command,
+        publication_id=publication_id,
+        repository=repository,
+    )
+
+
+def _publish_validated_command(
+    command: PublishKnowledgeRevisionCommand,
+    *,
+    publication_id: str,
+    repository: KnowledgeRevisionRepository,
+) -> KnowledgePublicationReceipt:
+    """Publish one already structurally validated native command with exact recovery."""
+    expected = revision_from_command(command)
     try:
         receipt = repository.publish_publication(command, publication_id)
     except (KnowledgePublicationIdempotencyConflictError, KnowledgeStaleParentRevisionError):
@@ -78,7 +93,12 @@ def publish_governed_materialization(
                 reason=f"publish={type(exc).__name__}; probe={type(probe_exc).__name__}",
             ) from exc
         if recovered is not None:
-            return recovered
+            return _verify_receipt(
+                recovered,
+                command,
+                publication_id=publication_id,
+                repository=repository,
+            )
         raise KnowledgePublicationOutcomeUnknownError(
             space_id=command.space_id,
             publication_id=publication_id,
