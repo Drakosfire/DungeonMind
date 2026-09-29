@@ -1,8 +1,8 @@
 # DungeonMind — vNext Governed Knowledge Roadmap
 
 **Status:** current forward roadmap  
-**Updated:** 2026-09-28
-**Roadmap anchor:** DungeonMind `main` after PR #93 merge (`c79fc297296afa8c110e51c357d21a4fbb70cdcc`); PRIME Cycle 2 PASS `PRR_kwDOToHpZs8AAAABPnee6Q` accepts `PARTIAL_MEMORY_BASELINE_THROUGH_10K`; 50k/100k remain deferred, PostgreSQL remains inactive, and V7 implementation remains blocked
+**Updated:** 2026-09-29
+**Main re-anchor used for this amendment:** DungeonMind remote `main` at PR #93 merge (`c79fc297296afa8c110e51c357d21a4fbb70cdcc`); PRIME Cycle 2 PASS `PRR_kwDOToHpZs8AAAABPnee6Q` accepts `PARTIAL_MEMORY_BASELINE_THROUGH_10K`; 50k/100k remain deferred, PostgreSQL remains inactive, and V7 implementation remains blocked
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -21,18 +21,25 @@ authenticity, DEMO adoption, J3 or V7 readiness. PR #87 adds the accepted V7 des
 freeze/export, migration, or cutover authority. DEMO's 2026-09-28 cross-repo
 checkpoint confirms #85 satisfies MIND's source-admission prerequisite for a
 bounded immutable one-shot; no MIND API/proof blocker was identified. The product
-journey still needs Buddy-owned APP-STATE source-revision → explicit admission →
-supported assertion with admitted evidence → reopen/read proof. Buddy DEMO's
-serial J1 PR #788 (`d6d5692f62bcc2690d6c679a91e2969148655123`) is open for a
-World-owned blank Plan before import; its last visible PRIME review is Cycle 1
-HOLD on prior head `ff81efd7e4ae1d178ef3be5a1b7da6237d2ffcf5`, while the PR has
-since advanced to `d6d5692f62bcc2690d6c679a91e2969148655123`; exact-head
-re-review is not yet visible. The review identifies Buddy-owned UI,
-recovery, request-validation, and response-boundary proof gaps. It is not a
-DungeonMind API finding. No MIND API/proof blocker is currently identified for
-the accepted immutable one-shot prerequisite. Whether a human review/mutation
-interval is required before Keeper commit remains a user product decision; if
-required, source-freshness binding needs a separate design. Existing
+J1 source authority/admission is accepted at Buddy PR #787 merge
+`f7ce9b99b8e9b73129c6f474989cdb30875a31c8`, final PRIME PASS `5344917264`.
+Its live witness proves that the actual persisted 48,777-byte source snapshot
+was admitted and its status survived browser reload and a fresh API process.
+That snapshot SHA is `4aeb773a02c41cfffb79abcb2ca44da72d5a2eb8ad331cc6f9a417a5c2919186`;
+the pinned original was 48,778 bytes and differed by one final LF, whose exact
+loss point is unknown. This does not establish original-file byte identity,
+semantic assertions, Agent retrieval, J3, or full DEMO. Buddy's separate
+World-owned blank-Plan PR #788 remains an open Buddy-owned repair. **Current
+checkpoint (2026-09-29):** latest PRIME Cycle 3 HOLD `5346337729`, review
+`PRR_kwDORxsmms8AAAABPqqjwQ`, exact head
+`577006fd0fff330428ee0edd8f4c2c93f2f9bf27`; the remaining finding is that an
+unrelated successful save can delete the quarantined uncertain-create draft.
+See [Buddy PR #788](https://github.com/Drakosfire/DungeonMindBuddy/pull/788)
+for that Buddy-owned repair. It is not a DungeonMind API finding. No MIND
+API/proof blocker is currently identified for the accepted immutable one-shot
+prerequisite. Whether a human review/mutation interval is required before Keeper
+commit remains a user product decision; if required, source-freshness binding
+needs a separate design. Existing
 bridge-genesis, cutover and product obligations remain unchanged.
 
 PR #93 is merged at `c79fc297296afa8c110e51c357d21a4fbb70cdcc` and accepts
