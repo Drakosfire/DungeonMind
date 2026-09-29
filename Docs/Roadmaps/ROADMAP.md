@@ -2,7 +2,7 @@
 
 **Status:** current forward roadmap  
 **Updated:** 2026-09-29
-**Main re-anchor used for this amendment:** DungeonMind remote `main` at PR #93 merge (`c79fc297296afa8c110e51c357d21a4fbb70cdcc`); PRIME Cycle 2 PASS `PRR_kwDOToHpZs8AAAABPnee6Q` accepts `PARTIAL_MEMORY_BASELINE_THROUGH_10K`; 50k/100k remain deferred, PostgreSQL remains inactive, and V7 implementation remains blocked
+**Main re-anchor used for this amendment:** DungeonMind remote `main` at PR #94 merge (`19b9e8d71635d8736e9ad5f0db3aa075f635d510`); PRIME Cycle 2 PASS `5346386227` accepts the V7 activation-gate amendment as reviewable, not as gate satisfaction or implementation authority. PR #93's `PARTIAL_MEMORY_BASELINE_THROUGH_10K` remains accepted; 50k/100k remain deferred, PostgreSQL remains inactive, and V7 implementation remains blocked
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -10,15 +10,21 @@ This document replaces the earlier L.1–L.6 forward lanes as the canonical exec
 
 ## Current active slice
 
-DungeonMind NATIVE V1 text-source/evidence admission is accepted at PR #85:
+The current MIND-authorized slice is design-only qualification of the existing
+D_A adoption fixture at `tests/fixtures/v7_bridge_genesis/authority_v1.json`;
+it does not satisfy a V7 gate or authorize runtime/migration work. The accepted
+native prerequisite remains DungeonMind NATIVE V1 text-source/evidence
+admission at PR #85:
 reviewed head `0803faf9f84b44148291c68c8dd115f73c68d464`, PRIME Cycle 2 PASS
 `5334796956`, merge anchor `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`. Core,
 integration (including the exact pinned WorldKeeper consumer), and benchmark
 smoke are green. The merge proves atomic admission, replay/recovery and
 context-bound preview for this immutable V1 slice. It does not prove source
 lifecycle, source freshness across Keeper prepare/commit, Buddy saved-file
-authenticity, DEMO adoption, J3 or V7 readiness. PR #87 adds the accepted V7 design checkpoint only; it grants no implementation,
-freeze/export, migration, or cutover authority. DEMO's 2026-09-28 cross-repo
+authenticity, DEMO adoption, J3 or V7 readiness. PR #87 adds the accepted V7
+design checkpoint and PR #94 makes its five activation gates owner-reviewable;
+neither grants implementation, freeze/export, migration, or cutover authority.
+DEMO's 2026-09-28 cross-repo
 checkpoint confirms #85 satisfies MIND's source-admission prerequisite for a
 bounded immutable one-shot; no MIND API/proof blocker was identified. The product
 J1 source authority/admission is accepted at Buddy PR #787 merge
@@ -30,12 +36,12 @@ the pinned original was 48,778 bytes and differed by one final LF, whose exact
 loss point is unknown. This does not establish original-file byte identity,
 semantic assertions, Agent retrieval, J3, or full DEMO. Buddy's separate
 World-owned blank-Plan PR #788 remains an open Buddy-owned repair. **Current
-checkpoint (2026-09-29):** latest PRIME Cycle 3 HOLD `5346337729`, review
-`PRR_kwDORxsmms8AAAABPqqjwQ`, exact head
-`577006fd0fff330428ee0edd8f4c2c93f2f9bf27`; the remaining finding is that an
-unrelated successful save can delete the quarantined uncertain-create draft.
+checkpoint (2026-09-29):** PRIME Cycle 4 implementation and exact-head ordinary
+browser/persistence witness PASS at `878c03f4143828697fe2874b7d10b1cf24df4386`;
+merge remains held for visual acceptance. The bounded repair is limited to
+World Plan scoped styling and its handoff, plus the existing page/test lease.
 See [Buddy PR #788](https://github.com/Drakosfire/DungeonMindBuddy/pull/788)
-for that Buddy-owned repair. It is not a DungeonMind API finding. No MIND
+for the live Buddy-owned checkpoint. This is not a DungeonMind API finding. No MIND
 API/proof blocker is currently identified for the accepted immutable one-shot
 prerequisite. Whether a human review/mutation interval is required before Keeper
 commit remains a user product decision; if required, source-freshness binding
@@ -898,6 +904,17 @@ blocked. The owner-bound inputs, output artifacts, sequence and fail-closed
 conditions for all five activation gates are defined in
 [`HANDOFF-v7-bridge-genesis-migration.md` §3](../Handoffs/HANDOFF-v7-bridge-genesis-migration.md).
 This record does not claim that any external gate has been satisfied.
+
+The existing Eldyrwild adoption bundle is qualified by
+[`authority_v1.json`](../../tests/fixtures/v7_bridge_genesis/authority_v1.json)
+only as D_A historical design input and a candidate for a separately approved
+D_A-only rehearsal. Its source-world revision
+`rev:0c644e56b45bcaac709012206e3e41c2`, adopted DungeonMind D_A
+`rev:34b1f8e2625d5ba693fc726a2a1a4720`, and later recovery checkpoint D_B
+`rev:680c246047d67f9fe0293ee90526f670` are distinct stages. The sidecar
+satisfies none of the activation gates and is not a complete export,
+current-authority snapshot, source/body disposition, or implementation lease.
+Missing fixture evidence is not proof of absence in the source authority.
 
 **Primary question:** Can the living current authority become vNext without rewriting history or minting unnecessary identity?
 

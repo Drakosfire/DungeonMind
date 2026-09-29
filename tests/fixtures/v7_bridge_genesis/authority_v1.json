@@ -1,0 +1,227 @@
+{
+  "schema_version": "dm_v7_d_a_fixture_qualification_v1",
+  "disposition": "DESIGN_ONLY_D_A_FIXTURE_QUALIFICATION",
+  "purpose": "Qualify the existing checked-in Eldyrwild adoption bundle as historical D_A design/rehearsal input only.",
+  "acceptance_boundary": {
+    "eligible_use": [
+      "Review of this fixture's exact represented structure, metadata, and recorded lineage",
+      "Design of owner-led mapping and source/body disposition questions",
+      "A future separately approved D_A-only rehearsal limited to records represented by this exact fixture"
+    ],
+    "v7_gates_satisfied": [],
+    "not_satisfied": [
+      "Gate 1 domain mapping",
+      "Gate 2 authenticated freeze/export",
+      "Gate 3 source/body history disposition",
+      "Gate 4 full cross-owner preservation proof readiness",
+      "Gate 5 exact target and implementation lease"
+    ],
+    "not_authorized": [
+      "V7 runtime or migration implementation",
+      "A claim that this is a complete legacy export or complete current authority",
+      "Live database access, capture, writer fencing, restore, mutation, or cutover",
+      "External locator fetches, body reconstruction, fabricated spans, or source-policy changes"
+    ],
+    "completeness_rule": "Owner attestation cannot turn an omitted required record into represented evidence. Any required-but-unrepresented record remains an explicit limitation, not a waiver; fixture-local omission does not prove absence in the source authority."
+  },
+  "fixture": {
+    "repository": "Drakosfire/DungeonMind",
+    "path": "tests/fixtures/dungeonmind_dnd/eldyrwild_existing_world_adoption_bundle_v2.json",
+    "git_ref": "refs/heads/main",
+    "git_commit": "19b9e8d71635d8736e9ad5f0db3aa075f635d510",
+    "git_blob_sha1": "274cdd9e6d38d5a00aa43d780779e95a7919d975",
+    "file_sha256": "90574dfc4101e4198c7fd96478d6f49e65aa534d0aa91fa41a9a17da9d49695f",
+    "root_schema": "dm_existing_world_adoption_bundle_v2",
+    "world_id": "eldyrwild",
+    "adoption_id": "adoption:eldyrwild:dungeonmind-v6:rev:0c644e56b45bcaac709012206e3e41c2",
+    "graph_schema": "dm_union_graph_v6",
+    "producer": {
+      "producer_id": "dungeonmindbuddy.eldyrwild_existing_world_adoption_bundle_v2",
+      "producer_revision": "4446b6d207921a4be121ebb756d68b6078b8eee0",
+      "provenance_schema": "dm_existing_world_adoption_source_provenance_v1"
+    },
+    "source_graph": {
+      "source_world_revision_id": "rev:0c644e56b45bcaac709012206e3e41c2",
+      "source_graph_payload_sha256": "0640d7ef8ce152ee4f656959e0e9a6c9c2fdf5ecc8bd721729b3019170d677f2",
+      "meaning": "Bundle source_provenance identity; not the adopted DungeonMind D_A revision."
+    },
+    "authority_refs": [
+      {
+        "identifier": "eldyrwild-cutover-alias-assertion-package-after-shadow-alias-remove-v1",
+        "schema": "dmb_cutover_alias_assertion_package_after_shadow_alias_remove_v1",
+        "sha256": "14f653850f78040c15bc5d3fef34b7bb43dde74951afbf2c83600c29ad2829d7"
+      },
+      {
+        "identifier": "eldyrwild-relationship-node-kind-source-repair-v1",
+        "schema": "dmb_eldyrwild_relationship_node_kind_source_repair_v1",
+        "sha256": "96cc26fc6e99448e8fba5cd6982070c1e29bb058f2b1e8a4ac291f8a0a083247"
+      },
+      {
+        "identifier": "relationship-dual-sense-decomposition-v1",
+        "schema": "dmb_relationship_dual_sense_decomposition_v1",
+        "sha256": "53986158ec9ad326481755f7baef9f425d973f34a65b789f96e92e3f55208ef8"
+      },
+      {
+        "identifier": "eldyrwild:rev:0c644e56b45bcaac709012206e3e41c2",
+        "schema": "dmb_world_graph_payload",
+        "sha256": "0640d7ef8ce152ee4f656959e0e9a6c9c2fdf5ecc8bd721729b3019170d677f2"
+      },
+      {
+        "identifier": "world-object-v5",
+        "schema": "dungeonmind.dnd5e.world_object",
+        "sha256": "f9fd5420e0ab3849224e0d58cf83dd432ca2e5da22ce661b25654406ec9c60d8"
+      }
+    ],
+    "derived_counts": {
+      "graph_payload": {
+        "objects": 469,
+        "relationships": 323,
+        "evidence_refs": 184
+      },
+      "adoption_bundle": {
+        "source_artifacts": 83,
+        "source_revisions": 83,
+        "contributions": 93,
+        "identity_decisions": 13
+      },
+      "identity_decision_kinds": [
+        "alias_remove",
+        "merge"
+      ],
+      "source_domain_key_counts": {
+        "graph_native": 50,
+        "manual_seed": 2,
+        "party_registry": 1,
+        "recap": 17,
+        "statblock": 4,
+        "threat_publication": 4,
+        "worldbuilding": 5
+      },
+      "evidence_linkage": {
+        "refs_with_artifact_and_revision_ids": 184,
+        "distinct_artifact_revision_pairs": 26,
+        "pairs_matching_exactly_one_bundle_revision": 26
+      },
+      "artifact_revision_linkage": {
+        "artifacts_with_current_revision_id": 83,
+        "current_ids_matching_exactly_one_bundle_revision": 83
+      },
+      "revision_storage": {
+        "body_storage_external": 83,
+        "rows_with_content_sha256_and_locator": 83,
+        "body_bytes_in_fixture": 0
+      },
+      "visibility_representation": {
+        "artifacts_with_null_visibility_and_null_source_visibility_state": 83
+      }
+    }
+  },
+  "stage_labels": {
+    "bundle_source_world_revision": {
+      "id": "rev:0c644e56b45bcaac709012206e3e41c2",
+      "authority_field": "source_provenance.source_world_revision_id",
+      "status": "represented_in_candidate_bundle"
+    },
+    "adopted_dungeonmind_d_a_revision": {
+      "id": "rev:34b1f8e2625d5ba693fc726a2a1a4720",
+      "authority_basis": "Docs/Runbooks/RUNBOOK-eldyrwild-world-authority-recovery.md checked-in lineage record",
+      "status": "separately_documented_adoption_output_not_the_bundle_source_world_revision"
+    },
+    "later_dungeonmind_d_b_revision": {
+      "id": "rev:680c246047d67f9fe0293ee90526f670",
+      "parent_id": "rev:34b1f8e2625d5ba693fc726a2a1a4720",
+      "authority_basis": "Docs/Runbooks/RUNBOOK-eldyrwild-world-authority-recovery.md recovery checkpoint",
+      "status": "separately_documented_recovery_checkpoint_not_represented_in_candidate_bundle"
+    },
+    "distinction": "Source-world revision 0c644..., adopted DungeonMind D_A 34b1..., and later DungeonMind D_B 680c... are different stage identities from different authority fields. Never collapse, substitute, or relabel them. The operator dump is not packaged or reclassified by this sidecar."
+  },
+  "scope_inventory": {
+    "represented_in_candidate_bundle": [
+      "The dm_union_graph_v6 payload identified by the source-world revision and payload digest above",
+      "83 source-artifact and 83 source-revision metadata rows",
+      "93 adoption contributions and 13 adoption identity decisions",
+      "184 evidence references with exact artifact/revision IDs; all 26 distinct referenced pairs match exactly one bundle revision"
+    ],
+    "not_represented_in_this_fixture": [
+      "Post-adoption DungeonMind D_A-to-D_B contribution/revision history",
+      "D_B and its complete current durable authority state",
+      "M0/M1 adoption/repair receipt lineage and repair sidecars",
+      "A complete later historical identity/source mutation ledger",
+      "Body bytes for any source revision",
+      "An authenticated complete writer/storage-owner census",
+      "A capture/freeze interval or writer-fence witness"
+    ],
+    "unknown_or_unattested_from_this_fixture": [
+      "Whether this bundle contains every record required by a future V7 claim",
+      "Any omitted record's existence or absence in the source authority",
+      "External body availability, immutable retrieval, retention, rights, or access guarantees",
+      "The meaning of null artifact visibility or null source_visibility_state",
+      "Authority-owner approval of fixture selection, completeness, or provenance"
+    ],
+    "interpretation_rule": "Not represented here means only that this candidate bundle does not contain that evidence; it does not prove the evidence or records are absent from the source authority."
+  },
+  "source_body_design_disposition": {
+    "revision_rows": 83,
+    "body_storage": "external",
+    "body_bytes_in_fixture": false,
+    "locator_values_present": true,
+    "locator_access_verified": false,
+    "retention_or_rights_attested": false,
+    "default": "Preserve exact artifact/revision IDs, metadata, digests, locators, and evidence-to-revision links. Treat body availability as unverified and non-openable. Do not fetch locators, reconstruct content, fabricate spans, or substitute artifact.current_revision_id for the revision named by evidence.",
+    "future_witness_rule": "Any semantic/read witness requiring unavailable bytes remains blocked until the actual body owner supplies an authorized disposition and evidence. This design default creates no body-access contract and proves no active native source mapping."
+  },
+  "owner_attestations": {
+    "dungeonmind": {
+      "status": "limited_to_read_only_fixture_parse_hash_and_linkage_verification",
+      "does_not_attest": [
+        "source-authority completeness",
+        "owner selection or freeze",
+        "legacy semantic meaning",
+        "body availability, access, rights, or retention"
+      ]
+    },
+    "buddy_export_and_domain_owner": {
+      "status": "absent_pending_separate_attestation",
+      "required_scope": "Fixture selection, producer/source provenance, bounded D_A coverage, and product/domain meaning"
+    },
+    "legacy_authority_operator_and_writer_owners": {
+      "status": "absent_pending_separate_inventory_and_authority_decision",
+      "required_scope": "Actual authority, participating writers/stores, capture/freeze facts, and explicit approval or rejection of the bounded D_A design/rehearsal coverage"
+    },
+    "external_source_body_owners": {
+      "status": "absent_pending_per_store_disposition",
+      "required_scope": "Exact bytes/access/retention facts for each actual external body store; no rights or openability guarantee is inferred"
+    },
+    "worldkeeper": {
+      "role": "not_a_durable_source_or_freeze_authority",
+      "attestation": "none"
+    },
+    "signatures": []
+  },
+  "rehearsal_default": {
+    "identity_metadata": "Preserve exact IDs, metadata, digests, and evidence-to-source-revision linkage for records represented here.",
+    "unverified_external_body": "Explicitly non-openable unless its actual owner establishes supported availability and access.",
+    "prohibited_shortcuts": [
+      "Fetch external locators",
+      "Fabricate body bytes or spans",
+      "Substitute current revision for the revision named by evidence",
+      "Map null visibility to public, GM, or any default audience",
+      "Infer complete source closure from bundle-local counts or hashes"
+    ]
+  },
+  "verification_record": {
+    "method": "Read-only derivation from the exact fixture at git_commit; file SHA-256, Git blob, counts, and exact evidence/revision link matches are recorded for independent reproduction.",
+    "read_only_check_results": {
+      "sidecar_json_parse": "PASS",
+      "fixture_file_sha256_match": "PASS",
+      "fixture_git_blob_match_at_pinned_commit": "PASS",
+      "bundle_schema_provenance_authority_refs_and_record_counts_match": "PASS",
+      "evidence_references": "184 references resolve to 26 distinct artifact/revision pairs; each pair matches exactly one revision row in the bundle",
+      "artifact_current_revision_links": "83 artifacts each link to exactly one revision row in the bundle",
+      "source_body_inventory": "83 revisions have external body_storage, a content digest and locator; no body bytes are present in the bundle",
+      "visibility_representation": "All 83 artifact visibility and source_visibility_state fields are null; no audience meaning was inferred"
+    },
+    "scope_limit": "These checks establish only MIND-side parse/hash/fixture-internal linkage facts at the pinned input. They do not authenticate the source authority, prove completeness, or replace upstream owner attestations.",
+    "runtime_or_migration_tests": "Not applicable to this design-only qualification; no implementation behavior is claimed."
+  }
+}
