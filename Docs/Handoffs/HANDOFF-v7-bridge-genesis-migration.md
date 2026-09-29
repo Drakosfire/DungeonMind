@@ -2,11 +2,13 @@
 
 **Created:** 2026-09-28
 
-**Status:** DESIGN CHECKPOINT / BLOCKED — PRIME design acceptance and §3 owner decisions required; no implementation or live migration authorized
+**Status:** DESIGN CHECKPOINT / BLOCKED — §3 activation gates are made reviewable below; required owner artifacts/decisions remain absent; no implementation or live migration authorized
 
 **Design/implementation repository:** `Drakosfire/DungeonMind`
 
 **Exact design base:** `daed279792402aa813c647251d21724c68768b03` — accepted PR #86 settlement
+
+**Current main re-anchor for this activation-contract amendment:** `c79fc297296afa8c110e51c357d21a4fbb70cdcc` — PR #93 merged; this amendment does not activate V7
 
 **Design branch:** `codex/design-v7-bridge-genesis`
 
@@ -48,9 +50,12 @@ Buddy main at design is `132cb80bea50ef2814074a52832ab763286a1900`, with DM
 pin `b83baf82c381b1929c2c7989326d667200ff544c` and Keeper pin
 `49a8620f066ce7ef8972a699020c012f50af9158`. The separate BLOCKED native-source
 consumer-proof checkpoint is `d45a3e81ab70657b24ddae2fc6990cb5fbddf457` on
-`codex/design-native-consumer-proof`. DEMO PR #785 head
-`07ec031ab5b62b8dbcd34f51ed4b6eaf0fa25262` remains open. Do not transfer its
-lease, adopt its unmerged behavior, claim J3 complete, or fold its proof into V7.
+`codex/design-native-consumer-proof`. At this design base DEMO PR #785 head
+`07ec031ab5b62b8dbcd34f51ed4b6eaf0fa25262` was open; it has since merged at
+`f8b923875f9444a1addfb2472a2b8fab35eceb4c`. Its accepted J4 witness remains
+limited to selected-World draft ownership/recovery; it does not prove graph
+publication/read-after-write or complete J4/LOCAL DEMO. Do not transfer its
+lease or fold its proof into V7.
 DungeonMind has no open PR at this anchor; absence of a collision is not activation.
 
 ## §2 Binding authorities and limits of existing mechanisms
@@ -131,6 +136,62 @@ and `dungeonbuddy.dnd5e` revision 1, SHA
 `51ea47ff45bc86ea158939c34a5769e7ee56de3911278d473570e3795edb7e14`.
 They are design references, not permission to apply these pins to every old World
 or upgrade a V2-pinned space to V3. The approved mapping must select exact pins.
+
+### §3.1 Gate record contract — required before V7 activation
+
+Each gate is satisfied only by a pinned, reviewable artifact that records its
+authority/owner, exact input identities, output artifact and digest, validation
+method, failure disposition, and the owner attestation appropriate to that
+boundary. A passing local test or a caller-supplied checksum cannot substitute
+for an upstream owner's authority evidence. The gates are ordered dependencies;
+work may prepare an owner decision earlier, but no V7 implementation lease
+activates until all five are accepted at exact pins.
+
+| Gate | Required input → recorded output | Owner and sequence | Fail closed when |
+|---|---|---|---|
+| **1. Domain mapping** | Input: the complete frozen export from Gate 2 plus the source/body dispositions from Gate 3. Output: owner-versioned executable mapping/code digest; exact selected DomainContract and SemanticProfile descriptors/digests; a disposition for every durable identity and semantic record; mapped payload digest; and independently reproducible Buddy semantic witness. | Buddy owns product/domain meaning and the mapper. MIND owns a separate structural/identity validator, not semantic interpretation. Final mapping follows Gates 2–3. | Any record or identity is omitted, ambiguous, silently normalized, semantically unsupported, or mapped under unpinned code/descriptors; no compatibility-decoder fallback. |
+| **2. Authenticated freeze/export** | Input: named live authority, every writer and storage owner, and an agreed capture/fence plan. Output: immutable export bundle with exact source/root/head/envelope/payload digests, full positive and negative storage/lineage inventory, capture point, exporter identity/version, fence witness, and verifiable owner provenance. | The actual legacy application/storage owners supply authority and writer inventory; the operator coordinates the fence. They must be identified from the deployment, not inferred to be Buddy, WorldKeeper, or MIND. This is prerequisite to the frozen inputs for Gates 1, 3, and 4. | Any writer, storage class, mutation generation, capture interval, export owner, or verification/release procedure is unknown; a mutable snapshot or self-asserted checksum is not an authenticated freeze. |
+| **3. Source/body history disposition** | Input: Gate 2's inventory and every evidence reference/revision. Output: a total typed disposition for each artifact and revision, preserving exact metadata, lifecycle/visibility, linkage and digest; each body is classified as retained exact bytes, immutable external reference with defined access, explicitly unavailable/missing, or rejected/unsupported. | The owner of each actual body/source store attests availability and retrieval/retention facts; Buddy decides product-semantic usability; MIND defines and validates only the generic destination representation. This follows the captured inventory and precedes final Gate 1 mapping and Gate 4 proof. | A record is dropped, a body/span is fabricated, a locator is treated as body, revision linkage is lost, or a body required by an accepted semantic/read witness has no supported disposition. Current #85 V1 admission limits do not decide historical bridge policy. |
+| **4. Cross-owner preservation proof readiness** | Input: exact Gate 1–3 packages and an owner-approved historical fixture. Output before implementation: pinned Buddy mapping/read witnesses, immutable-history byte/digest parity, identity/lineage accounting, a row-by-row §9 proof plan with named owner and expected result for every case, and a reproducible nonproduction runner/resource plan. The actual transaction, replay, rollback and PostgreSQL results in §9 are implementation acceptance evidence, not prerequisites that must exist before code is authorized. | Buddy proves semantic mapping/read behavior; source owners prove export/body facts; MIND specifies the Kernel proof obligations; operator specifies isolation. This follows Gates 1–3. | A required §9 row has no owner, input fixture, expected result or permitted proof mechanism; mapping/history witnesses disagree; or the plan presumes shared/live resources. |
+| **5. Exact target and activation lease** | Input: accepted Gate 1–4 artifacts, refreshed `main`/PR/worktree inventory, proposed path list, commands and recovery plan. Output: a PRIME activation record naming exact base/head lineage, owners, all writable paths, an isolated disposable target identity and emptiness check, permitted commands/resources, serial topology, required reviews, and stop/recovery conditions. Output also states that completed §9 runtime proofs are required before merge/acceptance. | PRIME owns activation/acceptance and merge; operator owns exact target/resource authorization; MIND owns its bounded implementation and proof. This is the final gate before any implementation code or V7 target mutation. | Target/database/resource identity is ambiguous or non-empty, lease collides or omits paths, a required owner/gate is unaccepted, or PRIME has not explicitly activated the exact lease. |
+
+### §3.2 Fixed Kernel mechanics versus decisions still owned elsewhere
+
+The following mechanics are already fixed by accepted DungeonMind code/contracts
+and are not open Buddy policy: canonical JSON sorts object keys, uses compact
+separators and UTF-8, preserves Unicode, and rejects NaN/Infinity; durable
+canonical SHA-256 is defined by `dungeonmind.domain.canonical`; K0 uses the
+existing `compute_knowledge_revision_id` schema and omits `created_at` from
+content identity; `MigrationOriginRef` remains its strict five-field contract;
+K0 has the exact old World ID, null parent, pinned approved descriptors, and may
+not overwrite a non-empty target. Frozen V0 and existing source-admission
+contracts are not widened.
+
+Within an additive V7 contract, MIND can propose and implement deterministic
+record ordering, duplicate rejection, digest domains, manifest/command
+serialization, cycle-free hash inputs, golden vectors, exact replay comparison,
+and atomic target semantics. §5 is the current MIND proposal for those choices;
+the new schemas and golden bytes still require PRIME acceptance as part of Gate
+5. Buddy supplies the exact mapped payload and its meaning, not Kernel hashing
+rules. The following remain genuine cross-owner/operator decisions: who owns
+each live authority/store and its fence; which descriptors/mapping rules accept
+each legacy record; what historical bodies exist and whether any particular
+acceptance requires their bytes to remain openable; and the exact isolated
+target/resource and activation lease. No gate may turn an unresolved item into
+worker discretion.
+
+### §3.3 Candidate first capability — design only
+
+After the owner artifacts exist and PRIME activates the exact lease, the narrow
+first capability can be deterministic validation/construction from one
+authenticated frozen export plus one sealed Buddy mapping package into a
+canonical migration manifest and bridge-genesis command. Inputs are immutable
+owner artifacts; outputs are the manifest/command bytes, digests, and a
+validation report. MIND may verify completeness, IDs, closure, descriptor pins,
+hashes, and exact target-space identity. It must not read or freeze live stores,
+invent missing body content, choose Buddy semantics, or make the cross-owner
+acceptance decision. This is a candidate within the single V7 implementation
+PR, not an authorization for a preparatory runtime PR or an active code lease.
 
 ## §4 Prospective implementation write lease
 

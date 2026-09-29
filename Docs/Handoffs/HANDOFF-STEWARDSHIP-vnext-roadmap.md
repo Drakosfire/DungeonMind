@@ -4,8 +4,8 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Current main anchor:** `ccd06cb119c834a3d7950d5109b85c7b6a683430` — PR #92 post-#91 state-sync merge; #91 remains the active bounded memory-only characterization authority; V7 implementation remains blocked
-**Last merged activation:** PR #91 — head `d7758b8910fa156d2d9afaa2462485839d0de49a`, PRIME PASS `5340325390`, merge `37d8afefd0580a68b0d66f54876d9776d554d8bc`; six-path memory-only lease; PostgreSQL not authorized
+**Current main anchor for this amendment:** `c79fc297296afa8c110e51c357d21a4fbb70cdcc` — PR #93 merged; refresh to this amendment's merge SHA before any later roadmap PR
+**Last merged activation:** PR #93 — exact reviewed head `017a4a024251d520342aa23dfc439efce9b47090`, PRIME Cycle 2 PASS `PRR_kwDOToHpZs8AAAABPnee6Q`, merge `c79fc297296afa8c110e51c357d21a4fbb70cdcc`; partial memory baseline through 10k only, 50k/100k deferred, PostgreSQL unauthorized
 **Last merged control-plane re-anchor:** PR #92 — head `74282dbc2d06c60ae3f7713a9ca48206fe27d689`, PRIME Cycle 2 PASS `5340390691`, merge `ccd06cb119c834a3d7950d5109b85c7b6a683430`
 **Last merged parallel characterization handoff:** PR #89 — head `93c2e0e50544189c4298e70a52c663c825439a88`, PRIME Cycle 2 PASS `5340172526`, merge `16022e37757f6c6c61458c6c90ef94857cab93f7`; design only, no implementation/DB authority
 **Last merged native prerequisite:** PR #85 — head `0803faf9f84b44148291c68c8dd115f73c68d464`, PRIME Cycle 2 PASS `5334796956`, merge `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`
@@ -13,7 +13,7 @@
 **Last merged parallel contract capability:** PR #77 — versioned semantic-profile V3 open predicate namespaces
 **Authority finalization:** PR #78 — `54a419f99057d96e0c4e7620d8bd8ccc6816fb62`; V3 documents and regression tests, no new consumer runtime requirement
 **Governance anchor:** PR #79 — shared agent operating law and benchmark import guard; no additional V6 semantic capability
-**Consumer checkpoint:** Buddy V6.5 / #780 merged; Buddy PLAY-2 / #779 accepted at head `2d5ab6ade1d89ec608c941093819ea36404fd18e`, PRIME Cycle 2 PASS `5331441470`, merge `2ccc96ff2a7d76328578609d5289fd3babcf6442` (isolated persistent composition only); DEMO ordinary journey still unproved, V7 undispatched
+**Consumer checkpoint:** Buddy V6.5 / #780 merged; Buddy PLAY-2 / #779 accepted at head `2d5ab6ade1d89ec608c941093819ea36404fd18e`, PRIME Cycle 2 PASS `5331441470`, merge `2ccc96ff2a7d76328578609d5289fd3babcf6442` (isolated persistent composition only). Buddy DEMO J1 / #788 is open at head `d6d5692f62bcc2690d6c679a91e2969148655123`; the last visible PRIME review is Cycle 1 HOLD `PRR_kwDORxsmms8AAAABPqXKbA` on prior head `ff81efd7e4ae1d178ef3be5a1b7da6237d2ffcf5`, so current-head disposition is pending. Findings remain Buddy-owned. No MIND API/proof blocker is currently identified for the accepted immutable one-shot; ordinary product proof remains incomplete.
 **Last merged control-surface history:** PR #64 remains historical handoff/control-surface only; it is not V4.1 runtime acceptance  
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
@@ -107,7 +107,8 @@ Buddy PLAY-2 COMPLETE — isolated PostgreSQL composition accepted at #779
 Buddy V6.5 COMPLETE — native evidence/anchor preservation accepted at #780
 V6 COMPLETE — V6_DUNGEONBUDDY_PRESERVATION_ACCEPTED
 NATIVE EMPTY GENESIS COMPLETE — accepted at PR #83; implementation lease released
-V7 NOT DISPATCHED
+NATIVE V1 SOURCE/EVIDENCE ADMISSION COMPLETE — accepted at PR #85; Buddy consumer proof pending
+V7 DESIGN CHECKPOINT COMPLETE — activation-contract gates specified; implementation BLOCKED pending owner artifacts and PRIME activation
 ```
 
 The parallel V3 profile capability is accepted at PR #77: substantive reviewed
@@ -121,7 +122,7 @@ PR #78 finalized that authority at reviewed head
 `54a419f99057d96e0c4e7620d8bd8ccc6816fb62`. It did not itself authorize
 migration or cutover. Buddy subsequently accepted the consumer work below.
 
-Cross-repository accepted facts (re-anchored 2026-09-27):
+Cross-repository accepted facts (re-anchored 2026-09-28):
 
 - Buddy V6.0.1 / #747 corrected evidence metadata ownership, merge
   `99b8d431d6558f4d6028c736d41ebaa97af84ca5`; DomainContract revision 2.
@@ -147,6 +148,20 @@ Cross-repository accepted facts (re-anchored 2026-09-27):
   and WorldKeeper `49a8620f066ce7ef8972a699020c012f50af9158`. The latter
   composition uses the explicit V3 custom-predicate profile; it does not migrate
   a V2-pinned World or supersede V6.1's base profile.
+- Buddy DEMO J1 / #788 is open on base
+  `9f358bb9ecf4d28338ae4b6b0ef5e2c316700d59`, head
+  `d6d5692f62bcc2690d6c679a91e2969148655123`. Its last visible PRIME review
+  is Cycle 1 HOLD `PRR_kwDORxsmms8AAAABPqXKbA` on prior head
+  `ff81efd7e4ae1d178ef3be5a1b7da6237d2ffcf5`; exact-current-head disposition
+  is not yet visible. Findings: asynchronous selection,
+  prepared/uncertain save recovery, strict World-only request validation, and
+  response-boundary findings are Buddy-owned. The accepted #85 immutable
+  admission prerequisite has no currently identified MIND API/proof blocker.
+  Neither #779 nor #788 proves the ordinary graph journey.
+- Buddy J4 / #785 is merged at `f8b923875f9444a1addfb2472a2b8fab35eceb4c`.
+  Its live witness is limited to selected-World draft ownership and recovery;
+  the candidate was not save-ready, and no graph publication/read-after-write or
+  J4/LOCAL DEMO completion is claimed.
 
 ### V6 exit and current next step
 
@@ -875,28 +890,31 @@ Buddy V6.1 / V6.2 / PLAY-1 / PLAY-2 COMPLETE at the accepted refs in §2; #779 p
 Buddy V6.5 / #780 COMPLETE — 98 passed, zero skips, PRIME Cycle 2 PASS
 NATIVE empty new-space genesis COMPLETE — PR #83 accepted; DEMO adoption pending
 NATIVE text-source/evidence admission COMPLETE — PR #85 accepted; see §2 and its durable report
-V7 NOT DISPATCHED
+MIND #93 COMPLETE — partial memory baseline through 10k accepted; no 50k/100k or PostgreSQL authorization
+V7 ACTIVATION CONTRACT — owner-bound gate amendment proposed; V7 implementation remains BLOCKED
 ```
 
 ### Next primary question
 
 ```text
-Does DEMO's ordinary fresh-World journey require a human review/mutation interval between source admission and Keeper commit, or is an immediate immutable one-shot sufficient? The MIND prerequisite is accepted; the remaining end-to-end proof is Buddy-owned.
+Can the five V7 activation gates be satisfied with exact owner-produced mapping, authenticated frozen export, source/body dispositions, cross-owner proof readiness, and a bounded target/lease—without MIND inventing domain or storage policy? Until then, V7 implementation remains blocked. Separately, DEMO's future source-admission-to-Keeper interval still needs the product decision recorded below; #788 has a last-review HOLD on a prior head and current-head review is pending; its findings are Buddy-owned and are not a MIND prerequisite defect.
 ```
 
 ### Parallel work posture
 
 ```text
 safe / independent:
-  larger-scale benchmark characterization under accepted PR #89 design;
-  implementation lease is active under PR #91's exact six-path memory-only record;
+  no further scale run without a new activation; #93 accepts only the partial memory baseline through 10k;
+  V7 owner decision/artifact preparation, with no runtime implementation lease;
   PostgreSQL is not activated
   contract-frozen Buddy/domain work that does not depend on V5.2 runtime
 
 active:
   no DungeonMind runtime implementation lease
-  DEMO coordinates adoption of accepted empty-native initialization and
-  native source/evidence admission into its real product workflow
+  Buddy DEMO J1 / #788 is open; its last visible PRIME disposition is Cycle 1
+  HOLD on prior head `ff81efd7e4ae1d178ef3be5a1b7da6237d2ffcf5`; current-head
+  review is pending. Findings are Buddy-owned; MIND prerequisites #83/#85 are
+  accepted, product adoption unproved
 
 designed / blocked:
   mutable source lifecycle and freshness binding across Keeper prepare/commit
@@ -921,11 +939,12 @@ blocked until later accepted predecessors:
 - public empty native initialization is accepted at PR #83; DEMO product adoption is unproved;
 - native V1 source/evidence admission is accepted at PR #85; no mutable source lifecycle or source-freshness binding across Keeper prepare/commit exists;
 - Buddy PR #779 proves isolated persistent Buddy→WorldKeeper→DungeonMind composition only; DEMO has not verified the ordinary fresh-World product journey;
-- Buddy PR #785 remains an open draft with implementation PASS but MERGE HOLD pending the authorized live generation/navigation/reload witness; it is a separate J4 statblock-draft slice;
+- Buddy PR #788 remains open at `d6d5692f62bcc2690d6c679a91e2969148655123`; its last visible review is Cycle 1 HOLD on prior head `ff81efd7e4ae1d178ef3be5a1b7da6237d2ffcf5`, with current-head disposition pending. The UI, recovery, validation, and response-boundary findings are Buddy-owned; no MIND API/proof blocker is currently identified for #85's accepted immutable one-shot;
+- Buddy PR #785 merged at `f8b923875f9444a1addfb2472a2b8fab35eceb4c`, but its generated candidate was not save-ready and it proves neither graph publication/read-after-write nor J4/LOCAL DEMO completion;
 - PR #87 merged a V7 design checkpoint only; no owner-approved legacy mapping/freeze/export exists and no V7 implementation or migration is authorized;
 - World-only durable Plan semantics and ordinary native Agent citations remain product gaps;
-- PR #89 accepts the design handoff and PR #91 activates only the exact six-path/runtime/workload/resource memory-only lease; PostgreSQL remains unauthorized;
-- PRIME authorized PR #93 for partial disposition `PARTIAL_MEMORY_BASELINE_THROUGH_10K`; final exact-head review remains pending;
+- PR #89 accepts the design handoff; PR #91's memory-only measurement implementation is complete and PR #93 accepts the partial baseline through 10k; no larger-scale or PostgreSQL lease is active;
+- PR #93 merged at `c79fc297296afa8c110e51c357d21a4fbb70cdcc`, exact reviewed head `017a4a024251d520342aa23dfc439efce9b47090`, PRIME Cycle 2 PASS `PRR_kwDOToHpZs8AAAABPnee6Q`; accepted disposition is `PARTIAL_MEMORY_BASELINE_THROUGH_10K` only;
 - 72 memory cells across both shapes at 100/1k/10k are measured; 50k/100k are explicitly deferred under that bounded waiver, not accepted; PostgreSQL remains unauthorized; V8/V11 acceptance is false;
 - larger 50k/100k characterization remains incomplete;
 - deeper storage optimization is not authorized.
@@ -933,18 +952,24 @@ blocked until later accepted predecessors:
 ### Named next action
 
 PR #85 is accepted and its API, migration, replay/access limits and exact Keeper
-witness are recorded in its handoff/report. DEMO confirms that #85 satisfies the
-MIND prerequisite for an immediate immutable one-shot; no MIND API/proof blocker
-is currently identified. The next product proof is Buddy-owned: exact persisted
-APP-STATE source revision → explicit #85 admission → supported assertion with
-that admitted evidence → reopened ordinary graph and preview. Obtain the user's
-decision on whether human review/mutation delay is required before commit; if so,
-return for a separate source-freshness design. Keep #779's isolated composition
-acceptance and #785's live-witness gate scoped separately. DEMO owns true
-World-only Plan and product routing. Keep V7 undispatched: PR #87 merged design
-only, while legacy mapping and coherent freeze/export authority remain
-unapproved. Mutable source lifecycle, alias search, profile transition and
-production cutover stay separate.
+witness are recorded in its handoff/report. DEMO's ordinary product proof is
+Buddy-owned: exact persisted APP-STATE source revision → explicit #85 admission
+→ supported assertion with that admitted evidence → reopened ordinary graph and
+preview. Buddy #788's last visible PRIME HOLD is on a prior head; its current
+head is not yet reviewed. Do not transfer those findings to MIND. No MIND API/proof blocker is currently identified for the
+accepted immutable one-shot. The user decision whether a human review/mutation
+interval is required before Keeper commit remains open; it becomes a MIND design
+question only if the user requires source-freshness binding. Keep #779's isolated
+composition proof and #785's scoped J4 evidence separate. DEMO owns World-only
+Plan and product routing.
+
+MIND's current roadmap work is the V7 activation-contract amendment: record the
+five owner-bound gates and distinguish fixed Kernel hashing/identity mechanics
+from Buddy semantics, actual source/body ownership, authenticated freeze/export,
+and PRIME/operator target authority. No V7 runtime, live migration, target
+mutation, dual write, or cutover is authorized. After this design PR merges,
+re-anchor this living handoff to its exact merge SHA before any later roadmap PR;
+that bookkeeping is not permission to activate V7.
 
 ---
 

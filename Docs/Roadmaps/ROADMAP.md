@@ -2,7 +2,7 @@
 
 **Status:** current forward roadmap  
 **Updated:** 2026-09-28
-**Roadmap anchor:** DungeonMind `main` after PR #92 merge (`ccd06cb119c834a3d7950d5109b85c7b6a683430`); PRIME authorized PR #93's bounded partial memory baseline through 10k pending final exact-head review; 50k/100k are deferred, PostgreSQL remains inactive, and V7 implementation remains blocked
+**Roadmap anchor:** DungeonMind `main` after PR #93 merge (`c79fc297296afa8c110e51c357d21a4fbb70cdcc`); PRIME Cycle 2 PASS `PRR_kwDOToHpZs8AAAABPnee6Q` accepts `PARTIAL_MEMORY_BASELINE_THROUGH_10K`; 50k/100k remain deferred, PostgreSQL remains inactive, and V7 implementation remains blocked
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
@@ -22,10 +22,22 @@ freeze/export, migration, or cutover authority. DEMO's 2026-09-28 cross-repo
 checkpoint confirms #85 satisfies MIND's source-admission prerequisite for a
 bounded immutable one-shot; no MIND API/proof blocker was identified. The product
 journey still needs Buddy-owned APP-STATE source-revision → explicit admission →
-supported assertion with admitted evidence → reopen/read proof. Whether an
-intervening human review/mutation interval is required remains a user product
-decision; if required, source-freshness binding needs a separate design. Existing
+supported assertion with admitted evidence → reopen/read proof. Buddy DEMO's
+serial J1 PR #788 (`d6d5692f62bcc2690d6c679a91e2969148655123`) is open for a
+World-owned blank Plan before import; its last visible PRIME review is Cycle 1
+HOLD on prior head `ff81efd7e4ae1d178ef3be5a1b7da6237d2ffcf5`, while the PR has
+since advanced to `d6d5692f62bcc2690d6c679a91e2969148655123`; exact-head
+re-review is not yet visible. The review identifies Buddy-owned UI,
+recovery, request-validation, and response-boundary proof gaps. It is not a
+DungeonMind API finding. No MIND API/proof blocker is currently identified for
+the accepted immutable one-shot prerequisite. Whether a human review/mutation
+interval is required before Keeper commit remains a user product decision; if
+required, source-freshness binding needs a separate design. Existing
 bridge-genesis, cutover and product obligations remain unchanged.
+
+PR #93 is merged at `c79fc297296afa8c110e51c357d21a4fbb70cdcc` and accepts
+only the partial memory baseline through 10k. It does not activate PostgreSQL or
+accept V8/V11/full-scale characterization.
 
 Historical cutover, critique, K0/K1 planning, and R.1/R.2/R.3 records remain valuable evidence and are not rewritten. The current production implementation is still the World Graph architecture; this roadmap describes the deliberate breaking transition to vNext.
 
@@ -695,8 +707,12 @@ Accepted as `V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED` on PR #75:
 accepted head `c7700f98e62732cbd1c021270f5366a77c24ea9b`, final PASS
 `5296514025`, merge `6edb9e40d1dc930f537c66deb1afbd1b99002844`.
 
-V5 and V6 are complete. The post-V6 native-new-space prerequisite is designed
-but blocked; V7 migration is not dispatched.
+V5 and V6 are complete. Native empty-genesis and immutable V1 source/evidence
+admission are accepted; adoption remains a Buddy consumer obligation. V7's
+activation-contract amendment is a design/control-plane task only. Mapping,
+authenticated freeze/export, source/body disposition, preservation-proof
+readiness and the exact implementation lease remain unsatisfied; no V7 code,
+migration or cutover is authorized.
 
 ### V6.K1 — authorized aliases in complete entity reads
 
@@ -870,6 +886,12 @@ required for existing durable Worlds and their production cutover.
 
 # V7 — Bridge-genesis migration
 
+**Current disposition:** accepted design checkpoint; implementation remains
+blocked. The owner-bound inputs, output artifacts, sequence and fail-closed
+conditions for all five activation gates are defined in
+[`HANDOFF-v7-bridge-genesis-migration.md` §3](../Handoffs/HANDOFF-v7-bridge-genesis-migration.md).
+This record does not claim that any external gate has been satisfied.
+
 **Primary question:** Can the living current authority become vNext without rewriting history or minting unnecessary identity?
 
 Freeze one exact v1 authority point:
@@ -1039,7 +1061,7 @@ Do not adopt a graph database, distributed cache, or event log merely because vN
 
 # Parallel measurement lane
 
-The larger K0.3-style benchmark expansion is retained as an evidence project, not a front-door blocker. Its current-authority design handoff is accepted at PR #89 (head `93c2e0e50544189c4298e70a52c663c825439a88`, PRIME Cycle 2 PASS `5340172526`, merge `16022e37757f6c6c61458c6c90ef94857cab93f7`). A bounded memory-only activation is accepted at PR #91 (head `d7758b8910fa156d2d9afaa2462485839d0de49a`, PRIME PASS `5340325390`, merge `37d8afefd0580a68b0d66f54876d9776d554d8bc`) against runtime code `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`. PR #92's post-activation control-plane merge is `ccd06cb119c834a3d7950d5109b85c7b6a683430`; it does not change the measured runtime or widen the #91 lease. The candidate records 72 memory cells across both shapes at 100/1k/10k. PRIME authorized acceptance of this bounded partial baseline, pending final exact-head review; 50k/100k are deferred, PostgreSQL remains inactive, and the full characterization/V8/V11 remain unaccepted. Eleven measured operation families use classic V6 World Graph APIs; only tiny-delta publication is native vNext, so classic timings are not native-vNext entity/evidence/search performance claims.
+The larger K0.3-style benchmark expansion is retained as an evidence project, not a front-door blocker. Its current-authority design handoff is accepted at PR #89 (head `93c2e0e50544189c4298e70a52c663c825439a88`, PRIME Cycle 2 PASS `5340172526`, merge `16022e37757f6c6c61458c6c90ef94857cab93f7`). A bounded memory-only activation is accepted at PR #91 (head `d7758b8910fa156d2d9afaa2462485839d0de49a`, PRIME PASS `5340325390`, merge `37d8afefd0580a68b0d66f54876d9776d554d8bc`) against runtime code `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`. PR #92's post-activation control-plane merge is `ccd06cb119c834a3d7950d5109b85c7b6a683430`; it does not change the measured runtime or widen the #91 lease. PR #93 is merged at `c79fc297296afa8c110e51c357d21a4fbb70cdcc`, with PRIME Cycle 2 PASS `PRR_kwDOToHpZs8AAAABPnee6Q`; it accepts `PARTIAL_MEMORY_BASELINE_THROUGH_10K` only. The artifact records 72 memory cells across both shapes at 100/1k/10k. 50k/100k are deferred, PostgreSQL remains inactive, and full characterization/V8/V11 remain unaccepted. Eleven measured operation families use classic V6 World Graph APIs; only tiny-delta publication is native vNext, so classic timings are not native-vNext entity/evidence/search performance claims.
 
 Desired deterministic workload shapes:
 
