@@ -152,6 +152,27 @@ only an explicitly approved nonproduction frozen fixture/export already
 available, or a separately authorized owner-capture prerequisite. This V7
 handoff amendment grants neither live capture nor a writer-fence lease.
 
+#### Existing D_A candidate qualification — design/rehearsal input only
+
+`tests/fixtures/v7_bridge_genesis/authority_v1.json` qualifies the existing
+checked-in Eldyrwild adoption bundle only as bounded historical design input and
+a candidate for a separately approved D_A-only rehearsal. It records the exact
+fixture commit/blob/file digests, derived counts and reference closure, the
+different source-world revision `rev:0c644e56b45bcaac709012206e3e41c2`, adopted
+DungeonMind D_A `rev:34b1f8e2625d5ba693fc726a2a1a4720`, and later recovery
+checkpoint D_B `rev:680c246047d67f9fe0293ee90526f670` as distinct stages. It also
+records fixture-local omissions, unknowns, external-body limits, and pending
+owner attestations.
+
+This sidecar is not an approved complete export, does not satisfy any §3.1 gate,
+and does not turn fixture-local omission into proof of absence from source
+authority. In particular, it does not contain post-adoption D_A→D_B history,
+the M0/M1 repair lineage, body bytes or verified body access, a complete
+writer/store census, or a freeze witness. MIND's evidence is limited to
+read-only parsing, hashing, and linkage verification; Buddy/export/domain
+owners, actual source/body owners, and the operator retain their respective
+attestation boundaries. No V7 implementation or migration lease is activated.
+
 | Gate | Required input → recorded output | Owner and sequence | Fail closed when |
 |---|---|---|---|
 | **1. Domain mapping** | Input: the complete frozen export from Gate 2 plus the source/body dispositions from Gate 3. Output: owner-versioned executable mapping/code digest; exact selected DomainContract and SemanticProfile descriptors/digests; a disposition for every durable identity and semantic record; mapped payload digest; and independently reproducible Buddy semantic witness. | Buddy owns product/domain meaning and the mapper. MIND owns a separate structural/identity validator, not semantic interpretation. Final mapping follows Gates 2–3. | Any record or identity is omitted, ambiguous, silently normalized, semantically unsupported, or mapped under unpinned code/descriptors; no compatibility-decoder fallback. |
@@ -218,7 +239,7 @@ new are proposed, not existing capabilities. Re-review additions before activati
 - `migrations/versions/0012_vnext_bridge_genesis.py` (new; recheck sequence at activation)
 - `tests/unit/test_v7_bridge_genesis.py` (new)
 - `tests/integration/test_postgres_v7_bridge_genesis.py` (new)
-- `tests/fixtures/v7_bridge_genesis/authority_v1.json` (new approved fixture bundle)
+- `tests/fixtures/v7_bridge_genesis/authority_v1.json` (design-only D_A qualification sidecar; not an approved export or Gate 2 evidence)
 - `tests/fixtures/v7_bridge_genesis/mapping_v1.json` (new owner-approved mapping/witness)
 - `tests/fixtures/v7_bridge_genesis/manifest_v1.json` (new deterministic golden manifest)
 - `scripts/verify_v7_bridge_genesis.py` (new isolated proof runner)

@@ -4,8 +4,9 @@
 **Status:** ACTIVE — living stewardship authority for the vNext roadmap  
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
-**Main base used for this amendment:** `c79fc297296afa8c110e51c357d21a4fbb70cdcc` — PR #93 merge; pinned historical review base, not a self-referential future anchor
+**Main base used for this amendment:** `19b9e8d71635d8736e9ad5f0db3aa075f635d510` — PR #94 merge; pinned predecessor for this qualification slice, not implementation or activation authority
 **Last merged activation:** PR #93 — exact reviewed head `017a4a024251d520342aa23dfc439efce9b47090`, PRIME Cycle 2 PASS `PRR_kwDOToHpZs8AAAABPnee6Q`, merge `c79fc297296afa8c110e51c357d21a4fbb70cdcc`; partial memory baseline through 10k only, 50k/100k deferred, PostgreSQL unauthorized
+**Last merged V7 gate-contract amendment:** PR #94 — exact reviewed head `26b377e197fffef43a6f101c83b6784c0e5f0e76`, PRIME Cycle 2 PASS `5346386227`, merge `19b9e8d71635d8736e9ad5f0db3aa075f635d510`; gates reviewable, no external gate satisfied and no implementation activated
 **Last merged control-plane re-anchor:** PR #92 — head `74282dbc2d06c60ae3f7713a9ca48206fe27d689`, PRIME Cycle 2 PASS `5340390691`, merge `ccd06cb119c834a3d7950d5109b85c7b6a683430`
 **Last merged parallel characterization handoff:** PR #89 — head `93c2e0e50544189c4298e70a52c663c825439a88`, PRIME Cycle 2 PASS `5340172526`, merge `16022e37757f6c6c61458c6c90ef94857cab93f7`; design only, no implementation/DB authority
 **Last merged native prerequisite:** PR #85 — head `0803faf9f84b44148291c68c8dd115f73c68d464`, PRIME Cycle 2 PASS `5334796956`, merge `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`
@@ -893,13 +894,13 @@ Buddy V6.5 / #780 COMPLETE — 98 passed, zero skips, PRIME Cycle 2 PASS
 NATIVE empty new-space genesis COMPLETE — PR #83 accepted; DEMO adoption pending
 NATIVE V1 source/evidence admission COMPLETE — MIND #85 accepted; Buddy J1 source-admission witness #787 accepted with limits recorded in §2
 MIND #93 COMPLETE — partial memory baseline through 10k accepted; no 50k/100k or PostgreSQL authorization
-V7 ACTIVATION CONTRACT — owner-bound gate amendment proposed; V7 implementation remains BLOCKED
+V7 ACTIVATION CONTRACT — PR #94 gate amendment accepted as reviewable; D_A-only fixture qualification is design/rehearsal input, not Gate 2 acceptance; V7 implementation remains BLOCKED
 ```
 
 ### Next primary question
 
 ```text
-Can the five V7 activation gates be satisfied with exact owner-produced mapping, authenticated frozen export, source/body dispositions, cross-owner proof readiness, and a bounded target/lease—without MIND inventing domain or storage policy? Until then, V7 implementation remains blocked. Separately, DEMO's future source-admission-to-Keeper interval still needs the product decision recorded below. The open World-owned blank-Plan repair is Buddy-owned and is not a MIND prerequisite defect; see the ROADMAP's single dated checkpoint.
+After PRIME reviews the D_A qualification sidecar, can the actual source/body owners provide a total typed disposition for the represented D_A artifact/revision/evidence rows and identify required historical closure outside this fixture, without inferring body openability or completeness? The sidecar qualifies only design input, satisfies no activation gate, and leaves V7 implementation blocked. Any required-but-unrepresented history remains a blocker, not a waiver. Separately, DEMO's future source-admission-to-Keeper interval still needs the product decision recorded below. The open World-owned blank-Plan repair is Buddy-owned and is not a MIND prerequisite defect; see the ROADMAP's single dated checkpoint.
 ```
 
 ### Parallel work posture
@@ -943,7 +944,7 @@ blocked until later accepted predecessors:
 - Buddy PR #779 proves isolated persistent Buddy→WorldKeeper→DungeonMind composition only; DEMO has not verified the ordinary fresh-World product journey;
 - Buddy's separate World-owned blank-Plan repair remains open under the existing Buddy-owned PR; consult the ROADMAP's dated checkpoint for current exact review state. No MIND API/proof blocker is currently identified for #85's accepted immutable one-shot;
 - Buddy PR #785 merged at `f8b923875f9444a1addfb2472a2b8fab35eceb4c`, but its generated candidate was not save-ready and it proves neither graph publication/read-after-write nor J4/LOCAL DEMO completion;
-- PR #87 merged a V7 design checkpoint only; no owner-approved legacy mapping/freeze/export exists and no V7 implementation or migration is authorized;
+- PR #87 merged the V7 design checkpoint and PR #94 made its five activation gates owner-reviewable; the D_A sidecar in this slice is not an owner-approved complete export, mapping, source/body disposition, gate acceptance, or V7 implementation/migration authorization;
 - World-only durable Plan semantics and ordinary native Agent citations remain product gaps;
 - PR #89 accepts the design handoff; PR #91's memory-only measurement implementation is complete and PR #93 accepts the partial baseline through 10k; no larger-scale or PostgreSQL lease is active;
 - PR #93 merged at `c79fc297296afa8c110e51c357d21a4fbb70cdcc`, exact reviewed head `017a4a024251d520342aa23dfc439efce9b47090`, PRIME Cycle 2 PASS `PRR_kwDOToHpZs8AAAABPnee6Q`; accepted disposition is `PARTIAL_MEMORY_BASELINE_THROUGH_10K` only;
@@ -966,15 +967,19 @@ question only if the user requires source-freshness binding. Keep #779's isolate
 composition proof and #785's scoped J4 evidence separate. DEMO owns World-only
 Plan and product routing.
 
-MIND's current roadmap work is the V7 activation-contract amendment: record the
-five owner-bound gates and distinguish fixed Kernel hashing/identity mechanics
-from Buddy semantics, actual source/body ownership, authenticated freeze/export,
-and PRIME/operator target authority. No V7 runtime, live migration, target
-mutation, dual write, or cutover is authorized. Preserve this amendment's pinned
-base/head as historical evidence. At the next substantive consuming PR, re-fetch
-remote default and record only the predecessor facts that work actually relies
-on; do not create standalone anchor-only churn. None of this is permission to
-activate V7.
+MIND's current roadmap work is the bounded design-only qualification of the
+existing D_A adoption bundle in
+`tests/fixtures/v7_bridge_genesis/authority_v1.json`. It pins fixture identity,
+derived contents, reference linkage, distinct source-world/D_A/D_B stages, and
+explicit unknowns/omissions/owner boundaries. It does not satisfy an activation
+gate or attest source completeness. After PRIME reviews that qualification, the
+next sequence is source/body disposition and named owner decisions, then a
+separately designed Buddy historical-mapping handoff, cross-owner proof
+readiness, and only then an exact PRIME target/lease. No mapping implementation,
+V7 runtime, live migration, target mutation, dual write, or cutover is authorized
+by this slice. At the next substantive consuming PR, re-anchor remote default
+and record only predecessor facts that work actually relies on; do not create
+standalone anchor-only churn. None of this is permission to activate V7.
 
 ---
 
