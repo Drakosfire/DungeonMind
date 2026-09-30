@@ -23,6 +23,7 @@ from dungeonmind.contracts.vnext.prospective import (
 )
 from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
 from dungeonmind.contracts.vnext.source import SourceArtifactV3, SourceRevisionV2
+from dungeonmind.contracts.vnext.space_provisioning import KnowledgeSpaceProvisioningReceipt
 
 from .provenance import KnowledgeProvenanceSnapshot
 from .records import KnowledgeHeadEvent, StoredKnowledgeRevision
@@ -66,6 +67,15 @@ class KnowledgeRevisionRepository(Protocol):
     def get_publication_receipt(
         self, space_id: str, publication_id: str
     ) -> KnowledgePublicationReceipt | None: ...
+
+    def provision_empty_space(
+        self,
+        command: PublishKnowledgeRevisionCommand,
+        *,
+        allocation_id: str,
+        request_sha256: str,
+        publication_id: str,
+    ) -> KnowledgeSpaceProvisioningReceipt: ...
 
     def publish_prospective_publication(
         self,

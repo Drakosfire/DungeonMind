@@ -12,6 +12,7 @@ from dungeonmind.contracts.vnext.prospective import (
     ProspectiveResultBinding,
 )
 from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
+from dungeonmind.contracts.vnext.space_provisioning import KnowledgeSpaceProvisioningReceipt
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
 
@@ -21,11 +22,17 @@ from ...application.vnext.authority import (
     verify_stored_revision,
 )
 from ...application.vnext.errors import KnowledgePublicationIdempotencyConflictError
+from ...application.vnext.materialization import NATIVE_VNEXT_GRAPH_SCHEMA
 from ...application.vnext.prospective import (
     validate_prospective_result_absent_from_parent,
     validate_prospective_result_bindings,
 )
 from ...application.vnext.records import KnowledgeHeadEvent, StoredKnowledgeRevision
+from ...application.vnext.space_provisioning import (
+    KnowledgeSpaceProvisioningConflictError,
+    _KnowledgeSpaceIdCollisionError,
+    _provisioning_request_sha256,
+)
 
 
 def _detached(stored: StoredKnowledgeRevision) -> StoredKnowledgeRevision:
@@ -46,6 +53,7 @@ class InMemoryKnowledgeRevisionRepository:
         after_revision_insert: Callable[[], None] | None = None,
         after_publication_commit: Callable[[], None] | None = None,
         after_prospective_result_insert: Callable[[], None] | None = None,
+        after_space_provisioning_commit: Callable[[], None] | None = None,
     ) -> None:
         self._lock = threading.RLock()
         self._revisions: dict[tuple[str, str], StoredKnowledgeRevision] = {}
@@ -59,6 +67,8 @@ class InMemoryKnowledgeRevisionRepository:
         self._after_revision_insert = after_revision_insert
         self._after_publication_commit = after_publication_commit
         self._after_prospective_result_insert = after_prospective_result_insert
+        self._space_provisioning: dict[str, KnowledgeSpaceProvisioningReceipt] = {}
+        self._after_space_provisioning_commit = after_space_provisioning_commit
 
     def get_head(self, space_id: str) -> KnowledgeHead | None:
         with self._lock:
@@ -176,6 +186,117 @@ class InMemoryKnowledgeRevisionRepository:
             if self._after_publication_commit is not None:
                 self._after_publication_commit()
             return receipt.model_copy(deep=True)
+
+    def provision_empty_space(
+        self,
+        command: PublishKnowledgeRevisionCommand,
+        *,
+        allocation_id: str,
+        request_sha256: str,
+        publication_id: str,
+    ) -> KnowledgeSpaceProvisioningReceipt:
+        """Atomically commit allocation mapping and empty genesis under one lock."""
+        if _provisioning_request_sha256(command) != request_sha256:
+            raise PersistenceIntegrityError("space provisioning request digest mismatch")
+        with self._lock:
+            existing = self._space_provisioning.get(allocation_id)
+            if existing is not None:
+                if existing.request_sha256 != request_sha256:
+                    raise KnowledgeSpaceProvisioningConflictError(
+                        allocation_id=allocation_id
+                    )
+                return existing.model_copy(deep=True)
+
+            space_id = command.space_id
+            occupied = (
+                space_id in self._heads
+                or any(key[0] == space_id for key in self._revisions)
+                or any(key[0] == space_id for key in self._receipts)
+                or any(key[0] == space_id for key in self._prospective_results)
+            )
+            if occupied:
+                raise _KnowledgeSpaceIdCollisionError
+            if (
+                command.parent_revision_id is not None
+                or command.expected_parent_revision_id is not None
+                or command.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA
+                or command.graph_payload
+                != {"entities": [], "assertions": [], "aliases": [], "evidence": []}
+            ):
+                raise PersistenceIntegrityError(
+                    "space provisioning command is not empty genesis"
+                )
+
+            inserted: list[tuple[str, str]] = []
+            heads_before = dict(self._heads)
+            events_before = len(self._events)
+            receipts_before = dict(self._receipts)
+            provisioning_before = dict(self._space_provisioning)
+
+            def insert_revision(value: StoredKnowledgeRevision) -> None:
+                key = (value.revision.space_id, value.revision.revision_id)
+                self._revisions[key] = value
+                inserted.append(key)
+                if self._after_revision_insert is not None:
+                    self._after_revision_insert()
+
+            def advance_head(head: KnowledgeHead, event: KnowledgeHeadEvent) -> None:
+                self._heads[head.space_id] = head
+                self._events.append(event)
+
+            try:
+                stored = commit_expected_parent(
+                    command,
+                    read_head=lambda: self._heads.get(space_id),
+                    read_revision=lambda revision_id: self._revisions.get(
+                        (space_id, revision_id)
+                    ),
+                    insert_revision=insert_revision,
+                    advance_head=advance_head,
+                )
+                publication = KnowledgePublicationReceipt(
+                    space_id=space_id,
+                    publication_id=publication_id,
+                    command_sha256=canonical_sha256(command.model_dump(mode="json")),
+                    expected_parent_revision_id=None,
+                    published_revision_id=stored.revision.revision_id,
+                    graph_payload_sha256=stored.graph_payload_sha256,
+                )
+                provisioning = KnowledgeSpaceProvisioningReceipt(
+                    allocation_id=allocation_id,
+                    request_sha256=request_sha256,
+                    space_id=space_id,
+                    publication_receipt=publication,
+                )
+                receipt_key = (space_id, publication_id)
+                if receipt_key in self._receipts:
+                    raise PersistenceIntegrityError(
+                        "space genesis publication already exists"
+                    )
+                self._receipts[receipt_key] = publication
+                self._space_provisioning[allocation_id] = provisioning
+            except Exception:
+                for key in inserted:
+                    self._revisions.pop(key, None)
+                self._heads.clear()
+                self._heads.update(heads_before)
+                del self._events[events_before:]
+                self._receipts.clear()
+                self._receipts.update(receipts_before)
+                self._space_provisioning.clear()
+                self._space_provisioning.update(provisioning_before)
+                raise
+
+        if self._after_space_provisioning_commit is not None:
+            self._after_space_provisioning_commit()
+        return provisioning.model_copy(deep=True)
+
+    def get_space_provisioning_receipt(
+        self, allocation_id: str
+    ) -> KnowledgeSpaceProvisioningReceipt | None:
+        with self._lock:
+            receipt = self._space_provisioning.get(allocation_id)
+            return None if receipt is None else receipt.model_copy(deep=True)
 
     def get_prospective_publication(
         self, space_id: str, publication_id: str
