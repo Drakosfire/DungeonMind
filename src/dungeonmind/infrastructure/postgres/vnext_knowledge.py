@@ -13,11 +13,17 @@ from ...application.vnext.authority import (
     verify_stored_revision,
 )
 from ...application.vnext.errors import KnowledgePublicationIdempotencyConflictError
+from ...application.vnext.materialization import NATIVE_VNEXT_GRAPH_SCHEMA
 from ...application.vnext.prospective import (
     validate_prospective_result_absent_from_parent,
     validate_prospective_result_bindings,
 )
 from ...application.vnext.records import KnowledgeHeadEvent, StoredKnowledgeRevision
+from ...application.vnext.space_provisioning import (
+    KnowledgeSpaceProvisioningConflictError,
+    _KnowledgeSpaceIdCollisionError,
+    _provisioning_request_sha256,
+)
 from ...contracts.vnext.knowledge import (
     KnowledgeHead,
     KnowledgeRevision,
@@ -29,6 +35,7 @@ from ...contracts.vnext.prospective import (
     ProspectiveResultBinding,
 )
 from ...contracts.vnext.publication import KnowledgePublicationReceipt
+from ...contracts.vnext.space_provisioning import KnowledgeSpaceProvisioningReceipt
 from ...domain.canonical import canonical_json, canonical_sha256
 from ...domain.errors import PersistenceIntegrityError
 from .database import SCHEMA, PostgresDatabase, jsonb
@@ -58,11 +65,13 @@ class PostgresKnowledgeRevisionRepository:
         after_revision_insert: Callable[[], None] | None = None,
         after_receipt_insert: Callable[[], None] | None = None,
         after_prospective_result_insert: Callable[[], None] | None = None,
+        after_space_provisioning_commit: Callable[[], None] | None = None,
     ) -> None:
         self._database = database
         self._after_revision_insert = after_revision_insert
         self._after_receipt_insert = after_receipt_insert
         self._after_prospective_result_insert = after_prospective_result_insert
+        self._after_space_provisioning_commit = after_space_provisioning_commit
 
     def get_head(self, space_id: str) -> KnowledgeHead | None:
         with self._database.transaction() as conn:
@@ -158,6 +167,99 @@ class PostgresKnowledgeRevisionRepository:
             if self._after_receipt_insert is not None:
                 self._after_receipt_insert()
             return receipt
+
+    def provision_empty_space(
+        self,
+        command: PublishKnowledgeRevisionCommand,
+        *,
+        allocation_id: str,
+        request_sha256: str,
+        publication_id: str,
+    ) -> KnowledgeSpaceProvisioningReceipt:
+        """Atomically persist the idempotency mapping and empty genesis."""
+        space_id = command.space_id
+        if (
+            command.parent_revision_id is not None
+            or command.expected_parent_revision_id is not None
+            or command.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA
+            or command.graph_payload
+            != {"entities": [], "assertions": [], "aliases": [], "evidence": []}
+        ):
+            raise PersistenceIntegrityError(
+                "space provisioning command is not empty genesis"
+            )
+        if _provisioning_request_sha256(command) != request_sha256:
+            raise PersistenceIntegrityError("space provisioning request digest mismatch")
+        with self._database.transaction() as conn:
+            # A transaction-scoped key lock serializes retries; hash collisions
+            # only add harmless serialization because the table key is authoritative.
+            conn.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))", (allocation_id,)
+            )
+            existing = _read_space_provisioning_receipt(conn, allocation_id)
+            if existing is not None:
+                if existing.request_sha256 != request_sha256:
+                    raise KnowledgeSpaceProvisioningConflictError(
+                        allocation_id=allocation_id
+                    )
+                return existing
+
+            inserted_space = conn.execute(
+                sql.SQL(
+                    """
+                    INSERT INTO {}.knowledge_spaces (space_id, created_at)
+                    VALUES (%s, %s)
+                    ON CONFLICT (space_id) DO NOTHING
+                    RETURNING space_id
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (space_id, command.created_at),
+            ).fetchone()
+            if inserted_space is None:
+                raise _KnowledgeSpaceIdCollisionError
+
+            def insert_revision(value: StoredKnowledgeRevision) -> None:
+                _insert_revision(conn, value)
+                if self._after_revision_insert is not None:
+                    self._after_revision_insert()
+
+            stored = commit_expected_parent(
+                command,
+                read_head=lambda: _read_head(conn, space_id),
+                read_revision=lambda revision_id: _read_revision(
+                    conn, space_id, revision_id
+                ),
+                insert_revision=insert_revision,
+                advance_head=lambda head, event: _advance_head(conn, head, event),
+            )
+            publication = KnowledgePublicationReceipt(
+                space_id=space_id,
+                publication_id=publication_id,
+                command_sha256=canonical_sha256(command.model_dump(mode="json")),
+                expected_parent_revision_id=None,
+                published_revision_id=stored.revision.revision_id,
+                graph_payload_sha256=stored.graph_payload_sha256,
+            )
+            provisioning = KnowledgeSpaceProvisioningReceipt(
+                allocation_id=allocation_id,
+                request_sha256=request_sha256,
+                space_id=space_id,
+                publication_receipt=publication,
+            )
+            _insert_receipt(conn, publication)
+            if self._after_receipt_insert is not None:
+                self._after_receipt_insert()
+            _insert_space_provisioning_receipt(conn, provisioning)
+
+        if self._after_space_provisioning_commit is not None:
+            self._after_space_provisioning_commit()
+        return provisioning
+
+    def get_space_provisioning_receipt(
+        self, allocation_id: str
+    ) -> KnowledgeSpaceProvisioningReceipt | None:
+        with self._database.transaction() as conn:
+            return _read_space_provisioning_receipt(conn, allocation_id)
 
     def get_prospective_publication(
         self, space_id: str, publication_id: str
@@ -446,6 +548,72 @@ def _insert_receipt(conn: Connection[Any], receipt: KnowledgePublicationReceipt)
             receipt.command_sha256, receipt.expected_parent_revision_id,
             receipt.published_revision_id, receipt.graph_payload_sha256,
             receipt.status, fingerprint,
+        ),
+    )
+
+
+def _read_space_provisioning_receipt(
+    conn: Connection[Any], allocation_id: str
+) -> KnowledgeSpaceProvisioningReceipt | None:
+    row = conn.execute(
+        sql.SQL(
+            """
+            SELECT schema_version, allocation_id, request_sha256, space_id,
+                   publication_id, receipt_payload, record_fingerprint
+            FROM {}.knowledge_space_provisioning_receipts
+            WHERE allocation_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (allocation_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    payload = _normalize(row["receipt_payload"])
+    if canonical_sha256(payload) != row["record_fingerprint"]:
+        raise PersistenceIntegrityError("space provisioning receipt fingerprint drift")
+    try:
+        receipt = KnowledgeSpaceProvisioningReceipt.model_validate(payload)
+    except Exception as exc:
+        raise PersistenceIntegrityError(
+            f"failed to reconstruct space provisioning receipt: {exc}"
+        ) from exc
+    if (
+        row["schema_version"] != receipt.schema_version
+        or row["allocation_id"] != receipt.allocation_id
+        or row["request_sha256"] != receipt.request_sha256
+        or row["space_id"] != receipt.space_id
+        or row["publication_id"] != receipt.publication_receipt.publication_id
+    ):
+        raise PersistenceIntegrityError("space provisioning receipt column drift")
+    stored_publication = _read_receipt(
+        conn, receipt.space_id, receipt.publication_receipt.publication_id
+    )
+    if stored_publication != receipt.publication_receipt:
+        raise PersistenceIntegrityError("space provisioning publication receipt drift")
+    return receipt
+
+
+def _insert_space_provisioning_receipt(
+    conn: Connection[Any], receipt: KnowledgeSpaceProvisioningReceipt
+) -> None:
+    payload = receipt.model_dump(mode="json")
+    conn.execute(
+        sql.SQL(
+            """
+            INSERT INTO {}.knowledge_space_provisioning_receipts (
+                schema_version, allocation_id, request_sha256, space_id,
+                publication_id, receipt_payload, record_fingerprint
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (
+            receipt.schema_version,
+            receipt.allocation_id,
+            receipt.request_sha256,
+            receipt.space_id,
+            receipt.publication_receipt.publication_id,
+            jsonb(payload),
+            canonical_sha256(payload),
         ),
     )
 

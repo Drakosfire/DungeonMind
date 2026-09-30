@@ -154,6 +154,10 @@ from .search import (
     SearchReadService,
     SearchResult,
 )
+from .space_provisioning import (
+    KnowledgeSpaceProvisioningConflictError,
+    create_empty_space,
+)
 
 __all__ = [
     "COMPATIBILITY_DOMAIN_CONTRACT_ID",
@@ -198,6 +202,7 @@ __all__ = [
     "KnowledgePublicationOutcomeUnknownError",
     "KnowledgeReadContext",
     "KnowledgeReadContextIntegrityError",
+    "KnowledgeSpaceProvisioningConflictError",
     "KnowledgeStaleParentRevisionError",
     "LegacyCompatibilityIntegrityError",
     "LegacyCompatibilityManifest",
@@ -258,6 +263,7 @@ __all__ = [
     "compute_legacy_compatibility_key",
     "compute_mapping_implementation_digest",
     "compute_semantic_digest",
+    "create_empty_space",
     "decode_legacy_graph_revision",
     "decode_legacy_stored_graph_revision",
     "freeze_json_value",

@@ -91,6 +91,7 @@ from .prospective import (
 )
 from .publication import KnowledgePublicationReceipt
 from .source import EvidenceRefV3, SourceArtifactV3, SourceRevisionV2
+from .space_provisioning import KnowledgeSpaceProvisioningReceipt
 
 PUBLIC_CONTRACT_MODELS: tuple[type, ...] = (
     Assertion,
@@ -142,6 +143,7 @@ __all__ = [
     "KnowledgeProspectivePublicationResult",
     "KnowledgePublicationReceipt",
     "KnowledgeRevision",
+    "KnowledgeSpaceProvisioningReceipt",
     "KnowledgeStanding",
     "LabelsAllVisibility",
     "LabelsAnyVisibility",
