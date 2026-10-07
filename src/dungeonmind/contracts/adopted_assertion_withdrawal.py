@@ -73,7 +73,7 @@ class AdoptedAssertionWithdrawalCommandV1(DungeonMindModel):
     )
     @classmethod
     def _bounded_ids(cls, value: str, info: ValidationInfo) -> str:
-        return _id(value, info.field_name)
+        return _id(value, info.field_name or "field")
 
     @field_validator("requested_at")
     @classmethod
@@ -127,7 +127,7 @@ class AdoptedAssertionWithdrawalReceiptV1(DungeonMindModel):
     )
     @classmethod
     def _bounded_ids(cls, value: str, info: ValidationInfo) -> str:
-        return _id(value, info.field_name)
+        return _id(value, info.field_name or "field")
 
     @field_validator("request_sha256", "adoption_receipt_fingerprint", "parent_payload_sha256")
     @classmethod
