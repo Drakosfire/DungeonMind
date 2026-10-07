@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+import dungeonmind.application.world_graph_retrieval as retrieval_module
 from dungeonmind.application.graph_snapshot import (
     GRAPH_SCHEMA_V6,
     RELATIONSHIP_ENDPOINT_ASPECT_SCHEMA,
@@ -22,6 +23,7 @@ from dungeonmind.application.world_graph_retrieval import (
     EvidenceTarget,
     RetrievalBounds,
     SelectedObjectCompleteness,
+    SourceAnchorIndexRequest,
     WorldGraphRetrievalService,
     derive_source_anchor_id,
 )
@@ -1233,6 +1235,188 @@ def test_anchor_metadata_carries_no_source_body_content():
     assert not hasattr(anchor, "content")
     assert not hasattr(anchor, "text")
     assert anchor.artifact.source_artifact_id == "src:world-lore"
+
+
+def test_source_anchor_index_is_one_projection_sorted_unique_and_metadata_only():
+    world_graph = InMemoryWorldGraphRepository()
+    published = _publish(world_graph, _complete_object_payload())
+    service, projection = _services(world_graph, _complete_object_sources())
+    request = SourceAnchorIndexRequest(
+        _request(
+            scope_mode=ScopeModeV2.WORLD,
+            revision_pin=published.revision_id,
+        )
+    )
+
+    indexed = service.list_source_anchor_index(request)
+
+    assert projection.project_calls == 1
+    assert indexed.snapshot.revision_id == published.revision_id
+    assert indexed.status == "complete"
+    assert indexed.eligible_count == len(indexed.entries) == HUB_ANCHOR_COUNT + 1
+    assert len({entry.anchor_id for entry in indexed.entries}) == indexed.eligible_count
+    assert {entry.evidence_ref_id for entry in indexed.entries} >= {
+        "ev:world",
+        "ev:hub-anchor-00",
+        f"ev:hub-anchor-{HUB_ANCHOR_COUNT - 1:02d}",
+    }
+    assert all(entry.source_revision_id for entry in indexed.entries)
+    assert all(
+        not hasattr(entry, "uri") and not hasattr(entry, "path")
+        for entry in indexed.entries
+    )
+    assert indexed.entries == tuple(
+        sorted(
+            indexed.entries,
+            key=lambda item: (
+                item.anchor_id,
+                item.evidence_ref_id,
+                item.source_artifact_id,
+                item.source_revision_id,
+            ),
+        )
+    )
+
+
+def test_source_anchor_index_requires_pinned_gm_projection():
+    with pytest.raises(ValueError, match="exact revision pin"):
+        SourceAnchorIndexRequest(_world())
+    with pytest.raises(ValueError, match="GM admissibility"):
+        SourceAnchorIndexRequest(
+            _request(
+                scope_mode=ScopeModeV2.WORLD,
+                admissibility=Admissibility.PLAYER,
+                revision_pin="rev:exact",
+            )
+        )
+
+
+def test_source_anchor_index_omits_provenance_without_known_revision():
+    world_graph = InMemoryWorldGraphRepository()
+    published = _publish(world_graph)
+    service, _ = _services(world_graph)
+    request = SourceAnchorIndexRequest(
+        _request(scope_mode=ScopeModeV2.WORLD, revision_pin=published.revision_id),
+    )
+
+    indexed = service.list_source_anchor_index(request)
+
+    # The fixture's broken-lore evidence points at a nonexistent revision;
+    # the index never invents a replacement from the artifact's current head.
+    assert all(entry.source_revision_id != "srcrev:missing-rev" for entry in indexed.entries)
+
+
+def test_source_anchor_index_filters_native_unreadable_locator_metadata():
+    world_graph = InMemoryWorldGraphRepository()
+    payload = _payload()
+    next(row for row in payload["evidence_refs"] if row["evidence_ref_id"] == "ev:world")[
+        "can_open_source"
+    ] = False
+    published = _publish(world_graph, payload)
+    service, _ = _services(world_graph)
+
+    indexed = service.list_source_anchor_index(
+        SourceAnchorIndexRequest(
+            _request(scope_mode=ScopeModeV2.WORLD, revision_pin=published.revision_id)
+        )
+    )
+
+    assert indexed.eligible_count == 0
+    assert indexed.entries == ()
+
+
+def test_source_anchor_index_rejects_conflicting_authority_for_anchor_id(monkeypatch):
+    world_graph = InMemoryWorldGraphRepository()
+    published = _publish(world_graph, _complete_object_payload())
+    service, _ = _services(world_graph, _complete_object_sources())
+    monkeypatch.setattr(
+        retrieval_module,
+        "derive_source_anchor_id",
+        lambda **_kwargs: "dm-source-anchor:v1:collision",
+    )
+
+    with pytest.raises(ValueError, match="conflicting authority tuples"):
+        service.list_source_anchor_index(
+            SourceAnchorIndexRequest(
+                _request(scope_mode=ScopeModeV2.WORLD, revision_pin=published.revision_id)
+            )
+        )
+
+
+def test_source_anchor_index_is_bound_to_revision_and_scope():
+    world_graph = InMemoryWorldGraphRepository()
+    first = _publish(world_graph)
+    second_payload = _payload()
+    second_payload["objects"][0]["label"] = "World Tavern Updated"
+    second = _publish(
+        world_graph,
+        second_payload,
+        parent_revision_id=first.revision_id,
+        operation_id="op:second-index-revision",
+    )
+    service, _ = _services(world_graph)
+
+    def ids(request):
+        return {
+            item.anchor_id
+            for item in service.list_source_anchor_index(SourceAnchorIndexRequest(request)).entries
+        }
+
+    first_ids = ids(
+        _request(scope_mode=ScopeModeV2.WORLD, revision_pin=first.revision_id)
+    )
+    second_ids = ids(
+        _request(scope_mode=ScopeModeV2.WORLD, revision_pin=second.revision_id)
+    )
+    cross_campaign_ids = ids(
+        _request(
+            scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN,
+            revision_pin=second.revision_id,
+        )
+    )
+
+    assert first_ids.isdisjoint(second_ids)
+    assert second_ids.isdisjoint(cross_campaign_ids)
+
+
+def test_source_anchor_index_reports_513_eligible_anchors_as_empty_overflow():
+    world_graph = InMemoryWorldGraphRepository()
+    payload = _payload()
+    sources = _seed_sources()
+    for index in range(512):
+        evidence_id = f"ev:index-{index:03d}"
+        artifact_id = f"src:index-{index:03d}"
+        revision_id = f"srcrev:index-{index:03d}"
+        payload["evidence_refs"].append(
+            _evidence_row(evidence_id, artifact_id, revision_id, span=f"span:{index}")
+        )
+        payload["objects"].append(
+            _object(
+                f"obj:index-{index:03d}",
+                f"Index {index}",
+                assertion_id=f"asrt:index-{index:03d}",
+                evidence=evidence_id,
+                campaign_scope=None,
+            )
+        )
+        _put_source(
+            sources,
+            artifact_id=artifact_id,
+            revision_id=revision_id,
+            campaign_id=None,
+        )
+    published = _publish(world_graph, payload)
+    service, projection = _services(world_graph, sources)
+    request = SourceAnchorIndexRequest(
+        _request(scope_mode=ScopeModeV2.WORLD, revision_pin=published.revision_id)
+    )
+
+    indexed = service.list_source_anchor_index(request)
+
+    assert projection.project_calls == 1
+    assert indexed.eligible_count == 513
+    assert indexed.status == "overflow"
+    assert indexed.entries == ()
 
 
 # ---------------------------------------------------------------------------

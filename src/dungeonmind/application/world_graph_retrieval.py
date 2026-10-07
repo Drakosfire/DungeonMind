@@ -364,6 +364,72 @@ class SourceAnchorResolution:
     anchor: SourceAnchorMetadata | None = None
 
 
+@dataclass(frozen=True)
+class SourceAnchorIndexRequest:
+    """Bounded metadata-only index request for one exact pinned GM projection.
+
+    Eligibility always requires admitted openability, supported locator
+    metadata, and a validated source revision. It says nothing about whether a
+    later body read is authorized; that requires separate active session
+    admission and product-local availability checks.
+    """
+
+    projection: WorldGraphProjectionRequestV2
+    max_entries: int = 512
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.max_entries <= 512:
+            raise ValueError("max_entries must be within 1..512")
+        if self.projection.revision_pin is None or not self.projection.revision_pin.strip():
+            raise ValueError("source-anchor index requires an exact revision pin")
+        if self.projection.admissibility.value != "gm":
+            raise ValueError("source-anchor index requires GM admissibility")
+
+
+@dataclass(frozen=True)
+class SourceAnchorIndexEntry:
+    """Authoritative source identity tuple; contains no locator or body data."""
+
+    anchor_id: str
+    evidence_ref_id: str
+    source_artifact_id: str
+    source_revision_id: str
+
+
+@dataclass(frozen=True)
+class SourceAnchorIndexResult:
+    """Readable, revision-validated bounded index, or an empty overflow result.
+
+    ``eligible_count`` counts admitted anchors with ``can_open_source``, a
+    supported nonblank locator identity, and a validated nonblank source
+    revision. It does not represent product-local body availability.
+    """
+
+    snapshot: ProjectionSnapshotV2
+    eligible_count: int
+    max_entries: int
+    status: Literal["complete", "overflow"]
+    entries: tuple[SourceAnchorIndexEntry, ...]
+
+    def __post_init__(self) -> None:
+        if self.eligible_count < 0 or not 1 <= self.max_entries <= 512:
+            raise ValueError("invalid source-anchor index counts")
+        if self.status == "complete":
+            if (
+                self.eligible_count > self.max_entries
+                or len(self.entries) != self.eligible_count
+            ):
+                raise ValueError(
+                    "complete source-anchor index must include every eligible entry"
+                )
+        elif self.status == "overflow" and (
+            self.eligible_count <= self.max_entries or self.entries
+        ):
+            raise ValueError("overflow source-anchor index must be empty and over limit")
+        elif self.status not in {"complete", "overflow"}:
+            raise ValueError("unknown source-anchor index status")
+
+
 def _tokenize(text: str) -> list[str]:
     return [
         token
@@ -1532,6 +1598,67 @@ class WorldGraphRetrievalService:
         )
         return op_result
 
+    def list_source_anchor_index(
+        self, request: SourceAnchorIndexRequest
+    ) -> SourceAnchorIndexResult:
+        """Return a bounded, metadata-only index from one pinned GM projection.
+
+        Admitted graph closure and provenance are derived once through the
+        existing context-bound helpers. Overflow reports the full eligible
+        count and returns no entries, so a caller cannot mistake truncation
+        for a complete index. No source bodies are opened or read.
+        """
+        result, context = self._establish(request.projection)
+        assertion_index = _index_admitted_assertions(result)
+        anchors, _truncated, _gaps = self._anchors_for(
+            result,
+            context=context,
+            object_ids=set(result.graph.objects),
+            relationship_ids=set(result.graph.relationships),
+            assertion_ids=set(assertion_index),
+            max_anchors=None,
+        )
+        eligible: dict[tuple[str, str, str, str], SourceAnchorIndexEntry] = {}
+        by_anchor_id: dict[str, tuple[str, str, str]] = {}
+        for anchor in anchors:
+            revision_id = anchor.source_revision_id
+            if not isinstance(revision_id, str) or not revision_id.strip():
+                continue
+            if not anchor.can_open_source or not anchor.locator_identity.strip():
+                continue
+            authority_tuple = (
+                anchor.evidence_ref_id,
+                anchor.source_artifact_id,
+                revision_id,
+            )
+            prior = by_anchor_id.setdefault(anchor.anchor_id, authority_tuple)
+            if prior != authority_tuple:
+                raise ValueError("conflicting authority tuples share a source-anchor ID")
+            entry = SourceAnchorIndexEntry(
+                anchor_id=anchor.anchor_id,
+                evidence_ref_id=anchor.evidence_ref_id,
+                source_artifact_id=anchor.source_artifact_id,
+                source_revision_id=revision_id,
+            )
+            eligible[
+                (
+                    entry.anchor_id,
+                    entry.evidence_ref_id,
+                    entry.source_artifact_id,
+                    entry.source_revision_id,
+                )
+            ] = entry
+        ordered = tuple(eligible[key] for key in sorted(eligible))
+        count = len(ordered)
+        overflow = count > request.max_entries
+        return SourceAnchorIndexResult(
+            snapshot=result.snapshot,
+            eligible_count=count,
+            max_entries=request.max_entries,
+            status="overflow" if overflow else "complete",
+            entries=() if overflow else ordered,
+        )
+
     def _evidence_miss(
         self,
         result: WorldGraphProjectionResult,
@@ -1646,10 +1773,16 @@ class WorldGraphRetrievalService:
     ) -> tuple[tuple[SourceAnchorMetadata, ...], bool]:
         snapshot = result.snapshot
         merged: dict[str, _AnchorAccum] = {}
+        authority_by_anchor_id: dict[str, tuple[str, str, str | None]] = {}
         for evidence_ref_id in sorted(chains.validated):
             validated = chains.validated[evidence_ref_id]
             record = validated.record
             locator_identity = _locator_identity(record)
+            authority_tuple = (
+                evidence_ref_id,
+                record.source_artifact_id,
+                record.source_revision_id,
+            )
             anchor_id = derive_source_anchor_id(
                 snapshot=snapshot,
                 evidence_ref_id=evidence_ref_id,
@@ -1657,6 +1790,13 @@ class WorldGraphRetrievalService:
                 source_revision_id=record.source_revision_id,
                 locator_identity=locator_identity,
             )
+            prior_authority = authority_by_anchor_id.setdefault(
+                anchor_id, authority_tuple
+            )
+            if prior_authority != authority_tuple:
+                raise ValueError(
+                    "conflicting authority tuples share a source-anchor ID"
+                )
             entry = merged.get(anchor_id)
             if entry is None:
                 entry = _AnchorAccum(
@@ -1791,6 +1931,9 @@ __all__ = [
     "RetrievalBounds",
     "RetrievalCoverage",
     "SelectedObjectCompleteness",
+    "SourceAnchorIndexEntry",
+    "SourceAnchorIndexRequest",
+    "SourceAnchorIndexResult",
     "SourceAnchorMetadata",
     "SourceAnchorResolution",
     "WorldGraphRetrievalService",

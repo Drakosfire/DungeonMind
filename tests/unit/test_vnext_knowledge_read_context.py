@@ -7,7 +7,7 @@ import hashlib
 import json
 import subprocess
 import sys
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -1668,17 +1668,115 @@ def test_63_historical_reader_files_remain_at_pinned_digests() -> None:
         assert digest == expected_sha
 
 
-def test_64_world_public_services_unchanged() -> None:
-    expected = {
-        "src/dungeonmind/application/world_graph_retrieval.py": (
-            "adb84dbf48c8a05c5b35ad6ef786f7da5cc58153528f015b5eb5c5642c1ba9b6"
+def _assert_world_graph_retrieval_compatibility() -> None:
+    from dungeonmind import application as dm_application
+
+    service = dm_application.WorldGraphRetrievalService
+    assert all(
+        callable(getattr(service, method))
+        for method in (
+            "get_object",
+            "get_complete_object",
+            "search",
+            "get_neighborhood",
+            "get_evidence",
+            "resolve_source_anchor",
+            "list_source_anchor_index",
+        )
+    )
+    result_fields = {
+        "ObjectLookupResult": (
+            "snapshot",
+            "found",
+            "object",
+            "relationships",
+            "property_assertions",
+            "anchors",
+            "coverage",
         ),
+        "CompleteObjectLookupResult": (
+            "snapshot",
+            "found",
+            "object",
+            "related_objects",
+            "relationships",
+            "property_assertions",
+            "anchors",
+            "completeness",
+            "coverage",
+        ),
+        "GraphSearchResult": (
+            "snapshot",
+            "referents",
+            "matched_object_ids",
+            "match_reasons",
+            "objects",
+            "relationships",
+            "property_assertions",
+            "anchors",
+            "coverage",
+        ),
+        "NeighborhoodResult": (
+            "snapshot",
+            "seed_object_ids",
+            "object_depths",
+            "objects",
+            "relationships",
+            "property_assertions",
+            "anchors",
+            "coverage",
+        ),
+        "EvidenceRetrievalResult": (
+            "snapshot",
+            "found",
+            "target",
+            "object",
+            "relationship",
+            "assertion",
+            "evidence",
+            "anchors",
+            "coverage",
+        ),
+        "SourceAnchorMetadata": (
+            "anchor_id",
+            "evidence_ref_id",
+            "source_artifact_id",
+            "source_revision_id",
+            "locator_identity",
+            "source_span_ref_id",
+            "can_open_source",
+            "can_highlight_span",
+            "supporting_object_ids",
+            "supporting_relationship_ids",
+            "supporting_assertion_ids",
+            "evidence",
+            "artifact",
+        ),
+        "SourceAnchorResolution": ("snapshot", "found", "anchor_id", "anchor"),
+    }
+    for name, expected_fields in result_fields.items():
+        result_type = getattr(dm_application, name)
+        assert tuple(field.name for field in fields(result_type)) == expected_fields
+    assert all(
+        hasattr(dm_application, name)
+        for name in (
+            "SourceAnchorIndexRequest",
+            "SourceAnchorIndexEntry",
+            "SourceAnchorIndexResult",
+        )
+    )
+
+    expected = {
         "src/dungeonmind/application/world_graph_projection.py": (
             "d694be39929cb84dcdeb02ecae2da9447f6a1ca4c96045b40a152c1e3a2d39a4"
         ),
     }
     for rel_path, digest in expected.items():
         assert hashlib.sha256((REPO_ROOT / rel_path).read_bytes()).hexdigest() == digest
+
+
+def test_64_world_public_services_unchanged() -> None:
+    _assert_world_graph_retrieval_compatibility()
 
 
 def test_65_frozen_v0_contract_generator_check_remains_exact() -> None:
