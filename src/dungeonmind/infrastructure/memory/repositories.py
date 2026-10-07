@@ -15,6 +15,10 @@ from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import Any, TypeVar
 
+from ...application.adopted_assertion_withdrawal import (
+    materialize_withdrawal_payload,
+    withdrawal_request_sha256,
+)
 from ...application.existing_world_adoption import (
     bind_existing_world_adoption_command,
     require_v2_contribution_correction_closure,
@@ -42,6 +46,10 @@ from ...application.reviewed_world_initialization import (
     terminal_reviewed_world_initialization_receipt,
 )
 from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
+from ...contracts.adopted_assertion_withdrawal import (
+    AdoptedAssertionWithdrawalCommandV1,
+    AdoptedAssertionWithdrawalReceiptV1,
+)
 from ...contracts.contribution import (
     ContributionStatus,
     GraphContribution,
@@ -56,7 +64,7 @@ from ...contracts.contribution_review_v2 import (
     ContributionReviewStateV2,
     contribution_v2_payload_sha256,
 )
-from ...contracts.evidence import SourceArtifactRecord, SourceRevision
+from ...contracts.evidence import SourceArtifactRecord, SourceArtifactV2, SourceRevision
 from ...contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
     EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA,
@@ -1692,6 +1700,7 @@ class InMemoryExistingWorldAdoptionRepository:
         self._identity = identity_repository
         self._receipts_by_world: dict[str, DurableExistingWorldAdoptionReceipt] = {}
         self._receipts_by_adoption: dict[str, DurableExistingWorldAdoptionReceipt] = {}
+        self._withdrawal_receipts: dict[tuple[str, str], AdoptedAssertionWithdrawalReceiptV1] = {}
         self._failure_hook = failure_hook
         self._reviewed_initialization_lookup = reviewed_initialization_lookup
 
@@ -2240,6 +2249,191 @@ class InMemoryExistingWorldAdoptionRepository:
             except BaseException:
                 self._restore_world(world_id, snapshot)
                 raise
+
+    def withdraw_adopted_assertion(
+        self, command: AdoptedAssertionWithdrawalCommandV1
+    ) -> AdoptedAssertionWithdrawalReceiptV1:
+        """Atomically publish one adoption-bound neutral withdrawal."""
+        command = AdoptedAssertionWithdrawalCommandV1.model_validate(
+            command.model_dump(mode="json")
+        )
+        world_id = command.world_id
+        request_sha = withdrawal_request_sha256(command)
+        with self._graph._lock_for(world_id):
+            receipt_key = (world_id, command.operation_id)
+            previous = self._withdrawal_receipts.get(receipt_key)
+            if previous is not None:
+                if previous.request_sha256 == request_sha:
+                    return self._verify_withdrawal_unlocked(previous)
+                raise IdempotencyConflictError(
+                    "adopted assertion withdrawal identity conflicts with the request"
+                )
+            if any(
+                operation_id == command.operation_id and existing_world != world_id
+                for existing_world, operation_id in self._withdrawal_receipts
+            ):
+                raise IdempotencyConflictError(
+                    "adopted assertion withdrawal operation_id is already claimed"
+                )
+
+            adoption = self._receipts_by_adoption.get(command.adoption_id)
+            if adoption is None:
+                raise PersistenceIntegrityError("withdrawal adoption receipt is missing")
+            adoption = self._reconstruct_unlocked(adoption)
+            if not isinstance(adoption, ExistingWorldAdoptionReceiptV4):
+                raise PersistenceIntegrityError(
+                    "withdrawal requires an adoption receipt with exact membership"
+                )
+            if adoption.world_id != world_id:
+                raise PersistenceIntegrityError("withdrawal adoption world mismatch")
+
+            head = self._graph._heads.get(world_id)
+            actual_parent = head.head_revision_id if head is not None else None
+            if actual_parent != command.expected_parent_revision_id:
+                raise StaleParentRevisionError(
+                    world_id=world_id,
+                    expected_parent_revision_id=command.expected_parent_revision_id,
+                    actual_head_revision_id=actual_parent,
+                )
+            adopted_stored = self._graph._revisions.get(
+                (world_id, adoption.published_revision_id)
+            )
+            parent_stored = self._graph._revisions.get(
+                (world_id, command.expected_parent_revision_id)
+            )
+            if adopted_stored is None or parent_stored is None:
+                raise PersistenceIntegrityError("withdrawal graph revision is missing")
+            parent_sha = canonical_sha256(parent_stored.graph_payload)
+            if parent_sha != command.parent_payload_sha256:
+                raise PersistenceIntegrityError("withdrawal parent payload digest mismatch")
+            artifact = self._sources._artifacts.get(command.source_artifact_id)
+            source_revision = self._sources._revisions.get(command.source_revision_id)
+            if (
+                not isinstance(artifact, SourceArtifactV2)
+                or artifact.world_id != world_id
+                or not isinstance(source_revision, SourceRevision)
+                or source_revision.source_artifact_id != command.source_artifact_id
+            ):
+                raise PersistenceIntegrityError(
+                    "withdrawal source artifact/revision is not persisted consistently"
+                )
+
+            child_payload = materialize_withdrawal_payload(
+                command,
+                adoption_receipt=adoption,
+                adopted_payload=adopted_stored.graph_payload,
+                parent_payload=parent_stored.graph_payload,
+            )
+            previous_head = _copy(head) if head is not None else None
+            prior_revision_ids = set(self._graph._revisions)
+            try:
+                revision = self._graph._publish_revision_locked(
+                    PublishRevisionCommand(
+                        world_id=world_id,
+                        parent_revision_id=command.expected_parent_revision_id,
+                        expected_parent_revision_id=command.expected_parent_revision_id,
+                        operation_ids=[command.operation_id],
+                        graph_schema="dm_union_graph_v6",
+                        graph_payload=child_payload,
+                        created_at=command.requested_at,
+                    )
+                )
+                if self._failure_hook is not None:
+                    self._failure_hook("withdrawal_graph")
+                receipt = AdoptedAssertionWithdrawalReceiptV1(
+                    operation_id=command.operation_id,
+                    world_id=world_id,
+                    adoption_id=command.adoption_id,
+                    request_sha256=request_sha,
+                    adoption_receipt_fingerprint=canonical_sha256(
+                        adoption.model_dump(mode="json")
+                    ),
+                    parent_revision_id=command.expected_parent_revision_id,
+                    parent_payload_sha256=parent_sha,
+                    published_revision_id=revision.revision_id,
+                    relationship_id=command.relationship_id,
+                    assertion_id=command.assertion_id,
+                    subject_object_id=command.subject_object_id,
+                    predicate=command.predicate,
+                    object_object_id=command.object_object_id,
+                    evidence_ref_id=command.evidence_ref_id,
+                    source_artifact_id=command.source_artifact_id,
+                    source_revision_id=command.source_revision_id,
+                    source_span_ref_id=command.source_span_ref_id,
+                    source_locator=command.source_locator,
+                    disposition=command.disposition,
+                    actor=command.actor,
+                    completed_at=command.requested_at,
+                )
+                self._withdrawal_receipts[receipt_key] = receipt
+                if self._failure_hook is not None:
+                    self._failure_hook("withdrawal_receipt")
+                return receipt.model_copy(deep=True)
+            except BaseException:
+                for key in set(self._graph._revisions) - prior_revision_ids:
+                    self._graph._revisions.pop(key, None)
+                if previous_head is None:
+                    self._graph._heads.pop(world_id, None)
+                else:
+                    self._graph._heads[world_id] = previous_head
+                self._withdrawal_receipts.pop(receipt_key, None)
+                raise
+
+    def _verify_withdrawal_unlocked(
+        self, receipt: AdoptedAssertionWithdrawalReceiptV1
+    ) -> AdoptedAssertionWithdrawalReceiptV1:
+        adoption = self._receipts_by_adoption.get(receipt.adoption_id)
+        if adoption is None:
+            raise PersistenceIntegrityError("withdrawal adoption receipt is missing")
+        adoption = self._reconstruct_unlocked(adoption)
+        if not isinstance(adoption, ExistingWorldAdoptionReceiptV4):
+            raise PersistenceIntegrityError("withdrawal adoption membership is unprovable")
+        adoption_fingerprint = canonical_sha256(adoption.model_dump(mode="json"))
+        if adoption_fingerprint != receipt.adoption_receipt_fingerprint:
+            raise PersistenceIntegrityError("withdrawal adoption receipt binding drift")
+        parent = self._graph._revisions.get((receipt.world_id, receipt.parent_revision_id))
+        child = self._graph._revisions.get((receipt.world_id, receipt.published_revision_id))
+        adopted = self._graph._revisions.get((receipt.world_id, adoption.published_revision_id))
+        if parent is None or child is None or adopted is None:
+            raise PersistenceIntegrityError("withdrawal receipt references a missing revision")
+        if (
+            canonical_sha256(parent.graph_payload) != receipt.parent_payload_sha256
+            or child.revision.parent_revision_id != receipt.parent_revision_id
+            or child.revision.graph_schema != "dm_union_graph_v6"
+            or child.revision.operation_ids != [receipt.operation_id]
+        ):
+            raise PersistenceIntegrityError("withdrawal receipt disagrees with graph lineage")
+        command = AdoptedAssertionWithdrawalCommandV1(
+            operation_id=receipt.operation_id,
+            world_id=receipt.world_id,
+            adoption_id=receipt.adoption_id,
+            expected_parent_revision_id=receipt.parent_revision_id,
+            relationship_id=receipt.relationship_id,
+            assertion_id=receipt.assertion_id,
+            subject_object_id=receipt.subject_object_id,
+            predicate=receipt.predicate,
+            object_object_id=receipt.object_object_id,
+            evidence_ref_id=receipt.evidence_ref_id,
+            source_artifact_id=receipt.source_artifact_id,
+            source_revision_id=receipt.source_revision_id,
+            source_span_ref_id=receipt.source_span_ref_id,
+            source_locator=receipt.source_locator,
+            parent_payload_sha256=receipt.parent_payload_sha256,
+            disposition=receipt.disposition,
+            actor=receipt.actor,
+            requested_at=receipt.completed_at,
+        )
+        if withdrawal_request_sha256(command) != receipt.request_sha256:
+            raise PersistenceIntegrityError("withdrawal receipt request hash drift")
+        expected_child = materialize_withdrawal_payload(
+            command,
+            adoption_receipt=adoption,
+            adopted_payload=adopted.graph_payload,
+            parent_payload=parent.graph_payload,
+        )
+        if child.graph_payload != expected_child:
+            raise PersistenceIntegrityError("withdrawal child does not match its receipt")
+        return receipt.model_copy(deep=True)
 
 
 class InMemoryReviewedWorldInitializationRepository:

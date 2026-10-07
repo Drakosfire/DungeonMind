@@ -1,10 +1,12 @@
 # Handoff — adopted assertion withdrawal through union authority v1
 
-**Status:** ACTIVE — implementation authorized by PRIME  
+**Status:** IMPLEMENTED — awaiting PRIME review; not merged  
 **Owner:** DungeonMind  
 **Base:** `main` at `b81ca415a7e79d4024f3229a09ee5fdefff93eb3` (merged #97)  
 **Branch:** `kernel/adopted-assertion-withdrawal-v1`  
 **Topology:** one serial, branch-pinned contract + implementation PR. This handoff is portable on the branch; it does not need a separate merge to `main` before implementation.
+
+**Migration sequencing correction (PRIME-approved):** the pinned base already contains Alembic revision `0012_vnext_space_provisioning`; the operation-specific migration is `migrations/versions/0013_adopted_assertion_withdrawal.py` with revision id `0013_adopted_withdrawal_v1` and `down_revision = "0012_vnext_space_provisioning"`. The concise revision id fits Alembic's 32-character version column. This supersedes the originally drafted `0008` filename, which conflicts with the current chain. No vNext schema/head is changed.
 
 ## Outcome
 
@@ -30,6 +32,7 @@ The application requires the existing scoped COMMIT capability, including exact 
 - Provide one application operation that derives the child from the locked exact parent. It removes only the target relationship record; it preserves every other payload field, object, relationship, evidence reference, source artifact/revision, and the immutable parent. It creates no negative assertion.
 - Persist the child revision, head event, and operation-specific terminal receipt atomically under the existing world lock and expected-parent CAS. The receipt records the adoption receipt fingerprint and all parent/target/source/child bindings needed for later verification.
 - Exact replay of the same operation identity and command returns the same receipt with no additional revision/event. Reuse of that identity with changed input is an idempotency conflict. Receipts are append-only; expose no update/delete path.
+- V1 is deliberately limited to a target relationship with exactly one evidence reference. If the target carries multiple evidence references, fail closed; a later version must bind and verify the complete list rather than selecting one caller-nominated source.
 - A stale parent, adoption-receipt drift, target tuple mismatch, profile mismatch, evidence/source/revision/span mismatch, or persistence-integrity failure must leave revision/head/event/receipt state unchanged.
 
 Reuse the existing-world union repository and graph publication transaction/lock. Add only the operation’s receipt storage and required migration; do not build a generic correction framework or fabricate a contribution-review record.
@@ -42,7 +45,7 @@ Reuse the existing-world union repository and graph publication transaction/lock
 - `src/dungeonmind/application/repositories.py`
 - `src/dungeonmind/infrastructure/memory/repositories.py`
 - `src/dungeonmind/infrastructure/postgres/existing_world_adoption.py`
-- `migrations/versions/0008_adopted_assertion_withdrawal.py`
+- `migrations/versions/0013_adopted_assertion_withdrawal.py`
 - focused unit, contract, migration-chain, and PostgreSQL integration tests owned by this operation.
 
 If an additional path proves necessary, stop and rebrief before editing. Do not edit existing B.2f correction behavior, the vNext contracts/repositories, Buddy, DungeonMindServer, WorldKeeper, OverMind runtime configuration, source inventory, or the live World.
@@ -67,4 +70,6 @@ The live `rev:680c246047d67f9fe0293ee90526f670` / `ka:rel:edge:node:captain-lysa
 
 ## Delivery
 
-Commit this handoff before implementation begins. Then implement only the lease above, run and record exact evidence, inspect the cumulative base-to-head diff, commit and push the branch, open one PR, and request independent PRIME review. Do not merge; merge authority remains separate.
+The handoff was committed before implementation. The implementation is confined to the lease above; package-level public exports were deliberately omitted. Verification completed: focused unit tests (5 passed), focused PostgreSQL/migration tests (14 passed), full unit suite passed, and full integration suite passed with one existing skip. `ruff check` passed. Static typing was not verified because this checkout has no `.venv`; the `pyright` invocation could not run. No live-world/provider/source-body writes were performed.
+
+Implementation head, PR URL, and PRIME review disposition are to be recorded here after the branch is pushed and the PR is opened. Do not merge; merge authority remains with PRIME.
