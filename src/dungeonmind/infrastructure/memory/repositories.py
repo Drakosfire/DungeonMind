@@ -1701,6 +1701,7 @@ class InMemoryExistingWorldAdoptionRepository:
         self._receipts_by_world: dict[str, DurableExistingWorldAdoptionReceipt] = {}
         self._receipts_by_adoption: dict[str, DurableExistingWorldAdoptionReceipt] = {}
         self._withdrawal_receipts: dict[tuple[str, str], AdoptedAssertionWithdrawalReceiptV1] = {}
+        self._withdrawal_operation_lock = threading.RLock()
         self._failure_hook = failure_hook
         self._reviewed_initialization_lookup = reviewed_initialization_lookup
 
@@ -2257,6 +2258,15 @@ class InMemoryExistingWorldAdoptionRepository:
         command = AdoptedAssertionWithdrawalCommandV1.model_validate(
             command.model_dump(mode="json")
         )
+        # The database receipt key is operation_id alone. Serialize this
+        # receipt check-through-insert boundary across worlds to provide the
+        # same global uniqueness guarantee in the in-memory authority.
+        with self._withdrawal_operation_lock:
+            return self._withdraw_adopted_assertion_locked(command)
+
+    def _withdraw_adopted_assertion_locked(
+        self, command: AdoptedAssertionWithdrawalCommandV1
+    ) -> AdoptedAssertionWithdrawalReceiptV1:
         world_id = command.world_id
         request_sha = withdrawal_request_sha256(command)
         with self._graph._lock_for(world_id):
