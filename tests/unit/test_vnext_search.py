@@ -318,7 +318,7 @@ def test_01_bookkeeping_records_v43_through_v6_complete() -> None:
     assert "V5.4 COMPLETE" in steward
     assert "V5_4_PROSPECTIVE_REFERENCE_PUBLICATION_ACCEPTED" in steward
     assert "V6 COMPLETE — V6_DUNGEONBUDDY_PRESERVATION_ACCEPTED" in steward
-    # Historical V4.3–V6 acceptance must not freeze later V7 roadmap progress.
+    # Historical V4.3 through V6 acceptance must not freeze later V7 roadmap progress.
 
 
 def test_02_frozen_v0_aggregate_remains_exact() -> None:
