@@ -35,6 +35,7 @@ TRUNCATE TABLE
     dungeonmind.retrieval_sessions,
     dungeonmind.finalized_review_publications,
     dungeonmind.reviewed_world_initializations,
+    dungeonmind.adopted_assertion_withdrawals,
     dungeonmind.existing_world_adoptions,
     dungeonmind.contribution_reviews,
     dungeonmind.identity_decisions,

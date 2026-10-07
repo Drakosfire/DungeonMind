@@ -15,6 +15,10 @@ from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol, TypeAlias
 
+from ..contracts.adopted_assertion_withdrawal import (
+    AdoptedAssertionWithdrawalCommandV1,
+    AdoptedAssertionWithdrawalReceiptV1,
+)
 from ..contracts.contribution import (
     ContributionStatus,
     GraphContribution,
@@ -244,6 +248,10 @@ class ExistingWorldAdoptionRepository(Protocol):
     def adopt(
         self, command: DurableExistingWorldAdoptionCommand
     ) -> DurableExistingWorldAdoptionReceipt: ...
+
+    def withdraw_adopted_assertion(
+        self, command: AdoptedAssertionWithdrawalCommandV1
+    ) -> AdoptedAssertionWithdrawalReceiptV1: ...
 
     def get(
         self, world_id: str, adoption_id: str
