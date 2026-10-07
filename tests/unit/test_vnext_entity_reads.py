@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-import hashlib
 import json
 import subprocess
 import sys
@@ -64,6 +63,7 @@ from tests.unit.test_vnext_knowledge_read_context import (
     ORG_PROFILE_DIGEST,
     REPO_ROOT,
     VNEXT_SRC,
+    _assert_world_graph_retrieval_compatibility,
     _buddy_context,
     _buddy_domain_contract,
     _buddy_request,
@@ -1799,16 +1799,7 @@ def test_88_frozen_vnext_contract_generator_check_remains_exact() -> None:
 
 
 def test_89_world_public_services_unchanged() -> None:
-    expected = {
-        "src/dungeonmind/application/world_graph_retrieval.py": (
-            "adb84dbf48c8a05c5b35ad6ef786f7da5cc58153528f015b5eb5c5642c1ba9b6"
-        ),
-        "src/dungeonmind/application/world_graph_projection.py": (
-            "d694be39929cb84dcdeb02ecae2da9447f6a1ca4c96045b40a152c1e3a2d39a4"
-        ),
-    }
-    for rel_path, digest in expected.items():
-        assert hashlib.sha256((REPO_ROOT / rel_path).read_bytes()).hexdigest() == digest
+    _assert_world_graph_retrieval_compatibility()
 
 
 def test_90_no_write_or_publication_path_changes() -> None:
