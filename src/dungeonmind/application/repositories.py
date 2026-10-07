@@ -16,8 +16,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol, TypeAlias
 
 from ..contracts.adopted_assertion_withdrawal import (
-    AdoptedAssertionWithdrawalCommandV1,
-    AdoptedAssertionWithdrawalReceiptV1,
+    AdoptedAssertionWithdrawalCommand,
+    AdoptedAssertionWithdrawalReceipt,
 )
 from ..contracts.contribution import (
     ContributionStatus,
@@ -250,8 +250,8 @@ class ExistingWorldAdoptionRepository(Protocol):
     ) -> DurableExistingWorldAdoptionReceipt: ...
 
     def withdraw_adopted_assertion(
-        self, command: AdoptedAssertionWithdrawalCommandV1
-    ) -> AdoptedAssertionWithdrawalReceiptV1: ...
+        self, command: AdoptedAssertionWithdrawalCommand
+    ) -> AdoptedAssertionWithdrawalReceipt: ...
 
     def get(
         self, world_id: str, adoption_id: str

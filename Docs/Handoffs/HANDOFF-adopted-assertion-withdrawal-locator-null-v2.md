@@ -1,14 +1,14 @@
 # HANDOFF — adopted assertion withdrawal with locator-null evidence v2
 
 **Created:** 2026-10-07  
-**Status:** BLOCKED — pinned for PRIME activation; no implementation lease  
-**Repository / branch:** Drakosfire/DungeonMind / `codex/adopted-withdrawal-null-locator-v2-handoff`  
+**Status:** ACTIVE — implementation complete; awaiting PR review. PRIME activated exact handoff `f05a16ff13f46f136c141179661928a5fb576533` on 2026-10-07
+**Repository / branch:** Drakosfire/DungeonMind / `codex/adopted-withdrawal-locator-null-v2`
 **Base:** `main` at `5d4e98963991995bdc280e57df52b8d0fe8de79e`  
-**Topology:** serial; one implementation PR only after PRIME activation and re-anchor  
+**Topology:** serial; one activated implementation PR, anchored to the accepted portable handoff and current `main`
 **Predecessor:** V1 merged as PR #98 at `dcfba328d14e9cb4d8fbb2051f5f2621ed15ae11`; accepted implementation head `21e5302a1bace472439d67ffe0790e713a885e0d`. The V1 handoff still says “not merged”; its completion state must be synchronized in the V2 implementation PR.  
 **One-line mission:** Add a strict V2 of the existing governed withdrawal for the single case where its immutable evidence has no source locator, without weakening V1 or creating a locator resolver.
 
-This document pins design and a prospective write set only. It does not authorize implementation, migration execution, or any live-world operation. PRIME must activate it after a fresh re-anchor and bounded lease check.
+PRIME activated the twelve-path implementation lease after accepting this exact handoff. Re-anchor confirmed `main` remains `5d4e98963991995bdc280e57df52b8d0fe8de79e` and no Core PR is open. Implementation and disposable database proofs are authorized; migration execution or any live-world operation remain separately unauthorized.
 
 ---
 
@@ -47,7 +47,7 @@ No chat, preview, or locally inferred graph is authority for a live write.
 - No weakening of V1; no arbitrary null acceptance; no multi-evidence selection; no change to ordinary correction behavior.
 - No Buddy, DungeonMindServer, WorldKeeper, API/product integration, re-adoption, graph rewrite, or live-world action.
 
-**Prospective implementation write lease — inactive until PRIME activation**
+**Activated implementation write lease**
 
 - `Docs/Handoffs/HANDOFF-adopted-assertion-withdrawal-locator-null-v2.md`
 - `Docs/Handoffs/HANDOFF-adopted-assertion-withdrawal-union-v1.md` (V1 predecessor state sync)
@@ -115,3 +115,18 @@ A new defect found during this serial slice is fixed in this PR only if it viola
 
 Report the implementation repository, branch, exact base/head, PR and status; migration revision; exact verification commands/results; V1 predecessor sync; decisions and rejected alternatives; and explicit remaining falsehoods. State clearly that no live-world action occurred and that code capability does not equal live-operation authorization.
 
+## §9 Implementation and proof
+
+V1 and V2 share the existing governed operation, locks, CAS, evidence/source verification, and atomic receipt publication. Separate strict contracts retain V1's required string locator and require an explicitly supplied null in V2. Receipt reconstruction selects the exact schema version, including historical replay after a descendant and conflicts across versions sharing one operation identity. No locator is inferred. Migration `0014_adopted_withdrawal_v2` extends the existing table; migration 0013 is unchanged.
+
+Focused verification in the isolated locked environment:
+
+- `uv run pytest -q tests/unit/test_adopted_assertion_withdrawal.py`: **30 passed**.
+- `uv run pytest -q tests/integration/test_migrations.py tests/integration/test_postgres_adopted_assertion_withdrawal.py`: **44 passed**, no skips, using a disposable PostgreSQL container with the exact checked-in CI image.
+- `uv run pytest -m "not integration"`: **2169 passed**.
+- `uv run ruff check .`: **passed**.
+- `uv run pyright`, `uv run pyright src/dungeonmind/infrastructure/postgres`, and `uv run pyright src/dungeonmind/service`: **zero diagnostics**.
+
+Proof covers both versions, explicit locator presence/nullability on commands and receipts, exact evidence/span/tuple/profile and V4 membership checks, three retained synthetic PC-command edges, replay and mixed-version conflicts, stale-parent concurrency, rollback after graph publication and receipt insertion, persisted unbound source revisions, append-only enforcement, and downgrade refusal with V2 receipts. Independent static review found no correctness defect; its three requested proof additions are included.
+
+V1's predecessor handoff now records accepted head `21e5302a1bace472439d67ffe0790e713a885e0d` and PR #98 merge `dcfba328d14e9cb4d8fbb2051f5f2621ed15ae11`. All implementation changes remain within the twelve-path lease. Live classification repair, durable V4 receipt promotion, withdrawal, migration, source-body access, provider transmission, and product integration remain unauthorized and unperformed. PR review/acceptance is still pending; this code does not settle live-operation gates.

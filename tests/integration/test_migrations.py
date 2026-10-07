@@ -77,7 +77,7 @@ def test_vector_extension_and_schema_tables(db) -> None:
 
         version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
         assert version is not None
-        assert version["version_num"] == "0013_adopted_withdrawal_v1"
+        assert version["version_num"] == "0014_adopted_withdrawal_v2"
 
         constraints = conn.execute(
             """
@@ -114,6 +114,8 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
     try:
         for args in (
             ["upgrade", "head"],
+            ["downgrade", "0013_adopted_withdrawal_v1"],
+            ["upgrade", "head"],
             ["downgrade", "base"],
             ["upgrade", "head"],
         ):
@@ -138,7 +140,7 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
         database = PostgresDatabase(target)
         with database.connect() as conn:
             version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
-            assert version["version_num"] == "0013_adopted_withdrawal_v1"
+            assert version["version_num"] == "0014_adopted_withdrawal_v2"
             tables = conn.execute(
                 """
                 SELECT COUNT(*) AS n

@@ -8,8 +8,9 @@ from typing import Any
 
 from ..contracts.adopted_assertion_withdrawal import (
     ADOPTED_ASSERTION_WITHDRAWAL_TOOL,
+    AdoptedAssertionWithdrawalCommand,
     AdoptedAssertionWithdrawalCommandV1,
-    AdoptedAssertionWithdrawalReceiptV1,
+    AdoptedAssertionWithdrawalReceipt,
 )
 from ..contracts.capability import CapabilityEffect, CapabilityPolicy
 from ..contracts.existing_world_adoption import ExistingWorldAdoptionReceiptV4
@@ -39,12 +40,12 @@ def _all_assertion_metadata(
         yield relationship.assertion_metadata
 
 
-def withdrawal_request_sha256(command: AdoptedAssertionWithdrawalCommandV1) -> str:
+def withdrawal_request_sha256(command: AdoptedAssertionWithdrawalCommand) -> str:
     return canonical_sha256(command.model_dump(mode="json"))
 
 
 def materialize_withdrawal_payload(
-    command: AdoptedAssertionWithdrawalCommandV1,
+    command: AdoptedAssertionWithdrawalCommand,
     *,
     adoption_receipt: ExistingWorldAdoptionReceiptV4,
     adopted_payload: dict[str, Any],
@@ -123,7 +124,10 @@ def materialize_withdrawal_payload(
     if (
         bound.source_revision_id is None
         or bound.source_span_ref_id is None
-        or bound.source_locator is None
+        or (
+            isinstance(command, AdoptedAssertionWithdrawalCommandV1)
+            and bound.source_locator is None
+        )
     ):
         raise PersistenceIntegrityError("withdrawal requires exact source revision and span")
     if (
@@ -152,15 +156,13 @@ def materialize_withdrawal_payload(
 
 
 def withdraw_adopted_assertion(
-    command: AdoptedAssertionWithdrawalCommandV1,
+    command: AdoptedAssertionWithdrawalCommand,
     *,
     capability_policy: CapabilityPolicy,
     repository: ExistingWorldAdoptionRepository,
-) -> AdoptedAssertionWithdrawalReceiptV1:
+) -> AdoptedAssertionWithdrawalReceipt:
     """Publish an append-only neutral withdrawal through the adoption UoW."""
-    command = AdoptedAssertionWithdrawalCommandV1.model_validate(
-        command.model_dump(mode="json")
-    )
+    command = type(command).model_validate(command.model_dump(mode="json"))
     evaluate_capability(
         capability_policy,
         tool_name=ADOPTED_ASSERTION_WITHDRAWAL_TOOL,

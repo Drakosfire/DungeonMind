@@ -1,4 +1,8 @@
-"""PostgreSQL integration fixtures. Skip cleanly when DSN is unset."""
+"""PostgreSQL integration fixtures, migrated through withdrawal V2.
+
+These fixtures truncate their database: supply an isolated disposable test DSN.
+Skip cleanly when DSN is unset.
+"""
 
 from __future__ import annotations
 
