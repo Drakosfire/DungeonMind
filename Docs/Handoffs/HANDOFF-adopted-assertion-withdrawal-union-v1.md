@@ -72,4 +72,4 @@ The live `rev:680c246047d67f9fe0293ee90526f670` / `ka:rel:edge:node:captain-lysa
 
 The handoff was committed before implementation. The implementation is confined to the lease above; package-level public exports were deliberately omitted. Verification completed: focused unit tests (5 passed), focused PostgreSQL/migration tests (14 passed), full unit suite passed, and full integration suite passed with one existing skip. `ruff check` passed. Static typing was not verified because this checkout has no `.venv`; the `pyright` invocation could not run. No live-world/provider/source-body writes were performed.
 
-Implementation head, PR URL, and PRIME review disposition are to be recorded here after the branch is pushed and the PR is opened. Do not merge; merge authority remains with PRIME.
+Implementation PR: [#98](https://github.com/Drakosfire/DungeonMind/pull/98), base `b81ca415a7e79d4024f3229a09ee5fdefff93eb3`. Implementation commit: `4b01fa54b1aa99b968ea5cae2a429d23038d2ce9`. PRIME review is requested and pending. Do not merge; merge authority remains with PRIME.
