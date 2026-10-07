@@ -47,6 +47,23 @@ No chat, preview, or locally inferred graph is authority for a live write.
 - No weakening of V1; no arbitrary null acceptance; no multi-evidence selection; no change to ordinary correction behavior.
 - No Buddy, DungeonMindServer, WorldKeeper, API/product integration, re-adoption, graph rewrite, or live-world action.
 
+**Prospective implementation write lease — inactive until PRIME activation**
+
+- `Docs/Handoffs/HANDOFF-adopted-assertion-withdrawal-locator-null-v2.md`
+- `Docs/Handoffs/HANDOFF-adopted-assertion-withdrawal-union-v1.md` (V1 predecessor state sync)
+- `src/dungeonmind/contracts/adopted_assertion_withdrawal.py`
+- `src/dungeonmind/application/adopted_assertion_withdrawal.py`
+- `src/dungeonmind/application/repositories.py`
+- `src/dungeonmind/infrastructure/memory/repositories.py`
+- `src/dungeonmind/infrastructure/postgres/existing_world_adoption.py`
+- `migrations/versions/0014_adopted_withdrawal_v2.py`
+- `tests/integration/conftest.py`
+- `tests/integration/test_migrations.py`
+- `tests/integration/test_postgres_adopted_assertion_withdrawal.py`
+- `tests/unit/test_adopted_assertion_withdrawal.py`
+
+No other path is leased. If a proof requires another path, stop and return to PRIME before editing. The V2 implementation PR carries the V1 completion sync; do not create a documentation-only PR for it.
+
 ## §4 Invariants that bind this slice
 
 - **V1 remains strict:** its locator remains required and non-null; existing V1 receipts still reconstruct and verify.
