@@ -47,8 +47,12 @@ from ...application.reviewed_world_initialization import (
 )
 from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
 from ...contracts.adopted_assertion_withdrawal import (
+    AdoptedAssertionWithdrawalCommand,
     AdoptedAssertionWithdrawalCommandV1,
+    AdoptedAssertionWithdrawalCommandV2,
+    AdoptedAssertionWithdrawalReceipt,
     AdoptedAssertionWithdrawalReceiptV1,
+    AdoptedAssertionWithdrawalReceiptV2,
 )
 from ...contracts.contribution import (
     ContributionStatus,
@@ -1700,7 +1704,7 @@ class InMemoryExistingWorldAdoptionRepository:
         self._identity = identity_repository
         self._receipts_by_world: dict[str, DurableExistingWorldAdoptionReceipt] = {}
         self._receipts_by_adoption: dict[str, DurableExistingWorldAdoptionReceipt] = {}
-        self._withdrawal_receipts: dict[tuple[str, str], AdoptedAssertionWithdrawalReceiptV1] = {}
+        self._withdrawal_receipts: dict[tuple[str, str], AdoptedAssertionWithdrawalReceipt] = {}
         self._withdrawal_operation_lock = threading.RLock()
         self._failure_hook = failure_hook
         self._reviewed_initialization_lookup = reviewed_initialization_lookup
@@ -2252,10 +2256,10 @@ class InMemoryExistingWorldAdoptionRepository:
                 raise
 
     def withdraw_adopted_assertion(
-        self, command: AdoptedAssertionWithdrawalCommandV1
-    ) -> AdoptedAssertionWithdrawalReceiptV1:
+        self, command: AdoptedAssertionWithdrawalCommand
+    ) -> AdoptedAssertionWithdrawalReceipt:
         """Atomically publish one adoption-bound neutral withdrawal."""
-        command = AdoptedAssertionWithdrawalCommandV1.model_validate(
+        command = type(command).model_validate(
             command.model_dump(mode="json")
         )
         # The database receipt key is operation_id alone. Serialize this
@@ -2265,8 +2269,8 @@ class InMemoryExistingWorldAdoptionRepository:
             return self._withdraw_adopted_assertion_locked(command)
 
     def _withdraw_adopted_assertion_locked(
-        self, command: AdoptedAssertionWithdrawalCommandV1
-    ) -> AdoptedAssertionWithdrawalReceiptV1:
+        self, command: AdoptedAssertionWithdrawalCommand
+    ) -> AdoptedAssertionWithdrawalReceipt:
         world_id = command.world_id
         request_sha = withdrawal_request_sha256(command)
         with self._graph._lock_for(world_id):
@@ -2350,7 +2354,12 @@ class InMemoryExistingWorldAdoptionRepository:
                 )
                 if self._failure_hook is not None:
                     self._failure_hook("withdrawal_graph")
-                receipt = AdoptedAssertionWithdrawalReceiptV1(
+                receipt_type = (
+                    AdoptedAssertionWithdrawalReceiptV2
+                    if isinstance(command, AdoptedAssertionWithdrawalCommandV2)
+                    else AdoptedAssertionWithdrawalReceiptV1
+                )
+                receipt = receipt_type.model_validate(dict(
                     operation_id=command.operation_id,
                     world_id=world_id,
                     adoption_id=command.adoption_id,
@@ -2374,7 +2383,7 @@ class InMemoryExistingWorldAdoptionRepository:
                     disposition=command.disposition,
                     actor=command.actor,
                     completed_at=command.requested_at,
-                )
+                ))
                 self._withdrawal_receipts[receipt_key] = receipt
                 if self._failure_hook is not None:
                     self._failure_hook("withdrawal_receipt")
@@ -2390,8 +2399,8 @@ class InMemoryExistingWorldAdoptionRepository:
                 raise
 
     def _verify_withdrawal_unlocked(
-        self, receipt: AdoptedAssertionWithdrawalReceiptV1
-    ) -> AdoptedAssertionWithdrawalReceiptV1:
+        self, receipt: AdoptedAssertionWithdrawalReceipt
+    ) -> AdoptedAssertionWithdrawalReceipt:
         adoption = self._receipts_by_adoption.get(receipt.adoption_id)
         if adoption is None:
             raise PersistenceIntegrityError("withdrawal adoption receipt is missing")
@@ -2413,7 +2422,12 @@ class InMemoryExistingWorldAdoptionRepository:
             or child.revision.operation_ids != [receipt.operation_id]
         ):
             raise PersistenceIntegrityError("withdrawal receipt disagrees with graph lineage")
-        command = AdoptedAssertionWithdrawalCommandV1(
+        command_type = (
+            AdoptedAssertionWithdrawalCommandV2
+            if isinstance(receipt, AdoptedAssertionWithdrawalReceiptV2)
+            else AdoptedAssertionWithdrawalCommandV1
+        )
+        command = command_type.model_validate(dict(
             operation_id=receipt.operation_id,
             world_id=receipt.world_id,
             adoption_id=receipt.adoption_id,
@@ -2432,7 +2446,7 @@ class InMemoryExistingWorldAdoptionRepository:
             disposition=receipt.disposition,
             actor=receipt.actor,
             requested_at=receipt.completed_at,
-        )
+        ))
         if withdrawal_request_sha256(command) != receipt.request_sha256:
             raise PersistenceIntegrityError("withdrawal receipt request hash drift")
         expected_child = materialize_withdrawal_payload(

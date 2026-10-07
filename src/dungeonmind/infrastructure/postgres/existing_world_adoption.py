@@ -26,8 +26,12 @@ from ...application.repositories import (
     DurableExistingWorldAdoptionReceipt,
 )
 from ...contracts.adopted_assertion_withdrawal import (
+    AdoptedAssertionWithdrawalCommand,
     AdoptedAssertionWithdrawalCommandV1,
+    AdoptedAssertionWithdrawalCommandV2,
+    AdoptedAssertionWithdrawalReceipt,
     AdoptedAssertionWithdrawalReceiptV1,
+    AdoptedAssertionWithdrawalReceiptV2,
 )
 from ...contracts.evidence import SourceArtifactV2
 from ...contracts.existing_world_adoption import (
@@ -342,7 +346,7 @@ class PostgresExistingWorldAdoptionRepository:
 
     def _return_withdrawal_receipt(
         self, row: dict[str, Any]
-    ) -> AdoptedAssertionWithdrawalReceiptV1:
+    ) -> AdoptedAssertionWithdrawalReceipt:
         identity = {
             key: row[key]
             for key in (
@@ -355,13 +359,17 @@ class PostgresExistingWorldAdoptionRepository:
                 "disposition", "actor", "completed_at", "schema_version",
             )
         }
-        if row["schema_version"] != AdoptedAssertionWithdrawalReceiptV1.model_fields[
-            "schema_version"
-        ].default:
+        receipt_type = {
+            AdoptedAssertionWithdrawalReceiptV1.model_fields["schema_version"].default:
+                AdoptedAssertionWithdrawalReceiptV1,
+            AdoptedAssertionWithdrawalReceiptV2.model_fields["schema_version"].default:
+                AdoptedAssertionWithdrawalReceiptV2,
+        }.get(row["schema_version"])
+        if receipt_type is None:
             raise PersistenceIntegrityError("unsupported assertion withdrawal receipt schema")
         try:
             return reconstruct(
-                AdoptedAssertionWithdrawalReceiptV1,
+                receipt_type,
                 dict(row["payload"]),
                 expected_fingerprint=row["record_fingerprint"],
                 identity=identity,
@@ -373,7 +381,7 @@ class PostgresExistingWorldAdoptionRepository:
 
     def _load_verified_withdrawal(
         self, conn: Connection[Any], row: dict[str, Any]
-    ) -> AdoptedAssertionWithdrawalReceiptV1:
+    ) -> AdoptedAssertionWithdrawalReceipt:
         receipt = self._return_withdrawal_receipt(row)
         adoption_row = _adoption_row(
             conn, world_id=receipt.world_id, adoption_id=receipt.adoption_id
@@ -411,7 +419,12 @@ class PostgresExistingWorldAdoptionRepository:
             or child.revision.operation_ids != [receipt.operation_id]
         ):
             raise PersistenceIntegrityError("withdrawal receipt disagrees with graph lineage")
-        command = AdoptedAssertionWithdrawalCommandV1(
+        command_type = (
+            AdoptedAssertionWithdrawalCommandV2
+            if isinstance(receipt, AdoptedAssertionWithdrawalReceiptV2)
+            else AdoptedAssertionWithdrawalCommandV1
+        )
+        command = command_type.model_validate(dict(
             operation_id=receipt.operation_id,
             world_id=receipt.world_id,
             adoption_id=receipt.adoption_id,
@@ -430,7 +443,7 @@ class PostgresExistingWorldAdoptionRepository:
             disposition=receipt.disposition,
             actor=receipt.actor,
             requested_at=receipt.completed_at,
-        )
+        ))
         if withdrawal_request_sha256(command) != receipt.request_sha256:
             raise PersistenceIntegrityError("withdrawal receipt request hash drift")
         expected_child = materialize_withdrawal_payload(
@@ -444,9 +457,9 @@ class PostgresExistingWorldAdoptionRepository:
         return receipt
 
     def withdraw_adopted_assertion(
-        self, command: AdoptedAssertionWithdrawalCommandV1
-    ) -> AdoptedAssertionWithdrawalReceiptV1:
-        command = AdoptedAssertionWithdrawalCommandV1.model_validate(
+        self, command: AdoptedAssertionWithdrawalCommand
+    ) -> AdoptedAssertionWithdrawalReceipt:
+        command = type(command).model_validate(
             command.model_dump(mode="json")
         )
         request_sha = withdrawal_request_sha256(command)
@@ -572,7 +585,12 @@ class PostgresExistingWorldAdoptionRepository:
             )
             if self._failure_hook is not None:
                 self._failure_hook("withdrawal_graph")
-            receipt = AdoptedAssertionWithdrawalReceiptV1(
+            receipt_type = (
+                AdoptedAssertionWithdrawalReceiptV2
+                if isinstance(command, AdoptedAssertionWithdrawalCommandV2)
+                else AdoptedAssertionWithdrawalReceiptV1
+            )
+            receipt = receipt_type.model_validate(dict(
                 operation_id=command.operation_id,
                 world_id=world_id,
                 adoption_id=command.adoption_id,
@@ -594,7 +612,7 @@ class PostgresExistingWorldAdoptionRepository:
                 disposition=command.disposition,
                 actor=command.actor,
                 completed_at=command.requested_at,
-            )
+            ))
             fingerprint = model_fingerprint(receipt)
             try:
                 conn.execute(

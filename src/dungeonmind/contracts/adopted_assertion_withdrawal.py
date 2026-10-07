@@ -16,12 +16,10 @@ from pydantic import ConfigDict, ValidationInfo, field_validator
 
 from .base import DungeonMindModel
 
-ADOPTED_ASSERTION_WITHDRAWAL_COMMAND_V1 = (
-    "dm_adopted_assertion_withdrawal_command_v1"
-)
-ADOPTED_ASSERTION_WITHDRAWAL_RECEIPT_V1 = (
-    "dm_adopted_assertion_withdrawal_receipt_v1"
-)
+ADOPTED_ASSERTION_WITHDRAWAL_COMMAND_V1 = "dm_adopted_assertion_withdrawal_command_v1"
+ADOPTED_ASSERTION_WITHDRAWAL_RECEIPT_V1 = "dm_adopted_assertion_withdrawal_receipt_v1"
+ADOPTED_ASSERTION_WITHDRAWAL_COMMAND_V2 = "dm_adopted_assertion_withdrawal_command_v2"
+ADOPTED_ASSERTION_WITHDRAWAL_RECEIPT_V2 = "dm_adopted_assertion_withdrawal_receipt_v2"
 ADOPTED_ASSERTION_WITHDRAWAL_TOOL = "dungeonmind.withdraw_adopted_assertion"
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 
@@ -38,14 +36,11 @@ def _aware(value: datetime) -> datetime:
     return value
 
 
-class AdoptedAssertionWithdrawalCommandV1(DungeonMindModel):
+class _WithdrawalCommand(DungeonMindModel):
     """Internal command; provenance is cross-verified by the repository."""
 
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
-    schema_version: Literal["dm_adopted_assertion_withdrawal_command_v1"] = (
-        ADOPTED_ASSERTION_WITHDRAWAL_COMMAND_V1
-    )
     operation_id: str
     world_id: str
     adoption_id: str
@@ -59,17 +54,26 @@ class AdoptedAssertionWithdrawalCommandV1(DungeonMindModel):
     source_artifact_id: str
     source_revision_id: str
     source_span_ref_id: str
-    source_locator: str
     parent_payload_sha256: str
     disposition: Literal["unsupported_by_bound_source"] = "unsupported_by_bound_source"
     actor: str
     requested_at: datetime
 
     @field_validator(
-        "operation_id", "world_id", "adoption_id", "expected_parent_revision_id",
-        "relationship_id", "assertion_id", "subject_object_id", "predicate",
-        "object_object_id", "evidence_ref_id", "source_artifact_id",
-        "source_revision_id", "source_span_ref_id", "source_locator", "actor",
+        "operation_id",
+        "world_id",
+        "adoption_id",
+        "expected_parent_revision_id",
+        "relationship_id",
+        "assertion_id",
+        "subject_object_id",
+        "predicate",
+        "object_object_id",
+        "evidence_ref_id",
+        "source_artifact_id",
+        "source_revision_id",
+        "source_span_ref_id",
+        "actor",
     )
     @classmethod
     def _bounded_ids(cls, value: str, info: ValidationInfo) -> str:
@@ -88,14 +92,32 @@ class AdoptedAssertionWithdrawalCommandV1(DungeonMindModel):
         return value
 
 
-class AdoptedAssertionWithdrawalReceiptV1(DungeonMindModel):
+class AdoptedAssertionWithdrawalCommandV1(_WithdrawalCommand):
+    schema_version: Literal["dm_adopted_assertion_withdrawal_command_v1"] = (
+        ADOPTED_ASSERTION_WITHDRAWAL_COMMAND_V1
+    )
+    source_locator: str
+
+    @field_validator("source_locator")
+    @classmethod
+    def _locator(cls, value: str) -> str:
+        return _id(value, "source_locator")
+
+
+class AdoptedAssertionWithdrawalCommandV2(_WithdrawalCommand):
+    """The locator must be explicitly supplied as null, never omitted."""
+
+    schema_version: Literal["dm_adopted_assertion_withdrawal_command_v2"] = (
+        ADOPTED_ASSERTION_WITHDRAWAL_COMMAND_V2
+    )
+    source_locator: None
+
+
+class _WithdrawalReceipt(DungeonMindModel):
     """Immutable terminal proof of one withdrawal and its graph publication."""
 
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
-    schema_version: Literal["dm_adopted_assertion_withdrawal_receipt_v1"] = (
-        ADOPTED_ASSERTION_WITHDRAWAL_RECEIPT_V1
-    )
     operation_id: str
     world_id: str
     adoption_id: str
@@ -113,17 +135,26 @@ class AdoptedAssertionWithdrawalReceiptV1(DungeonMindModel):
     source_artifact_id: str
     source_revision_id: str
     source_span_ref_id: str
-    source_locator: str
     disposition: Literal["unsupported_by_bound_source"] = "unsupported_by_bound_source"
     actor: str
     completed_at: datetime
 
     @field_validator(
-        "operation_id", "world_id", "adoption_id", "parent_revision_id",
-        "published_revision_id", "relationship_id", "assertion_id", "evidence_ref_id",
-        "subject_object_id", "predicate", "object_object_id",
-        "source_artifact_id", "source_revision_id", "source_span_ref_id",
-        "source_locator", "actor",
+        "operation_id",
+        "world_id",
+        "adoption_id",
+        "parent_revision_id",
+        "published_revision_id",
+        "relationship_id",
+        "assertion_id",
+        "evidence_ref_id",
+        "subject_object_id",
+        "predicate",
+        "object_object_id",
+        "source_artifact_id",
+        "source_revision_id",
+        "source_span_ref_id",
+        "actor",
     )
     @classmethod
     def _bounded_ids(cls, value: str, info: ValidationInfo) -> str:
@@ -140,3 +171,30 @@ class AdoptedAssertionWithdrawalReceiptV1(DungeonMindModel):
     @classmethod
     def _timestamp(cls, value: datetime) -> datetime:
         return _aware(value)
+
+
+class AdoptedAssertionWithdrawalReceiptV1(_WithdrawalReceipt):
+    schema_version: Literal["dm_adopted_assertion_withdrawal_receipt_v1"] = (
+        ADOPTED_ASSERTION_WITHDRAWAL_RECEIPT_V1
+    )
+    source_locator: str
+
+    @field_validator("source_locator")
+    @classmethod
+    def _locator(cls, value: str) -> str:
+        return _id(value, "source_locator")
+
+
+class AdoptedAssertionWithdrawalReceiptV2(_WithdrawalReceipt):
+    schema_version: Literal["dm_adopted_assertion_withdrawal_receipt_v2"] = (
+        ADOPTED_ASSERTION_WITHDRAWAL_RECEIPT_V2
+    )
+    source_locator: None
+
+
+AdoptedAssertionWithdrawalCommand = (
+    AdoptedAssertionWithdrawalCommandV1 | AdoptedAssertionWithdrawalCommandV2
+)
+AdoptedAssertionWithdrawalReceipt = (
+    AdoptedAssertionWithdrawalReceiptV1 | AdoptedAssertionWithdrawalReceiptV2
+)

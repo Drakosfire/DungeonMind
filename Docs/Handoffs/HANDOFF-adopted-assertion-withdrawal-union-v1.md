@@ -1,6 +1,6 @@
 # Handoff — adopted assertion withdrawal through union authority v1
 
-**Status:** IMPLEMENTED — awaiting PRIME review; not merged  
+**Status:** COMPLETE — accepted by PRIME and merged as PR #98
 **Owner:** DungeonMind  
 **Base:** `main` at `b81ca415a7e79d4024f3229a09ee5fdefff93eb3` (merged #97)  
 **Branch:** `kernel/adopted-assertion-withdrawal-v1`  
@@ -72,4 +72,4 @@ The live `rev:680c246047d67f9fe0293ee90526f670` / `ka:rel:edge:node:captain-lysa
 
 The handoff was committed before implementation. The implementation is confined to the lease above; package-level public exports were deliberately omitted. Verification completed: focused unit tests (6 passed after review repair), focused PostgreSQL/migration tests (14 passed), full unit suite passed, and full integration suite passed with one existing skip. `ruff check` passed. Initial CI found `ValidationInfo.field_name` may be optional in the two bounded-ID validators; both now use a fallback diagnostic label. Full Pyright reports zero diagnostics. PRIME review found that the memory adapter needed to enforce the same global operation-ID uniqueness as PostgreSQL; withdrawal receipt check-through-insert is now serialized across worlds, with a focused two-world concurrency regression. No live-world/provider/source-body writes were performed.
 
-Implementation PR: [#98](https://github.com/Drakosfire/DungeonMind/pull/98), base `b81ca415a7e79d4024f3229a09ee5fdefff93eb3`. Implementation commit: `4b01fa54b1aa99b968ea5cae2a429d23038d2ce9`. PRIME review is requested and pending. Do not merge; merge authority remains with PRIME.
+Implementation PR: [#98](https://github.com/Drakosfire/DungeonMind/pull/98), base `b81ca415a7e79d4024f3229a09ee5fdefff93eb3`. Accepted implementation head: `21e5302a1bace472439d67ffe0790e713a885e0d`. Merge commit: `dcfba328d14e9cb4d8fbb2051f5f2621ed15ae11`. V1 is complete; its required non-null locator behavior remains preserved by the separately activated V2 successor. No live withdrawal is authorized by this completion state.
