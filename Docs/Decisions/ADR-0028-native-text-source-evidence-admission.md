@@ -1,8 +1,10 @@
 # ADR-0028: Atomic native text-source and evidence admission
 
-**Status:** Accepted design; implementation under review (not yet accepted)
+**Status:** Accepted design and implementation
 **Date:** 2026-09-28
 **Authority:** PRIME design pass `86e8f22d007df99de577cb412301c5a6d4e2d597` on the settled PR #84 base
+
+**Implementation acceptance:** [PR #85](https://github.com/Drakosfire/DungeonMind/pull/85), reviewed head `0803faf9f84b44148291c68c8dd115f73c68d464`, PRIME Cycle 2 PASS `5334796956`, merged as `7c69e447f6d4acc963ac09c6fb9cb48cc1c5b9cc`. [PR #86](https://github.com/Drakosfire/DungeonMind/pull/86) settled the handoffs and evidence after acceptance. Product adoption and the limits below remain separate obligations.
 
 ## Context
 
@@ -57,7 +59,7 @@ bytes and semantics.
   admitted source/evidence child remains durable and can be deliberately reused.
 - PostgreSQL downgrade must refuse to discard populated native source records.
 
-## Required evidence before acceptance
+## Acceptance evidence
 
 The implementation PR must prove public initialization → public admission →
 exact child membership; exact byte/span behavior; zero-mutation rollback at each
@@ -65,5 +67,8 @@ transaction stage; replay, response-loss recovery and concurrency; epoch-pinned
 old/new views; privacy and integrity failures; PostgreSQL upgrade/rollback/read
 after fresh connections; unchanged frozen contracts and regressions; and a real
 WorldKeeper prepare/commit witness using the exact approved Keeper pin without
-seeded evidence. Until those proofs are recorded, implementation status remains
-unaccepted.
+seeded evidence. These proofs are recorded in
+[the implementation evidence report](../Reports/REPORT-NATIVE-text-source-evidence-admission.md)
+and the accepted PR #85: exact-head core CI passed 2,046 tests (3 skipped),
+PostgreSQL integration passed 308 tests (1 skipped), and the real WorldKeeper
+consumer witness passed at pin `49a8620f066ce7ef8972a699020c012f50af9158`.
