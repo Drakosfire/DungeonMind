@@ -23,6 +23,7 @@ from dungeonmind.application.world_graph_retrieval import (
     EvidenceTarget,
     RetrievalBounds,
     SelectedObjectCompleteness,
+    SelectedSourceAnchorIndexRequest,
     SourceAnchorIndexRequest,
     WorldGraphRetrievalService,
     derive_source_anchor_id,
@@ -1800,3 +1801,276 @@ def test_selected_object_completeness_rejects_unknown_partial_reason():
         )
     with pytest.raises(ValueError, match="cannot name a partial reason"):
         SelectedObjectCompleteness(status="complete", reason="missing_related_endpoint")
+
+
+def _selected(service, projection_request, *targets, max_entries=512):
+    return service.list_selected_source_anchor_index(
+        SelectedSourceAnchorIndexRequest(
+            projection_request,
+            tuple(EvidenceTarget(kind, target_id) for kind, target_id in targets),
+            max_entries,
+        )
+    )
+
+
+def test_selected_index_small_search_survives_unrelated_global_overflow():
+    repo = InMemoryWorldGraphRepository()
+    payload = _payload()
+    sources = _seed_sources()
+    for index in range(512):
+        evidence = f"ev:unrelated-{index:03d}"
+        artifact = f"src:unrelated-{index:03d}"
+        revision = f"srcrev:unrelated-{index:03d}"
+        payload["evidence_refs"].append(
+            _evidence_row(evidence, artifact, revision, span=f"span:{index}")
+        )
+        payload["objects"].append(
+            _object(
+                f"obj:unrelated-{index:03d}",
+                f"Unrelated {index}",
+                assertion_id=f"asrt:unrelated-{index:03d}",
+                evidence=evidence,
+                campaign_scope=None,
+            )
+        )
+        _put_source(sources, artifact_id=artifact, revision_id=revision, campaign_id=None)
+    published = _publish(repo, payload)
+    service, projection = _services(repo, sources)
+    request = _request(scope_mode=ScopeModeV2.WORLD, revision_pin=published.revision_id)
+    global_index = service.list_source_anchor_index(SourceAnchorIndexRequest(request))
+    assert global_index.status == "overflow" and global_index.eligible_count == 513
+    assert global_index.entries == ()
+    search = service.search(request, seed_object_ids=("obj:world-tavern",))
+    assert "obj:world-tavern" in search.matched_object_ids
+    before = projection.project_calls
+    selected = _selected(service, request, ("object", "obj:world-tavern"))
+    assert projection.project_calls == before + 1
+    assert selected.status == "complete" and selected.eligible_count == 1
+    assert selected.requested_count == selected.admitted_count == 1
+    assert selected.not_visible_count == selected.provenance_gap_count == 0
+    assert selected.snapshot.revision_id == search.snapshot.revision_id
+    assert len(selected.selector_sha256) == len(selected.index_sha256) == 64
+    entry = selected.entries[0]
+    assert entry.evidence_ref_id == "ev:world"
+    assert not any(
+        hasattr(entry, field) for field in ("uri", "path", "locator", "body", "text", "content")
+    )
+    # The existing opaque-anchor revalidation API admits the same selected tuple.
+    resolved = service.resolve_source_anchor(request, anchor_id=entry.anchor_id)
+    assert resolved.found and resolved.anchor.evidence_ref_id == entry.evidence_ref_id
+
+
+def test_selected_index_overflow_returns_no_partial_entries():
+    repo = InMemoryWorldGraphRepository()
+    payload = _payload()
+    sources = _seed_sources()
+    own = payload["objects"][0]["assertion_metadata"]["evidence_ref_ids"]
+    for index in range(512):
+        evidence = f"ev:own-{index:03d}"
+        artifact = f"src:own-{index:03d}"
+        revision = f"srcrev:own-{index:03d}"
+        own.append(evidence)
+        payload["evidence_refs"].append(
+            _evidence_row(evidence, artifact, revision, span=f"span:{index}")
+        )
+        _put_source(sources, artifact_id=artifact, revision_id=revision, campaign_id=None)
+    published = _publish(repo, payload)
+    service, _ = _services(repo, sources)
+    indexed = _selected(
+        service,
+        _request(scope_mode=ScopeModeV2.WORLD, revision_pin=published.revision_id),
+        ("object", "obj:world-tavern"),
+    )
+    assert indexed.status == "overflow" and indexed.eligible_count == 513
+    assert indexed.entries == ()
+
+
+def test_selected_index_own_supports_are_nontransitive_for_each_kind():
+    repo = InMemoryWorldGraphRepository()
+    published = _publish(repo, _complete_object_payload())
+    service, _ = _complete_object_services(repo)
+    request = _request(
+        scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN, revision_pin=published.revision_id
+    )
+    obj = _selected(service, request, ("object", "obj:world-tavern"))
+    relation = _selected(service, request, ("relationship", "rel:tavern-keep"))
+    assertion = _selected(service, request, ("assertion", "asrt:prop-hub-tag-00"))
+    assert {e.evidence_ref_id for e in obj.entries} == {"ev:world"}
+    assert {e.evidence_ref_id for e in relation.entries} == {"ev:alpha"}
+    assert {e.evidence_ref_id for e in assertion.entries} == {"ev:hub-anchor-01"}
+    assert all(result.admitted_count == 1 for result in (obj, relation, assertion))
+
+
+def test_selected_index_hidden_absent_and_kind_mismatch_share_not_visible():
+    repo = InMemoryWorldGraphRepository()
+    published = _publish(repo)
+    service, _ = _services(repo)
+    request = _request(scope_mode=ScopeModeV2.WORLD, revision_pin=published.revision_id)
+    for kind, target in [
+        ("object", "obj:alpha-secret"),
+        ("object", "obj:absent"),
+        ("assertion", "obj:world-tavern"),
+    ]:
+        indexed = _selected(service, request, (kind, target))
+        assert indexed.status == "unavailable" and indexed.entries == ()
+        assert indexed.requested_count == indexed.not_visible_count == 1
+        assert indexed.admitted_count == indexed.eligible_count == indexed.provenance_gap_count == 0
+        assert indexed.not_visible_targets == (EvidenceTarget(kind, target),)
+
+
+def test_selected_index_reports_public_provenance_gap_without_source_ids():
+    repo = InMemoryWorldGraphRepository()
+    published = _publish(repo)
+    service, _ = _services(repo)
+    indexed = _selected(
+        service,
+        _request(scope_mode=ScopeModeV2.WORLD, revision_pin=published.revision_id),
+        ("object", "obj:broken-lore"),
+    )
+    assert indexed.entries == () and indexed.status == "unavailable"
+    assert indexed.not_visible_count == 1 and indexed.provenance_gap_count == 1
+    assert not hasattr(indexed, "missing_ids") and not hasattr(indexed, "locators")
+
+
+def test_selected_index_valid_but_unreadable_binding_is_explicit():
+    repo = InMemoryWorldGraphRepository()
+    payload = _payload()
+    next(row for row in payload["evidence_refs"] if row["evidence_ref_id"] == "ev:world")[
+        "can_open_source"
+    ] = False
+    published = _publish(repo, payload)
+    service, _ = _services(repo)
+    indexed = _selected(
+        service,
+        _request(scope_mode=ScopeModeV2.WORLD, revision_pin=published.revision_id),
+        ("object", "obj:world-tavern"),
+    )
+    assert indexed.status == "unavailable" and indexed.entries == ()
+    assert indexed.admitted_count == indexed.unavailable_binding_count == 1
+    assert indexed.provenance_gap_count == 0
+
+
+def test_selected_index_hashes_bind_selection_revision_scope_and_capacity():
+    repo = InMemoryWorldGraphRepository()
+    first = _publish(repo)
+    second = _publish(repo, parent_revision_id=first.revision_id, operation_id="op:second-selected")
+    service, _ = _services(repo)
+    request = _request(scope_mode=ScopeModeV2.WORLD, revision_pin=first.revision_id)
+    targets = [("object", "obj:world-tavern"), ("object", "obj:world-gate")]
+    forward = _selected(service, request, *targets)
+    reverse = _selected(service, request, *reversed(targets))
+    assert forward == reverse
+    changed = [
+        _selected(service, request, targets[0]),
+        _selected(service, request, *targets, max_entries=1),
+        _selected(
+            service,
+            _request(scope_mode=ScopeModeV2.WORLD, revision_pin=second.revision_id),
+            *targets,
+        ),
+        _selected(
+            service,
+            _request(scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN, revision_pin=first.revision_id),
+            *targets,
+        ),
+    ]
+    assert all(result.selector_sha256 != forward.selector_sha256 for result in changed)
+    assert all(result.index_sha256 != forward.index_sha256 for result in changed)
+
+
+def test_selected_index_request_rejects_unpinned_player_and_malformed_selection():
+    pinned = _request(scope_mode=ScopeModeV2.WORLD, revision_pin="rev:test")
+    with pytest.raises(ValueError, match="revision pin"):
+        SelectedSourceAnchorIndexRequest(
+            _request(scope_mode=ScopeModeV2.WORLD), (EvidenceTarget("object", "obj:test"),)
+        )
+    with pytest.raises(ValueError, match="GM"):
+        SelectedSourceAnchorIndexRequest(
+            _request(
+                scope_mode=ScopeModeV2.WORLD,
+                revision_pin="rev:test",
+                admissibility=Admissibility.PLAYER,
+            ),
+            (EvidenceTarget("object", "obj:test"),),
+        )
+    for targets in [
+        (),
+        (EvidenceTarget("object", "obj:test"),) * 2,
+        tuple(EvidenceTarget("object", f"obj:{n}") for n in range(9)),
+        (EvidenceTarget("unsupported", "obj:test"),),
+        (EvidenceTarget("object", " obj:test"),),
+    ]:
+        with pytest.raises(ValueError):
+            SelectedSourceAnchorIndexRequest(pinned, targets)
+    with pytest.raises(ValueError):
+        SelectedSourceAnchorIndexRequest(
+            pinned, (EvidenceTarget("object", "obj:test"),), max_entries=True
+        )
+
+
+def test_selected_index_wrong_world_revision_never_falls_back_to_head():
+    from dungeonmind.domain.errors import RevisionNotFoundError
+
+    repo = InMemoryWorldGraphRepository()
+    _publish(repo)
+    service, _ = _services(repo)
+    with pytest.raises(RevisionNotFoundError):
+        _selected(
+            service,
+            _request(scope_mode=ScopeModeV2.WORLD, revision_pin="rev:does-not-exist"),
+            ("object", "obj:world-tavern"),
+        )
+
+
+def test_selected_index_rejects_changed_selector_and_conflicting_coverage():
+    from dataclasses import replace
+
+    repo = InMemoryWorldGraphRepository()
+    published = _publish(repo)
+    service, _ = _services(repo)
+    result = _selected(
+        service,
+        _request(scope_mode=ScopeModeV2.WORLD, revision_pin=published.revision_id),
+        ("object", "obj:world-tavern"),
+    )
+    assert result.index_scope == "selected_targets"
+    with pytest.raises(ValueError, match="commitment"):
+        replace(result, selector_sha256="0" * 64)
+    with pytest.raises(ValueError, match="coverage"):
+        replace(result, not_visible_targets=result.admitted_targets)
+    with pytest.raises(ValueError, match="status/count"):
+        replace(result, status="overflow")
+    with pytest.raises(ValueError, match="authority tuples"):
+        replace(result, entries=(result.entries[0], result.entries[0]), eligible_count=2)
+
+
+def test_selected_index_campaign_scope_does_not_recover_other_campaign_targets():
+    repo = InMemoryWorldGraphRepository()
+    published = _publish(repo)
+    service, _ = _services(repo)
+    request = _request(
+        scope_mode=ScopeModeV2.CAMPAIGN, campaign_id=CAMPAIGN_A, revision_pin=published.revision_id
+    )
+    selected = _selected(
+        service, request, ("object", "obj:alpha-keep"), ("object", "obj:beta-crypt")
+    )
+    assert selected.admitted_count == selected.not_visible_count == 1
+    assert selected.not_visible_targets == (EvidenceTarget("object", "obj:beta-crypt"),)
+    assert {entry.source_artifact_id for entry in selected.entries} == {"src:alpha-notes"}
+    assert selected.snapshot.campaign_id == CAMPAIGN_A
+
+
+
+
+def test_selected_index_wrong_world_does_not_reuse_another_world_revision():
+    from dungeonmind.domain.errors import HeadNotFoundError
+
+    repo = InMemoryWorldGraphRepository()
+    published = _publish(repo)
+    service, _ = _services(repo)
+    request = WorldGraphProjectionRequestV2(
+        world_id="world:unavailable", scope_mode=ScopeModeV2.WORLD,
+        admissibility=Admissibility.GM, revision_pin=published.revision_id,
+    )
+    with pytest.raises(HeadNotFoundError):
+        _selected(service, request, ("object", "obj:world-tavern"))
