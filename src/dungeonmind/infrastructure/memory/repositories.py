@@ -9,6 +9,7 @@ the PostgreSQL adapter is what makes the ports real.
 """
 
 import copy
+import hashlib
 import math
 import threading
 from collections.abc import Callable, Sequence
@@ -45,6 +46,7 @@ from ...application.reviewed_world_initialization import (
     reviewed_world_initialization_replay_identity,
     terminal_reviewed_world_initialization_receipt,
 )
+from ...application.source_admission import source_admission_command_sha256
 from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
 from ...contracts.adopted_assertion_withdrawal import (
     AdoptedAssertionWithdrawalCommand,
@@ -106,6 +108,9 @@ from ...contracts.semantic import (
     SemanticCandidate,
     SemanticDocument,
     SemanticQuery,
+)
+from ...contracts.source_admission import (
+    SourceAdmissionReceiptV1,
 )
 from ...contracts.vocabulary import Visibility
 from ...domain.canonical import canonical_json, canonical_sha256
@@ -1007,10 +1012,36 @@ class InMemoryIdentityDecisionRepository:
         return [_copy(d) for d in items]
 
 
+def _validate_source_admission_binding(
+    receipt: SourceAdmissionReceiptV1,
+    artifact: SourceArtifactRecord,
+    revision: SourceRevision,
+    source_body: bytes,
+) -> None:
+    if (
+        artifact.world_id != receipt.world_id
+        or artifact.source_artifact_id != receipt.source_artifact_id
+        or artifact.current_revision_id != revision.source_revision_id
+        or revision.source_artifact_id != artifact.source_artifact_id
+        or revision.source_revision_id != receipt.source_revision_id
+        or revision.content_sha256 != receipt.content_sha256
+        or hashlib.sha256(source_body).hexdigest() != revision.content_sha256
+        or source_admission_command_sha256(
+            world_id=receipt.world_id,
+            expected_head_revision_id=receipt.expected_head_revision_id,
+            artifact=artifact,
+            revision=revision,
+        )
+        != receipt.command_sha256
+    ):
+        raise PersistenceIntegrityError("source admission receipt binding is inconsistent")
+
+
 class InMemorySourceRepository:
     def __init__(self) -> None:
         self._artifacts: dict[str, SourceArtifactRecord] = {}
         self._revisions: dict[str, SourceRevision] = {}
+        self._source_admissions: dict[str, SourceAdmissionReceiptV1] = {}
         # Re-entrant: promotion holds this family lock across its membership
         # re-proof, whose provider enumerates through this same repository.
         self._lock = threading.RLock()
@@ -1050,6 +1081,56 @@ class InMemorySourceRepository:
                 return _copy(existing)
             self._revisions[revision.source_revision_id] = _copy(revision)
             return _copy(revision)
+
+    def get_source_admission(
+        self, admission_id: str
+    ) -> SourceAdmissionReceiptV1 | None:
+        with self._lock:
+            receipt = self._source_admissions.get(admission_id)
+            return _copy(receipt) if receipt is not None else None
+
+    def admit_source_revision(
+        self,
+        *,
+        receipt: SourceAdmissionReceiptV1,
+        artifact: SourceArtifactRecord,
+        revision: SourceRevision,
+        source_body: bytes,
+    ) -> SourceAdmissionReceiptV1:
+        _validate_source_admission_binding(receipt, artifact, revision, source_body)
+        with self._lock:
+            existing_receipt = self._source_admissions.get(receipt.admission_id)
+            if existing_receipt is not None:
+                if (
+                    existing_receipt.world_id != receipt.world_id
+                    or existing_receipt.command_sha256 != receipt.command_sha256
+                ):
+                    raise IdempotencyConflictError(
+                        f"source admission {receipt.admission_id!r} replayed with different input"
+                    )
+                return _copy(existing_receipt)
+
+            existing_artifact = self._artifacts.get(artifact.source_artifact_id)
+            if (
+                existing_artifact is not None
+                and _fingerprint(existing_artifact) != _fingerprint(artifact)
+            ):
+                raise IdempotencyConflictError(
+                    f"source artifact {artifact.source_artifact_id!r} already has different content"
+                )
+            existing_revision = self._revisions.get(revision.source_revision_id)
+            if (
+                existing_revision is not None
+                and _fingerprint(existing_revision) != _fingerprint(revision)
+            ):
+                raise IdempotencyConflictError(
+                    f"source revision {revision.source_revision_id!r} already has different content"
+                )
+
+            self._artifacts.setdefault(artifact.source_artifact_id, _copy(artifact))
+            self._revisions.setdefault(revision.source_revision_id, _copy(revision))
+            self._source_admissions[receipt.admission_id] = _copy(receipt)
+            return _copy(receipt)
 
     def get_revision(self, source_revision_id: str) -> SourceRevision | None:
         item = self._revisions.get(source_revision_id)

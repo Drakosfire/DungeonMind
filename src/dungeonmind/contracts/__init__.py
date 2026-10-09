@@ -249,6 +249,10 @@ from .semantic import (
     SemanticDocumentKind,
     SemanticQuery,
 )
+from .source_admission import (
+    SOURCE_ADMISSION_RECEIPT_SCHEMA,
+    SourceAdmissionReceiptV1,
+)
 from .vocabulary import CanonState, ContributionEpistemicKind, EpistemicKind, Visibility
 
 __all__ = [
@@ -313,6 +317,7 @@ __all__ = [
     "REVIEWED_WORLD_INITIALIZATION_COMMAND_SCHEMA",
     "REVIEWED_WORLD_INITIALIZATION_RECEIPT_SCHEMA",
     "SEMANTIC_DOCUMENT_SCHEMA",
+    "SOURCE_ADMISSION_RECEIPT_SCHEMA",
     "SOURCE_ARTIFACT_SCHEMA",
     "SOURCE_ARTIFACT_V2_SCHEMA",
     "SOURCE_REVISION_SCHEMA",
@@ -433,6 +438,7 @@ __all__ = [
     "SemanticDocumentKind",
     "SemanticProjection",
     "SemanticQuery",
+    "SourceAdmissionReceiptV1",
     "SourceAnchor",
     "SourceArtifact",
     "SourceArtifactRecord",

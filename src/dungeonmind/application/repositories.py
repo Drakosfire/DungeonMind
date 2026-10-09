@@ -69,6 +69,7 @@ from ..contracts.semantic import (
     SemanticDocument,
     SemanticQuery,
 )
+from ..contracts.source_admission import SourceAdmissionReceiptV1
 from ..domain.canonical import canonical_json
 from ..domain.errors import IdempotencyConflictError
 from .source_provenance_snapshot import SourceProvenanceSnapshot
@@ -433,6 +434,25 @@ class SourceRepository(Protocol):
         ...
 
     def put_revision(self, revision: SourceRevision) -> SourceRevision: ...
+
+    def get_source_admission(
+        self, admission_id: str
+    ) -> SourceAdmissionReceiptV1 | None: ...
+
+    def admit_source_revision(
+        self,
+        *,
+        receipt: SourceAdmissionReceiptV1,
+        artifact: SourceArtifactRecord,
+        revision: SourceRevision,
+        source_body: bytes,
+    ) -> SourceAdmissionReceiptV1:
+        """Atomically store an existing-World source pair and its receipt.
+
+        Implementations must verify receipt bindings and the expected graph
+        head in the same transaction as all three durable writes.
+        """
+        ...
 
     def get_revision(self, source_revision_id: str) -> SourceRevision | None: ...
 

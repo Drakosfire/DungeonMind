@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -15,6 +16,7 @@ from ...application.repositories import (
     DurableIdentityDecision,
     DurableIdentityHistoryRecord,
 )
+from ...application.source_admission import source_admission_command_sha256
 from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
 from ...contracts.contribution import (
     GRAPH_CONTRIBUTION_SCHEMA,
@@ -51,12 +53,17 @@ from ...contracts.identity import (
     IdentityReconciliationDecision,
 )
 from ...contracts.retrieval import GraphRetrievalSession
+from ...contracts.source_admission import (
+    SourceAdmissionReceiptV1,
+)
 from ...domain.errors import (
     ContributionReviewAlreadyFinalizedError,
     DocumentNotFoundError,
+    HeadNotFoundError,
     IdempotencyConflictError,
     InvalidLifecycleTransitionError,
     PersistenceIntegrityError,
+    StaleParentRevisionError,
 )
 from .database import (
     SCHEMA,
@@ -192,6 +199,25 @@ def _return_revision(row: dict[str, Any]) -> SourceRevision:
     ).model_copy(deep=True)
 
 
+def _return_source_admission(row: dict[str, Any]) -> SourceAdmissionReceiptV1:
+    return reconstruct(
+        SourceAdmissionReceiptV1,
+        dict(row["payload"]),
+        expected_fingerprint=row["record_fingerprint"],
+        identity={
+            "admission_id": row["admission_id"],
+            "world_id": row["world_id"],
+            "expected_head_revision_id": row["expected_head_revision_id"],
+            "source_artifact_id": row["source_artifact_id"],
+            "source_revision_id": row["source_revision_id"],
+            "content_sha256": row["content_sha256"],
+            "command_sha256": row["command_sha256"],
+            "admitted_at": row["admitted_at"],
+            "schema_version": row["schema_version"],
+        },
+    ).model_copy(deep=True)
+
+
 def _return_session(row: dict[str, Any]) -> GraphRetrievalSession:
     model = reconstruct(
         GraphRetrievalSession,
@@ -226,6 +252,11 @@ _ARTIFACT_SELECT = """
 _REVISION_SELECT = """
     source_revision_id, source_artifact_id, content_sha256, body_storage,
     locator, created_at, schema_version, record_fingerprint, payload
+"""
+_SOURCE_ADMISSION_SELECT = """
+    admission_id, world_id, expected_head_revision_id, source_artifact_id,
+    source_revision_id, content_sha256, command_sha256, admitted_at,
+    schema_version, record_fingerprint, payload
 """
 _SESSION_SELECT = """
     session_id, thread_id, world_id, revision_id, created_at, updated_at,
@@ -1053,6 +1084,85 @@ def _put_revision_in_transaction(
     return _return_revision(row)
 
 
+def _validate_source_admission_binding(
+    receipt: SourceAdmissionReceiptV1,
+    artifact: SourceArtifactRecord,
+    revision: SourceRevision,
+    source_body: bytes,
+) -> None:
+    if (
+        artifact.world_id != receipt.world_id
+        or artifact.source_artifact_id != receipt.source_artifact_id
+        or artifact.current_revision_id != revision.source_revision_id
+        or revision.source_artifact_id != artifact.source_artifact_id
+        or revision.source_revision_id != receipt.source_revision_id
+        or revision.content_sha256 != receipt.content_sha256
+        or hashlib.sha256(source_body).hexdigest() != revision.content_sha256
+        or source_admission_command_sha256(
+            world_id=receipt.world_id,
+            expected_head_revision_id=receipt.expected_head_revision_id,
+            artifact=artifact,
+            revision=revision,
+        )
+        != receipt.command_sha256
+    ):
+        raise PersistenceIntegrityError("source admission receipt binding is inconsistent")
+
+
+def _insert_source_admission_receipt(
+    conn: Any,
+    receipt: SourceAdmissionReceiptV1,
+) -> SourceAdmissionReceiptV1:
+    fingerprint = model_fingerprint(receipt)
+    conn.execute(
+        sql.SQL(
+            """
+            INSERT INTO {}.source_admission_receipts (
+                admission_id, world_id, expected_head_revision_id,
+                source_artifact_id, source_revision_id, content_sha256,
+                command_sha256, admitted_at, schema_version,
+                record_fingerprint, payload
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (admission_id) DO NOTHING
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (
+            receipt.admission_id,
+            receipt.world_id,
+            receipt.expected_head_revision_id,
+            receipt.source_artifact_id,
+            receipt.source_revision_id,
+            receipt.content_sha256,
+            receipt.command_sha256,
+            receipt.admitted_at,
+            receipt.schema_version,
+            fingerprint,
+            jsonb(dump_payload(receipt)),
+        ),
+    )
+    row = conn.execute(
+        sql.SQL(
+            f"""
+            SELECT {_SOURCE_ADMISSION_SELECT}
+            FROM {{}}.source_admission_receipts
+            WHERE admission_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (receipt.admission_id,),
+    ).fetchone()
+    if row is None:
+        raise PersistenceIntegrityError("source admission receipt missing after insert")
+    stored = _return_source_admission(row)
+    if (
+        stored.world_id != receipt.world_id
+        or stored.command_sha256 != receipt.command_sha256
+    ):
+        raise IdempotencyConflictError(
+            f"source admission {receipt.admission_id!r} replayed with different input"
+        )
+    return stored
+
+
 class PostgresSourceRepository:
     def __init__(self, database: PostgresDatabase) -> None:
         self._database = database
@@ -1095,6 +1205,87 @@ class PostgresSourceRepository:
     def put_revision(self, revision: SourceRevision) -> SourceRevision:
         with self._database.transaction() as conn:
             return _put_revision_in_transaction(conn, revision)
+
+    def get_source_admission(
+        self, admission_id: str
+    ) -> SourceAdmissionReceiptV1 | None:
+        with self._database.transaction() as conn:
+            row = conn.execute(
+                sql.SQL(
+                    f"""
+                    SELECT {_SOURCE_ADMISSION_SELECT}
+                    FROM {{}}.source_admission_receipts
+                    WHERE admission_id = %s
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (admission_id,),
+            ).fetchone()
+        return _return_source_admission(row) if row is not None else None
+
+    def admit_source_revision(
+        self,
+        *,
+        receipt: SourceAdmissionReceiptV1,
+        artifact: SourceArtifactRecord,
+        revision: SourceRevision,
+        source_body: bytes,
+    ) -> SourceAdmissionReceiptV1:
+        _validate_source_admission_binding(receipt, artifact, revision, source_body)
+        with self._database.transaction() as conn:
+            existing = conn.execute(
+                sql.SQL(
+                    f"""
+                    SELECT {_SOURCE_ADMISSION_SELECT}
+                    FROM {{}}.source_admission_receipts
+                    WHERE admission_id = %s
+                    """
+                ).format(sql.Identifier(SCHEMA)),
+                (receipt.admission_id,),
+            ).fetchone()
+            if existing is not None:
+                stored = _return_source_admission(existing)
+                if (
+                    stored.world_id != receipt.world_id
+                    or stored.command_sha256 != receipt.command_sha256
+                ):
+                    raise IdempotencyConflictError(
+                        f"source admission {receipt.admission_id!r} replayed with different input"
+                    )
+                return stored
+
+            # The graph publisher takes this same row lock. It both proves
+            # this is an existing World and serializes the expected-head CAS.
+            world = conn.execute(
+                sql.SQL(
+                    "SELECT world_id FROM {}.worlds WHERE world_id = %s FOR UPDATE"
+                ).format(sql.Identifier(SCHEMA)),
+                (receipt.world_id,),
+            ).fetchone()
+            if world is None:
+                raise HeadNotFoundError(
+                    f"World {receipt.world_id!r} does not exist"
+                )
+            head = conn.execute(
+                sql.SQL(
+                    "SELECT head_revision_id FROM {}.world_graph_heads WHERE world_id = %s"
+                ).format(sql.Identifier(SCHEMA)),
+                (receipt.world_id,),
+            ).fetchone()
+            actual_head = head["head_revision_id"] if head is not None else None
+            if actual_head is None:
+                raise HeadNotFoundError(
+                    f"World {receipt.world_id!r} has no graph head"
+                )
+            if actual_head != receipt.expected_head_revision_id:
+                raise StaleParentRevisionError(
+                    world_id=receipt.world_id,
+                    expected_parent_revision_id=receipt.expected_head_revision_id,
+                    actual_head_revision_id=actual_head,
+                )
+
+            _put_artifact_in_transaction(conn, artifact)
+            _put_revision_in_transaction(conn, revision)
+            return _insert_source_admission_receipt(conn, receipt)
 
     def get_revision(self, source_revision_id: str) -> SourceRevision | None:
         with self._database.transaction() as conn:
