@@ -770,3 +770,266 @@ def test_explicit_evidence_ref_is_lifted() -> None:
     )
     evidence_ids = {item["evidence_ref_id"] for item in result.graph_payload["evidence_refs"]}
     assert "ev:college" in evidence_ids
+
+
+def _party_registry_six_pc_command() -> ReviewedWorldInitializationCommandV1:
+    from dungeonmind_dnd.application.world_object_vocabulary import load_builtin_v3_descriptor
+
+    descriptor = load_builtin_v3_descriptor()
+    artifact = _artifact().model_copy(
+        update={
+            "source_domain": SourceDomain.OTHER,
+            "source_domain_key": "party_registry",
+            "artifact_kind": "party_registry",
+            "document_class": "standing_context",
+            "campaign_id": CAMPAIGN_ID,
+        }
+    )
+    assertions = []
+    for index in range(6):
+        ref = EvidenceRef(
+            evidence_ref_id=f"ev:pc-{index}",
+            source_artifact_id=ART,
+            source_revision_id=REV,
+            source_domain=SourceDomain.OTHER,
+            evidence_role=EvidenceRole.SUPPORT,
+            can_open_source=False,
+            can_highlight_span=False,
+        )
+        assertions.append(
+            _node(
+                assertion_id=f"asrt:pc-{index}",
+                object_id=f"obj:pc-{index}",
+                kind="dnd5e:player_character",
+                label=f"Synthetic PC {index}",
+            ).model_copy(update={"evidence_refs": [ref]})
+        )
+    contribution = _contribution(assertions=assertions).model_copy(
+        update={"source_kind": ContributionSourceKind.STANDING_CONTEXT}
+    )
+    command = make_command(contribution=contribution, artifacts=[artifact])
+    return command.model_copy(
+        update={
+            "semantic_profile": SemanticProfileRef(
+                profile_id=descriptor.profile_id,
+                profile_revision=descriptor.profile_revision,
+                descriptor_sha256=descriptor_sha256(descriptor),
+            )
+        }
+    )
+
+
+def test_supplied_legacy_party_registry_refs_preserve_exact_key_and_admit_six_pcs() -> None:
+    from dungeonmind.application.world_graph_projection import WorldGraphProjectionService
+    from dungeonmind.contracts.graph import PublishRevisionCommand
+    from dungeonmind.contracts.projection import Admissibility
+    from dungeonmind.contracts.projection_v2 import ScopeModeV2, WorldGraphProjectionRequestV2
+    from dungeonmind.infrastructure.memory.repositories import (
+        InMemorySourceRepository,
+        InMemoryWorldGraphRepository,
+    )
+    from dungeonmind_dnd.application.world_object_vocabulary import load_builtin_v3_descriptor
+    from tests.unit.null_reviewed_world_initialization import (
+        NullReviewedWorldInitializationRepository,
+    )
+
+    command = _party_registry_six_pc_command()
+    before = command.model_dump(mode="json")
+    command_hash = reviewed_world_initialization_command_sha256(command)
+    reader = VersionedUnionGraphSnapshotReader(
+        profile_registry=StaticSemanticProfileRegistry([load_builtin_v3_descriptor()])
+    )
+    materialized = materialize_reviewed_world_initialization_v6(command, graph_reader=reader)
+    records = materialized.graph_payload["evidence_refs"]
+    assert len(records) == 6
+    assert {record["evidence_ref_id"] for record in records} == {f"ev:pc-{n}" for n in range(6)}
+    for record in records:
+        assert record["source_domain"] == "other"
+        assert record["source_domain_key"] == "party_registry"
+        assert record["source_artifact_id"] == ART and record["source_revision_id"] == REV
+        assert not record["can_open_source"] and not record["can_highlight_span"]
+        assert record["uri"] is None and record["locator"] is None
+    repo = InMemoryWorldGraphRepository()
+    published = repo.publish_revision(
+        PublishRevisionCommand(
+            world_id=WORLD_ID,
+            parent_revision_id=None,
+            expected_parent_revision_id=None,
+            operation_ids=["op:synthetic-pc-init"],
+            graph_schema=GRAPH_SCHEMA_V6,
+            graph_payload=materialized.graph_payload,
+            created_at=NOW,
+        )
+    )
+    sources = InMemorySourceRepository()
+    sources.put_artifact(command.source_artifacts[0])
+    sources.put_revision(command.source_revisions[0])
+    projection = WorldGraphProjectionService(
+        world_graph=repo,
+        sources=sources,
+        graph_reader=reader,
+        reviewed_world_initializations=NullReviewedWorldInitializationRepository(),
+    ).project(
+        WorldGraphProjectionRequestV2(
+            world_id=WORLD_ID,
+            scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN,
+            admissibility=Admissibility.GM,
+            revision_pin=published.revision_id,
+        )
+    )
+    assert set(projection.graph.objects) == {f"obj:pc-{n}" for n in range(6)}
+    assert command.model_dump(mode="json") == before
+    assert reviewed_world_initialization_command_sha256(command) == command_hash
+
+
+def test_explicit_wrong_v2_key_still_fails_strict_provenance_validation() -> None:
+    from dungeonmind.application.graph_scope import (
+        CampaignScope,
+        ProvenanceRejection,
+        _resolve_v2_evidence_provenance,
+    )
+    from dungeonmind.application.reviewed_world_initialization import _lift_evidence
+    from dungeonmind.contracts.projection import Admissibility
+    from dungeonmind.contracts.projection_v2 import ScopeModeV2
+    from dungeonmind.infrastructure.memory.repositories import InMemorySourceRepository
+
+    command = _party_registry_six_pc_command()
+    record = next(iter(_lift_evidence(command.reviewed_contribution.assertions[0]).values()))
+    assert record.source_domain_key == "other"
+    sources = InMemorySourceRepository()
+    sources.put_artifact(command.source_artifacts[0])
+    sources.put_revision(command.source_revisions[0])
+    rejected = _resolve_v2_evidence_provenance(
+        record,
+        evidence_ref_id=record.evidence_ref_id,
+        sources=sources,
+        world_id=WORLD_ID,
+        scope=CampaignScope.resolve(scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN, campaign_id=None),
+        admissibility=Admissibility.GM,
+    )
+    assert isinstance(rejected, ProvenanceRejection)
+    assert rejected.gap_code == "evidence_source_domain_mismatch"
+
+
+def test_mismatched_generic_family_is_not_normalized_to_artifact() -> None:
+    from dungeonmind.application.graph_scope import (
+        CampaignScope,
+        ProvenanceRejection,
+        _resolve_v2_evidence_provenance,
+    )
+    from dungeonmind.contracts.evidence import EvidenceRefV2
+    from dungeonmind.contracts.projection import Admissibility
+    from dungeonmind.contracts.projection_v2 import ScopeModeV2
+    from dungeonmind.infrastructure.memory.repositories import InMemorySourceRepository
+
+    command = make_first_world_family_command(evidence_domain=SourceDomain.SESSION_RECAP)
+    materialized = materialize_reviewed_world_initialization_v6(
+        command, graph_reader=graph_reader()
+    )
+    for record in materialized.graph_payload["evidence_refs"]:
+        assert record["source_domain"] == record["source_domain_key"] == "session_recap"
+    assert command.source_artifacts[0].source_domain is SourceDomain.WORLDBUILDING
+    sources = InMemorySourceRepository()
+    sources.put_artifact(command.source_artifacts[0])
+    sources.put_revision(command.source_revisions[0])
+    for raw in materialized.graph_payload["evidence_refs"]:
+        record = EvidenceRefV2.model_validate(raw)
+        rejected = _resolve_v2_evidence_provenance(
+            record,
+            evidence_ref_id=record.evidence_ref_id,
+            sources=sources,
+            world_id=WORLD_ID,
+            scope=CampaignScope.resolve(
+                scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN, campaign_id=None
+            ),
+            admissibility=Admissibility.GM,
+        )
+        assert isinstance(rejected, ProvenanceRejection)
+        assert rejected.gap_code == "evidence_source_domain_mismatch"
+
+
+@pytest.mark.parametrize("change", ["artifact", "revision", "revision_owner", "world"])
+def test_key_preservation_does_not_relax_source_pair_or_world_binding(change: str) -> None:
+    command = _party_registry_six_pc_command()
+    if change == "artifact":
+        assertion = command.reviewed_contribution.assertions[0]
+        bad_ref = assertion.evidence_refs[0].model_copy(
+            update={"source_artifact_id": "src:not-bound"}
+        )
+        changed = assertion.model_copy(update={"evidence_refs": [bad_ref]})
+        command = command.model_copy(
+            update={
+                "reviewed_contribution": command.reviewed_contribution.model_copy(
+                    update={"assertions": [changed, *command.reviewed_contribution.assertions[1:]]}
+                )
+            }
+        )
+    elif change == "revision":
+        assertion = command.reviewed_contribution.assertions[0]
+        bad_ref = assertion.evidence_refs[0].model_copy(
+            update={"source_revision_id": "srcrev:not-bound"}
+        )
+        changed = assertion.model_copy(update={"evidence_refs": [bad_ref]})
+        command = command.model_copy(
+            update={
+                "reviewed_contribution": command.reviewed_contribution.model_copy(
+                    update={"assertions": [changed, *command.reviewed_contribution.assertions[1:]]}
+                )
+            }
+        )
+    elif change == "revision_owner":
+        command = command.model_copy(
+            update={
+                "source_revisions": [
+                    command.source_revisions[0].model_copy(
+                        update={"source_artifact_id": "src:wrong-owner"}
+                    )
+                ]
+            }
+        )
+    else:
+        command = command.model_copy(
+            update={
+                "source_artifacts": [
+                    command.source_artifacts[0].model_copy(update={"world_id": "world:wrong"})
+                ]
+            }
+        )
+    with pytest.raises(PersistenceIntegrityError):
+        materialize_reviewed_world_initialization_v6(command, graph_reader=graph_reader())
+
+
+def test_key_preservation_does_not_grant_player_access_to_gm_registry() -> None:
+    from dungeonmind.application.graph_scope import CampaignScope, _resolve_v2_evidence_provenance
+    from dungeonmind.application.reviewed_world_initialization import _assertion_evidence
+    from dungeonmind.contracts.projection import Admissibility
+    from dungeonmind.contracts.projection_v2 import ScopeModeV2
+    from dungeonmind.infrastructure.memory.repositories import InMemorySourceRepository
+
+    command = _party_registry_six_pc_command()
+    assertion = command.reviewed_contribution.assertions[0]
+    _, records = _assertion_evidence(
+        assertion,
+        kind="node",
+        contribution=command.reviewed_contribution,
+        artifacts={ART: command.source_artifacts[0]},
+        revisions={REV: command.source_revisions[0]},
+        graph_object_id=assertion.subject_object_id,
+    )
+    record = next(iter(records.values()))
+    sources = InMemorySourceRepository()
+    sources.put_artifact(command.source_artifacts[0])
+    sources.put_revision(command.source_revisions[0])
+    assert (
+        _resolve_v2_evidence_provenance(
+            record,
+            evidence_ref_id=record.evidence_ref_id,
+            sources=sources,
+            world_id=WORLD_ID,
+            scope=CampaignScope.resolve(
+                scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN, campaign_id=None
+            ),
+            admissibility=Admissibility.PLAYER,
+        )
+        is None
+    )

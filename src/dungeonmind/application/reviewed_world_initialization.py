@@ -776,10 +776,18 @@ def _assertion_evidence(
 ) -> tuple[list[str], dict[str, EvidenceRefV2]]:
     lifted = _lift_evidence(assertion)
     if lifted:
-        for record in lifted.values():
+        for evidence_ref_id, record in lifted.items():
             _require_emitted_evidence_in_command(
                 record, artifacts=artifacts, revisions=revisions
             )
+            artifact = artifacts[record.source_artifact_id]
+            # V1 refs carry only the generic family, not the producer's opaque
+            # key. Recover that key from the exact bound typed artifact only
+            # when the family agrees; mismatches keep their strict read failure.
+            if artifact.source_domain is record.source_domain:
+                lifted[evidence_ref_id] = record.model_copy(
+                    update={"source_domain_key": artifact.source_domain_key}
+                )
         return sorted(lifted), lifted
     if kind not in _MATERIALIZABLE_KINDS:
         _fail(
