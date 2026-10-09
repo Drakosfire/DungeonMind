@@ -10,7 +10,7 @@ mentions, and diagnostics verbatim into the reviewed successor.
 
 from __future__ import annotations
 
-from typing import NoReturn
+from typing import Any, NoReturn
 
 from pydantic import ValidationError
 
@@ -143,7 +143,23 @@ def _build_review_state(
     )
     try:
         reviewed = GraphContributionV2.model_validate(reviewed_payload)
-        record = ContributionReviewRecordV2(
+        from ..contracts.contribution_review_v2 import (
+            GuardedContributionReviewIntentV2,
+            GuardedContributionReviewRecordV2,
+        )
+
+        record_type: Any = (
+            GuardedContributionReviewRecordV2
+            if isinstance(intent, GuardedContributionReviewIntentV2)
+            else ContributionReviewRecordV2
+        )
+        guard_fields = (
+            {"reviewed_identity_preconditions": intent.reviewed_identity_preconditions}
+            if isinstance(intent, GuardedContributionReviewIntentV2)
+            else {}
+        )
+        record = record_type(
+            **guard_fields,
             review_id=review_id,
             operation_id=intent.operation_id,
             world_id=intent.world_id,

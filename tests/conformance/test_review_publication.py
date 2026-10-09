@@ -117,9 +117,7 @@ def _seed_graph(
     return parent, reader
 
 
-def _seed_review() -> tuple[
-    InMemoryContributionReviewRepository, ContributionReviewState
-]:
+def _seed_review() -> tuple[InMemoryContributionReviewRepository, ContributionReviewState]:
     contributions = InMemoryContributionRepository()
     reviews = InMemoryContributionReviewRepository(contributions)
     state = _state()
@@ -349,9 +347,7 @@ def test_exact_tripod_publication_maps_one_review_to_one_revision() -> None:
     )
     published = graph.get_revision(WORLD_ID, PUBLISHED_REVISION_ID)
     assert published is not None
-    assert published.graph_payload == json.loads(
-        MATERIALIZED_FIXTURE.read_text(encoding="utf-8")
-    )
+    assert published.graph_payload == json.loads(MATERIALIZED_FIXTURE.read_text(encoding="utf-8"))
     assert published.revision.parent_revision_id == PARENT_REVISION_ID
     assert published.revision.operation_ids == [state.record.operation_id]
     assert published.revision.graph_schema == "dm_union_graph_v3"
@@ -643,9 +639,7 @@ def test_mismatched_returned_envelope_recovers_durable_record_without_republish(
     reviews, _state_value = _seed_review()
 
     def alter(publication: FinalizedReviewPublication) -> FinalizedReviewPublication:
-        return publication.model_copy(
-            update={"operation_id": "reviewop:" + "2" * 32}
-        )
+        return publication.model_copy(update={"operation_id": "reviewop:" + "2" * 32})
 
     publication = _SpyPublicationRepository(
         InMemoryFinalizedReviewPublicationRepository(reviews, graph),
@@ -940,3 +934,126 @@ def test_failed_world_rollback_preserves_concurrent_other_world_commit() -> None
     assert graph.get_revision(world_a, commands[world_a].expected_published_revision_id) is None
     assert publication.get_for_review(world_a, "review:a") is None
     assert publication.get_for_review(world_b, "review:b") == winning
+
+
+def _guarded_memory_bundle():
+    from dungeonmind.infrastructure.memory.repositories import (
+        InMemoryIdentityDecisionRepository,
+        InMemorySourceRepository,
+    )
+    from tests.unit.test_review_publication_transport_contract import _review_command_fixture
+
+    command, state, parent, decision, artifact, revision = _review_command_fixture()
+    graph = InMemoryWorldGraphRepository()
+    graph._revisions[(parent.revision.world_id, parent.revision.revision_id)] = parent.model_copy(
+        deep=True
+    )
+    graph._heads[parent.revision.world_id] = WorldGraphHead(
+        world_id=parent.revision.world_id,
+        head_revision_id=parent.revision.revision_id,
+        updated_at=parent.revision.created_at,
+    )
+    contributions = InMemoryContributionRepository()
+    reviews = InMemoryContributionReviewRepository(contributions)
+    reviews.finalize(state)
+    sources = InMemorySourceRepository()
+    sources.put_artifact(artifact)
+    sources.put_revision(revision)
+    identities = InMemoryIdentityDecisionRepository()
+    identities.append(decision)
+    publications = InMemoryFinalizedReviewPublicationRepository(
+        reviews, graph, source_repository=sources, identity_repository=identities
+    )
+    return command, graph, reviews, sources, identities, publications, decision
+
+
+def test_guarded_memory_publication_and_historical_retry_after_supersession():
+    command, graph, reviews, _sources, identities, publications, decision = _guarded_memory_bundle()
+    receipt = publications.publish(command)
+    identities.append(
+        decision.model_copy(
+            update={
+                "decision_id": "decision:superseding",
+                "supersedes_decision_ids": [decision.decision_id],
+            }
+        )
+    )
+    assert publications.publish(command) == receipt
+    assert publications.get_for_review(command.world_id, command.review_id) == receipt
+    assert len(graph._revisions) == 2
+    assert (
+        reviews.get(command.world_id, command.review_id).record.reviewed_identity_preconditions
+        == command.reviewed_identity_preconditions
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "superseded",
+        "conflict",
+        "source",
+        "target",
+        "missing_repository",
+        "inactive",
+        "missing_decision",
+        "foreign_source",
+        "revision",
+        "domain",
+        "tampered_guard",
+    ],
+)
+def test_guarded_memory_authority_failure_has_no_publication_effects(case):
+    command, graph, _reviews, sources, identities, publications, decision = _guarded_memory_bundle()
+    if case == "superseded":
+        identities.append(
+            decision.model_copy(
+                update={
+                    "decision_id": "decision:new",
+                    "supersedes_decision_ids": [decision.decision_id],
+                }
+            )
+        )
+    elif case == "conflict":
+        identities.append(
+            decision.model_copy(
+                update={"decision_id": "decision:conflicting", "target_object_ids": ["npc:other"]}
+            )
+        )
+    elif case == "source":
+        from dungeonmind.contracts.evidence import SourceStatus
+
+        aid = command.reviewed_identity_preconditions.sources[0].source_artifact_id
+        sources._artifacts[aid] = sources._artifacts[aid].model_copy(
+            update={"status": SourceStatus.RETRACTED}
+        )
+    elif case == "target":
+        p = graph._revisions[(command.world_id, command.expected_parent_revision_id)]
+        p.graph_payload["objects"][0]["label"] = "Changed"
+    elif case == "missing_repository":
+        publications._sources = None
+    elif case == "inactive":
+        identities._items[(decision.world_id, decision.decision_id)] = decision.model_copy(
+            update={"status": "retracted"}
+        )
+    elif case == "missing_decision":
+        identities._items.clear()
+    elif case in {"foreign_source", "domain"}:
+        aid = command.reviewed_identity_preconditions.sources[0].source_artifact_id
+        field = "world_id" if case == "foreign_source" else "source_domain_key"
+        sources._artifacts[aid] = sources._artifacts[aid].model_copy(update={field: "foreign"})
+    elif case == "revision":
+        sources._revisions.clear()
+    else:
+        changed_guard = command.reviewed_identity_preconditions.model_copy(
+            update={"decision_sha256": "a" * 64}
+        )
+        command = command.model_copy(update={"reviewed_identity_preconditions": changed_guard})
+    before = graph.get_head(command.world_id)
+    from dungeonmind.domain.errors import IdempotencyConflictError
+
+    with pytest.raises((PersistenceIntegrityError, IdempotencyConflictError)):
+        publications.publish(command)
+    assert graph.get_head(command.world_id) == before
+    assert len(graph._revisions) == 1
+    assert publications.get_for_review(command.world_id, command.review_id) is None

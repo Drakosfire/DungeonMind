@@ -32,6 +32,7 @@ from ...contracts.contribution_review_v2 import (
     CONTRIBUTION_REVIEW_RECORD_V2_SCHEMA,
     ContributionReviewRecordV2,
     ContributionReviewStateV2,
+    GuardedContributionReviewRecordV2,
 )
 from ...contracts.evidence import (
     SOURCE_ARTIFACT_SCHEMA,
@@ -136,9 +137,7 @@ def _return_contribution(row: dict[str, Any]) -> DurableGraphContribution:
     elif schema_version == GRAPH_CONTRIBUTION_V2_SCHEMA:
         model_type = GraphContributionV2
     else:
-        raise PersistenceIntegrityError(
-            f"unsupported contribution schema {schema_version!r}"
-        )
+        raise PersistenceIntegrityError(f"unsupported contribution schema {schema_version!r}")
     return reconstruct(
         model_type,
         dict(row["payload"]),
@@ -156,9 +155,7 @@ def _return_identity(row: dict[str, Any]) -> DurableIdentityHistoryRecord:
     elif schema_version == IDENTITY_RECONCILIATION_DECISION_SCHEMA:
         model_type = IdentityReconciliationDecision
     else:
-        raise PersistenceIntegrityError(
-            f"unsupported identity decision schema {schema_version!r}"
-        )
+        raise PersistenceIntegrityError(f"unsupported identity decision schema {schema_version!r}")
     return reconstruct(
         model_type,
         dict(row["payload"]),
@@ -393,7 +390,11 @@ def _return_review_record(
             ContributionReviewRecord
         )
     elif schema_version == CONTRIBUTION_REVIEW_RECORD_V2_SCHEMA:
-        model_type = ContributionReviewRecordV2
+        model_type = (
+            GuardedContributionReviewRecordV2
+            if "reviewed_identity_preconditions" in row["payload"]
+            else ContributionReviewRecordV2
+        )
     else:
         raise PersistenceIntegrityError(
             f"unsupported contribution review schema {schema_version!r}"
@@ -792,8 +793,8 @@ def _append_identity_in_transaction(
     decision: DurableIdentityHistoryRecord,
 ) -> DurableIdentityHistoryRecord:
     """Insert/reconcile one identity decision inside an existing transaction."""
+    lock_world(conn, decision.world_id, created_at=decision.created_at)
     fingerprint = model_fingerprint(decision)
-    ensure_world(conn, decision.world_id, created_at=decision.created_at)
     conn.execute(
         sql.SQL(
             """
@@ -849,8 +850,7 @@ class PostgresIdentityDecisionRepository:
     def append(self, decision: DurableIdentityDecision) -> DurableIdentityDecision:
         if not isinstance(decision, (IdentityDecisionRecord, IdentityDecisionRecordV2)):
             raise PersistenceIntegrityError(
-                "canonical reconciliation decisions must use the atomic reconciliation "
-                "publisher"
+                "canonical reconciliation decisions must use the atomic reconciliation publisher"
             )
         with self._database.transaction() as conn:
             stored = _append_identity_in_transaction(conn, decision)
@@ -923,7 +923,7 @@ def _put_artifact_in_transaction(
         visibility = artifact.visibility.value
         created_at = artifact.created_at
         substrate_created_at = artifact.created_at
-    ensure_world(conn, artifact.world_id, created_at=substrate_created_at)
+    lock_world(conn, artifact.world_id, created_at=substrate_created_at)
     if artifact.campaign_id is not None:
         ensure_campaign(
             conn,
@@ -993,6 +993,15 @@ def _put_revision_in_transaction(
     revision: SourceRevision,
 ) -> SourceRevision:
     """Insert/reconcile one source revision inside an existing transaction."""
+    owner = conn.execute(
+        sql.SQL("SELECT world_id FROM {}.source_artifacts WHERE source_artifact_id = %s").format(
+            sql.Identifier(SCHEMA)
+        ),
+        (revision.source_artifact_id,),
+    ).fetchone()
+    if owner is None:
+        raise PersistenceIntegrityError("source revision requires an existing owning artifact")
+    lock_world(conn, owner["world_id"], created_at=revision.created_at)
     fingerprint = model_fingerprint(revision)
     conn.execute(
         sql.SQL(

@@ -13,6 +13,7 @@ from ...contracts.graph import PublishRevisionCommand, StoredGraphRevision, Worl
 from ...contracts.review_publication import (
     FinalizedReviewPublication,
     FinalizedReviewPublicationCommand,
+    decode_finalized_review_publication_command,
 )
 from ...domain.canonical import canonical_sha256
 from ...domain.errors import (
@@ -26,7 +27,18 @@ from .graph import (
     PostgresWorldGraphRepository,
     _reconstruct_stored_revision,
 )
-from .records import _REVIEW_SELECT, _return_review_state
+from .records import (
+    _ARTIFACT_SELECT,
+    _IDENTITY_SELECT,
+    _REVIEW_SELECT,
+    _return_artifact,
+    _return_identity,
+    _return_review_state,
+    _return_revision,
+)
+from .records import (
+    _REVISION_SELECT as _SOURCE_REVISION_SELECT,
+)
 from .serialization import dump_payload, model_fingerprint, reconstruct
 
 _PUBLICATION_SELECT = """
@@ -193,6 +205,9 @@ def _validate_review_binding(
         command.parent_graph_payload_sha256,
         command.graph_schema,
     )
+    from ...application.review_publication import validate_guarded_command_binding
+
+    validate_guarded_command_binding(command, state.record)
     if actual != expected:
         raise IdempotencyConflictError(
             "finalized publication command disagrees with its durable review"
@@ -216,9 +231,7 @@ def _validate_revision(
         or revision.graph_payload_sha256 != command.graph_payload_sha256
         or stored.graph_payload != command.graph_payload
     ):
-        raise PersistenceIntegrityError(
-            "finalized publication revision does not match its command"
-        )
+        raise PersistenceIntegrityError("finalized publication revision does not match its command")
 
 
 def _validate_parent_revision(
@@ -252,15 +265,12 @@ def _validate_record_review(
         publication.world_id != record.world_id
         or publication.review_id != record.review_id
         or publication.reviewed_contribution_id != record.reviewed_contribution_id
-        or publication.reviewed_contribution_sha256
-        != record.reviewed_contribution_sha256
+        or publication.reviewed_contribution_sha256 != record.reviewed_contribution_sha256
         or publication.review_intent_sha256 != record.review_intent_sha256
         or publication.confirmation_id != record.confirmation_id
         or publication.operation_id != record.operation_id
-        or publication.expected_parent_revision_id
-        != record.plan_ref.expected_parent_revision_id
-        or publication.parent_graph_payload_sha256
-        != record.plan_ref.base_graph_payload_sha256
+        or publication.expected_parent_revision_id != record.plan_ref.expected_parent_revision_id
+        or publication.parent_graph_payload_sha256 != record.plan_ref.base_graph_payload_sha256
         or publication.graph_schema != record.plan_ref.base_graph_schema
     ):
         raise PersistenceIntegrityError(
@@ -328,9 +338,7 @@ class PostgresFinalizedReviewPublicationRepository:
         command: FinalizedReviewPublicationCommand,
     ) -> FinalizedReviewPublicationCommand:
         try:
-            return FinalizedReviewPublicationCommand.model_validate(
-                command.model_dump(mode="json")
-            )
+            return decode_finalized_review_publication_command(command.model_dump(mode="json"))
         except (AttributeError, TypeError, ValidationError, ValueError):
             raise PersistenceIntegrityError(
                 "finalized publication command failed validation"
@@ -360,9 +368,7 @@ class PostgresFinalizedReviewPublicationRepository:
     ) -> StoredGraphRevision:
         row = _revision_row(conn, world_id=world_id, revision_id=revision_id)
         if row is None:
-            raise PersistenceIntegrityError(
-                "finalized publication references a missing revision"
-            )
+            raise PersistenceIntegrityError("finalized publication references a missing revision")
         try:
             return _reconstruct_stored_revision(row)
         except PersistenceIntegrityError:
@@ -418,17 +424,13 @@ class PostgresFinalizedReviewPublicationRepository:
             publication.world_id != command.world_id
             or publication.review_id != command.review_id
             or publication.reviewed_contribution_id != command.reviewed_contribution_id
-            or publication.reviewed_contribution_sha256
-            != command.reviewed_contribution_sha256
+            or publication.reviewed_contribution_sha256 != command.reviewed_contribution_sha256
             or publication.review_intent_sha256 != command.review_intent_sha256
             or publication.confirmation_id != command.confirmation_id
             or publication.operation_id != command.operation_id
-            or publication.expected_parent_revision_id
-            != command.expected_parent_revision_id
-            or publication.parent_graph_payload_sha256
-            != command.parent_graph_payload_sha256
-            or publication.published_revision_id
-            != command.expected_published_revision_id
+            or publication.expected_parent_revision_id != command.expected_parent_revision_id
+            or publication.parent_graph_payload_sha256 != command.parent_graph_payload_sha256
+            or publication.published_revision_id != command.expected_published_revision_id
             or publication.graph_schema != command.graph_schema
             or publication.graph_payload_sha256 != command.graph_payload_sha256
         ):
@@ -500,9 +502,7 @@ class PostgresFinalizedReviewPublicationRepository:
             (publication.world_id, publication.review_id),
         ).fetchone()
         if row is None:
-            raise PersistenceIntegrityError(
-                "finalized publication missing after insert"
-            )
+            raise PersistenceIntegrityError("finalized publication missing after insert")
         return row
 
     def get(
@@ -531,12 +531,71 @@ class PostgresFinalizedReviewPublicationRepository:
             )
             return None if row is None else self._load_verified(conn, row)
 
+    def _validate_guard_in_transaction(
+        self,
+        conn: Connection[Any],
+        command: FinalizedReviewPublicationCommand,
+        parent: StoredGraphRevision,
+    ) -> None:
+        from ...application.review_publication import (
+            validate_reviewed_identity_publication_preconditions,
+        )
+        from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
+        from ...contracts.review_publication import GuardedFinalizedReviewPublicationCommand
+
+        if not isinstance(command, GuardedFinalizedReviewPublicationCommand):
+            return
+        guard = command.reviewed_identity_preconditions
+        rows = conn.execute(
+            sql.SQL(
+                f"SELECT {_IDENTITY_SELECT} FROM {{}}.identity_decisions "
+                "WHERE world_id = %s ORDER BY decision_id"
+            ).format(sql.Identifier(SCHEMA)),
+            (guard.world_id,),
+        ).fetchall()
+        decisions = [_return_identity(row) for row in rows]
+        artifacts, revisions = {}, {}
+        for artifact_id in sorted({s.source_artifact_id for s in guard.sources}):
+            row = conn.execute(
+                sql.SQL(
+                    f"SELECT {_ARTIFACT_SELECT} FROM {{}}.source_artifacts "
+                    "WHERE source_artifact_id = %s FOR SHARE"
+                ).format(sql.Identifier(SCHEMA)),
+                (artifact_id,),
+            ).fetchone()
+            if row is not None:
+                artifacts[artifact_id] = _return_artifact(row)
+        for revision_id in sorted({s.source_revision_id for s in guard.sources}):
+            row = conn.execute(
+                sql.SQL(
+                    f"SELECT {_SOURCE_REVISION_SELECT} FROM {{}}.source_revisions "
+                    "WHERE source_revision_id = %s"
+                ).format(sql.Identifier(SCHEMA)),
+                (revision_id,),
+            ).fetchone()
+            if row is not None:
+                revisions[revision_id] = _return_revision(row)
+        snapshot = SourceProvenanceSnapshot.from_loaded(
+            requested_artifact_ids=frozenset(s.source_artifact_id for s in guard.sources),
+            requested_revision_ids=frozenset(s.source_revision_id for s in guard.sources),
+            artifacts=artifacts,
+            revisions=revisions,
+        )
+        validate_reviewed_identity_publication_preconditions(
+            guard, parent=parent, decisions=decisions, sources=snapshot
+        )
+
     def publish(
         self,
         command: FinalizedReviewPublicationCommand,
     ) -> FinalizedReviewPublication:
         validated_command = self._reload_command(command)
         with self._database.transaction() as conn:
+            from ...contracts.review_publication import GuardedFinalizedReviewPublicationCommand
+
+            if isinstance(validated_command, GuardedFinalizedReviewPublicationCommand):
+                # Authority reads after the World-lock wait need a fresh statement snapshot.
+                conn.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
             lock_world(
                 conn,
                 validated_command.world_id,
@@ -572,6 +631,8 @@ class PostgresFinalizedReviewPublicationRepository:
                 existing = self._load_verified(conn, existing_row)
                 self._validate_command_record(validated_command, existing)
                 return existing
+
+            self._validate_guard_in_transaction(conn, validated_command, parent)
 
             existing_revision_row = _revision_row(
                 conn,

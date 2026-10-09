@@ -814,3 +814,133 @@ def test_finalize_v2_rejected_candidate_must_close_dependent_assertions() -> Non
             world_graph_repository=_GraphRepository(_stored_parent()),
             review_repository=reviews,
         )
+
+
+def _guarded_identity_fixture(parent_override=None):
+    from dungeonmind.contracts.contribution_review_v2 import (
+        GuardedContributionReviewIntentV2,
+        ReviewedIdentityPublicationPreconditionsV1,
+    )
+    from dungeonmind.contracts.identity import IdentityDecisionRecordV2
+    from tests.unit.test_reviewed_world_initialization_materialization_v6 import (
+        _artifact,
+        _revision,
+    )
+
+    def mutate(payload):
+        payload["evidence_refs"][0]["source_revision_id"] = "srcrev:guard-origin"
+
+    parent = parent_override or _stored_parent(_v6_parent_payload(mutate))
+    artifact = _artifact().model_copy(
+        update={
+            "source_artifact_id": "artifact:recap:longmont-c2:session-1",
+            "world_id": WORLD_ID,
+            "campaign_id": CAMPAIGN_ID,
+            "session_id": "session-1",
+            "source_domain": SourceDomain.SESSION_RECAP,
+            "source_domain_key": "session_recap",
+            "current_revision_id": "srcrev:guard-origin",
+        }
+    )
+    revision = _revision().model_copy(
+        update={
+            "source_artifact_id": artifact.source_artifact_id,
+            "source_revision_id": "srcrev:guard-origin",
+        }
+    )
+    decision = IdentityDecisionRecordV2(
+        decision_id="decision:reviewed-existing",
+        world_id=WORLD_ID,
+        decision_kind="human_override",
+        subject_object_ids=["candidate:reference"],
+        target_object_ids=[EXISTING_OBJECT_ID],
+        actor=REVIEWER_ID,
+        reason="Reviewed synthetic reference identity",
+        created_at=REVIEWED_AT,
+    )
+    target = next(
+        o for o in parent.graph_payload["objects"] if o["object_id"] == EXISTING_OBJECT_ID
+    )
+    refs = {e["evidence_ref_id"]: e for e in parent.graph_payload["evidence_refs"]}
+    guard = ReviewedIdentityPublicationPreconditionsV1(
+        world_id=WORLD_ID,
+        campaign_id=CAMPAIGN_ID,
+        expected_parent_revision_id=parent.revision.revision_id,
+        decision_id=decision.decision_id,
+        decision_sha256=canonical_sha256(decision.model_dump(mode="json")),
+        target_object_id=EXISTING_OBJECT_ID,
+        target_object_sha256=canonical_sha256(target),
+        existence_evidence_sha256=canonical_sha256(
+            [refs[e] for e in target["assertion_metadata"]["evidence_ref_ids"]]
+        ),
+        sources=(
+            {
+                "source_artifact_id": artifact.source_artifact_id,
+                "source_revision_id": revision.source_revision_id,
+                "source_artifact_sha256": canonical_sha256(artifact.model_dump(mode="json")),
+                "source_revision_sha256": canonical_sha256(revision.model_dump(mode="json")),
+            },
+        ),
+    )
+    legacy = _intent(parent=parent)
+    fields = {
+        name: getattr(legacy, name)
+        for name in (
+            "operation_id",
+            "world_id",
+            "campaign_id",
+            "plan_ref",
+            "candidate_contribution",
+            "identity_proposals",
+            "identity_verdicts",
+            "assertion_verdicts",
+            "reviewer_id",
+            "reviewed_at",
+        )
+    }
+    digest = derive_review_intent_sha256_v2(**fields, reviewed_identity_preconditions=guard)
+    intent = GuardedContributionReviewIntentV2(
+        **legacy.model_dump(exclude={"review_intent_sha256"}),
+        review_intent_sha256=digest,
+        reviewed_identity_preconditions=guard,
+    )
+    return intent, parent, decision, artifact, revision
+
+
+def test_guarded_review_roundtrip_commits_preconditions_without_legacy_field_churn():
+    from dungeonmind.contracts.contribution_review_v2 import GuardedContributionReviewRecordV2
+
+    intent, _, _, _, _ = _guarded_identity_fixture()
+    submission = ContributionReviewSubmissionV2.model_validate(
+        _submission(intent).model_dump(mode="json")
+    )
+    state = _build_review_state(submission)
+    assert isinstance(state.record, GuardedContributionReviewRecordV2)
+    assert state.record.reviewed_identity_preconditions == intent.reviewed_identity_preconditions
+    assert ContributionReviewStateV2.model_validate(state.model_dump(mode="json")) == state
+    changed = state.model_dump(mode="json")
+    del changed["record"]["reviewed_identity_preconditions"]
+    with pytest.raises(ValidationError):
+        ContributionReviewStateV2.model_validate(changed)
+    assert "reviewed_identity_preconditions" not in _intent().model_dump(mode="json")
+
+
+@pytest.mark.parametrize("change", ["hash", "world", "head", "sources_order", "extra"])
+def test_guarded_review_rejects_invalid_commitment(change):
+    from dungeonmind.contracts.contribution_review_v2 import GuardedContributionReviewIntentV2
+
+    intent, _, _, _, _ = _guarded_identity_fixture()
+    raw = intent.model_dump(mode="json")
+    guard = raw["reviewed_identity_preconditions"]
+    if change == "hash":
+        guard["decision_sha256"] = "f" * 64
+    elif change == "world":
+        guard["world_id"] = "world:foreign"
+    elif change == "head":
+        guard["expected_parent_revision_id"] = "rev:foreign"
+    elif change == "sources_order":
+        guard["sources"].append(copy.deepcopy(guard["sources"][0]))
+    else:
+        guard["unproved_mapping"] = {"x": "y"}
+    with pytest.raises(ValidationError):
+        GuardedContributionReviewIntentV2.model_validate(raw)

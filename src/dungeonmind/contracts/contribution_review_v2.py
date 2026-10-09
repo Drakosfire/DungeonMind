@@ -16,9 +16,9 @@ directly.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, SerializeAsAny, field_validator, model_validator
 
 from .base import DungeonMindModel
 from .contribution import (
@@ -84,6 +84,59 @@ NON_MUTATING_IDENTITY_OUTCOMES = frozenset(
 )
 
 
+class ReviewedIdentitySourcePreconditionV1(DungeonMindModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    source_artifact_id: str = Field(min_length=1)
+    source_revision_id: str = Field(min_length=1)
+    source_artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_revision_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("source_artifact_id", "source_revision_id")
+    @classmethod
+    def _ids(cls, value: str) -> str:
+        return _require_nonblank(value, field_name="source identity")
+
+
+class ReviewedIdentityPublicationPreconditionsV1(DungeonMindModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    schema_version: Literal["dm_reviewed_identity_publication_preconditions_v1"] = (
+        "dm_reviewed_identity_publication_preconditions_v1"
+    )
+    world_id: str = Field(min_length=1)
+    campaign_id: str = Field(min_length=1)
+    expected_parent_revision_id: str = Field(min_length=1)
+    decision_id: str = Field(min_length=1)
+    decision_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    target_object_id: str = Field(min_length=1)
+    target_object_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    existence_evidence_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sources: tuple[ReviewedIdentitySourcePreconditionV1, ...] = Field(min_length=1, max_length=16)
+
+    @field_validator(
+        "world_id", "campaign_id", "expected_parent_revision_id", "decision_id", "target_object_id"
+    )
+    @classmethod
+    def _ids(cls, value: str) -> str:
+        return _require_nonblank(value, field_name="guard identity")
+
+    @model_validator(mode="after")
+    def _sources(self) -> Self:
+        pairs = [(s.source_artifact_id, s.source_revision_id) for s in self.sources]
+        if pairs != sorted(set(pairs)):
+            raise ValueError("guard sources must be sorted and unique")
+        return self
+
+
+def _validate_guard_basis(value: Any) -> None:
+    guard = value.reviewed_identity_preconditions
+    if (
+        guard.world_id != value.world_id
+        or guard.campaign_id != value.campaign_id
+        or guard.expected_parent_revision_id != value.plan_ref.expected_parent_revision_id
+    ):
+        raise ValueError("reviewed identity preconditions differ from review basis")
+
+
 def contribution_v2_payload_sha256(contribution: GraphContributionV2) -> str:
     """Digest the complete serialized v2 contribution payload."""
     return _canonical_sha256(contribution.model_dump(mode="json"))
@@ -101,6 +154,7 @@ def derive_review_intent_sha256_v2(
     assertion_verdicts: list[ContributionAssertionVerdict],
     reviewer_id: str,
     reviewed_at: datetime,
+    reviewed_identity_preconditions: ReviewedIdentityPublicationPreconditionsV1 | None = None,
 ) -> str:
     """Derive the v2 intent digest from every field except the digest itself."""
     material = {
@@ -116,6 +170,10 @@ def derive_review_intent_sha256_v2(
         "reviewer_id": reviewer_id,
         "reviewed_at": reviewed_at.isoformat(),
     }
+    if reviewed_identity_preconditions is not None:
+        material["reviewed_identity_preconditions"] = reviewed_identity_preconditions.model_dump(
+            mode="json"
+        )
     return _canonical_sha256(material)
 
 
@@ -282,6 +340,7 @@ class ContributionReviewIntentV2(DungeonMindModel):
             assertion_verdicts=self.assertion_verdicts,
             reviewer_id=self.reviewer_id,
             reviewed_at=self.reviewed_at,
+            reviewed_identity_preconditions=getattr(self, "reviewed_identity_preconditions", None),
         )
         if self.review_intent_sha256 != expected_digest:
             raise ValueError("review_intent_sha256 does not match intent content")
@@ -344,7 +403,17 @@ class ContributionReviewSubmissionV2(DungeonMindModel):
     schema_version: Literal["dm_contribution_review_submission_v2"] = (
         CONTRIBUTION_REVIEW_SUBMISSION_V2_SCHEMA
     )
-    intent: ContributionReviewIntentV2
+    intent: SerializeAsAny[ContributionReviewIntentV2]
+
+    @field_validator("intent", mode="before")
+    @classmethod
+    def _decode_intent(cls, value: Any) -> ContributionReviewIntentV2:
+        if isinstance(value, ContributionReviewIntentV2):
+            return value
+        if isinstance(value, dict) and "reviewed_identity_preconditions" in value:
+            return GuardedContributionReviewIntentV2.model_validate(value)
+        return ContributionReviewIntentV2.model_validate(value)
+
     confirmation: CommitConfirmationReceiptV2
 
     @model_validator(mode="after")
@@ -477,7 +546,17 @@ class ContributionReviewStateV2(DungeonMindModel):
 
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     schema_version: Literal["dm_contribution_review_state_v2"] = CONTRIBUTION_REVIEW_STATE_V2_SCHEMA
-    record: ContributionReviewRecordV2
+    record: SerializeAsAny[ContributionReviewRecordV2]
+
+    @field_validator("record", mode="before")
+    @classmethod
+    def _decode_record(cls, value: Any) -> ContributionReviewRecordV2:
+        if isinstance(value, ContributionReviewRecordV2):
+            return value
+        if isinstance(value, dict) and "reviewed_identity_preconditions" in value:
+            return GuardedContributionReviewRecordV2.model_validate(value)
+        return ContributionReviewRecordV2.model_validate(value)
+
     candidate_contribution: GraphContributionV2
     reviewed_contribution: GraphContributionV2
 
@@ -534,6 +613,9 @@ class ContributionReviewStateV2(DungeonMindModel):
             assertion_verdicts=record.assertion_verdicts,
             reviewer_id=record.reviewer_id,
             reviewed_at=record.reviewed_at,
+            reviewed_identity_preconditions=getattr(
+                record, "reviewed_identity_preconditions", None
+            ),
         )
         if record.review_intent_sha256 != expected_intent_digest:
             raise ValueError("review record intent digest does not match durable content")
@@ -647,4 +729,22 @@ class ContributionReviewStateV2(DungeonMindModel):
             raise ValueError("stored candidate contribution digest drifted")
         if contribution_v2_payload_sha256(reviewed) != record.reviewed_contribution_sha256:
             raise ValueError("reviewed contribution digest drifted")
+        return self
+
+
+class GuardedContributionReviewIntentV2(ContributionReviewIntentV2):
+    reviewed_identity_preconditions: ReviewedIdentityPublicationPreconditionsV1
+
+    @model_validator(mode="after")
+    def _guard_basis(self) -> Self:
+        _validate_guard_basis(self)
+        return self
+
+
+class GuardedContributionReviewRecordV2(ContributionReviewRecordV2):
+    reviewed_identity_preconditions: ReviewedIdentityPublicationPreconditionsV1
+
+    @model_validator(mode="after")
+    def _guard_basis(self) -> Self:
+        _validate_guard_basis(self)
         return self

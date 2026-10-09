@@ -16,10 +16,9 @@ from typing import Any, Literal, Self
 from pydantic import ConfigDict, field_validator, model_validator
 
 from .base import DungeonMindModel
+from .contribution_review_v2 import ReviewedIdentityPublicationPreconditionsV1
 
-FINALIZED_REVIEW_PUBLICATION_COMMAND_SCHEMA = (
-    "dm_finalized_review_publication_command_v1"
-)
+FINALIZED_REVIEW_PUBLICATION_COMMAND_SCHEMA = "dm_finalized_review_publication_command_v1"
 FINALIZED_REVIEW_PUBLICATION_SCHEMA = "dm_finalized_review_publication_v1"
 
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
@@ -116,9 +115,9 @@ class _PublicationContract(DungeonMindModel):
 class FinalizedReviewPublication(_PublicationContract):
     """One immutable terminal correspondence between review and revision."""
 
-    schema_version: Literal[
-        "dm_finalized_review_publication_v1"
-    ] = FINALIZED_REVIEW_PUBLICATION_SCHEMA
+    schema_version: Literal["dm_finalized_review_publication_v1"] = (
+        FINALIZED_REVIEW_PUBLICATION_SCHEMA
+    )
     world_id: str
     review_id: str
     reviewed_contribution_id: str
@@ -155,9 +154,9 @@ class FinalizedReviewPublicationCommand(_PublicationContract):
     is not a transport request and has no pending-attempt or retry lifecycle.
     """
 
-    schema_version: Literal[
-        "dm_finalized_review_publication_command_v1"
-    ] = FINALIZED_REVIEW_PUBLICATION_COMMAND_SCHEMA
+    schema_version: Literal["dm_finalized_review_publication_command_v1"] = (
+        FINALIZED_REVIEW_PUBLICATION_COMMAND_SCHEMA
+    )
     world_id: str
     review_id: str
     reviewed_contribution_id: str
@@ -190,7 +189,30 @@ class FinalizedReviewPublicationCommand(_PublicationContract):
             graph_payload_sha256=self.graph_payload_sha256,
         )
         if self.expected_published_revision_id != expected:
-            raise ValueError(
-                "expected_published_revision_id does not match publication content"
-            )
+            raise ValueError("expected_published_revision_id does not match publication content")
         return self
+
+
+class GuardedFinalizedReviewPublicationCommand(FinalizedReviewPublicationCommand):
+    reviewed_identity_preconditions: ReviewedIdentityPublicationPreconditionsV1
+
+    @model_validator(mode="after")
+    def _guard_basis(self) -> Self:
+        guard = self.reviewed_identity_preconditions
+        if (
+            guard.world_id != self.world_id
+            or guard.expected_parent_revision_id != self.expected_parent_revision_id
+        ):
+            raise ValueError("publication guard differs from command basis")
+        return self
+
+
+def decode_finalized_review_publication_command(
+    value: dict[str, Any],
+) -> FinalizedReviewPublicationCommand:
+    model = (
+        GuardedFinalizedReviewPublicationCommand
+        if "reviewed_identity_preconditions" in value
+        else FinalizedReviewPublicationCommand
+    )
+    return model.model_validate(value)

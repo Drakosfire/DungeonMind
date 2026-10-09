@@ -701,3 +701,291 @@ def test_in_memory_v6_finalize_publish_matches_postgres(pg) -> None:
     assert memory_result == pg_result
     assert memory_result.graph_payload_sha256 == pg_result.graph_payload_sha256
     assert memory_result.published_revision_id == pg_result.published_revision_id
+
+
+def _guarded_pg_review(pg):
+    from dungeonmind.contracts.graph import PublishRevisionCommand
+    from tests.unit.test_contribution_review_v2 import (
+        _guarded_identity_fixture,
+    )
+    from tests.unit.test_contribution_review_v2 import (
+        _submission as guarded_submission,
+    )
+
+    _, sample, _, _, _ = _guarded_identity_fixture()
+    revision = pg.world_graph.publish_revision(
+        PublishRevisionCommand(
+            world_id=WORLD_ID,
+            parent_revision_id=None,
+            expected_parent_revision_id=None,
+            operation_ids=["op:guarded-genesis"],
+            graph_schema=GRAPH_SCHEMA_V6,
+            graph_payload=sample.graph_payload,
+            created_at=REVIEWED_AT,
+        )
+    )
+    parent = pg.world_graph.get_revision(WORLD_ID, revision.revision_id)
+    intent, _, decision, artifact, source_revision = _guarded_identity_fixture(
+        parent_override=parent
+    )
+    pg.identity_decisions.append(decision)
+    pg.sources.put_artifact(artifact)
+    pg.sources.put_revision(source_revision)
+    state = finalize_contribution_review_v2(
+        guarded_submission(intent),
+        capability_policy=_policy(intent),
+        world_graph_repository=pg.world_graph,
+        review_repository=pg.contribution_reviews,
+    )
+    return state, parent, decision, artifact
+
+
+def _mutate_guard_authority(pg, decision, artifact, kind):
+    if kind == "decision":
+        pg.identity_decisions.append(
+            decision.model_copy(
+                update={
+                    "decision_id": "decision:superseding",
+                    "supersedes_decision_ids": [decision.decision_id],
+                }
+            )
+        )
+    elif kind == "artifact_put":
+        pg.sources.put_artifact(artifact)
+    elif kind == "revision_put":
+        revision = pg.sources.get_revision(artifact.current_revision_id)
+        pg.sources.put_revision(revision)
+    else:
+        from dungeonmind.infrastructure.postgres.existing_world_adoption import (
+            _update_source_artifact_in_transaction,
+            lock_world,
+        )
+
+        with pg.database.transaction() as conn:
+            lock_world(conn, artifact.world_id, created_at=REVIEWED_AT)
+            _update_source_artifact_in_transaction(
+                conn, artifact.model_copy(update={"source_domain_key": "changed_by_typed_writer"})
+            )
+
+
+@pytest.mark.parametrize("kind", ["decision", "source"])
+@pytest.mark.parametrize("repeatable_read", [False, True])
+def test_guarded_pg_drift_committed_before_publication_lock_rejects_atomically(
+    pg, monkeypatch, kind, repeatable_read
+):
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+    from dungeonmind.infrastructure.postgres import review_publication as publisher_module
+
+    state, parent, decision, artifact = _guarded_pg_review(pg)
+    if repeatable_read:
+        from psycopg import IsolationLevel
+
+        from dungeonmind.infrastructure.postgres import PostgresDatabase
+
+        class RepeatableReadDatabase(PostgresDatabase):
+            def connect(self):
+                conn = super().connect()
+                conn.isolation_level = IsolationLevel.REPEATABLE_READ
+                return conn
+
+        pg.finalized_review_publications = (
+            publisher_module.PostgresFinalizedReviewPublicationRepository(
+                RepeatableReadDatabase(pg.database._database_url)
+            )
+        )
+    paused = threading.Event()
+    resume = threading.Event()
+    errors = []
+    actual_lock = publisher_module.lock_world
+
+    def pause_before_lock(conn, world_id, *, created_at):
+        paused.set()
+        assert resume.wait(10)
+        return actual_lock(conn, world_id, created_at=created_at)
+
+    monkeypatch.setattr(publisher_module, "lock_world", pause_before_lock)
+
+    def publish():
+        try:
+            _publish(pg, state.record.review_id)
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = threading.Thread(target=publish, name="guarded-publisher")
+    worker.start()
+    try:
+        assert paused.wait(10)
+        _mutate_guard_authority(pg, decision, artifact, kind)
+        assert pg.world_graph.get_head(WORLD_ID).head_revision_id == parent.revision.revision_id
+    finally:
+        resume.set()
+        worker.join(10)
+    assert not worker.is_alive()
+    assert len(errors) == 1 and isinstance(errors[0], PersistenceIntegrityError)
+    assert pg.finalized_review_publications.get_for_review(WORLD_ID, state.record.review_id) is None
+    with pg.database.connect() as conn:
+        assert (
+            conn.execute("SELECT count(*) AS n FROM dungeonmind.graph_revisions").fetchone()["n"]
+            == 1
+        )
+        assert (
+            conn.execute(
+                "SELECT count(*) AS n FROM dungeonmind.world_graph_head_events"
+            ).fetchone()["n"]
+            == 1
+        )
+
+
+@pytest.mark.parametrize("kind", ["decision", "source", "artifact_put", "revision_put"])
+def test_guarded_pg_writer_blocks_until_publication_then_receipt_replays(pg, monkeypatch, kind):
+    from time import monotonic
+
+    from dungeonmind.infrastructure.postgres import (
+        PostgresRepositoryBundle,
+    )
+    from dungeonmind.infrastructure.postgres import existing_world_adoption as source_writer_module
+    from dungeonmind.infrastructure.postgres import records as writer_module
+    from dungeonmind.infrastructure.postgres import (
+        review_publication as publisher_module,
+    )
+
+    state, _parent, decision, artifact = _guarded_pg_review(pg)
+    validated = threading.Event()
+    release = threading.Event()
+    writer_started = threading.Event()
+    pids = {}
+    errors = []
+    receipts = []
+    actual_validate = (
+        publisher_module.PostgresFinalizedReviewPublicationRepository._validate_guard_in_transaction
+    )
+
+    def pause_after_guard(self, conn, command, stored):
+        actual_validate(self, conn, command, stored)
+        pids["publisher"] = conn.execute("SELECT pg_backend_pid() AS pid").fetchone()["pid"]
+        validated.set()
+        assert release.wait(10)
+
+    monkeypatch.setattr(
+        publisher_module.PostgresFinalizedReviewPublicationRepository,
+        "_validate_guard_in_transaction",
+        pause_after_guard,
+    )
+    actual_lock = writer_module.lock_world
+
+    def observe_writer_lock(conn, world_id, *, created_at):
+        if threading.current_thread().name == "authority-writer":
+            pids["writer"] = conn.execute("SELECT pg_backend_pid() AS pid").fetchone()["pid"]
+            writer_started.set()
+        return actual_lock(conn, world_id, created_at=created_at)
+
+    monkeypatch.setattr(writer_module, "lock_world", observe_writer_lock)
+    monkeypatch.setattr(source_writer_module, "lock_world", observe_writer_lock)
+
+    def publish():
+        try:
+            receipts.append(_publish(pg, state.record.review_id))
+        except BaseException as exc:
+            errors.append(exc)
+
+    def mutate():
+        try:
+            _mutate_guard_authority(pg, decision, artifact, kind)
+        except BaseException as exc:
+            errors.append(exc)
+
+    publisher = threading.Thread(target=publish, name="guarded-publisher")
+    writer = threading.Thread(target=mutate, name="authority-writer")
+    publisher.start()
+    try:
+        assert validated.wait(10), repr(errors)
+        writer.start()
+        assert writer_started.wait(10)
+        blocked = False
+        deadline = monotonic() + 10
+        with pg.database.connect() as conn:
+            while monotonic() < deadline:
+                blocked = conn.execute(
+                    "SELECT %s = ANY(pg_blocking_pids(%s)) AS blocked",
+                    (pids["publisher"], pids["writer"]),
+                ).fetchone()["blocked"]
+                if blocked:
+                    break
+        assert blocked, "actual PostgreSQL lock ownership must block the real authority writer"
+        assert writer.is_alive()
+    finally:
+        release.set()
+        publisher.join(10)
+        if writer.ident is not None:
+            writer.join(10)
+    assert not publisher.is_alive() and not writer.is_alive() and not errors
+    assert len(receipts) == 1
+    fresh = PostgresRepositoryBundle(pg.database)
+    restored = fresh.contribution_reviews.get(WORLD_ID, state.record.review_id)
+    assert (
+        restored.record.reviewed_identity_preconditions
+        == state.record.reviewed_identity_preconditions
+    )
+    assert (
+        fresh.finalized_review_publications.get_for_review(WORLD_ID, state.record.review_id)
+        == receipts[0]
+    )
+    assert _publish(fresh, state.record.review_id) == receipts[0]
+    assert receipts[0].review_intent_sha256 == restored.record.review_intent_sha256
+    with pg.database.connect() as conn:
+        assert (
+            conn.execute("SELECT count(*) AS n FROM dungeonmind.graph_revisions").fetchone()["n"]
+            == 2
+        )
+        assert (
+            conn.execute(
+                "SELECT count(*) AS n FROM dungeonmind.finalized_review_publications"
+            ).fetchone()["n"]
+            == 1
+        )
+
+
+def test_guarded_pg_failure_after_validation_rolls_back_child_head_and_receipt(pg, monkeypatch):
+    from dungeonmind.domain.errors import FinalizedReviewPublicationOutcomeUnknownError
+    from dungeonmind.infrastructure.postgres.review_publication import (
+        PostgresFinalizedReviewPublicationRepository,
+    )
+
+    state, parent, _, _ = _guarded_pg_review(pg)
+    validated = threading.Event()
+    actual_validate = PostgresFinalizedReviewPublicationRepository._validate_guard_in_transaction
+
+    def observe_validation(self, conn, command, stored):
+        actual_validate(self, conn, command, stored)
+        validated.set()
+
+    monkeypatch.setattr(
+        PostgresFinalizedReviewPublicationRepository,
+        "_validate_guard_in_transaction",
+        observe_validation,
+    )
+
+    def fail_after_revision():
+        assert validated.is_set()
+        raise RuntimeError("synthetic failure after guarded child insertion")
+
+    pg.finalized_review_publications = PostgresFinalizedReviewPublicationRepository(
+        pg.database, failure_hook=fail_after_revision
+    )
+    with pytest.raises(FinalizedReviewPublicationOutcomeUnknownError):
+        _publish(pg, state.record.review_id)
+    assert validated.is_set()
+    assert pg.world_graph.get_head(WORLD_ID).head_revision_id == parent.revision.revision_id
+    assert pg.world_graph.get_revision(WORLD_ID, parent.revision.revision_id) == parent
+    assert pg.finalized_review_publications.get_for_review(WORLD_ID, state.record.review_id) is None
+    with pg.database.connect() as conn:
+        assert (
+            conn.execute("SELECT count(*) AS n FROM dungeonmind.graph_revisions").fetchone()["n"]
+            == 1
+        )
+        assert (
+            conn.execute(
+                "SELECT count(*) AS n FROM dungeonmind.world_graph_head_events"
+            ).fetchone()["n"]
+            == 1
+        )
