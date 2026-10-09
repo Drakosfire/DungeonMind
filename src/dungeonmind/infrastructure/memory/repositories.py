@@ -528,6 +528,8 @@ class InMemoryFinalizedReviewPublicationRepository:
         world_graph_repository: InMemoryWorldGraphRepository,
         *,
         failure_hook: Callable[[], None] | None = None,
+        source_repository: "InMemorySourceRepository | None" = None,
+        identity_repository: "InMemoryIdentityDecisionRepository | None" = None,
     ) -> None:
         self._reviews = review_repository
         self._graph = world_graph_repository
@@ -535,13 +537,21 @@ class InMemoryFinalizedReviewPublicationRepository:
         self._records_by_operation: dict[tuple[str, str], FinalizedReviewPublication] = {}
         self._records_by_revision: dict[tuple[str, str], FinalizedReviewPublication] = {}
         self._failure_hook = failure_hook
+        self._sources = source_repository
+        self._identity = identity_repository
+        self._source_lock = source_repository._lock if source_repository else threading.RLock()
+        self._identity_lock = (
+            identity_repository._lock if identity_repository else threading.RLock()
+        )
 
     @staticmethod
     def _reload_command(
         command: FinalizedReviewPublicationCommand,
     ) -> FinalizedReviewPublicationCommand:
         try:
-            return FinalizedReviewPublicationCommand.model_validate(command.model_dump(mode="json"))
+            from ...contracts.review_publication import decode_finalized_review_publication_command
+
+            return decode_finalized_review_publication_command(command.model_dump(mode="json"))
         except Exception:
             raise PersistenceIntegrityError(
                 "finalized publication command failed validation"
@@ -577,6 +587,9 @@ class InMemoryFinalizedReviewPublicationRepository:
             command.parent_graph_payload_sha256,
             command.graph_schema,
         )
+        from ...application.review_publication import validate_guarded_command_binding
+
+        validate_guarded_command_binding(command, state.record)
         if actual != expected:
             raise IdempotencyConflictError(
                 "finalized publication command disagrees with its durable review"
@@ -735,7 +748,13 @@ class InMemoryFinalizedReviewPublicationRepository:
             graph_schema=verified.graph_schema,
             graph_payload_sha256=verified.parent_graph_payload_sha256,
         )
-        command = FinalizedReviewPublicationCommand(
+        from ...contracts.review_publication import GuardedFinalizedReviewPublicationCommand
+        guard = getattr(state.record, "reviewed_identity_preconditions", None)
+        command_type = (GuardedFinalizedReviewPublicationCommand
+                        if guard is not None else FinalizedReviewPublicationCommand)
+        guard_fields = {"reviewed_identity_preconditions": guard} if guard is not None else {}
+        command = command_type(
+            **guard_fields,
             world_id=verified.world_id,
             review_id=verified.review_id,
             reviewed_contribution_id=verified.reviewed_contribution_id,
@@ -827,7 +846,14 @@ class InMemoryFinalizedReviewPublicationRepository:
     ) -> FinalizedReviewPublication:
         validated_command = self._reload_command(command)
         world_id = validated_command.world_id
-        with self._graph._lock_for(world_id):
+        from contextlib import nullcontext
+
+        from ...contracts.review_publication import GuardedFinalizedReviewPublicationCommand
+
+        guarded = isinstance(validated_command, GuardedFinalizedReviewPublicationCommand)
+        source_lock = self._source_lock if guarded else nullcontext()
+        identity_lock = self._identity_lock if guarded else nullcontext()
+        with self._graph._lock_for(world_id), source_lock, identity_lock:
             state = self._reviews.get(world_id, validated_command.review_id)
             if state is None:
                 raise ContributionReviewNotFoundError(
@@ -860,6 +886,28 @@ class InMemoryFinalizedReviewPublicationRepository:
                 self._validate_command_record(validated_command, existing)
                 return self._reconstruct_unlocked(existing)
 
+            from ...contracts.review_publication import GuardedFinalizedReviewPublicationCommand
+
+            if isinstance(validated_command, GuardedFinalizedReviewPublicationCommand):
+                from ...application.review_publication import (
+                    validate_reviewed_identity_publication_preconditions,
+                )
+
+                if self._sources is None or self._identity is None:
+                    raise PersistenceIntegrityError(
+                        "guarded publication requires authority repositories"
+                    )
+                guard = validated_command.reviewed_identity_preconditions
+                snapshot = self._sources.get_provenance_snapshot(
+                    artifact_ids=[s.source_artifact_id for s in guard.sources],
+                    revision_ids=[s.source_revision_id for s in guard.sources],
+                )
+                validate_reviewed_identity_publication_preconditions(
+                    guard,
+                    parent=parent,
+                    decisions=self._identity.list_for_world(world_id),
+                    sources=snapshot,
+                )
             existing_revision = self._graph._revisions.get(
                 (world_id, validated_command.expected_published_revision_id)
             )
