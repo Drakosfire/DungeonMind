@@ -58,6 +58,7 @@ from .reviewed_world_initialization import (
     initialize_reviewed_world,
     materialize_reviewed_world_initialization_v6,
 )
+from .source_admission import admit_source_revision
 from .source_provenance_snapshot import SourceProvenanceSnapshot
 from .world_graph_observability import (
     NOOP_READ_OBSERVER,
@@ -160,6 +161,7 @@ __all__ = [
     "WorldGraphRepository",
     "WorldGraphRetrievalService",
     "WorldIdentityReconciliationRepository",
+    "admit_source_revision",
     "adopt_existing_world",
     "classify_read_failure",
     "derive_source_anchor_id",
