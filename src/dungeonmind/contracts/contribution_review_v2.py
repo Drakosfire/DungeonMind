@@ -408,9 +408,11 @@ class ContributionReviewSubmissionV2(DungeonMindModel):
     @field_validator("intent", mode="before")
     @classmethod
     def _decode_intent(cls, value: Any) -> ContributionReviewIntentV2:
+        if isinstance(value, ContributionReviewIntentV2):
+            return value
         if isinstance(value, dict) and "reviewed_identity_preconditions" in value:
             return GuardedContributionReviewIntentV2.model_validate(value)
-        return value
+        return ContributionReviewIntentV2.model_validate(value)
 
     confirmation: CommitConfirmationReceiptV2
 
@@ -549,9 +551,11 @@ class ContributionReviewStateV2(DungeonMindModel):
     @field_validator("record", mode="before")
     @classmethod
     def _decode_record(cls, value: Any) -> ContributionReviewRecordV2:
+        if isinstance(value, ContributionReviewRecordV2):
+            return value
         if isinstance(value, dict) and "reviewed_identity_preconditions" in value:
             return GuardedContributionReviewRecordV2.model_validate(value)
-        return value
+        return ContributionReviewRecordV2.model_validate(value)
 
     candidate_contribution: GraphContributionV2
     reviewed_contribution: GraphContributionV2

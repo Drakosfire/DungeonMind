@@ -192,7 +192,7 @@ def publish_finalized_review(
         from ..contracts.contribution_review_v2 import GuardedContributionReviewRecordV2
         from ..contracts.review_publication import GuardedFinalizedReviewPublicationCommand
 
-        command_type = (
+        command_type: Any = (
             GuardedFinalizedReviewPublicationCommand
             if isinstance(record, GuardedContributionReviewRecordV2)
             else FinalizedReviewPublicationCommand
@@ -260,10 +260,16 @@ def validate_reviewed_identity_publication_preconditions(
 ) -> None:
     """Owning UoW supplies actual durable authority under its writer fence."""
     from ..contracts.evidence import SourceArtifactV2, SourceStatus
-    from ..contracts.identity import IdentityDecisionKind, IdentityDecisionStatus
+    from ..contracts.identity import (
+        IdentityDecisionKind,
+        IdentityDecisionRecord,
+        IdentityDecisionRecordV2,
+        IdentityDecisionStatus,
+        IdentityReconciliationDecision,
+    )
     from ..domain.errors import PersistenceIntegrityError
 
-    def fail(reason: str) -> None:
+    def fail(reason: str) -> NoReturn:
         raise PersistenceIntegrityError(
             "reviewed identity publication precondition failed", details={"reason": reason}
         )
@@ -274,6 +280,8 @@ def validate_reviewed_identity_publication_preconditions(
     if len(selected) != 1:
         fail("selected_decision_missing")
     decision = selected[0]
+    if not isinstance(decision, (IdentityDecisionRecord, IdentityDecisionRecordV2)):
+        fail("selected_decision_mismatch")
     if (
         decision.decision_kind != IdentityDecisionKind.HUMAN_OVERRIDE
         or decision.status != IdentityDecisionStatus.ACTIVE
@@ -283,7 +291,8 @@ def validate_reviewed_identity_publication_preconditions(
     ):
         fail("selected_decision_mismatch")
     if any(
-        d.world_id == guard.world_id
+        isinstance(d, (IdentityDecisionRecord, IdentityDecisionRecordV2))
+        and d.world_id == guard.world_id
         and d.status == IdentityDecisionStatus.ACTIVE
         and guard.decision_id in getattr(d, "supersedes_decision_ids", ())
         for d in decisions
@@ -306,20 +315,23 @@ def validate_reviewed_identity_publication_preconditions(
         for d in decisions
     ):
         fail("selected_decision_conflict")
-    if any(
-        d.world_id == guard.world_id
-        and d.status == IdentityDecisionStatus.ACTIVE
-        and (
-            getattr(d, "source_object_id", None) == guard.target_object_id
-            or (
-                d.decision_kind in {IdentityDecisionKind.MERGE, IdentityDecisionKind.SPLIT}
-                and guard.target_object_id in getattr(d, "subject_object_ids", ())
-                and getattr(d, "target_object_ids", ()) != [guard.target_object_id]
-            )
-        )
-        for d in decisions
-    ):
-        fail("target_identity_redirected")
+    for d in decisions:
+        if (
+            isinstance(d, IdentityReconciliationDecision)
+            and d.world_id == guard.world_id
+            and d.status == IdentityDecisionStatus.ACTIVE
+            and d.source_object_id == guard.target_object_id
+        ):
+            fail("target_identity_redirected")
+        if (
+            isinstance(d, (IdentityDecisionRecord, IdentityDecisionRecordV2))
+            and d.world_id == guard.world_id
+            and d.status == IdentityDecisionStatus.ACTIVE
+            and d.decision_kind in {IdentityDecisionKind.MERGE, IdentityDecisionKind.SPLIT}
+            and guard.target_object_id in d.subject_object_ids
+            and d.target_object_ids != [guard.target_object_id]
+        ):
+            fail("target_identity_redirected")
     if (
         parent.revision.world_id != guard.world_id
         or parent.revision.revision_id != guard.expected_parent_revision_id

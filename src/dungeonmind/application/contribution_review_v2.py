@@ -10,7 +10,7 @@ mentions, and diagnostics verbatim into the reviewed successor.
 
 from __future__ import annotations
 
-from typing import NoReturn
+from typing import Any, NoReturn
 
 from pydantic import ValidationError
 
@@ -148,7 +148,7 @@ def _build_review_state(
             GuardedContributionReviewRecordV2,
         )
 
-        record_type = (
+        record_type: Any = (
             GuardedContributionReviewRecordV2
             if isinstance(intent, GuardedContributionReviewIntentV2)
             else ContributionReviewRecordV2
