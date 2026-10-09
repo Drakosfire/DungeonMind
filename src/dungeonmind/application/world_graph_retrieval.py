@@ -430,6 +430,155 @@ class SourceAnchorIndexResult:
             raise ValueError("unknown source-anchor index status")
 
 
+@dataclass(frozen=True)
+class SelectedSourceAnchorIndexRequest:
+    """Separate metadata-only index for 1-8 explicit, nontransitive targets."""
+
+    projection: WorldGraphProjectionRequestV2
+    targets: tuple[EvidenceTarget, ...]
+    max_entries: int = 512
+
+    def __post_init__(self) -> None:
+        if type(self.max_entries) is not int:
+            raise ValueError("selected index max_entries must be an integer")
+        SourceAnchorIndexRequest(self.projection, self.max_entries)
+        if not isinstance(self.targets, tuple) or not 1 <= len(self.targets) <= 8:
+            raise ValueError("selected index requires an immutable tuple of 1..8 targets")
+        for target in self.targets:
+            if (
+                not isinstance(target, EvidenceTarget)
+                or target.kind not in ("object", "relationship", "assertion")
+                or not isinstance(target.target_id, str)
+                or not target.target_id
+                or target.target_id != target.target_id.strip()
+                or len(target.target_id) > 256
+                or any(ch in target.target_id for ch in ("\r", "\n", "\t"))
+            ):
+                raise ValueError("selected index target is malformed")
+        if len({(target.kind, target.target_id) for target in self.targets}) != len(self.targets):
+            raise ValueError("selected index targets must be distinct")
+
+
+@dataclass(frozen=True)
+class SelectedSourceAnchorIndexResult:
+    """Eligible selected metadata completeness, never whole-world coverage.
+
+    Hidden and absent targets share not_visible. Provenance gaps count rejected
+    own bindings plus public-safe in-scope target exclusions, not unseen data.
+    Valid but unopenable metadata is counted separately. No locator/body is returned.
+    """
+
+    snapshot: ProjectionSnapshotV2
+    requested_targets: tuple[EvidenceTarget, ...]
+    admitted_targets: tuple[EvidenceTarget, ...]
+    not_visible_targets: tuple[EvidenceTarget, ...]
+    provenance_gap_count: int
+    unavailable_binding_count: int
+    eligible_count: int
+    max_entries: int
+    status: Literal["complete", "overflow", "unavailable"]
+    entries: tuple[SourceAnchorIndexEntry, ...]
+    selector_sha256: str
+    index_sha256: str = field(init=False)
+    index_scope: Literal["selected_targets"] = field(default="selected_targets", init=False)
+
+    @property
+    def requested_count(self) -> int:
+        return len(self.requested_targets)
+
+    @property
+    def admitted_count(self) -> int:
+        return len(self.admitted_targets)
+
+    @property
+    def not_visible_count(self) -> int:
+        return len(self.not_visible_targets)
+
+    def __post_init__(self) -> None:
+        projection = WorldGraphProjectionRequestV2(
+            world_id=self.snapshot.world_id,
+            campaign_id=self.snapshot.campaign_id,
+            scope_mode=self.snapshot.scope_mode,
+            focus=self.snapshot.focus,
+            admissibility=self.snapshot.admissibility,
+            revision_pin=self.snapshot.revision_id,
+        )
+        SelectedSourceAnchorIndexRequest(projection, self.requested_targets, self.max_entries)
+
+        def key(target: EvidenceTarget) -> tuple[str, str]:
+            return target.kind, target.target_id
+
+        for targets in (self.admitted_targets, self.not_visible_targets):
+            if not isinstance(targets, tuple) or any(
+                not isinstance(target, EvidenceTarget) for target in targets
+            ):
+                raise ValueError("selected index coverage must be immutable typed targets")
+        if any(
+            tuple(sorted(targets, key=key)) != targets
+            for targets in (self.requested_targets, self.admitted_targets, self.not_visible_targets)
+        ):
+            raise ValueError("selected index target coverage must be canonical")
+        if not isinstance(self.entries, tuple) or any(
+            not isinstance(entry, SourceAnchorIndexEntry) for entry in self.entries
+        ):
+            raise ValueError("selected index entries must be immutable metadata")
+        entry_keys = tuple(
+            (
+                entry.anchor_id,
+                entry.evidence_ref_id,
+                entry.source_artifact_id,
+                entry.source_revision_id,
+            )
+            for entry in self.entries
+        )
+        if (
+            any(
+                not isinstance(value, str) or not value or value != value.strip()
+                for item in entry_keys
+                for value in item
+            )
+            or entry_keys != tuple(sorted(set(entry_keys)))
+            or len({entry.anchor_id for entry in self.entries}) != len(self.entries)
+        ):
+            raise ValueError("selected index entries must be unique canonical authority tuples")
+        requested = {key(target) for target in self.requested_targets}
+        admitted = {key(target) for target in self.admitted_targets}
+        hidden = {key(target) for target in self.not_visible_targets}
+        if (
+            admitted & hidden
+            or admitted | hidden != requested
+            or len(admitted) != self.admitted_count
+            or len(hidden) != self.not_visible_count
+            or any(
+                type(count) is not int or count < 0
+                for count in (
+                    self.provenance_gap_count,
+                    self.unavailable_binding_count,
+                    self.eligible_count,
+                )
+            )
+        ):
+            raise ValueError("invalid selected index coverage")
+        if self.status == "complete":
+            valid = (
+                0 < self.eligible_count <= self.max_entries
+                and len(self.entries) == self.eligible_count
+            )
+        elif self.status == "overflow":
+            valid = self.eligible_count > self.max_entries and not self.entries
+        elif self.status == "unavailable":
+            valid = self.eligible_count == 0 and not self.entries
+        else:
+            valid = False
+        if not valid:
+            raise ValueError("selected index status/count/entries conflict")
+        if self.selector_sha256 != _selected_index_selector_hash(
+            self.snapshot, self.requested_targets, self.max_entries
+        ):
+            raise ValueError("selected index selector commitment changed")
+        object.__setattr__(self, "index_sha256", _selected_index_hash(self))
+
+
 def _tokenize(text: str) -> list[str]:
     return [
         token
@@ -597,6 +746,58 @@ def _locator_identity(record: GraphEvidenceLedgerRecord) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ""
+
+
+def _selected_index_selector_hash(
+    snapshot: ProjectionSnapshotV2,
+    targets: tuple[EvidenceTarget, ...],
+    max_entries: int,
+) -> str:
+    return canonical_sha256(
+        {
+            "schema": "dm_selected_source_anchor_selector_v1",
+            "context": {
+                "world_id": snapshot.world_id,
+                "campaign_id": snapshot.campaign_id,
+                "scope_mode": str(snapshot.scope_mode),
+                "focus": snapshot.focus.model_dump(mode="json"),
+                "admissibility": str(snapshot.admissibility),
+                "revision_id": snapshot.revision_id,
+            },
+            "max_entries": max_entries,
+            "targets": [{"kind": target.kind, "target_id": target.target_id} for target in targets],
+        }
+    )
+
+
+def _selected_index_hash(result: SelectedSourceAnchorIndexResult) -> str:
+    return canonical_sha256(
+        {
+            "schema": "dm_selected_source_anchor_index_v1",
+            "selector_sha256": result.selector_sha256,
+            "status": result.status,
+            "admitted_targets": [
+                {"kind": target.kind, "target_id": target.target_id}
+                for target in result.admitted_targets
+            ],
+            "not_visible_targets": [
+                {"kind": target.kind, "target_id": target.target_id}
+                for target in result.not_visible_targets
+            ],
+            "provenance_gap_count": result.provenance_gap_count,
+            "unavailable_binding_count": result.unavailable_binding_count,
+            "eligible_count": result.eligible_count,
+            "entries": [
+                {
+                    "anchor_id": entry.anchor_id,
+                    "evidence_ref_id": entry.evidence_ref_id,
+                    "source_artifact_id": entry.source_artifact_id,
+                    "source_revision_id": entry.source_revision_id,
+                }
+                for entry in result.entries
+            ],
+        }
+    )
 
 
 def derive_source_anchor_id(
@@ -1659,6 +1860,100 @@ class WorldGraphRetrievalService:
             entries=() if overflow else ordered,
         )
 
+    def list_selected_source_anchor_index(
+        self,
+        request: SelectedSourceAnchorIndexRequest,
+    ) -> SelectedSourceAnchorIndexResult:
+        """Index selected targets' own admitted supports in one read context."""
+        result, context = self._establish(request.projection)
+        assertions = _index_admitted_assertions(result)
+        requested = tuple(
+            sorted(request.targets, key=lambda target: (target.kind, target.target_id))
+        )
+        admitted = []
+        not_visible = []
+        excluded_provenance_gaps = 0
+        supporters: dict[str, _SupporterSets] = {}
+        for target in requested:
+            if target.kind == "object":
+                record = result.graph.objects.get(target.target_id)
+                rows = _selected_object_assertion_rows(record) if record is not None else []
+                evidence_ids = set(record.evidence_ref_ids) if record is not None else set()
+                for row in rows:
+                    evidence_ids.update(row.evidence_ref_ids)
+            elif target.kind == "relationship":
+                record = result.graph.relationships.get(target.target_id)
+                evidence_ids = set(record.evidence_ref_ids) if record is not None else set()
+            else:
+                record = assertions.get(target.target_id)
+                evidence_ids = set(record.evidence_ref_ids) if record is not None else set()
+            if record is None:
+                not_visible.append(target)
+                # Existing public coverage suppresses hidden/scope-unknown
+                # identities. Count only an already public-safe provenance gap.
+                miss = self._evidence_miss(result, target)
+                excluded_provenance_gaps += bool(miss.coverage.gap_codes)
+                continue
+            admitted.append(target)
+            for evidence_id in evidence_ids:
+                support = supporters.setdefault(evidence_id, _SupporterSets())
+                getattr(
+                    support,
+                    {
+                        "object": "object_ids",
+                        "relationship": "relationship_ids",
+                        "assertion": "assertion_ids",
+                    }[target.kind],
+                ).add(target.target_id)
+        chains = self._resolve_evidence_chains(result, supporters, context=context)
+        anchors, _ = self._anchors_from_chains(
+            result, chains, supporters=supporters, max_anchors=None
+        )
+        entries = {}
+        unavailable = 0
+        for anchor in anchors:
+            revision = anchor.source_revision_id
+            if (
+                not anchor.can_open_source
+                or not anchor.locator_identity.strip()
+                or not isinstance(revision, str)
+                or not revision.strip()
+            ):
+                unavailable += 1
+                continue
+            entry = SourceAnchorIndexEntry(
+                anchor.anchor_id, anchor.evidence_ref_id, anchor.source_artifact_id, revision
+            )
+            entries[
+                (
+                    entry.anchor_id,
+                    entry.evidence_ref_id,
+                    entry.source_artifact_id,
+                    entry.source_revision_id,
+                )
+            ] = entry
+        ordered = tuple(entries[key] for key in sorted(entries))
+        count = len(ordered)
+        status = (
+            "overflow" if count > request.max_entries else "complete" if count else "unavailable"
+        )
+        return SelectedSourceAnchorIndexResult(
+            snapshot=result.snapshot,
+            requested_targets=requested,
+            admitted_targets=tuple(admitted),
+            not_visible_targets=tuple(not_visible),
+            provenance_gap_count=excluded_provenance_gaps + len(supporters) - len(chains.validated),
+            unavailable_binding_count=unavailable,
+            eligible_count=count,
+            max_entries=request.max_entries,
+            status=status,
+            entries=() if status == "overflow" else ordered,
+            selector_sha256=_selected_index_selector_hash(
+                result.snapshot, requested, request.max_entries
+            ),
+        )
+
+
     def _evidence_miss(
         self,
         result: WorldGraphProjectionResult,
@@ -1931,6 +2226,8 @@ __all__ = [
     "RetrievalBounds",
     "RetrievalCoverage",
     "SelectedObjectCompleteness",
+    "SelectedSourceAnchorIndexRequest",
+    "SelectedSourceAnchorIndexResult",
     "SourceAnchorIndexEntry",
     "SourceAnchorIndexRequest",
     "SourceAnchorIndexResult",
