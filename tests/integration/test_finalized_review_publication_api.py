@@ -373,6 +373,7 @@ def test_openapi_readiness_and_cors_contract(pg) -> None:
         "/healthz",
         "/readyz",
         "/v1/finalized-review-publications",
+        "/v1/worlds/{world_id}/campaigns/{campaign_id}/ingest-context",
     }
     document = json.dumps(openapi.json())
     assert "FinalizedReviewPublicationCommand" not in document

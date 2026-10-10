@@ -52,6 +52,20 @@ def authorize_publication_request(
 ) -> FinalizedReviewPublicationRequest:
     """Authorize one exact bearer/world binding without exposing its secret."""
 
+    authorize_publication_world(
+        request.world_id, authorization_header=authorization_header, binding=binding
+    )
+    return request.model_copy(deep=True)
+
+
+def authorize_publication_world(
+    world_id: str,
+    *,
+    authorization_header: str | None,
+    binding: PublicationAccessBinding,
+) -> None:
+    """Reuse the publication host's existing credential for an exact World read."""
+
     if authorization_header is None or not authorization_header.startswith("Bearer "):
         raise _denied()
     supplied_token = authorization_header.removeprefix("Bearer ")
@@ -60,6 +74,5 @@ def authorize_publication_request(
     supplied_digest = hashlib.sha256(supplied_token.encode("utf-8")).hexdigest()
     if not hmac.compare_digest(supplied_digest, binding.bearer_token_sha256):
         raise _denied()
-    if request.world_id != binding.world_id:
+    if world_id != binding.world_id:
         raise _denied()
-    return request.model_copy(deep=True)

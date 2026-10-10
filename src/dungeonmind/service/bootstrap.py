@@ -29,6 +29,9 @@ from ..domain.errors import (
 )
 from ..infrastructure.fixtures.curated_mind_turn import load_curated_mind_turn_fixture
 from ..infrastructure.postgres import PostgresDatabase, PostgresRepositoryBundle
+from ..infrastructure.postgres.world_campaign_ingest_context import (
+    PostgresWorldCampaignIngestContextReader,
+)
 from ..infrastructure.semantic_profiles import (
     ENV_SEMANTIC_PROFILE_REGISTRY_PATH,
     FilesystemSemanticProfileRegistry,
@@ -177,6 +180,7 @@ def build_publication_readiness_probe(
         "graph_revisions",
         "world_graph_heads",
         "finalized_review_publications",
+        "campaigns",
     }
 
     def probe() -> dict[str, Any]:
@@ -295,6 +299,7 @@ def create_publication_service_app() -> FastAPI:
         graph_reader=graph_reader,
         clock=UtcSystemClock(),
         access_binding=access_binding,
+        ingest_context_reader=PostgresWorldCampaignIngestContextReader(database),
         readiness_probe=build_publication_readiness_probe(
             bundle=bundle,
             world_id=world_id,
