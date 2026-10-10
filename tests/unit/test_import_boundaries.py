@@ -49,7 +49,7 @@ POSTGRES_ONLY_ROOTS = {"psycopg", "pgvector"}
 # Allowed only inside dungeonmind.service (optional ``api`` extra).
 API_ONLY_ROOTS = {"fastapi", "uvicorn", "starlette"}
 
-ALLOWED_EXTERNAL = {"pydantic"}
+ALLOWED_EXTERNAL = {"cryptography", "pydantic"}
 
 LAYER_RULES: dict[str, set[str]] = {
     "dungeonmind": set(),
