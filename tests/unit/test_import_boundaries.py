@@ -51,6 +51,10 @@ API_ONLY_ROOTS = {"fastapi", "uvicorn", "starlette"}
 
 ALLOWED_EXTERNAL = {"pydantic"}
 
+# Cryptographic primitives are an infrastructure detail; application/domain
+# code must depend on the approval verifier port rather than the crypto library.
+INFRASTRUCTURE_ONLY_ROOTS = {"cryptography"}
+
 LAYER_RULES: dict[str, set[str]] = {
     "dungeonmind": set(),
     "dungeonmind.contracts": set(),
@@ -68,6 +72,11 @@ LAYER_RULES: dict[str, set[str]] = {
         "dungeonmind.application",
     },
     "dungeonmind.infrastructure": {
+        "dungeonmind.contracts",
+        "dungeonmind.domain",
+        "dungeonmind.application",
+    },
+    "dungeonmind.infrastructure.operator_approval": {
         "dungeonmind.contracts",
         "dungeonmind.domain",
         "dungeonmind.application",
@@ -134,6 +143,15 @@ def _imports_of(path: Path, module_name: str, is_init: bool) -> list[str]:
     return modules
 
 
+def _infrastructure_only_import_violation(module: str, importer_layer: str) -> str | None:
+    root = module.split(".")[0]
+    if root not in INFRASTRUCTURE_ONLY_ROOTS:
+        return None
+    if importer_layer.startswith("dungeonmind.infrastructure"):
+        return None
+    return f"{importer_layer} imports infrastructure-only third-party {module}"
+
+
 def _all_source_files() -> list[Path]:
     return sorted(SRC.rglob("*.py"))
 
@@ -186,6 +204,11 @@ def test_layer_rules_hold() -> None:
                 continue
             if root in API_ONLY_ROOTS and importer_layer == "dungeonmind.service":
                 continue
+            if root in INFRASTRUCTURE_ONLY_ROOTS:
+                violation = _infrastructure_only_import_violation(module, importer_layer)
+                if violation is not None:
+                    violations.append(violation)
+                continue
             if not module.startswith("dungeonmind"):
                 violations.append(f"{module_name} imports unvetted third-party {module}")
                 continue
@@ -193,6 +216,19 @@ def test_layer_rules_hold() -> None:
             if target_layer != importer_layer and target_layer not in allowed:
                 violations.append(f"{module_name} illegally imports {module}")
     assert not violations, "layer violations:\n" + "\n".join(violations)
+
+
+def test_cryptography_is_limited_to_infrastructure() -> None:
+    assert _infrastructure_only_import_violation(
+        "cryptography.hazmat.primitives.asymmetric.ed25519", "dungeonmind.application"
+    ) == (
+        "dungeonmind.application imports infrastructure-only third-party "
+        "cryptography.hazmat.primitives.asymmetric.ed25519"
+    )
+    assert _infrastructure_only_import_violation(
+        "cryptography.hazmat.primitives.asymmetric.ed25519",
+        "dungeonmind.infrastructure.operator_approval",
+    ) is None
 
 
 def test_dungeonmind_does_not_import_dungeonmind_dnd() -> None:
