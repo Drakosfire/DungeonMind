@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from dungeonmind.application.vnext.materialization import (
     NATIVE_VNEXT_GRAPH_SCHEMA,
@@ -15,8 +18,10 @@ from dungeonmind.application.vnext.native_source_access import (
     open_native_text_source_access_context,
 )
 from dungeonmind.application.vnext.operator_approval import (
-    OperatorApprovalAuthority,
     OperatorApprovalRejectedError,
+    OperatorApprovalVerifier,
+    TrustedOperatorApproval,
+    operator_approval_signing_message,
 )
 from dungeonmind.contracts.evidence import (
     SourceArtifactV2,
@@ -58,6 +63,27 @@ GM = "test.visibility:gm"
 PLAYER = "test.visibility:player"
 
 
+class _TestAuthenticatedHostIssuer:
+    """Test-only host signer; production Core receives only its public key."""
+
+    def __init__(self, private_key: Ed25519PrivateKey, verifier: OperatorApprovalVerifier):
+        self._private_key = private_key
+        self.verifier = verifier
+
+    def mint_from_authenticated_host(
+        self, *, space_id: str, world_id: str, operation_id: str,
+        preparation_sha256: str, source_vocabulary_sha256: str,
+        actor: str, role: str, auth_method: str,
+    ) -> TrustedOperatorApproval:
+        # This helper represents the external authenticated host in tests only.
+        unsigned = TrustedOperatorApproval(
+            space_id, world_id, operation_id, preparation_sha256,
+            source_vocabulary_sha256, actor, role, auth_method, datetime.now(UTC), "",
+        )
+        signature = self._private_key.sign(operator_approval_signing_message(unsigned)).hex()
+        return replace(unsigned, signature=signature)
+
+
 def _fixture():
     domain = DomainContractDescriptor(
         domain_id="test.operator", domain_revision="1",
@@ -67,10 +93,17 @@ def _fixture():
     profile = SemanticProfileDescriptorV2(
         profile_id="test.profile", profile_revision="1", term_namespaces=["test"],
     )
-    authority = OperatorApprovalAuthority.new_for_process(
+    private_key = Ed25519PrivateKey.generate()
+    public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    verifier = OperatorApprovalVerifier(
+        public_key,
         domain_descriptor_sha256=canonical_sha256(domain.model_dump(mode="json")),
         allowed_source_terms=frozenset({"test.source:recap"}), gm_label=GM,
     )
+    authority = _TestAuthenticatedHostIssuer(private_key, verifier)
     legacy = InMemorySourceRepository()
     body_sha = hashlib.sha256(BODY.encode()).hexdigest()
     legacy.put_artifact(SourceArtifactV2(
@@ -87,7 +120,7 @@ def _fixture():
         content_sha256=body_sha, body_storage="postgres", created_at=NOW,
     ))
     repo = InMemoryOperatorSourceRepository(
-        legacy_sources=legacy, approval_authority=authority,
+        legacy_sources=legacy, approval_authority=verifier,
     )
     assertion = Assertion(
         assertion_id="assert:amber", subject_entity_id="ent:gate",
@@ -293,6 +326,61 @@ def test_tampered_prepared_display_and_wrong_world_approval_fail_closed() -> Non
         )
     assert repo.open_native_source_view(selection.space_id).epoch == 0
     assert repo.get_operator_source_receipt(*key) is None
+
+
+def test_core_verifier_cannot_mint_and_forged_host_claims_fail() -> None:
+    repo, _, domain, host_issuer, selection = _fixture()
+    verifier = repo._approval_authority
+    assert not hasattr(verifier, "mint_from_authenticated_host")
+    assert not hasattr(verifier, "new_for_process")
+
+    fabricated = TrustedOperatorApproval(
+        space_id=selection.space_id,
+        world_id=selection.legacy_world_id,
+        operation_id=selection.operation_id,
+        preparation_sha256="0" * 64,
+        source_vocabulary_sha256="0" * 64,
+        actor="attacker-selected-actor",
+        role="owner",
+        auth_method="caller-asserted",
+        approved_at=NOW,
+        signature="00" * 64,
+    )
+    with pytest.raises(OperatorApprovalRejectedError):
+        verifier.verify(
+            fabricated,
+            space_id=selection.space_id,
+            world_id=selection.legacy_world_id,
+            operation_id=selection.operation_id,
+            preparation_sha256=fabricated.preparation_sha256,
+            source_vocabulary_sha256=fabricated.source_vocabulary_sha256,
+        )
+
+    prepared = repo.prepare_operator_source_span(selection=selection, domain_contract=domain)
+    approval = host_issuer.mint_from_authenticated_host(
+        space_id=selection.space_id,
+        world_id=selection.legacy_world_id,
+        operation_id=selection.operation_id,
+        preparation_sha256=prepared.preparation_sha256,
+        source_vocabulary_sha256=prepared.command.source_vocabulary_sha256,
+        actor="authenticated-operator",
+        role="gm",
+        auth_method="test-session",
+    )
+    for forged in (
+        replace(approval, actor="attacker-selected-actor"),
+        replace(approval, role="owner"),
+        replace(approval, world_id="world:attacker-selected"),
+    ):
+        with pytest.raises(OperatorApprovalRejectedError):
+            verifier.verify(
+                forged,
+                space_id=selection.space_id,
+                world_id=selection.legacy_world_id,
+                operation_id=selection.operation_id,
+                preparation_sha256=prepared.preparation_sha256,
+                source_vocabulary_sha256=prepared.command.source_vocabulary_sha256,
+            )
 
 
 def test_same_operation_concurrent_approvals_return_one_receipt() -> None:

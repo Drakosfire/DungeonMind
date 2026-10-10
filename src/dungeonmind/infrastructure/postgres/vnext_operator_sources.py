@@ -10,7 +10,7 @@ from typing import Any
 from psycopg import Connection, sql
 
 from dungeonmind.application.vnext.operator_approval import (
-    OperatorApprovalAuthority,
+    OperatorApprovalVerifier,
     TrustedOperatorApproval,
 )
 from dungeonmind.application.vnext.operator_source_binding import (
@@ -240,7 +240,7 @@ class PostgresOperatorSourceRepository(PostgresNativeSourceEvidenceRepository):
 
     def __init__(
         self, database: PostgresDatabase, *,
-        approval_authority: OperatorApprovalAuthority,
+        approval_authority: OperatorApprovalVerifier,
         after_operator_artifact_insert: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(database)

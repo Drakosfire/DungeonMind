@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from dungeonmind.application.vnext.operator_approval import (
-    OperatorApprovalAuthority,
+    OperatorApprovalVerifier,
     TrustedOperatorApproval,
 )
 from dungeonmind.application.vnext.operator_source_binding import (
@@ -51,7 +51,7 @@ class InMemoryOperatorSourceRepository(InMemoryNativeSourceEvidenceRepository):
 
     def __init__(
         self, *, legacy_sources: InMemorySourceRepository,
-        approval_authority: OperatorApprovalAuthority,
+        approval_authority: OperatorApprovalVerifier,
         after_operator_artifact_insert: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()

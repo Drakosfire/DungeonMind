@@ -26,7 +26,7 @@ def _pg_fixture(pg):
     legacy.put_artifact(legacy_memory.get_artifact(selection.source_artifact_id))
     legacy.put_revision(legacy_memory.get_revision(selection.source_revision_id))
     repo = PostgresOperatorSourceRepository(
-        pg.database, approval_authority=authority,
+        pg.database, approval_authority=authority.verifier,
     )
     stored = memory.get_revision(selection.space_id, selection.expected_head_revision_id)
     assert stored is not None

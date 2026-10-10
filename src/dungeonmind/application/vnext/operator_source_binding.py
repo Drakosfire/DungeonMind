@@ -19,7 +19,7 @@ from dungeonmind.domain.errors import PersistenceIntegrityError
 
 from .builder import build_parsed_knowledge_revision
 from .materialization import NATIVE_VNEXT_GRAPH_SCHEMA, decode_native_graph_payload
-from .operator_approval import OperatorApprovalAuthority
+from .operator_approval import OperatorApprovalVerifier
 from .records import StoredKnowledgeRevision
 
 
@@ -58,7 +58,7 @@ def _legacy_snapshot(
 def validate_operator_source_selection(
     *, selection: OperatorSourceSelectionV1,
     domain_contract: DomainContractDescriptor,
-    authority: OperatorApprovalAuthority,
+    authority: OperatorApprovalVerifier,
     head_revision: StoredKnowledgeRevision,
     legacy_artifact: SourceArtifactRecord | None,
     legacy_revision: SourceRevision | None,
