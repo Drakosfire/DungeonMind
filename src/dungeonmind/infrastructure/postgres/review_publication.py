@@ -531,6 +531,21 @@ class PostgresFinalizedReviewPublicationRepository:
             )
             return None if row is None else self._load_verified(conn, row)
 
+    def get_for_published_revision(
+        self,
+        world_id: str,
+        revision_id: str,
+    ) -> FinalizedReviewPublication | None:
+        with self._database.transaction() as conn:
+            row = conn.execute(
+                sql.SQL(
+                    f"SELECT {_PUBLICATION_SELECT} FROM {{}}.finalized_review_publications "
+                    "WHERE world_id = %s AND published_revision_id = %s"
+                ).format(sql.Identifier(SCHEMA)),
+                (world_id, revision_id),
+            ).fetchone()
+            return None if row is None else self._load_verified(conn, row)
+
     def _validate_guard_in_transaction(
         self,
         conn: Connection[Any],
