@@ -100,6 +100,10 @@ def test_api_authorizes_before_read_and_returns_only_metadata() -> None:
 
     reader = CountingReader()
     client = _client(reader)
+    assert set(client.get("/openapi.json").json()["paths"]) == {
+        "/healthz", "/readyz", "/v1/finalized-review-publications",
+        "/v1/worlds/{world_id}/campaigns/{campaign_id}/ingest-context",
+    }
     url = "/v1/worlds/world:synthetic/campaigns/campaign:synthetic/ingest-context"
     headers = {"Authorization": "Bearer synthetic-secret"}
     for target, auth in (
