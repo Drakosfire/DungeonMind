@@ -143,12 +143,23 @@ def validate_reviewed_corpus_identity_binding(
         if accepted.world_id != binding.world_id:
             continue
         if (
-            accepted.identity_key == binding.identity_key
-            and accepted.target_node_id != binding.target_node_id
+            accepted.asserted_target_id != accepted.target_node_id
+            or accepted.asserted_target_kind != accepted.target_node_kind
         ):
-            raise ValueError("typed identity key already binds another node")
+            raise ValueError("accepted binding has inconsistent assertion target")
+        if (
+            accepted.identity_key == binding.identity_key
+            and (
+                accepted.target_node_id != binding.target_node_id
+                or accepted.target_node_kind != binding.target_node_kind
+            )
+        ):
+            raise ValueError("typed identity key already binds another node identity or kind")
         if (
             accepted.target_node_id == binding.target_node_id
-            and accepted.identity_key != binding.identity_key
+            and (
+                accepted.identity_key != binding.identity_key
+                or accepted.target_node_kind != binding.target_node_kind
+            )
         ):
-            raise ValueError("canonical node already binds another typed key")
+            raise ValueError("canonical node already binds another typed key or kind")

@@ -110,6 +110,24 @@ def test_same_typed_key_cannot_split_c1_c2_world_identity() -> None:
         )
 
 
+def test_same_key_and_node_id_cannot_change_accepted_target_kind() -> None:
+    binding = _binding()
+    accepted = _binding(target_node_kind="npc", asserted_target_kind="npc")
+    with pytest.raises(ValueError, match="node identity or kind"):
+        validate_reviewed_corpus_identity_binding(
+            binding, _observed(binding, existing_bindings=(accepted,))
+        )
+
+
+def test_inconsistent_accepted_assertion_target_fails_closed() -> None:
+    binding = _binding()
+    accepted = _binding(asserted_target_kind="npc")
+    with pytest.raises(ValueError, match="inconsistent assertion target"):
+        validate_reviewed_corpus_identity_binding(
+            binding, _observed(binding, existing_bindings=(accepted,))
+        )
+
+
 def test_world_owned_hub_has_explicit_null_campaign_scope() -> None:
     binding = _binding(campaign_id=None)
     validate_reviewed_corpus_identity_binding(binding, _observed(binding))
