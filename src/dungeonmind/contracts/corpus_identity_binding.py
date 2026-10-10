@@ -38,7 +38,8 @@ class ReviewedCorpusIdentityBindingV1(DungeonMindModel):
         "dm_reviewed_corpus_identity_binding_v1"
     )
     world_id: str = Field(min_length=1)
-    campaign_id: str = Field(min_length=1)
+    # None is an explicit world-owned source scope, not an omitted field.
+    campaign_id: str | None = Field(min_length=1)
     source_artifact_id: str = Field(min_length=1)
     source_revision_id: str = Field(min_length=1)
     source_body_sha256: str = Field(pattern=_SHA256)
@@ -52,7 +53,7 @@ class ReviewedCorpusIdentityBindingV1(DungeonMindModel):
     expected_graph_head_revision_id: str = Field(min_length=1)
 
     @field_validator(
-        "world_id", "campaign_id", "source_artifact_id", "source_revision_id",
+        "world_id", "source_artifact_id", "source_revision_id",
         "hub_assertion_id", "asserted_target_id", "asserted_target_kind",
         "target_node_id", "target_node_kind", "expected_graph_head_revision_id",
     )
@@ -60,6 +61,13 @@ class ReviewedCorpusIdentityBindingV1(DungeonMindModel):
     def _nonblank(cls, value: str) -> str:
         if not value.strip() or value != value.strip():
             raise ValueError("binding identifiers must be nonblank and unpadded")
+        return value
+
+    @field_validator("campaign_id")
+    @classmethod
+    def _campaign_scope(cls, value: str | None) -> str | None:
+        if value is not None and (not value.strip() or value != value.strip()):
+            raise ValueError("campaign scope must be null or nonblank and unpadded")
         return value
 
 
@@ -79,7 +87,7 @@ class CorpusIdentityAuthoritySnapshotV1(DungeonMindModel):
 
     model_config = ConfigDict(frozen=True)
     world_id: str
-    campaign_id: str
+    campaign_id: str | None
     source_artifact_id: str
     current_source_revision_id: str
     source_body_sha256: str = Field(pattern=_SHA256)
@@ -87,7 +95,8 @@ class CorpusIdentityAuthoritySnapshotV1(DungeonMindModel):
     graph_head_revision_id: str
     target_node_id: str
     target_node_kind: str
-    # Existing accepted bindings in this world/campaign at confirmation time.
+    # Must be a complete world-wide accepted-binding lookup, across campaigns.
+    # The model cannot prove that a caller actually performed that lookup.
     existing_bindings: tuple[ReviewedCorpusIdentityBindingV1, ...] = ()
 
 
@@ -131,7 +140,7 @@ def validate_reviewed_corpus_identity_binding(
     if len(matches) != 1 or len(key_claims) != 1:
         raise ValueError("hub identity assertion is missing, ambiguous, or changed")
     for accepted in observed.existing_bindings:
-        if (accepted.world_id, accepted.campaign_id) != (binding.world_id, binding.campaign_id):
+        if accepted.world_id != binding.world_id:
             continue
         if (
             accepted.identity_key == binding.identity_key

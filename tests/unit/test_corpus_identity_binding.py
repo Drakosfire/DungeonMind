@@ -99,6 +99,23 @@ def test_competing_key_and_node_bindings_rejected() -> None:
             )
 
 
+def test_same_typed_key_cannot_split_c1_c2_world_identity() -> None:
+    binding = _binding(campaign_id="campaign:c2")
+    accepted_c1 = _binding(
+        campaign_id="campaign:c1", target_node_id="pc:other", asserted_target_id="pc:other"
+    )
+    with pytest.raises(ValueError, match="typed identity key already binds"):
+        validate_reviewed_corpus_identity_binding(
+            binding, _observed(binding, existing_bindings=(accepted_c1,))
+        )
+
+
+def test_world_owned_hub_has_explicit_null_campaign_scope() -> None:
+    binding = _binding(campaign_id=None)
+    validate_reviewed_corpus_identity_binding(binding, _observed(binding))
+    assert binding.model_dump()["campaign_id"] is None
+
+
 def test_name_only_or_alias_payload_cannot_enter_contract() -> None:
     binding = _binding()
     with pytest.raises(ValidationError, match="Extra inputs"):
