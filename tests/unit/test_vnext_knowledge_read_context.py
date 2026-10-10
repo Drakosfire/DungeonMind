@@ -1701,6 +1701,7 @@ def _assert_world_graph_retrieval_compatibility() -> None:
             "related_objects",
             "relationships",
             "property_assertions",
+            "reviewed_source_observations",
             "anchors",
             "completeness",
             "coverage",

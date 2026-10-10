@@ -39,18 +39,29 @@ evidence/source identity, locator identity) makes the old anchor unresolvable.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeVar
 
-from ..contracts.evidence import EvidenceRef, EvidenceRefV2, SourceArtifactRecord
+from ..contracts.contribution import AcceptanceState, GraphContributionAssertionV2
+from ..contracts.contribution_review_v2 import (
+    NON_MUTATING_IDENTITY_OUTCOMES,
+    ContributionReviewStateV2,
+    contribution_v2_payload_sha256,
+)
+from ..contracts.evidence import EvidenceRef, EvidenceRefV2, EvidenceRole, SourceArtifactRecord
 from ..contracts.knowledge_assertion import KnowledgeAssertionMetadataV1
+from ..contracts.projection import Admissibility
 from ..contracts.projection_v2 import ProjectionSnapshotV2, WorldGraphProjectionRequestV2
 from ..contracts.retrieval import ResolvedReferent
+from ..contracts.vocabulary import Visibility
 from ..domain.canonical import canonical_json, canonical_sha256
+from ..domain.errors import PersistenceIntegrityError
 from .graph_scope import (
     STORED_PROVENANCE_INVALID,
+    CampaignScope,
     EvidenceScopeVerdict,
     ProvenanceRejection,
     ValidatedProvenance,
@@ -65,7 +76,12 @@ from .graph_snapshot import (
     contains_exact_phrase,
     resolve_mentions_from_snapshot,
 )
-from .repositories import SourceRepository
+from .repositories import (
+    ContributionReviewRepository,
+    FinalizedReviewPublicationRepository,
+    SourceRepository,
+    WorldGraphRepository,
+)
 from .world_graph_observability import (
     NOOP_READ_OBSERVER,
     READ_COMPLETENESS_REASONS,
@@ -209,6 +225,31 @@ class AdmittedAssertionValue:
 
 
 @dataclass(frozen=True)
+class ReviewedSourceObservation:
+    """Published review evidence, separate from authored graph assertions.
+
+    The value is historical reviewer-approved source context. It never changes
+    the object's canonical summary or properties in its immutable graph payload.
+    """
+
+    assertion_id: str
+    subject_object_id: str
+    observation_kind: Literal["session_observation"]
+    text: str
+    entity_kind: str
+    review_id: str
+    contribution_id: str
+    publication_revision_id: str
+    source_artifact_id: str
+    source_revision_id: str
+    evidence_ref_ids: tuple[str, ...]
+    campaign_scope: str | None
+    visibility: Visibility
+    epistemic_kind: str
+    temporal_scope: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
 class SourceAnchorMetadata:
     """Admitted source-anchor identity plus the records a product opener needs.
 
@@ -305,6 +346,9 @@ class CompleteObjectLookupResult:
     related_objects: tuple[GraphObjectView, ...] = ()
     relationships: tuple[GraphRelationshipView, ...] = ()
     property_assertions: tuple[AdmittedAssertionValue, ...] = ()
+    reviewed_source_observations: tuple[ReviewedSourceObservation, ...] = field(
+        default=(), kw_only=True
+    )
     anchors: tuple[SourceAnchorMetadata, ...] = ()
     completeness: SelectedObjectCompleteness = field(
         default_factory=lambda: SelectedObjectCompleteness(status="complete")
@@ -983,11 +1027,26 @@ class WorldGraphRetrievalService:
         *,
         projection: WorldGraphProjectionService,
         sources: SourceRepository,
+        world_graph: WorldGraphRepository | None = None,
+        contribution_reviews: ContributionReviewRepository | None = None,
+        finalized_review_publications: FinalizedReviewPublicationRepository | None = None,
         read_observer: WorldGraphReadObserver | None = None,
         read_clock: WorldGraphReadClock | None = None,
     ) -> None:
+        observation_ports = (
+            world_graph,
+            contribution_reviews,
+            finalized_review_publications,
+        )
+        if any(port is None for port in observation_ports) and any(
+            port is not None for port in observation_ports
+        ):
+            raise ValueError("reviewed source observations require all three authority ports")
         self._projection = projection
         self._sources = sources
+        self._world_graph = world_graph
+        self._contribution_reviews = contribution_reviews
+        self._finalized_review_publications = finalized_review_publications
         self._read_observer = (
             read_observer if read_observer is not None else NOOP_READ_OBSERVER
         )
@@ -1000,6 +1059,236 @@ class WorldGraphRetrievalService:
 
         context = self._projection.open_read_context(request)
         return WorldGraphProjectionResult.from_read_context(context), context
+
+    @staticmethod
+    def _observation_value(
+        assertion: GraphContributionAssertionV2,
+    ) -> tuple[str, str] | None:
+        """Normalize the supported historical nested session observation."""
+        if assertion.value is None:
+            raise ValueError("source observation value is missing")
+        try:
+            value = json.loads(assertion.value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("source observation value is not JSON") from exc
+        if not isinstance(value, dict):
+            raise ValueError("source observation value is not an object")
+        if value.get("property_term") != "session_observation":
+            return None
+        text = value.get("summary")
+        kind = value.get("kind")
+        if (
+            assertion.predicate is not None
+            or not isinstance(text, str)
+            or not text.strip()
+            or not isinstance(kind, str)
+            or not kind.strip()
+        ):
+            raise ValueError("source observation text/kind shape is unsupported")
+        return text, kind
+
+    def _reviewed_source_observations(
+        self,
+        result: WorldGraphProjectionResult,
+        context: WorldGraphReadContext,
+        *,
+        selected_object_id: str | None,
+    ) -> tuple[tuple[ReviewedSourceObservation, ...], tuple[str, ...], tuple[str, ...]]:
+        """Read only finalized publications on this revision's parent chain.
+
+        Published reviews are governance input; their observations remain a
+        separate read facet. The graph payload and its authored fields are never
+        augmented or replayed here.
+        """
+        if self._world_graph is None:
+            return (), (), ()
+        assert self._contribution_reviews is not None
+        assert self._finalized_review_publications is not None
+        scope = CampaignScope.resolve(
+            scope_mode=result.snapshot.scope_mode,
+            campaign_id=result.snapshot.campaign_id,
+        )
+        world_id = result.snapshot.world_id
+        revision_id: str | None = result.snapshot.revision_id
+        visited: set[str] = set()
+        corrected: set[tuple[str, str]] = set()
+        observations: dict[str, ReviewedSourceObservation] = {}
+        blocked_ids: set[str] = set()
+        gap_codes: set[str] = set()
+        missing_ids: set[str] = set()
+        while revision_id is not None:
+            if revision_id in visited:
+                raise PersistenceIntegrityError("graph revision ancestry contains a cycle")
+            visited.add(revision_id)
+            stored = self._world_graph.get_revision(world_id, revision_id)
+            if stored is None or stored.revision.world_id != world_id:
+                raise PersistenceIntegrityError("graph revision ancestry is incomplete")
+            publication = self._finalized_review_publications.get_for_published_revision(
+                world_id, revision_id
+            )
+            if publication is not None:
+                if (
+                    publication.published_revision_id != revision_id
+                    or publication.expected_parent_revision_id
+                    != stored.revision.parent_revision_id
+                    or publication.graph_payload_sha256
+                    != stored.revision.graph_payload_sha256
+                ):
+                    raise PersistenceIntegrityError(
+                        "reviewed source observation publication disagrees with revision"
+                    )
+                state = self._contribution_reviews.get(world_id, publication.review_id)
+                if state is None:
+                    raise PersistenceIntegrityError(
+                        "reviewed source observation publication has no durable review"
+                    )
+                record = state.record
+                if (
+                    record.world_id != world_id
+                    or record.review_id != publication.review_id
+                    or record.review_intent_sha256 != publication.review_intent_sha256
+                    or record.reviewed_contribution_id
+                    != publication.reviewed_contribution_id
+                    or record.reviewed_contribution_sha256
+                    != publication.reviewed_contribution_sha256
+                ):
+                    raise PersistenceIntegrityError(
+                        "reviewed source observation review disagrees with publication"
+                    )
+                if isinstance(state, ContributionReviewStateV2):
+                    contribution = state.reviewed_contribution
+                    if (
+                        contribution_v2_payload_sha256(contribution)
+                        != publication.reviewed_contribution_sha256
+                    ):
+                        raise PersistenceIntegrityError(
+                            "reviewed source observation contribution digest disagrees"
+                        )
+                    corrected.update(
+                        (item.target_contribution_id, item.target_assertion_id)
+                        for item in contribution.assertion_corrections
+                    )
+                    for assertion in contribution.assertions:
+                        if (
+                            assertion.assertion_kind != "attribute"
+                            or assertion.acceptance_state is not AcceptanceState.ACCEPTED
+                            or assertion.identity_resolution_outcome
+                            in NON_MUTATING_IDENTITY_OUTCOMES
+                        ):
+                            continue
+                        subject = assertion.subject_object_id
+                        if (
+                            subject is None
+                            or subject not in result.graph.objects
+                            or (
+                                selected_object_id is not None
+                                and subject != selected_object_id
+                            )
+                            or not scope.admits_campaign(assertion.campaign_scope)
+                            or (
+                                result.snapshot.admissibility is Admissibility.PLAYER
+                                and assertion.visibility is not Visibility.PLAYER
+                            )
+                        ):
+                            continue
+                        try:
+                            parsed = self._observation_value(assertion)
+                        except ValueError:
+                            gap_codes.add("reviewed_source_observation_unsupported_shape")
+                            continue
+                        if parsed is None:
+                            continue
+                        if (contribution.contribution_id, assertion.assertion_id) in corrected:
+                            gap_codes.add("reviewed_source_observation_correction_unresolved")
+                            continue
+                        artifact_id = (
+                            assertion.source_artifact_id or contribution.source_artifact_id
+                        )
+                        source_revision_id = (
+                            assertion.source_revision_id or contribution.source_revision_id
+                        )
+                        if (
+                            not artifact_id
+                            or not source_revision_id
+                            or not assertion.evidence_refs
+                            or any(
+                                ref.source_artifact_id != artifact_id
+                                or ref.source_revision_id != source_revision_id
+                                or ref.evidence_role is not EvidenceRole.SUPPORT
+                                for ref in assertion.evidence_refs
+                            )
+                        ):
+                            gap_codes.add("reviewed_source_observation_evidence_invalid")
+                            continue
+                        evidence_ids = tuple(sorted({
+                            ref.evidence_ref_id for ref in assertion.evidence_refs
+                        }))
+                        if len(evidence_ids) != len(assertion.evidence_refs):
+                            gap_codes.add("reviewed_source_observation_evidence_invalid")
+                            continue
+                        valid = True
+                        hidden = False
+                        local_gaps: set[str] = set()
+                        local_missing: set[str] = set()
+                        for ref in assertion.evidence_refs:
+                            resolved = context.resolve_evidence(ref.evidence_ref_id)
+                            if isinstance(resolved, ProvenanceRejection):
+                                local_gaps.add(resolved.gap_code)
+                                local_missing.add(resolved.missing_id)
+                                valid = False
+                            elif resolved is EvidenceScopeVerdict.SCOPE_UNKNOWN:
+                                local_gaps.add(STORED_PROVENANCE_INVALID)
+                                valid = False
+                            elif resolved is None:
+                                hidden = True
+                                valid = False
+                            elif isinstance(resolved, ValidatedProvenance):
+                                stored_ref = resolved.record
+                                if (
+                                    stored_ref.source_artifact_id != artifact_id
+                                    or stored_ref.source_revision_id != source_revision_id
+                                    or stored_ref.locator != ref.locator
+                                    or stored_ref.evidence_role != ref.evidence_role
+                                ):
+                                    local_gaps.add("reviewed_source_observation_evidence_invalid")
+                                    valid = False
+                        if hidden:
+                            continue
+                        gap_codes.update(local_gaps)
+                        missing_ids.update(local_missing)
+                        if not valid:
+                            continue
+                        if assertion.assertion_id in blocked_ids:
+                            continue
+                        if assertion.assertion_id in observations:
+                            del observations[assertion.assertion_id]
+                            blocked_ids.add(assertion.assertion_id)
+                            gap_codes.add("reviewed_source_observation_identity_conflict")
+                            continue
+                        text, kind = parsed
+                        observations[assertion.assertion_id] = ReviewedSourceObservation(
+                            assertion_id=assertion.assertion_id,
+                            subject_object_id=subject,
+                            observation_kind="session_observation",
+                            text=text,
+                            entity_kind=kind,
+                            review_id=record.review_id,
+                            contribution_id=contribution.contribution_id,
+                            publication_revision_id=revision_id,
+                            source_artifact_id=artifact_id,
+                            source_revision_id=source_revision_id,
+                            evidence_ref_ids=evidence_ids,
+                            campaign_scope=assertion.campaign_scope,
+                            visibility=assertion.visibility,
+                            epistemic_kind=str(assertion.epistemic_kind),
+                            temporal_scope=assertion.temporal_scope,
+                        )
+            revision_id = stored.revision.parent_revision_id
+        return (
+            tuple(observations[key] for key in sorted(observations)),
+            tuple(sorted(gap_codes)),
+            tuple(sorted(missing_ids)),
+        )
 
     def _emit(self, observation: WorldGraphReadObservation) -> None:
         emit_read_observation(self._read_observer, observation)
@@ -1200,6 +1489,11 @@ class WorldGraphRetrievalService:
                     object_id=object_id,
                     relationships=relationships,
                 )
+                observations, observation_gaps, observation_missing = (
+                    self._reviewed_source_observations(
+                        result, context, selected_object_id=object_id
+                    )
+                )
             with recorder.phase("anchor_derivation"):
                 anchors, anchor_truncated, anchor_gaps = self._anchors_for(
                     result,
@@ -1207,6 +1501,7 @@ class WorldGraphRetrievalService:
                     object_ids={object_id, *(item.object_id for item in related_objects)},
                     relationship_ids={rel.relationship_id for rel in relationships},
                     assertion_ids={row.assertion_id for row in assertions},
+                    reviewed_source_observations=observations,
                     max_anchors=None,
                 )
             completeness = self._selected_object_completeness(
@@ -1220,12 +1515,13 @@ class WorldGraphRetrievalService:
                 related_objects=related_objects,
                 relationships=relationships,
                 property_assertions=assertions,
+                reviewed_source_observations=observations,
                 anchors=anchors,
                 completeness=completeness,
                 coverage=RetrievalCoverage(
                     truncated_fields=completeness.truncated_fields,
-                    gap_codes=anchor_gaps[0],
-                    missing_ids=anchor_gaps[1],
+                    gap_codes=tuple(sorted(set(anchor_gaps[0]) | set(observation_gaps))),
+                    missing_ids=tuple(sorted(set(anchor_gaps[1]) | set(observation_missing))),
                 ),
             )
         except Exception as exc:
@@ -1261,7 +1557,10 @@ class WorldGraphRetrievalService:
             phase_durations=recorder.phases,
             result_object_count=result_object_count,
             result_relationship_count=len(op_result.relationships),
-            result_assertion_count=len(op_result.property_assertions),
+            result_assertion_count=(
+                len(op_result.property_assertions)
+                + len(op_result.reviewed_source_observations)
+            ),
             result_anchor_count=len(op_result.anchors),
             completeness_status=op_result.completeness.status,
             completeness_reason=op_result.completeness.reason,
@@ -1756,12 +2055,16 @@ class WorldGraphRetrievalService:
             projected = result
             with recorder.phase("anchor_derivation"):
                 assertion_index = _index_admitted_assertions(result)
+                observations, _gaps, _missing = self._reviewed_source_observations(
+                    result, context, selected_object_id=None
+                )
                 anchors, _truncated, _gaps = self._anchors_for(
                     result,
                     context=context,
                     object_ids=set(result.graph.objects),
                     relationship_ids=set(result.graph.relationships),
                     assertion_ids=set(assertion_index),
+                    reviewed_source_observations=observations,
                     max_anchors=None,
                 )
                 op_result = SourceAnchorResolution(
@@ -2018,6 +2321,7 @@ class WorldGraphRetrievalService:
         object_ids: set[str],
         relationship_ids: set[str],
         assertion_ids: set[str],
+        reviewed_source_observations: tuple[ReviewedSourceObservation, ...] = (),
         max_anchors: int | None,
     ) -> tuple[tuple[SourceAnchorMetadata, ...], bool, tuple[tuple[str, ...], tuple[str, ...]]]:
         """Derive context-bound anchors for the evidence of selected targets."""
@@ -2048,6 +2352,11 @@ class WorldGraphRetrievalService:
                     supporters.setdefault(evidence_ref_id, _SupporterSets()).assertion_ids.add(
                         assertion_id
                     )
+        for observation in reviewed_source_observations:
+            for evidence_ref_id in observation.evidence_ref_ids:
+                supporters.setdefault(evidence_ref_id, _SupporterSets()).assertion_ids.add(
+                    observation.assertion_id
+                )
 
         chains = self._resolve_evidence_chains(result, supporters.keys(), context=context)
         anchors, truncated = self._anchors_from_chains(

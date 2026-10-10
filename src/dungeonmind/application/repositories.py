@@ -235,6 +235,14 @@ class FinalizedReviewPublicationRepository(Protocol):
         review_id: str,
     ) -> FinalizedReviewPublication | None: ...
 
+    def get_for_published_revision(
+        self,
+        world_id: str,
+        revision_id: str,
+    ) -> FinalizedReviewPublication | None:
+        """Read the verified terminal publication for one exact revision."""
+        ...
+
 
 class ExistingWorldAdoptionRepository(Protocol):
     """Atomic existing-world adoption unit of work.

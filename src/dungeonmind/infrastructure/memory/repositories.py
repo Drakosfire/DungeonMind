@@ -806,6 +806,18 @@ class InMemoryFinalizedReviewPublicationRepository:
             )
             return None if publication is None else self._reconstruct_unlocked(publication)
 
+    def get_for_published_revision(
+        self,
+        world_id: str,
+        revision_id: str,
+    ) -> FinalizedReviewPublication | None:
+        with self._graph._lock_for(world_id):
+            publication = self._find_matching_unlocked(
+                world_id=world_id,
+                revision_id=revision_id,
+            )
+            return None if publication is None else self._reconstruct_unlocked(publication)
+
     @staticmethod
     def _record_from_revision(
         command: FinalizedReviewPublicationCommand,
