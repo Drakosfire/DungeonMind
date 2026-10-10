@@ -17,6 +17,11 @@ from dungeonmind.contracts.vnext.native_source import (
     NativeTextSourceAdmissionV1,
     NativeUtf8SpanProofV1,
 )
+from dungeonmind.contracts.vnext.operator_source import (
+    OperatorSourceAttestationReceiptV1,
+    OperatorSourceSelectionV1,
+    PreparedOperatorSourceV1,
+)
 from dungeonmind.contracts.vnext.prospective import (
     KnowledgeProspectivePublication,
     ProspectiveResultBinding,
@@ -25,6 +30,7 @@ from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
 from dungeonmind.contracts.vnext.source import SourceArtifactV3, SourceRevisionV2
 from dungeonmind.contracts.vnext.space_provisioning import KnowledgeSpaceProvisioningReceipt
 
+from .operator_approval import TrustedOperatorApproval
 from .provenance import KnowledgeProvenanceSnapshot
 from .records import KnowledgeHeadEvent, StoredKnowledgeRevision
 
@@ -151,3 +157,28 @@ class NativeSourceEvidenceRepository(KnowledgeRevisionRepository, Protocol):
     ) -> NativeSourceAdmissionReceiptV1 | None: ...
 
     def open_native_source_view(self, space_id: str) -> NativeTextSourceView: ...
+
+
+class OperatorSourceBindingRepository(NativeSourceEvidenceRepository, Protocol):
+    """Prepared, trusted-host-approved proof of existing evidence identities."""
+
+    def prepare_operator_source_span(
+        self,
+        *,
+        selection: OperatorSourceSelectionV1,
+        domain_contract: DomainContractDescriptor,
+    ) -> PreparedOperatorSourceV1: ...
+
+    def commit_operator_source_span(
+        self,
+        *,
+        space_id: str,
+        operation_id: str,
+        body_text: str,
+        approval: TrustedOperatorApproval,
+        domain_contract: DomainContractDescriptor,
+    ) -> OperatorSourceAttestationReceiptV1: ...
+
+    def get_operator_source_receipt(
+        self, space_id: str, operation_id: str
+    ) -> OperatorSourceAttestationReceiptV1 | None: ...

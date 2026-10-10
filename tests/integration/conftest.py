@@ -25,6 +25,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 TRUNCATE_SQL = """
 TRUNCATE TABLE
+    dungeonmind.knowledge_operator_source_attestations,
+    dungeonmind.knowledge_operator_source_artifacts,
+    dungeonmind.knowledge_operator_source_preparations,
     dungeonmind.source_admission_receipts,
     dungeonmind.knowledge_native_source_spans,
     dungeonmind.knowledge_native_source_admissions,
