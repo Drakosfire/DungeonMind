@@ -346,7 +346,9 @@ class CompleteObjectLookupResult:
     related_objects: tuple[GraphObjectView, ...] = ()
     relationships: tuple[GraphRelationshipView, ...] = ()
     property_assertions: tuple[AdmittedAssertionValue, ...] = ()
-    reviewed_source_observations: tuple[ReviewedSourceObservation, ...] = ()
+    reviewed_source_observations: tuple[ReviewedSourceObservation, ...] = field(
+        default=(), kw_only=True
+    )
     anchors: tuple[SourceAnchorMetadata, ...] = ()
     completeness: SelectedObjectCompleteness = field(
         default_factory=lambda: SelectedObjectCompleteness(status="complete")

@@ -11,7 +11,10 @@ from dungeonmind.application.contribution_review_v2 import _build_review_state
 from dungeonmind.application.graph_snapshot import GRAPH_SCHEMA_V6
 from dungeonmind.application.review_publication import publish_finalized_review
 from dungeonmind.application.world_graph_projection import WorldGraphProjectionService
-from dungeonmind.application.world_graph_retrieval import WorldGraphRetrievalService
+from dungeonmind.application.world_graph_retrieval import (
+    CompleteObjectLookupResult,
+    WorldGraphRetrievalService,
+)
 from dungeonmind.contracts.contribution import AcceptanceState, GraphContributionV2
 from dungeonmind.contracts.contribution_review import ContributionAssertionVerdict
 from dungeonmind.contracts.contribution_review_v2 import contribution_v2_payload_sha256
@@ -267,6 +270,33 @@ def test_published_observation_is_typed_and_separate_from_authored_graph() -> No
     assert after.graph_payload == before.graph_payload
     old = service.get_complete_object(_request(parent_id), object_id=EXISTING_OBJECT_ID)
     assert old.reviewed_source_observations == ()
+
+
+def test_added_observation_facet_preserves_legacy_positional_constructor() -> None:
+    service, _graph, _sources, _parent_id, child_id = _fixture()
+    current = service.get_complete_object(_request(child_id), object_id=EXISTING_OBJECT_ID)
+    legacy = CompleteObjectLookupResult(
+        current.snapshot,
+        current.found,
+        current.object,
+        current.related_objects,
+        current.relationships,
+        current.property_assertions,
+        current.anchors,
+        current.completeness,
+        current.coverage,
+    )
+    assert legacy.anchors == current.anchors
+    assert legacy.completeness == current.completeness
+    assert legacy.coverage == current.coverage
+    assert legacy.reviewed_source_observations == ()
+    explicit = CompleteObjectLookupResult(
+        current.snapshot,
+        current.found,
+        current.object,
+        reviewed_source_observations=current.reviewed_source_observations,
+    )
+    assert explicit.reviewed_source_observations == current.reviewed_source_observations
 
 
 def test_finalized_but_unpublished_review_is_not_a_read_authority() -> None:
