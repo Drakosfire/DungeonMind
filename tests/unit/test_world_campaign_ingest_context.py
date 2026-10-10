@@ -87,7 +87,7 @@ def _client(reader):
         graph_reader=None, clock=None,
         access_binding=PublicationAccessBinding.from_secret("world:synthetic", "synthetic-secret"),
         readiness_probe=lambda: {"status": "ready"}, ingest_context_reader=reader,
-    ))
+    ), raise_server_exceptions=False)
 
 
 def test_api_authorizes_before_read_and_returns_only_metadata() -> None:
@@ -106,19 +106,29 @@ def test_api_authorizes_before_read_and_returns_only_metadata() -> None:
         (url, {}), (url, {"Authorization": "Bearer incorrect"}),
         (url.replace("world:synthetic", "world:other"), headers),
     ):
-        assert client.get(target, headers=auth).status_code == 403
+        denied = client.get(target, headers=auth)
+        assert denied.status_code == 403
+        assert denied.headers["cache-control"] == "no-store"
     assert reader.calls == 0
     response = client.get(url, headers=headers)
     assert response.status_code == 200
     assert response.json() == _context().model_dump()
     assert response.headers["cache-control"] == "no-store"
     assert reader.calls == 1
+    invalid = client.get(url.replace("campaign:synthetic", "%20"), headers=headers)
+    assert invalid.status_code == 422
+    assert invalid.headers["cache-control"] == "no-store"
+    assert reader.calls == 1
+    rejected_method = client.post(url, headers=headers)
+    assert rejected_method.status_code == 405
+    assert rejected_method.headers["cache-control"] == "no-store"
 
 
 @pytest.mark.parametrize("error,status,code", [
     (WorldCampaignMembershipNotFoundError(), 404, "world_campaign_membership_not_found"),
     (WorldGraphNotInitializedError(), 409, "world_graph_not_initialized"),
     (PersistenceUnavailableError("sentinel-private-connection"), 503, "persistence_unavailable"),
+    (RuntimeError("sentinel-private-connection"), 500, "internal_error"),
 ])
 def test_api_fails_closed_on_reader_errors(error, status, code) -> None:
     class FailingReader:
@@ -131,4 +141,5 @@ def test_api_fails_closed_on_reader_errors(error, status, code) -> None:
     )
     assert response.status_code == status
     assert response.json()["error"]["code"] == code
+    assert response.headers["cache-control"] == "no-store"
     assert "sentinel-private-connection" not in response.text

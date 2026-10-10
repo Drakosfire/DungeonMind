@@ -5,13 +5,13 @@ Importing this module requires the ``api`` extra.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
 from ..application.fictional_time_query_service import (
@@ -184,11 +184,20 @@ def create_publication_app(
         ingest_context_reader=ingest_context_reader,
     )
 
+    @app.middleware("http")
+    async def _no_store(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     @app.exception_handler(DungeonMindError)
     async def _dungeonmind_error(_request: Request, exc: DungeonMindError) -> JSONResponse:
         return JSONResponse(
             status_code=http_status_for(exc),
             content=publication_error_envelope(exc),
+            headers={"Cache-Control": "no-store"},
         )
 
     def _validation_envelope(errors: list[Any]) -> dict[str, Any]:
@@ -212,15 +221,24 @@ def create_publication_app(
     async def _request_validation_error(
         _request: Request, exc: RequestValidationError
     ) -> JSONResponse:
-        return JSONResponse(status_code=422, content=_validation_envelope(exc.errors()))
+        return JSONResponse(
+            status_code=422, content=_validation_envelope(exc.errors()),
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.exception_handler(ValidationError)
     async def _validation_error(_request: Request, exc: ValidationError) -> JSONResponse:
-        return JSONResponse(status_code=422, content=_validation_envelope(exc.errors()))
+        return JSONResponse(
+            status_code=422, content=_validation_envelope(exc.errors()),
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.exception_handler(Exception)
     async def _unexpected_error(_request: Request, exc: Exception) -> JSONResponse:
-        return JSONResponse(status_code=500, content=publication_error_envelope(exc))
+        return JSONResponse(
+            status_code=500, content=publication_error_envelope(exc),
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
@@ -235,13 +253,19 @@ def create_publication_app(
     async def _membership_missing(
         _request: Request, exc: WorldCampaignMembershipNotFoundError
     ) -> JSONResponse:
-        return JSONResponse(status_code=404, content=publication_error_envelope(exc))
+        return JSONResponse(
+            status_code=404, content=publication_error_envelope(exc),
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.exception_handler(WorldGraphNotInitializedError)
     async def _head_missing(
         _request: Request, exc: WorldGraphNotInitializedError
     ) -> JSONResponse:
-        return JSONResponse(status_code=409, content=publication_error_envelope(exc))
+        return JSONResponse(
+            status_code=409, content=publication_error_envelope(exc),
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get(
         "/v1/worlds/{world_id}/campaigns/{campaign_id}/ingest-context",

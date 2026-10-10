@@ -82,7 +82,9 @@ def test_missing_membership_and_valid_membership_without_head_fail_closed(pg) ->
     with pytest.raises(WorldCampaignMembershipNotFoundError):
         reader.read_ingest_context(world_id=WORLD_ID, campaign_id=CAMPAIGN)
     client = _client(pg)
-    assert client.get(_url(), headers=HEADERS).status_code == 404
+    missing = client.get(_url(), headers=HEADERS)
+    assert missing.status_code == 404
+    assert missing.headers["cache-control"] == "no-store"
     with pg.database.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) AS n FROM dungeonmind.worlds").fetchone()["n"] == 0
     _seed(pg, publish=False)
@@ -92,6 +94,7 @@ def test_missing_membership_and_valid_membership_without_head_fail_closed(pg) ->
         reader.read_ingest_context(world_id=WORLD_ID, campaign_id=CAMPAIGN)
     response = client.get(_url(), headers=HEADERS)
     assert response.status_code == 409
+    assert response.headers["cache-control"] == "no-store"
     assert response.json()["error"]["code"] == "world_graph_not_initialized"
     print(json.dumps({"witness": "fail_closed", "missing_membership": 404, "no_head": 409}))
 
