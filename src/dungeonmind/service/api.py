@@ -25,12 +25,22 @@ from ..application.repositories import (
     WorldGraphRepository,
 )
 from ..application.review_publication import publish_finalized_review
+from ..application.world_campaign_ingest_context import (
+    WorldCampaignIngestContextReader,
+    WorldCampaignMembershipNotFoundError,
+    WorldGraphNotInitializedError,
+    query_world_campaign_ingest_context,
+)
 from ..contracts.fictional_time import FictionalTimeQueryResult
 from ..contracts.fictional_time_transport import FictionalTimeShadowQueryRequest
 from ..contracts.mind_turn import MindTurnRequest, MindTurnResponse
 from ..contracts.review_publication import FinalizedReviewPublication
 from ..contracts.review_publication_transport import FinalizedReviewPublicationRequest
-from ..domain.errors import DungeonMindError, PersistenceIntegrityError
+from ..contracts.world_campaign_ingest_context import (
+    WorldCampaignIngestContextRequestV1,
+    WorldCampaignIngestContextV1,
+)
+from ..domain.errors import DungeonMindError, PersistenceIntegrityError, PersistenceUnavailableError
 from .demo_access import DemoAccessBinding, authorize_demo_request
 from .error_mapping import (
     error_envelope,
@@ -42,7 +52,11 @@ from .fictional_time_access import (
     FictionalTimeQueryAccessBinding,
     authorize_fictional_time_query_request,
 )
-from .publication_access import PublicationAccessBinding, authorize_publication_request
+from .publication_access import (
+    PublicationAccessBinding,
+    authorize_publication_request,
+    authorize_publication_world,
+)
 
 
 class MindTurnAppState:
@@ -133,6 +147,7 @@ class PublicationAppState:
         clock: Clock,
         access_binding: PublicationAccessBinding,
         readiness_probe: Callable[[], dict[str, Any]],
+        ingest_context_reader: WorldCampaignIngestContextReader | None,
     ) -> None:
         self.review_repository = review_repository
         self.world_graph_repository = world_graph_repository
@@ -141,6 +156,7 @@ class PublicationAppState:
         self.clock = clock
         self.access_binding = access_binding
         self.readiness_probe = readiness_probe
+        self.ingest_context_reader = ingest_context_reader
 
 
 def create_publication_app(
@@ -152,6 +168,7 @@ def create_publication_app(
     clock: Clock,
     access_binding: PublicationAccessBinding,
     readiness_probe: Callable[[], dict[str, Any]],
+    ingest_context_reader: WorldCampaignIngestContextReader | None = None,
 ) -> FastAPI:
     """Create the separate bearer-gated finalized-review publication host."""
 
@@ -164,6 +181,7 @@ def create_publication_app(
         clock=clock,
         access_binding=access_binding,
         readiness_probe=readiness_probe,
+        ingest_context_reader=ingest_context_reader,
     )
 
     @app.exception_handler(DungeonMindError)
@@ -212,6 +230,38 @@ def create_publication_app(
     def readyz() -> dict[str, Any]:
         state: PublicationAppState = app.state.publication
         return state.readiness_probe()
+
+    @app.exception_handler(WorldCampaignMembershipNotFoundError)
+    async def _membership_missing(
+        _request: Request, exc: WorldCampaignMembershipNotFoundError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=404, content=publication_error_envelope(exc))
+
+    @app.exception_handler(WorldGraphNotInitializedError)
+    async def _head_missing(
+        _request: Request, exc: WorldGraphNotInitializedError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content=publication_error_envelope(exc))
+
+    @app.get(
+        "/v1/worlds/{world_id}/campaigns/{campaign_id}/ingest-context",
+        response_model=WorldCampaignIngestContextV1,
+    )
+    def ingest_context(world_id: str, campaign_id: str, request: Request) -> JSONResponse:
+        state: PublicationAppState = app.state.publication
+        authorize_publication_world(
+            world_id,
+            authorization_header=request.headers.get("authorization"),
+            binding=state.access_binding,
+        )
+        query = WorldCampaignIngestContextRequestV1(world_id=world_id, campaign_id=campaign_id)
+        if state.ingest_context_reader is None:
+            raise PersistenceUnavailableError("ingest context reader is not configured")
+        result = query_world_campaign_ingest_context(query, reader=state.ingest_context_reader)
+        return JSONResponse(
+            status_code=200, content=result.model_dump(mode="json"),
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.post(
         "/v1/finalized-review-publications",
