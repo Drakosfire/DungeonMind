@@ -49,7 +49,11 @@ POSTGRES_ONLY_ROOTS = {"psycopg", "pgvector"}
 # Allowed only inside dungeonmind.service (optional ``api`` extra).
 API_ONLY_ROOTS = {"fastapi", "uvicorn", "starlette"}
 
-ALLOWED_EXTERNAL = {"cryptography", "pydantic"}
+ALLOWED_EXTERNAL = {"pydantic"}
+
+# Cryptographic primitives are an infrastructure detail; application/domain
+# code must depend on the approval verifier port rather than the crypto library.
+INFRASTRUCTURE_ONLY_ROOTS = {"cryptography"}
 
 LAYER_RULES: dict[str, set[str]] = {
     "dungeonmind": set(),
@@ -68,6 +72,11 @@ LAYER_RULES: dict[str, set[str]] = {
         "dungeonmind.application",
     },
     "dungeonmind.infrastructure": {
+        "dungeonmind.contracts",
+        "dungeonmind.domain",
+        "dungeonmind.application",
+    },
+    "dungeonmind.infrastructure.operator_approval": {
         "dungeonmind.contracts",
         "dungeonmind.domain",
         "dungeonmind.application",
@@ -185,6 +194,15 @@ def test_layer_rules_hold() -> None:
             ):
                 continue
             if root in API_ONLY_ROOTS and importer_layer == "dungeonmind.service":
+                continue
+            if root in INFRASTRUCTURE_ONLY_ROOTS and importer_layer.startswith(
+                "dungeonmind.infrastructure"
+            ):
+                continue
+            if root in INFRASTRUCTURE_ONLY_ROOTS:
+                violations.append(
+                    f"{module_name} imports infrastructure-only third-party {module}"
+                )
                 continue
             if not module.startswith("dungeonmind"):
                 violations.append(f"{module_name} imports unvetted third-party {module}")

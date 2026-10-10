@@ -56,6 +56,7 @@ from dungeonmind.infrastructure.memory.repositories import InMemorySourceReposit
 from dungeonmind.infrastructure.memory.vnext_operator_sources import (
     InMemoryOperatorSourceRepository,
 )
+from dungeonmind.infrastructure.operator_approval import Ed25519OperatorApprovalVerifier
 
 NOW = datetime(2026, 10, 9, 12, tzinfo=UTC)
 BODY = "An amber gate remembers the rain.\n"
@@ -98,7 +99,7 @@ def _fixture():
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw,
     )
-    verifier = OperatorApprovalVerifier(
+    verifier = Ed25519OperatorApprovalVerifier(
         public_key,
         domain_descriptor_sha256=canonical_sha256(domain.model_dump(mode="json")),
         allowed_source_terms=frozenset({"test.source:recap"}), gm_label=GM,
