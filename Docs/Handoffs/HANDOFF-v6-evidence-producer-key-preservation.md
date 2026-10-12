@@ -4,6 +4,7 @@
 **Status:** ACTIVE  
 **Repository / branch:** DungeonMind / `codex/v6-evidence-producer-key`  
 **Base:** `13143455b304d748c249bd7bd628134c421bf6d9`  
+**PR:** [#115](https://github.com/Drakosfire/DungeonMind/pull/115), draft awaiting independent review  
 **Mission:** Preserve an admitted source's producer classification when v1 contribution evidence is materialized into a v6 graph.
 
 ## Outcome and evidence
@@ -38,7 +39,9 @@ Changed-path budget: nine paths, with a recorded rebrief if another path becomes
 
 Source-aware lifting and bounded snapshot wiring are implemented. Both publication adapters recheck new evidence under their owning writer fences; exact durable replay precedes live source lookup. Producer classification is copied from SourceArtifactV2, never derived from a generic enum. Source-identity-only fallback evidence uses the same source authority when supplied; source-free historical materialization retains its previous fixture behavior.
 
-Focused verification: 115 materialization/review/observation/boundary tests passed; the dedicated synthetic PostgreSQL cohort passed all 31 cases, including the new source admission → publication → authorized World search/object/evidence/anchor/source-open proof and zero-mutation forged-key/source-drift cases. Ruff passes the leased paths; Pyright reports zero errors/warnings over changed runtime paths. Independent review and the repaired private corpus rehearsal remain pending at this checkpoint.
+Focused verification on implementation commit `96eadfcce3b5a0798a2ea7333b71dec6c24a8504`: 115 materialization/review/observation/boundary tests passed; the dedicated synthetic PostgreSQL cohort passed all 31 cases, including the new source admission → publication → authorized World search/object/evidence/anchor/source-open proof and zero-mutation forged-key/source-drift cases. Ruff passes the leased paths in a separate failure-preserving invocation; Pyright reports zero errors/warnings over changed runtime paths.
+
+The identical approved private packet then passed on a fresh disposable clone: searchable/complete new facts, existing PC identities and standing descriptions preserved, exact original source opening after anchor revalidation, deterministic materialization, atomic rollback probes, exact replay and stale-parent rejection. It adds 30 objects, 11 relationships and 11 evidence refs while preserving all old records. The SourcePair remains unchanged. Retained head `rev:62820bcd7eca116af9d889e128fabf4e` and schema `0014_adopted_withdrawal_v2` remain unchanged. Private bodies and receipts stay local. Independent review remains pending; this implementation does not authorize retained migration or publication.
 
 Only materialization of v2 reviews into `dm_union_graph_v6`, source-snapshot port wiring, publication integrity checks, and focused regressions are in scope. Native vNext writes, domain vocabularies, Buddy extraction/DTOs, storage optimization, wire schema changes, migrations, historical graph rewrites, and source relabeling are excluded. No retained database mutation is authorized. Existing private clone receipts are evidence, not production state to repair.
 
