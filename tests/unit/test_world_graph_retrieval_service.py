@@ -6,8 +6,9 @@ by ``VersionedUnionGraphSnapshotReader`` under the bundled D&D v3 profile, and
 composed through the landed v2 projection service.
 """
 
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -975,6 +976,240 @@ def test_recap_context_does_not_bypass_source_openability_flag():
         SourceContextIndexRequest(_campaign_a(revision_pin=published.revision_id))
     )
     assert index.entries == ()
+
+
+def test_recap_v1_descriptor_and_id_match_frozen_prechange_output():
+    service, _projection, published, _graph = _recap_context_services()
+    pinned = _campaign_a(revision_pin=published.revision_id)
+    expected = {
+        "campaign_id": CAMPAIGN_A,
+        "content_sha256": "ab" * 32,
+        "context_anchor_id": (
+            "dm-context-anchor:v1:"
+            "3070342db692edda2e2591557e68c99a7c1aca6fc623bbdd55b5d8725b345dd1"
+        ),
+        "graph_revision_id": "rev:9ac160f730afa9439f4c2cb7308d3750",
+        "schema_version": "dm_recap_source_context_v1",
+        "section_selector": {
+            "expected_heading": "# Session 22 Recap",
+            "expected_session_id": "session-22",
+            "kind": "recap_section",
+            "policy": "markdown-session-recap-v1",
+            "schema_version": "dm_recap_context_section_selector_v1",
+        },
+        "source_artifact_id": "src:alpha-notes",
+        "source_revision_id": "srcrev:alpha-notes-v1",
+        "source_uri": "fixture://src:alpha-notes/revision",
+        "world_id": WORLD_ID,
+    }
+    default = service.list_source_context_index(SourceContextIndexRequest(pinned))
+    explicit = service.list_source_context_index(SourceContextIndexRequest(
+        pinned, selector_policy="markdown-session-recap-v1",
+    ))
+    assert default == explicit
+    assert asdict(default.entries[0]) == expected
+    service.list_source_context_index(SourceContextIndexRequest(
+        pinned, selector_policy="markdown-session-recap-v2",
+    ))
+    assert service.list_source_context_index(SourceContextIndexRequest(pinned)) == default
+    resolved = service.resolve_source_context(
+        pinned, context_anchor_id=expected["context_anchor_id"], allow_selector_v2=True,
+    )
+    assert resolved.found and asdict(resolved.context) == expected
+
+
+def test_recap_v2_explicit_discovery_and_saved_id_policy_resolution(monkeypatch):
+    service, _projection, published, _graph = _recap_context_services()
+    pinned = _campaign_a(revision_pin=published.revision_id)
+
+    def no_body_read(*_args, **_kwargs):
+        pytest.fail("Core context discovery/resolution must not open source bodies")
+
+    monkeypatch.setattr(Path, "read_bytes", no_body_read)
+    monkeypatch.setattr(Path, "read_text", no_body_read)
+    v1 = service.list_source_context_index(SourceContextIndexRequest(pinned)).entries[0]
+    v2 = service.list_source_context_index(SourceContextIndexRequest(
+        pinned, selector_policy="markdown-session-recap-v2",
+    )).entries[0]
+    assert isinstance(v1, retrieval_module.RecapSourceContextV1)
+    assert isinstance(v2, retrieval_module.RecapSourceContextV2)
+    assert v2.schema_version == "dm_recap_source_context_v2"
+    assert v2.context_anchor_id.startswith("dm-context-anchor:v2:")
+    assert v2.context_anchor_id != v1.context_anchor_id
+    assert v2.section_selector.identity_payload() == {
+        "schema_version": "dm_recap_context_section_selector_v2",
+        "kind": "recap_section",
+        "policy": "markdown-session-recap-v2",
+        "expected_session_id": "session-22",
+        "canonical_heading": "# Session 22 Recap",
+        "legacy_session_heading": "## Session 22:",
+        "legacy_recap_marker": "**Recap**:",
+    }
+    for field in ("world_id", "campaign_id", "graph_revision_id", "source_artifact_id",
+                  "source_revision_id", "source_uri", "content_sha256"):
+        assert getattr(v2, field) == getattr(v1, field)
+    assert not hasattr(v2, "body") and not hasattr(v2, "selected_form")
+    assert not service.resolve_source_context(pinned, context_anchor_id=v2.context_anchor_id).found
+    assert service.resolve_source_context(
+        pinned, context_anchor_id=v2.context_anchor_id, allow_selector_v2=True,
+    ).context == v2
+    assert service.resolve_source_context(
+        pinned, context_anchor_id=v1.context_anchor_id, allow_selector_v2=True,
+    ).context == v1
+    assert not service.resolve_source_context(
+        pinned, context_anchor_id=v1.context_anchor_id.replace(":v1:", ":v2:"),
+        allow_selector_v2=True,
+    ).found
+    assert not service.resolve_source_context(
+        pinned, context_anchor_id=v2.context_anchor_id.replace(":v2:", ":v3:"),
+        allow_selector_v2=True,
+    ).found
+    assert not service.resolve_source_anchor(pinned, anchor_id=v2.context_anchor_id).found
+    assert not service.get_evidence(
+        pinned, target=EvidenceTarget(kind="assertion", target_id=v2.context_anchor_id),
+    ).found
+
+
+@pytest.mark.parametrize("policy", ["markdown-session-recap-v3", "", None, True, []])
+def test_recap_context_rejects_unsupported_discovery_policy(policy):
+    with pytest.raises(ValueError, match=r"unsupported.*selector policy"):
+        SourceContextIndexRequest(_campaign_a(revision_pin="rev:pinned"), selector_policy=policy)
+
+
+@pytest.mark.parametrize("capability", ["true", 1, None])
+def test_recap_context_v2_capability_requires_boolean(capability):
+    service, _projection, published, _graph = _recap_context_services()
+    with pytest.raises(ValueError, match="explicit boolean"):
+        service.resolve_source_context(
+            _campaign_a(revision_pin=published.revision_id),
+            context_anchor_id="dm-context-anchor:v2:forged", allow_selector_v2=capability,
+        )
+
+
+@pytest.mark.parametrize("changes", [
+    {"expected_session_id": "session-0"},
+    {"canonical_heading": "# Session 23 Recap"},
+    {"legacy_session_heading": "## Session 22"},
+    {"legacy_recap_marker": "Recap:"},
+    {"policy": "markdown-session-recap-v1"},
+    {"schema_version": "dm_recap_context_section_selector_v1"},
+    {"kind": "whole_document"},
+])
+def test_recap_v2_selector_accepts_only_authorized_literal_policy(changes):
+    selector = retrieval_module.RecapContextSectionSelectorV2(
+        expected_session_id="session-22", canonical_heading="# Session 22 Recap",
+        legacy_session_heading="## Session 22:", legacy_recap_marker="**Recap**:",
+    )
+    with pytest.raises(ValueError, match="exact session policy"):
+        replace(selector, **changes)
+
+
+def test_recap_v2_preserves_scope_order_overflow_and_openability():
+    service, _projection, published, graph = _recap_context_services(beta_recap=True)
+    cross = _request(scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN,
+                     revision_pin=published.revision_id)
+    index = service.list_source_context_index(SourceContextIndexRequest(
+        cross, selector_policy="markdown-session-recap-v2",
+    ))
+    assert index.status == "complete" and index.eligible_count == 2
+    assert [entry.source_artifact_id for entry in index.entries] == [
+        "src:alpha-notes", "src:beta-notes",
+    ]
+    assert all(isinstance(entry, retrieval_module.RecapSourceContextV2) for entry in index.entries)
+    overflow = service.list_source_context_index(SourceContextIndexRequest(
+        cross, max_entries=1, selector_policy="markdown-session-recap-v2",
+    ))
+    assert overflow.status == "overflow" and overflow.eligible_count == 2 and not overflow.entries
+    alpha = index.entries[0]
+    for wrong_scope in (
+        _campaign_a(revision_pin=published.revision_id),
+        _request(scope_mode=ScopeModeV2.WORLD, revision_pin=published.revision_id),
+        _request(scope_mode=ScopeModeV2.CAMPAIGN, campaign_id=CAMPAIGN_B,
+                 revision_pin=published.revision_id),
+    ):
+        assert not service.resolve_source_context(
+            wrong_scope, context_anchor_id=alpha.context_anchor_id, allow_selector_v2=True,
+        ).found
+    with pytest.raises(ValueError, match="GM admissibility"):
+        service.resolve_source_context(
+            cross.model_copy(update={"admissibility": Admissibility.PLAYER}),
+            context_anchor_id=alpha.context_anchor_id, allow_selector_v2=True,
+        )
+    with pytest.raises(ValueError, match="exact revision pin"):
+        SourceContextIndexRequest(_campaign_a(), selector_policy="markdown-session-recap-v2")
+    denied, _projection, revision, _graph = _recap_context_services(recap_can_open=False)
+    assert not denied.list_source_context_index(SourceContextIndexRequest(
+        _campaign_a(revision_pin=revision.revision_id), selector_policy="markdown-session-recap-v2",
+    )).entries
+    ordinary_graph = InMemoryWorldGraphRepository()
+    ordinary_revision = _publish(ordinary_graph)
+    ordinary, _projection = _services(ordinary_graph)
+    assert not ordinary.list_source_context_index(SourceContextIndexRequest(
+        _campaign_a(revision_pin=ordinary_revision.revision_id),
+        selector_policy="markdown-session-recap-v2",
+    )).entries
+    child = _publish(graph, _payload(), parent_revision_id=published.revision_id,
+                     operation_id="op:v2-context-child")
+    assert not service.resolve_source_context(
+        cross.model_copy(update={"revision_pin": child.revision_id}),
+        context_anchor_id=alpha.context_anchor_id, allow_selector_v2=True,
+    ).found
+
+
+@pytest.mark.parametrize("mutation", ["status", "uri", "digest", "revision_binding"])
+def test_recap_v2_revalidates_current_source_standing_and_tuple(mutation):
+    service, _projection, published, _graph = _recap_context_services()
+    pinned = _campaign_a(revision_pin=published.revision_id)
+    old = service.list_source_context_index(SourceContextIndexRequest(
+        pinned, selector_policy="markdown-session-recap-v2",
+    )).entries[0]
+    sources = service._sources
+    if mutation == "status":
+        artifact = sources.get_artifact(old.source_artifact_id)
+        sources._artifacts[old.source_artifact_id] = artifact.model_copy(
+            update={"status": SourceStatus.SUPERSEDED}
+        )
+    else:
+        revision = sources.get_revision(old.source_revision_id)
+        changes = {"uri": {"locator": "fixture://changed/revision"},
+                   "digest": {"content_sha256": "cd" * 32},
+                   "revision_binding": {"source_artifact_id": "src:other"}}[mutation]
+        sources._revisions[old.source_revision_id] = revision.model_copy(update=changes)
+    assert not service.resolve_source_context(
+        pinned, context_anchor_id=old.context_anchor_id, allow_selector_v2=True,
+    ).found
+
+
+@pytest.mark.parametrize(("owner", "field", "value"), [
+    ("pair", "source_artifact_id", "src:other"),
+    ("pair", "source_revision_id", "srcrev:other"),
+    ("pair", "campaign_id", CAMPAIGN_B),
+    ("pair", "source_uri", "fixture://other"),
+    ("pair", "content_sha256", "cd" * 32),
+    ("snapshot", "world_id", "world:other"),
+    ("snapshot", "campaign_id", CAMPAIGN_B),
+    ("snapshot", "revision_id", "rev:other"),
+    ("snapshot", "scope_mode", ScopeModeV2.WORLD_CROSS_CAMPAIGN),
+    ("snapshot", "admissibility", Admissibility.PLAYER),
+    ("snapshot", "focus", "session"),
+])
+def test_recap_v2_identity_binds_source_and_projection(owner, field, value):
+    service, _projection, published, _graph = _recap_context_services()
+    result, context = service._establish(_campaign_a(revision_pin=published.revision_id))
+    pair = service._admitted_recap_source_pairs(result, context)[0]
+    derive = retrieval_module._derive_context_anchor_id_v2
+    old = derive(snapshot=result.snapshot, pair=pair, section_selector_identity="selector-v2")
+    if field == "focus":
+        value = result.snapshot.focus.model_copy(update={
+            "kind": type(result.snapshot.focus.kind)("session"), "session_id": "session-99",
+        })
+    changed_pair = replace(pair, **{field: value}) if owner == "pair" else pair
+    changed_snapshot = (result.snapshot.model_copy(update={field: value})
+                        if owner == "snapshot" else result.snapshot)
+    assert derive(snapshot=changed_snapshot, pair=changed_pair,
+                  section_selector_identity="selector-v2") != old
+    assert derive(snapshot=result.snapshot, pair=pair,
+                  section_selector_identity="different-selector") != old
 
 
 def _publish(

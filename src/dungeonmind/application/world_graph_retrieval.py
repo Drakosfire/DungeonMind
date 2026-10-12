@@ -120,6 +120,12 @@ CONTEXT_ANCHOR_SCHEMA = "dm_context_anchor_v1"
 CONTEXT_ANCHOR_ID_PREFIX = "dm-context-anchor:v1:"
 RECAP_CONTEXT_SECTION_SELECTOR_SCHEMA = "dm_recap_context_section_selector_v1"
 RECAP_SOURCE_CONTEXT_SCHEMA = "dm_recap_source_context_v1"
+CONTEXT_ANCHOR_V2_SCHEMA = "dm_context_anchor_v2"
+CONTEXT_ANCHOR_V2_ID_PREFIX = "dm-context-anchor:v2:"
+RECAP_CONTEXT_SECTION_SELECTOR_V2_SCHEMA = "dm_recap_context_section_selector_v2"
+RECAP_SOURCE_CONTEXT_V2_SCHEMA = "dm_recap_source_context_v2"
+
+RecapContextSelectorPolicy = Literal["markdown-session-recap-v1", "markdown-session-recap-v2"]
 
 MAX_SEED_OBJECT_IDS = 8
 MAX_NEIGHBORHOOD_DEPTH = 2
@@ -522,13 +528,75 @@ class RecapSourceContextV1:
 
 
 @dataclass(frozen=True)
+class RecapContextSectionSelectorV2:
+    """Authorized literal alternatives; the product selects one verified section.
+
+    Core derives these literals from admitted session metadata without reading
+    bytes or asserting that either physical Markdown form exists.
+    """
+
+    expected_session_id: str
+    canonical_heading: str
+    legacy_session_heading: str
+    legacy_recap_marker: str
+    schema_version: Literal["dm_recap_context_section_selector_v2"] = (
+        RECAP_CONTEXT_SECTION_SELECTOR_V2_SCHEMA
+    )
+    kind: Literal["recap_section"] = "recap_section"
+    policy: Literal["markdown-session-recap-v2"] = "markdown-session-recap-v2"
+
+    def __post_init__(self) -> None:
+        match = re.fullmatch(r"session-([1-9][0-9]*)", self.expected_session_id)
+        if (
+            match is None
+            or self.canonical_heading != f"# Session {match.group(1)} Recap"
+            or self.legacy_session_heading != f"## Session {match.group(1)}:"
+            or self.legacy_recap_marker != "**Recap**:"
+            or self.schema_version != RECAP_CONTEXT_SECTION_SELECTOR_V2_SCHEMA
+            or self.kind != "recap_section"
+            or self.policy != "markdown-session-recap-v2"
+        ):
+            raise ValueError("recap v2 selector must match its exact session policy")
+
+    def identity_payload(self) -> dict[str, str]:
+        return {
+            "schema_version": self.schema_version,
+            "kind": self.kind,
+            "policy": self.policy,
+            "expected_session_id": self.expected_session_id,
+            "canonical_heading": self.canonical_heading,
+            "legacy_session_heading": self.legacy_session_heading,
+            "legacy_recap_marker": self.legacy_recap_marker,
+        }
+
+
+@dataclass(frozen=True)
+class RecapSourceContextV2:
+    """Opt-in context descriptor, with no source-body or claim-support authority."""
+
+    context_anchor_id: str
+    world_id: str
+    campaign_id: str | None
+    graph_revision_id: str
+    source_artifact_id: str
+    source_revision_id: str
+    source_uri: str
+    content_sha256: str
+    section_selector: RecapContextSectionSelectorV2
+    schema_version: Literal["dm_recap_source_context_v2"] = RECAP_SOURCE_CONTEXT_V2_SCHEMA
+
+
+@dataclass(frozen=True)
 class SourceContextIndexRequest:
     """Bounded context-only index for one exact GM projection."""
 
     projection: WorldGraphProjectionRequestV2
     max_entries: int = 512
+    selector_policy: RecapContextSelectorPolicy = "markdown-session-recap-v1"
 
     def __post_init__(self) -> None:
+        if self.selector_policy not in ("markdown-session-recap-v1", "markdown-session-recap-v2"):
+            raise ValueError("unsupported source-context selector policy")
         if type(self.max_entries) is not int or not 1 <= self.max_entries <= 512:
             raise ValueError("source-context max_entries must be within 1..512")
         if not self.projection.revision_pin or not self.projection.revision_pin.strip():
@@ -549,7 +617,7 @@ class SourceContextIndexResult:
     eligible_count: int
     max_entries: int
     status: Literal["complete", "overflow"]
-    entries: tuple[RecapSourceContextV1, ...]
+    entries: tuple[RecapSourceContextV1 | RecapSourceContextV2, ...]
 
     def __post_init__(self) -> None:
         if self.eligible_count < 0 or not 1 <= self.max_entries <= 512:
@@ -569,7 +637,7 @@ class SourceContextResolution:
     snapshot: ProjectionSnapshotV2
     found: bool
     context_anchor_id: str
-    context: RecapSourceContextV1 | None = None
+    context: RecapSourceContextV1 | RecapSourceContextV2 | None = None
 
 
 @dataclass(frozen=True)
@@ -1037,6 +1105,33 @@ def _derive_context_anchor_id(
         'section_selector_identity': section_selector_identity,
     }
     return f"{CONTEXT_ANCHOR_ID_PREFIX}{canonical_sha256(payload)}"
+
+
+def _derive_context_anchor_id_v2(
+    *,
+    snapshot: ProjectionSnapshotV2,
+    pair: _AdmittedRecapSourcePair,
+    section_selector_identity: str,
+) -> str:
+    """Separate V2 preimage; keep the existing V1 derivation unchanged."""
+    if not section_selector_identity:
+        raise ValueError("context section selector identity is required")
+    payload = {
+        'schema': CONTEXT_ANCHOR_V2_SCHEMA,
+        'world_id': snapshot.world_id,
+        'campaign_id': snapshot.campaign_id,
+        'scope_mode': str(snapshot.scope_mode),
+        'focus': snapshot.focus.model_dump(mode='json'),
+        'admissibility': str(snapshot.admissibility),
+        'revision_id': snapshot.revision_id,
+        'source_artifact_id': pair.source_artifact_id,
+        'source_revision_id': pair.source_revision_id,
+        'source_campaign_id': pair.campaign_id,
+        'source_uri': pair.source_uri,
+        'content_sha256': pair.content_sha256,
+        'section_selector_identity': section_selector_identity,
+    }
+    return f"{CONTEXT_ANCHOR_V2_ID_PREFIX}{canonical_sha256(payload)}"
 
 
 def _normalize_seeds(seed_object_ids: Iterable[str], *, required: bool) -> list[str]:
@@ -2401,10 +2496,35 @@ class WorldGraphRetrievalService:
         self,
         result: WorldGraphProjectionResult,
         context: WorldGraphReadContext,
-    ) -> tuple[RecapSourceContextV1, ...]:
-        descriptors: list[RecapSourceContextV1] = []
+        *,
+        selector_policy: RecapContextSelectorPolicy = "markdown-session-recap-v1",
+    ) -> tuple[RecapSourceContextV1 | RecapSourceContextV2, ...]:
+        descriptors: list[RecapSourceContextV1 | RecapSourceContextV2] = []
         for pair in self._admitted_recap_source_pairs(result, context):
             session_number = pair.session_id.removeprefix("session-")
+            if selector_policy == "markdown-session-recap-v2":
+                selector_v2 = RecapContextSectionSelectorV2(
+                    expected_session_id=pair.session_id,
+                    canonical_heading=f"# Session {session_number} Recap",
+                    legacy_session_heading=f"## Session {session_number}:",
+                    legacy_recap_marker="**Recap**:",
+                )
+                descriptors.append(RecapSourceContextV2(
+                    context_anchor_id=_derive_context_anchor_id_v2(
+                        snapshot=result.snapshot,
+                        pair=pair,
+                        section_selector_identity=canonical_sha256(selector_v2.identity_payload()),
+                    ),
+                    world_id=pair.world_id,
+                    campaign_id=pair.campaign_id,
+                    graph_revision_id=result.snapshot.revision_id,
+                    source_artifact_id=pair.source_artifact_id,
+                    source_revision_id=pair.source_revision_id,
+                    source_uri=pair.source_uri,
+                    content_sha256=pair.content_sha256,
+                    section_selector=selector_v2,
+                ))
+                continue
             selector = RecapContextSectionSelectorV1(
                 expected_session_id=pair.session_id,
                 expected_heading=f"# Session {session_number} Recap",
@@ -2439,7 +2559,9 @@ class WorldGraphRetrievalService:
         URI is involved. Overflow is empty, never a misleading partial list.
         """
         result, context = self._establish(request.projection)
-        entries = self._recap_context_descriptors(result, context)
+        entries = self._recap_context_descriptors(
+            result, context, selector_policy=request.selector_policy
+        )
         count = len(entries)
         overflow = count > request.max_entries
         return SourceContextIndexResult(
@@ -2455,6 +2577,7 @@ class WorldGraphRetrievalService:
         request: WorldGraphProjectionRequestV2,
         *,
         context_anchor_id: str,
+        allow_selector_v2: bool = False,
     ) -> SourceContextResolution:
         """Revalidate a context token under the caller's exact GM projection.
 
@@ -2463,13 +2586,27 @@ class WorldGraphRetrievalService:
         produces a miss. Product-local bytes remain Buddy's responsibility.
         """
         SourceContextIndexRequest(request)
+        if type(allow_selector_v2) is not bool:
+            raise ValueError("source-context V2 capability must be an explicit boolean")
         if not isinstance(context_anchor_id, str) or not context_anchor_id.strip():
             raise ValueError("context_anchor_id must be nonblank")
         result, context = self._establish(request)
+        # Discovery preference never rebinds a saved ID. Its namespace selects
+        # its own policy; old callers cannot resolve V2 without opting in.
+        if context_anchor_id.startswith(CONTEXT_ANCHOR_ID_PREFIX):
+            selector_policy: RecapContextSelectorPolicy = "markdown-session-recap-v1"
+        elif context_anchor_id.startswith(CONTEXT_ANCHOR_V2_ID_PREFIX) and allow_selector_v2:
+            selector_policy = "markdown-session-recap-v2"
+        else:
+            return SourceContextResolution(
+                snapshot=result.snapshot, found=False, context_anchor_id=context_anchor_id,
+            )
         found = next(
             (
                 descriptor
-                for descriptor in self._recap_context_descriptors(result, context)
+                for descriptor in self._recap_context_descriptors(
+                    result, context, selector_policy=selector_policy
+                )
                 if descriptor.context_anchor_id == context_anchor_id
             ),
             None,
