@@ -61,12 +61,39 @@ For the canonical form, require one literal `# Session N Recap` H1. Return the
 section after it through the next H1 or EOF, with the same section bytes/ranges
 as a valid V1 read.
 
-For the legacy form, require one literal `## Session N:` H2 and one standalone
-`**Recap**:` line inside that session's section. The session section ends at
-the next H1/H2 or EOF. Return only the body after the marker through that
-boundary; pre-recap metadata is excluded and subordinate H3+ content is retained.
-The marker need not be immediately after the session heading. Report both
-heading and marker lines and the actual body range.
+For the legacy form, require one literal `## Session N:` H2. Search for exactly
+one standalone `**Recap**:` marker after it, up to the next H1, numbered Session
+H2 (`## Session <digits>:`), or EOF. Non-session H2 prelude headings do not end
+this marker-search envelope. Fenced/quoted structural lines remain excluded.
+
+The returned body starts after the marker and ends at the next H1/H2 or EOF.
+This body boundary differs from the marker-search envelope: pre-recap metadata
+and its headings are excluded, while subordinate H3+ recap content is retained.
+Report both session-heading and marker lines and the actual body range.
+
+The following synthetic vector pins the exact prelude form observed in C1S16;
+its prose is synthetic, not a copy of the original body:
+
+```markdown
+## Session 16:
+## Major Beats:
+Synthetic prelude A.
+## Next Beats :
+Synthetic prelude B.
+**Recap**:
+Synthetic recap body.
+## Afterword
+Excluded afterword.
+## Session 17:
+**Recap**:
+Other session body.
+```
+
+For `session-16`, the session heading is line 1 and the marker is line 6.
+Return only line 7 (`Synthetic recap body.\n`). The non-session H2 headings
+before the marker do not truncate its search; the H2 after the marker stops the
+returned body. Removing the Session 16 marker must not borrow Session 17's
+marker. A second marker within Session 16's search envelope is ambiguous.
 
 A matching canonical and legacy heading in one revision, duplicate session
 headings/markers, missing marker, wrong session or invalid bounds fails closed.

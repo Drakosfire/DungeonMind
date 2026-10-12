@@ -14,6 +14,14 @@ The private dispatch is `/tmp/HANDOFF-CORE-recap-selector-v2.md`. These files
 describe authority; no runtime imports them. Open Core PR inventory was empty
 at re-anchor. MIND's private data preparation holds no tracked code lease here.
 
+PRIME's review of implementation head `1c4ef13b621dfb991817142b826ea2a01abb40f9`
+held the public V2 marker-search boundary: the original C1S16 has
+`## Major Beats:` and `## Next Beats :` before `**Recap**:`. The amended decision
+at the same private path is SHA-256
+`f2a56ca31252ff9707f8b93c7f8d6a671c29d57954f6bc1e66189cb99eb52504`.
+It replaces only that policy clarification; metadata payload fields and Core
+implementation/test bytes remain unchanged.
+
 ## One capability
 
 Core can explicitly discover and resolve a distinct V2 recap selector derived
@@ -43,6 +51,15 @@ Known V1 IDs always reconstruct V1; V2 IDs require capability and derive a
 different preimage/namespace. Unknown versions and mismatched identity tuples
 miss. The public V2 contract specifies the later Buddy byte/ambiguity/paging
 obligations without implementing them in Core.
+
+For the legacy form, marker discovery extends from the exact Session H2 until
+the next H1, numbered Session H2 or EOF, permitting non-session prelude H2s.
+After the unique marker is found, the returned body ends at the next H1/H2 or
+EOF. The public contract includes a synthetic exact Major/Next Beats prelude
+vector: session heading line 1, marker line 6, body line 7 only; an Afterword H2
+ends the body and Session 17's marker cannot substitute for a missing one.
+Canonical selection and all duplicate/mixed/wrong-session/fenced/quoted-fake
+exclusions remain unchanged. Buddy owns the parser and this vector's tests.
 
 ## Focused verification
 
