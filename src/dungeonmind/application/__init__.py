@@ -78,6 +78,7 @@ from .world_graph_projection import (
 )
 from .world_graph_read_context import WorldGraphReadContext
 from .world_graph_retrieval import (
+    CONTEXT_ANCHOR_ID_PREFIX,
     AdmittedAssertionValue,
     CompleteObjectLookupResult,
     EvidenceRetrievalResult,
@@ -85,6 +86,8 @@ from .world_graph_retrieval import (
     GraphSearchResult,
     NeighborhoodResult,
     ObjectLookupResult,
+    RecapContextSectionSelectorV1,
+    RecapSourceContextV1,
     RetrievalBounds,
     RetrievalCoverage,
     SelectedObjectCompleteness,
@@ -93,6 +96,9 @@ from .world_graph_retrieval import (
     SourceAnchorIndexResult,
     SourceAnchorMetadata,
     SourceAnchorResolution,
+    SourceContextIndexRequest,
+    SourceContextIndexResult,
+    SourceContextResolution,
     WorldGraphRetrievalService,
     derive_source_anchor_id,
 )
@@ -104,6 +110,7 @@ from .world_identity_reconciliation import (
 )
 
 __all__ = [
+    "CONTEXT_ANCHOR_ID_PREFIX",
     "NOOP_READ_OBSERVER",
     "AdmittedAssertionValue",
     "CanonicalRebindRequest",
@@ -135,6 +142,8 @@ __all__ = [
     "PhaseRecorder",
     "ProjectionClock",
     "QueryEmbeddingProvider",
+    "RecapContextSectionSelectorV1",
+    "RecapSourceContextV1",
     "RetrievalBounds",
     "RetrievalCoverage",
     "RetrievalSessionRepository",
@@ -147,6 +156,9 @@ __all__ = [
     "SourceAnchorIndexResult",
     "SourceAnchorMetadata",
     "SourceAnchorResolution",
+    "SourceContextIndexRequest",
+    "SourceContextIndexResult",
+    "SourceContextResolution",
     "SourceProvenanceSnapshot",
     "SourceRepository",
     "SystemMonotonicReadClock",

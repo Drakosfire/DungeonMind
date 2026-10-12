@@ -25,6 +25,7 @@ from dungeonmind.application.world_graph_retrieval import (
     SelectedObjectCompleteness,
     SelectedSourceAnchorIndexRequest,
     SourceAnchorIndexRequest,
+    SourceContextIndexRequest,
     WorldGraphRetrievalService,
     derive_source_anchor_id,
 )
@@ -571,6 +572,298 @@ def _complete_object_services(
     world_graph: InMemoryWorldGraphRepository,
 ) -> tuple[WorldGraphRetrievalService, _CountingProjectionService]:
     return _services(world_graph, sources=_complete_object_sources())
+
+
+def _recap_context_services(
+    *, extra_recap: bool = False, recap_digest: str = "ab" * 32,
+    recap_can_open: bool = True,
+):
+    """Synthetic recap pair; no private recap bytes or real source IDs."""
+    payload = _payload()
+    recap_evidence = next(
+        row for row in payload["evidence_refs"] if row["evidence_ref_id"] == "ev:alpha"
+    )
+    recap_evidence.update(
+        source_domain_key="fixture.recap",
+        source_domain="session_recap",
+        session_id="session-22",
+        can_open_source=recap_can_open,
+    )
+    if extra_recap:
+        payload["evidence_refs"].append(
+            {
+                **recap_evidence,
+                "evidence_ref_id": "ev:alpha-extra",
+                "source_artifact_id": "src:alpha-extra",
+                "source_revision_id": "srcrev:alpha-extra-v1",
+            }
+        )
+        payload["objects"].append(
+            _object(
+                "obj:alpha-extra",
+                "Extra Recap Location",
+                assertion_id="asrt:alpha-extra",
+                evidence="ev:alpha-extra",
+                campaign_scope=CAMPAIGN_A,
+            )
+        )
+    graph = InMemoryWorldGraphRepository()
+    published = _publish(graph, payload)
+    sources = InMemorySourceRepository()
+    for artifact_id, revision_id, campaign_id in (
+        ("src:world-lore", "srcrev:world-lore-v1", None),
+        ("src:beta-notes", "srcrev:beta-notes-v1", CAMPAIGN_B),
+    ):
+        _put_source(
+            sources,
+            artifact_id=artifact_id,
+            revision_id=revision_id,
+            campaign_id=campaign_id,
+        )
+
+    def put_recap(artifact_id: str, revision_id: str) -> None:
+        sources.put_artifact(
+            SourceArtifactV2(
+                source_artifact_id=artifact_id,
+                source_domain_key="fixture.recap",
+                source_domain=SourceDomain.SESSION_RECAP,
+                world_id=WORLD_ID,
+                campaign_id=CAMPAIGN_A,
+                session_id="session-22",
+                uri=f"fixture://{artifact_id}",
+                current_revision_id=revision_id,
+                authority=None,
+                visibility=Visibility.GM,
+                artifact_kind="recap_markdown",
+                document_class="recap",
+                review_state=None,
+                source_visibility_state=None,
+                workspace_document_ref=None,
+                lineage={},
+                status=SourceStatus.ACTIVE,
+                created_at=NOW,
+                updated_at=NOW,
+            )
+        )
+        sources.put_revision(
+            SourceRevision(
+                source_revision_id=revision_id,
+                source_artifact_id=artifact_id,
+                content_sha256=recap_digest,
+                body_storage="external",
+                locator=f"fixture://{artifact_id}/revision",
+                created_at=NOW,
+            )
+        )
+
+    put_recap("src:alpha-notes", "srcrev:alpha-notes-v1")
+    put_recap("src:catalog-only", "srcrev:catalog-only-v1")
+    if extra_recap:
+        put_recap("src:alpha-extra", "srcrev:alpha-extra-v1")
+    service, projection = _services(graph, sources)
+    return service, projection, published, graph
+
+
+def test_recap_context_pair_selection_requires_admitted_provenance():
+    service, projection, published, _graph = _recap_context_services()
+    request = _campaign_a(revision_pin=published.revision_id)
+    result, context = service._establish(request)
+
+    pairs = service._admitted_recap_source_pairs(result, context)
+
+    assert len(pairs) == 1
+    assert pairs[0].source_artifact_id == "src:alpha-notes"
+    assert pairs[0].source_revision_id == "srcrev:alpha-notes-v1"
+    assert pairs[0].source_uri == "fixture://src:alpha-notes/revision"
+    assert pairs[0].content_sha256 == "ab" * 32
+    assert pairs[0].session_id == "session-22"
+    assert projection.project_calls == 1
+    assert "catalog-only" not in repr(pairs)
+
+    wrong_scope, wrong_context = service._establish(
+        _request(
+            scope_mode=ScopeModeV2.CAMPAIGN,
+            campaign_id=CAMPAIGN_B,
+            revision_pin=published.revision_id,
+        )
+    )
+    assert service._admitted_recap_source_pairs(wrong_scope, wrong_context) == ()
+
+
+def test_recap_context_identity_is_distinct_and_revision_scope_bound():
+    service, _projection, published, _graph = _recap_context_services()
+    request = _campaign_a(revision_pin=published.revision_id)
+    result, context = service._establish(request)
+    pair = service._admitted_recap_source_pairs(result, context)[0]
+
+    token = retrieval_module._derive_context_anchor_id(
+        snapshot=result.snapshot,
+        pair=pair,
+        section_selector_identity="test-recap-section-v1",
+    )
+    assert token.startswith(retrieval_module.CONTEXT_ANCHOR_ID_PREFIX)
+    assert not token.startswith(SOURCE_ANCHOR_ID_PREFIX)
+    assert token == retrieval_module._derive_context_anchor_id(
+        snapshot=result.snapshot,
+        pair=pair,
+        section_selector_identity="test-recap-section-v1",
+    )
+    assert token != retrieval_module._derive_context_anchor_id(
+        snapshot=result.snapshot,
+        pair=pair,
+        section_selector_identity="different-section",
+    )
+    assert token != retrieval_module._derive_context_anchor_id(
+        snapshot=result.snapshot.model_copy(
+            update={"campaign_id": None, "scope_mode": ScopeModeV2.WORLD}
+        ),
+        pair=pair,
+        section_selector_identity="test-recap-section-v1",
+    )
+    assert token != retrieval_module._derive_context_anchor_id(
+        snapshot=result.snapshot.model_copy(update={"revision_id": "rev:other", "is_head": False}),
+        pair=pair,
+        section_selector_identity="test-recap-section-v1",
+    )
+
+
+def test_recap_context_index_and_resolution_are_context_only():
+    service, projection, published, graph = _recap_context_services()
+    pinned = _campaign_a(revision_pin=published.revision_id)
+    index = service.list_source_context_index(SourceContextIndexRequest(pinned))
+
+    assert index.status == "complete"
+    assert index.eligible_count == 1
+    descriptor = index.entries[0]
+    assert descriptor.schema_version == "dm_recap_source_context_v1"
+    assert descriptor.world_id == WORLD_ID
+    assert descriptor.campaign_id == CAMPAIGN_A
+    assert descriptor.graph_revision_id == published.revision_id
+    assert descriptor.source_artifact_id == "src:alpha-notes"
+    assert descriptor.source_revision_id == "srcrev:alpha-notes-v1"
+    assert descriptor.source_uri == "fixture://src:alpha-notes/revision"
+    assert descriptor.content_sha256 == "ab" * 32
+    assert descriptor.section_selector.expected_session_id == "session-22"
+    assert descriptor.section_selector.expected_heading == "# Session 22 Recap"
+    assert descriptor.section_selector.kind == "recap_section"
+    assert descriptor.section_selector.policy == "markdown-session-recap-v1"
+    assert descriptor.context_anchor_id.startswith(retrieval_module.CONTEXT_ANCHOR_ID_PREFIX)
+    assert not hasattr(descriptor, "evidence_ref_id")
+    assert not hasattr(descriptor, "supporting_assertion_ids")
+    assert not hasattr(descriptor, "body")
+    assert not hasattr(descriptor, "start_line")
+    assert projection.project_calls == 1
+
+    resolved = service.resolve_source_context(
+        pinned, context_anchor_id=descriptor.context_anchor_id
+    )
+    assert resolved.found and resolved.context == descriptor
+    assert service.resolve_source_context(
+        pinned, context_anchor_id=f"{retrieval_module.CONTEXT_ANCHOR_ID_PREFIX}{'0' * 64}"
+    ).found is False
+    assert service.resolve_source_anchor(
+        pinned, anchor_id=descriptor.context_anchor_id
+    ).found is False
+    assert service.get_evidence(
+        pinned,
+        target=EvidenceTarget(kind="assertion", target_id=descriptor.context_anchor_id),
+    ).found is False
+    assert service.resolve_source_context(
+        _world().model_copy(update={"revision_pin": published.revision_id}),
+        context_anchor_id=descriptor.context_anchor_id,
+    ).found is False
+    assert service.resolve_source_context(
+        _request(
+            scope_mode=ScopeModeV2.CAMPAIGN,
+            campaign_id=CAMPAIGN_B,
+            revision_pin=published.revision_id,
+        ),
+        context_anchor_id=descriptor.context_anchor_id,
+    ).found is False
+
+    second = _publish(
+        graph,
+        _payload(),
+        parent_revision_id=published.revision_id,
+        operation_id="op:recap-second",
+    )
+    assert service.resolve_source_context(
+        _campaign_a(revision_pin=second.revision_id),
+        context_anchor_id=descriptor.context_anchor_id,
+    ).found is False
+
+
+def test_recap_context_request_rejects_non_gm_unpinned_and_cross_campaign():
+    service, _projection, published, _graph = _recap_context_services()
+    with pytest.raises(ValueError, match="exact revision pin"):
+        SourceContextIndexRequest(_campaign_a())
+    with pytest.raises(ValueError, match="GM admissibility"):
+        SourceContextIndexRequest(
+            _campaign_a(admissibility=Admissibility.PLAYER, revision_pin=published.revision_id)
+        )
+    with pytest.raises(ValueError, match="World or campaign scope"):
+        SourceContextIndexRequest(
+            _request(
+                scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN,
+                revision_pin=published.revision_id,
+            )
+        )
+    with pytest.raises(ValueError, match="GM admissibility"):
+        service.resolve_source_context(
+            _campaign_a(
+                admissibility=Admissibility.PLAYER,
+                revision_pin=published.revision_id,
+            ),
+            context_anchor_id=f"{retrieval_module.CONTEXT_ANCHOR_ID_PREFIX}{'0' * 64}",
+        )
+
+
+def test_recap_context_index_overflow_is_empty_not_partial():
+    service, _projection, published, _graph = _recap_context_services(extra_recap=True)
+    request = SourceContextIndexRequest(
+        _campaign_a(revision_pin=published.revision_id), max_entries=1
+    )
+    index = service.list_source_context_index(request)
+    assert index.status == "overflow"
+    assert index.eligible_count == 2
+    assert index.entries == ()
+
+
+def test_recap_context_digest_change_invalidates_token():
+    first, _projection, first_revision, _graph = _recap_context_services()
+    first_request = _campaign_a(revision_pin=first_revision.revision_id)
+    token = first.list_source_context_index(
+        SourceContextIndexRequest(first_request)
+    ).entries[0].context_anchor_id
+
+    changed, _projection, changed_revision, _graph = _recap_context_services(
+        recap_digest="cd" * 32
+    )
+    changed_request = _campaign_a(revision_pin=changed_revision.revision_id)
+    assert changed.resolve_source_context(
+        changed_request, context_anchor_id=token
+    ).found is False
+
+
+def test_recap_context_never_infers_domain_from_opaque_key():
+    graph = InMemoryWorldGraphRepository()
+    published = _publish(graph)
+    service, _projection = _services(graph)
+    index = service.list_source_context_index(
+        SourceContextIndexRequest(_campaign_a(revision_pin=published.revision_id))
+    )
+    assert index.status == "complete"
+    assert index.entries == ()
+
+
+def test_recap_context_does_not_bypass_source_openability_flag():
+    service, _projection, published, _graph = _recap_context_services(
+        recap_can_open=False
+    )
+    index = service.list_source_context_index(
+        SourceContextIndexRequest(_campaign_a(revision_pin=published.revision_id))
+    )
+    assert index.entries == ()
 
 
 def _publish(
