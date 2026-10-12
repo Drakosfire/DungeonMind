@@ -51,10 +51,10 @@ from ..contracts.contribution_review_v2 import (
     ContributionReviewStateV2,
     contribution_v2_payload_sha256,
 )
-from ..contracts.evidence import EvidenceRef, EvidenceRefV2, EvidenceRole, SourceArtifactRecord
+from ..contracts.evidence import EvidenceRef, EvidenceRefV2, EvidenceRole, SourceArtifactRecord, SourceDomain
 from ..contracts.knowledge_assertion import KnowledgeAssertionMetadataV1
 from ..contracts.projection import Admissibility
-from ..contracts.projection_v2 import ProjectionSnapshotV2, WorldGraphProjectionRequestV2
+from ..contracts.projection_v2 import ProjectionSnapshotV2, ScopeModeV2, WorldGraphProjectionRequestV2
 from ..contracts.retrieval import ResolvedReferent
 from ..contracts.vocabulary import Visibility
 from ..domain.canonical import canonical_json, canonical_sha256
@@ -106,6 +106,10 @@ from .world_graph_read_context import WorldGraphReadContext
 
 SOURCE_ANCHOR_SCHEMA = "dm_source_anchor_v1"
 SOURCE_ANCHOR_ID_PREFIX = "dm-source-anchor:v1:"
+CONTEXT_ANCHOR_SCHEMA = "dm_context_anchor_v1"
+CONTEXT_ANCHOR_ID_PREFIX = "dm-context-anchor:v1:"
+RECAP_CONTEXT_SECTION_SELECTOR_SCHEMA = "dm_recap_context_section_selector_v1"
+RECAP_SOURCE_CONTEXT_SCHEMA = "dm_recap_source_context_v1"
 
 MAX_SEED_OBJECT_IDS = 8
 MAX_NEIGHBORHOOD_DEPTH = 2
@@ -438,6 +442,119 @@ class SourceAnchorIndexEntry:
     evidence_ref_id: str
     source_artifact_id: str
     source_revision_id: str
+
+
+@dataclass(frozen=True)
+class _AdmittedRecapSourcePair:
+    """Section-independent source identity selected from admitted provenance.
+
+    This is not an evidence/support anchor and grants no body access on its own.
+    The public context descriptor is built only after its section-selector
+    contract is fixed.
+    """
+
+    source_artifact_id: str
+    source_revision_id: str
+    source_uri: str
+    content_sha256: str
+    world_id: str
+    campaign_id: str | None
+    session_id: str
+
+
+@dataclass(frozen=True)
+class RecapContextSectionSelectorV1:
+    """Exact H1 section policy; Buddy computes ranges from verified bytes.
+
+    Core has no source body or authoritative line ranges. The product must
+    verify the full revision digest first, then find exactly one matching H1
+    and stop before the next H1 or EOF. No whole-document fallback is implied.
+    """
+
+    expected_session_id: str
+    expected_heading: str
+    schema_version: Literal["dm_recap_context_section_selector_v1"] = (
+        RECAP_CONTEXT_SECTION_SELECTOR_SCHEMA
+    )
+    kind: Literal["recap_section_v1"] = "recap_section_v1"
+    policy: Literal["single_session_recap_h1_v1"] = "single_session_recap_h1_v1"
+
+    def __post_init__(self) -> None:
+        match = re.fullmatch(r"session-([1-9][0-9]*)", self.expected_session_id)
+        if match is None or self.expected_heading != f"# Session {match.group(1)} Recap":
+            raise ValueError("recap section selector must match canonical session metadata")
+
+    def identity_payload(self) -> dict[str, str]:
+        return {
+            "schema_version": self.schema_version,
+            "kind": self.kind,
+            "policy": self.policy,
+            "expected_session_id": self.expected_session_id,
+            "expected_heading": self.expected_heading,
+        }
+
+
+@dataclass(frozen=True)
+class RecapSourceContextV1:
+    """Context-only source descriptor, never claim support or a credential."""
+
+    context_anchor_id: str
+    world_id: str
+    campaign_id: str | None
+    graph_revision_id: str
+    source_artifact_id: str
+    source_revision_id: str
+    source_uri: str
+    content_sha256: str
+    section_selector: RecapContextSectionSelectorV1
+    schema_version: Literal["dm_recap_source_context_v1"] = RECAP_SOURCE_CONTEXT_SCHEMA
+
+
+@dataclass(frozen=True)
+class SourceContextIndexRequest:
+    """Bounded context-only index for one exact GM World/campaign projection."""
+
+    projection: WorldGraphProjectionRequestV2
+    max_entries: int = 512
+
+    def __post_init__(self) -> None:
+        if type(self.max_entries) is not int or not 1 <= self.max_entries <= 512:
+            raise ValueError("source-context max_entries must be within 1..512")
+        if not self.projection.revision_pin or not self.projection.revision_pin.strip():
+            raise ValueError("source-context index requires an exact revision pin")
+        if self.projection.admissibility is not Admissibility.GM:
+            raise ValueError("source-context index requires GM admissibility")
+        if self.projection.scope_mode not in (ScopeModeV2.WORLD, ScopeModeV2.CAMPAIGN):
+            raise ValueError("source-context index requires World or campaign scope")
+
+
+@dataclass(frozen=True)
+class SourceContextIndexResult:
+    snapshot: ProjectionSnapshotV2
+    eligible_count: int
+    max_entries: int
+    status: Literal["complete", "overflow"]
+    entries: tuple[RecapSourceContextV1, ...]
+
+    def __post_init__(self) -> None:
+        if self.eligible_count < 0 or not 1 <= self.max_entries <= 512:
+            raise ValueError("invalid source-context index counts")
+        if self.status == "complete":
+            if self.eligible_count > self.max_entries or len(self.entries) != self.eligible_count:
+                raise ValueError("complete source-context index must contain every entry")
+        elif self.status == "overflow":
+            if self.eligible_count <= self.max_entries or self.entries:
+                raise ValueError("overflow source-context index must be empty")
+        else:
+            raise ValueError("unknown source-context index status")
+
+
+@dataclass(frozen=True)
+class SourceContextResolution:
+    snapshot: ProjectionSnapshotV2
+    found: bool
+    context_anchor_id: str
+    context: RecapSourceContextV1 | None = None
 
 
 @dataclass(frozen=True)
@@ -873,6 +990,36 @@ def derive_source_anchor_id(
         "locator_identity": locator_identity,
     }
     return f"{SOURCE_ANCHOR_ID_PREFIX}{canonical_sha256(payload)}"
+
+
+def _derive_context_anchor_id(
+    *,
+    snapshot: ProjectionSnapshotV2,
+    pair: _AdmittedRecapSourcePair,
+    section_selector_identity: str,
+) -> str:
+    """Bind a distinct context identity to one exact admitted source section.
+
+    This deliberately contains no evidence reference or supporting assertion.
+    The selector identity is supplied by the versioned recap-section contract,
+    not by an opaque legacy evidence locator or caller-provided URI.
+    """
+    if not section_selector_identity:
+        raise ValueError("context section selector identity is required")
+    return f"{CONTEXT_ANCHOR_ID_PREFIX}{canonical_sha256({
+        'schema': CONTEXT_ANCHOR_SCHEMA,
+        'world_id': snapshot.world_id,
+        'campaign_id': snapshot.campaign_id,
+        'scope_mode': str(snapshot.scope_mode),
+        'focus': snapshot.focus.model_dump(mode='json'),
+        'admissibility': str(snapshot.admissibility),
+        'revision_id': snapshot.revision_id,
+        'source_artifact_id': pair.source_artifact_id,
+        'source_revision_id': pair.source_revision_id,
+        'source_uri': pair.source_uri,
+        'content_sha256': pair.content_sha256,
+        'section_selector_identity': section_selector_identity,
+    })}"
 
 
 def _normalize_seeds(seed_object_ids: Iterable[str], *, required: bool) -> list[str]:
@@ -2163,6 +2310,160 @@ class WorldGraphRetrievalService:
             entries=() if overflow else ordered,
         )
 
+    def _admitted_recap_source_pairs(
+        self,
+        result: WorldGraphProjectionResult,
+        context: WorldGraphReadContext,
+    ) -> tuple[_AdmittedRecapSourcePair, ...]:
+        """Select only exact recap revisions supported by admitted graph facts.
+
+        The projection has already applied World/campaign/GM policy. Resolve
+        each graph or reviewed-observation supporter through the same coherent
+        source snapshot; never enumerate a source catalog to discover entries.
+        Unsupported or incomplete source identities cannot become context.
+        """
+        assertion_index = _index_admitted_assertions(result)
+        observations, _gaps, _missing = self._reviewed_source_observations(
+            result, context, selected_object_id=None
+        )
+        anchors, _truncated, _gaps = self._anchors_for(
+            result,
+            context=context,
+            object_ids=set(result.graph.objects),
+            relationship_ids=set(result.graph.relationships),
+            assertion_ids=set(assertion_index),
+            reviewed_source_observations=observations,
+            max_anchors=None,
+        )
+        pairs: dict[tuple[str, str], _AdmittedRecapSourcePair] = {}
+        for anchor in anchors:
+            if not anchor.can_open_source:
+                continue
+            revision_id = anchor.source_revision_id
+            if not revision_id:
+                continue
+            artifact = context.source_snapshot.get_artifact(anchor.source_artifact_id)
+            revision = context.source_snapshot.get_revision(revision_id)
+            if (
+                artifact is None
+                or revision is None
+                or artifact.source_domain is not SourceDomain.SESSION_RECAP
+                or artifact.world_id != result.snapshot.world_id
+                or (
+                    result.snapshot.scope_mode is ScopeModeV2.CAMPAIGN
+                    and artifact.campaign_id != result.snapshot.campaign_id
+                )
+                or (
+                    result.snapshot.scope_mode is ScopeModeV2.WORLD
+                    and artifact.campaign_id is not None
+                )
+                or not artifact.session_id
+                or not re.fullmatch(r"session-[1-9][0-9]*", artifact.session_id)
+                or revision.source_artifact_id != anchor.source_artifact_id
+                or not isinstance(revision.locator, str)
+                or not revision.locator.strip()
+                or not re.fullmatch(r"[0-9a-f]{64}", revision.content_sha256)
+            ):
+                continue
+            pair = _AdmittedRecapSourcePair(
+                source_artifact_id=anchor.source_artifact_id,
+                source_revision_id=revision_id,
+                source_uri=revision.locator,
+                content_sha256=revision.content_sha256,
+                world_id=artifact.world_id,
+                campaign_id=artifact.campaign_id,
+                session_id=artifact.session_id,
+            )
+            key = (pair.source_artifact_id, pair.source_revision_id)
+            if key in pairs and pairs[key] != pair:
+                raise ValueError("conflicting admitted recap source identity")
+            pairs[key] = pair
+        return tuple(pairs[key] for key in sorted(pairs))
+
+    def _recap_context_descriptors(
+        self,
+        result: WorldGraphProjectionResult,
+        context: WorldGraphReadContext,
+    ) -> tuple[RecapSourceContextV1, ...]:
+        descriptors: list[RecapSourceContextV1] = []
+        for pair in self._admitted_recap_source_pairs(result, context):
+            session_number = pair.session_id.removeprefix("session-")
+            selector = RecapContextSectionSelectorV1(
+                expected_session_id=pair.session_id,
+                expected_heading=f"# Session {session_number} Recap",
+            )
+            descriptors.append(
+                RecapSourceContextV1(
+                    context_anchor_id=_derive_context_anchor_id(
+                        snapshot=result.snapshot,
+                        pair=pair,
+                        section_selector_identity=canonical_sha256(
+                            selector.identity_payload()
+                        ),
+                    ),
+                    world_id=pair.world_id,
+                    campaign_id=pair.campaign_id,
+                    graph_revision_id=result.snapshot.revision_id,
+                    source_artifact_id=pair.source_artifact_id,
+                    source_revision_id=pair.source_revision_id,
+                    source_uri=pair.source_uri,
+                    content_sha256=pair.content_sha256,
+                    section_selector=selector,
+                )
+            )
+        return tuple(descriptors)
+
+    def list_source_context_index(
+        self, request: SourceContextIndexRequest
+    ) -> SourceContextIndexResult:
+        """Enumerate context-only recap sections referenced by admitted provenance.
+
+        No catalog scan, source body read, evidence/support identity, or caller
+        URI is involved. Overflow is empty, never a misleading partial list.
+        """
+        result, context = self._establish(request.projection)
+        entries = self._recap_context_descriptors(result, context)
+        count = len(entries)
+        overflow = count > request.max_entries
+        return SourceContextIndexResult(
+            snapshot=result.snapshot,
+            eligible_count=count,
+            max_entries=request.max_entries,
+            status="overflow" if overflow else "complete",
+            entries=() if overflow else entries,
+        )
+
+    def resolve_source_context(
+        self,
+        request: WorldGraphProjectionRequestV2,
+        *,
+        context_anchor_id: str,
+    ) -> SourceContextResolution:
+        """Revalidate a context token under the caller's exact GM projection.
+
+        The token is an opaque lookup identity, not a credential. A changed
+        revision, campaign, policy, source record, digest, URI or selector
+        produces a miss. Product-local bytes remain Buddy's responsibility.
+        """
+        SourceContextIndexRequest(request)
+        if not isinstance(context_anchor_id, str) or not context_anchor_id.strip():
+            raise ValueError("context_anchor_id must be nonblank")
+        result, context = self._establish(request)
+        found = next(
+            (
+                descriptor
+                for descriptor in self._recap_context_descriptors(result, context)
+                if descriptor.context_anchor_id == context_anchor_id
+            ),
+            None,
+        )
+        return SourceContextResolution(
+            snapshot=result.snapshot,
+            found=found is not None,
+            context_anchor_id=context_anchor_id,
+            context=found,
+        )
+
     def list_selected_source_anchor_index(
         self,
         request: SelectedSourceAnchorIndexRequest,
@@ -2521,6 +2822,8 @@ class WorldGraphRetrievalService:
 
 
 __all__ = [
+    "CONTEXT_ANCHOR_ID_PREFIX",
+    "CONTEXT_ANCHOR_SCHEMA",
     "MAX_NEIGHBORHOOD_DEPTH",
     "MAX_SEED_OBJECT_IDS",
     "SOURCE_ANCHOR_ID_PREFIX",
@@ -2534,6 +2837,8 @@ __all__ = [
     "ObjectLookupResult",
     "RetrievalBounds",
     "RetrievalCoverage",
+    "RecapContextSectionSelectorV1",
+    "RecapSourceContextV1",
     "SelectedObjectCompleteness",
     "SelectedSourceAnchorIndexRequest",
     "SelectedSourceAnchorIndexResult",
@@ -2542,6 +2847,9 @@ __all__ = [
     "SourceAnchorIndexResult",
     "SourceAnchorMetadata",
     "SourceAnchorResolution",
+    "SourceContextIndexRequest",
+    "SourceContextIndexResult",
+    "SourceContextResolution",
     "WorldGraphRetrievalService",
     "derive_source_anchor_id",
 ]
