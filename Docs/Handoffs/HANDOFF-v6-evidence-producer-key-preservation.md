@@ -1,10 +1,15 @@
 # HANDOFF — v6 evidence producer-key preservation
 
-**Created:** 2026-10-12  
-**Status:** ACTIVE  
-**Repository / branch:** DungeonMind / `codex/v6-evidence-producer-key`  
-**Base:** `13143455b304d748c249bd7bd628134c421bf6d9`  
-**PR:** [#115](https://github.com/Drakosfire/DungeonMind/pull/115), draft awaiting independent review  
+**Created:** 2026-10-12
+
+**Status:** ACTIVE
+
+**Repository / branch:** DungeonMind / `codex/v6-evidence-producer-key`
+
+**Base:** `13143455b304d748c249bd7bd628134c421bf6d9`
+
+**PR:** [#115](https://github.com/Drakosfire/DungeonMind/pull/115), draft awaiting independent review
+
 **Mission:** Preserve an admitted source's producer classification when v1 contribution evidence is materialized into a v6 graph.
 
 ## Outcome and evidence
