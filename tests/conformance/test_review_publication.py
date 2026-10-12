@@ -959,12 +959,63 @@ def _guarded_memory_bundle():
     sources = InMemorySourceRepository()
     sources.put_artifact(artifact)
     sources.put_revision(revision)
+    from dungeonmind.contracts.evidence import SourceDomain
+
+    # The guard's source is distinct from the newly contributed recap source.
+    # Both need explicit authority for a source-backed publication.
+    for row in command.graph_payload["evidence_refs"]:
+        if sources.get_artifact(row["source_artifact_id"]) is None:
+            sources.put_artifact(artifact.model_copy(update={
+                "source_artifact_id": row["source_artifact_id"],
+                "source_domain_key": row["source_domain_key"],
+                "source_domain": SourceDomain(row["source_domain"]),
+                "campaign_id": state.record.campaign_id,
+                "session_id": "session-2",
+                "current_revision_id": row["source_revision_id"],
+            }))
     identities = InMemoryIdentityDecisionRepository()
     identities.append(decision)
     publications = InMemoryFinalizedReviewPublicationRepository(
         reviews, graph, source_repository=sources, identity_repository=identities
     )
     return command, graph, reviews, sources, identities, publications, decision
+
+
+@pytest.mark.parametrize("drift", [False, True])
+def test_memory_writer_rejects_introduced_producer_key_mismatch_without_mutation(drift):
+    from dungeonmind.domain.errors import ContributionMaterializationError
+
+    bundle = _guarded_memory_bundle()
+    command, graph, _reviews, sources, _identities, publications, _decision = bundle
+    old_ids = {r["evidence_ref_id"] for r in
+               graph.get_revision(command.world_id, command.expected_parent_revision_id)
+               .graph_payload["evidence_refs"]}
+    payload = copy.deepcopy(command.graph_payload)
+    introduced = next(r for r in payload["evidence_refs"] if r["evidence_ref_id"] not in old_ids)
+    if drift:
+        artifact_id = introduced["source_artifact_id"]
+        sources._artifacts[artifact_id] = sources._artifacts[artifact_id].model_copy(
+            update={"source_domain_key": "producer.changed"},
+        )
+    else:
+        introduced["source_domain_key"] = "producer.forged"
+        digest = canonical_sha256(payload)
+        command = command.model_copy(update={
+            "graph_payload": payload, "graph_payload_sha256": digest,
+            "expected_published_revision_id": compute_revision_id(
+                world_id=command.world_id, parent_revision_id=command.expected_parent_revision_id,
+                operation_ids=[command.operation_id], graph_schema=command.graph_schema,
+                graph_payload_sha256=digest,
+            ),
+        })
+    before = graph.get_head(command.world_id)
+    revision_count = len(graph._revisions)
+    with pytest.raises(ContributionMaterializationError) as caught:
+        publications.publish(command)
+    assert caught.value.reason == "evidence_source_domain_mismatch"
+    assert graph.get_head(command.world_id) == before
+    assert len(graph._revisions) == revision_count
+    assert publications.get_for_review(command.world_id, command.review_id) is None
 
 
 def test_guarded_memory_publication_and_historical_retry_after_supersession():

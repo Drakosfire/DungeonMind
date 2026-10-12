@@ -218,6 +218,15 @@ class FinalizedReviewPublicationRepository(Protocol):
     transaction or one shared in-memory lock.
     """
 
+    def get_provenance_snapshot(
+        self,
+        *,
+        artifact_ids: Sequence[str],
+        revision_ids: Sequence[str],
+    ) -> SourceProvenanceSnapshot | None:
+        """Source authority for materialization; None is source-free memory only."""
+        ...
+
     def publish(
         self,
         command: FinalizedReviewPublicationCommand,

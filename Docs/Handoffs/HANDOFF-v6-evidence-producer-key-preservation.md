@@ -32,6 +32,14 @@ Changed-path budget: nine paths, with a recorded rebrief if another path becomes
 - `tests/integration/test_postgres_review_publication_v6.py`;
 - `tests/integration/test_review_publication_source_producer_key.py`.
 
+**Rebrief (2026-10-12):** budget increases to ten paths to include `tests/conformance/test_review_publication.py`. Its guarded-memory fixture supplies authority for the guard source but omits the independent recap source used by newly introduced evidence. Complete that synthetic source fixture so publication integrity can be checked; preserve the guard's existing failure precedence and negative cases.
+
+## Implementation checkpoint
+
+Source-aware lifting and bounded snapshot wiring are implemented. Both publication adapters recheck new evidence under their owning writer fences; exact durable replay precedes live source lookup. Producer classification is copied from SourceArtifactV2, never derived from a generic enum. Source-identity-only fallback evidence uses the same source authority when supplied; source-free historical materialization retains its previous fixture behavior.
+
+Focused verification: 115 materialization/review/observation/boundary tests passed; the dedicated synthetic PostgreSQL cohort passed all 31 cases, including the new source admission → publication → authorized World search/object/evidence/anchor/source-open proof and zero-mutation forged-key/source-drift cases. Ruff passes the leased paths; Pyright reports zero errors/warnings over changed runtime paths. Independent review and the repaired private corpus rehearsal remain pending at this checkpoint.
+
 Only materialization of v2 reviews into `dm_union_graph_v6`, source-snapshot port wiring, publication integrity checks, and focused regressions are in scope. Native vNext writes, domain vocabularies, Buddy extraction/DTOs, storage optimization, wire schema changes, migrations, historical graph rewrites, and source relabeling are excluded. No retained database mutation is authorized. Existing private clone receipts are evidence, not production state to repair.
 
 ## Invariants and implementation

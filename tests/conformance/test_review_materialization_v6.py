@@ -8,6 +8,7 @@ materialization boundary.
 from __future__ import annotations
 
 import copy
+from hashlib import sha256
 
 import pytest
 from pydantic import ValidationError
@@ -17,6 +18,7 @@ from dungeonmind.application.graph_snapshot import GRAPH_SCHEMA_V6
 from dungeonmind.application.review_materialization_v6 import (
     materialize_finalized_review_v6,
 )
+from dungeonmind.application.source_provenance_snapshot import SourceProvenanceSnapshot
 from dungeonmind.contracts.contribution import GraphContributionV2
 from dungeonmind.contracts.contribution_review import (
     ContributionIdentityProposal,
@@ -24,6 +26,7 @@ from dungeonmind.contracts.contribution_review import (
     ContributionIdentityVerdictKind,
 )
 from dungeonmind.contracts.contribution_review_v2 import ContributionReviewStateV2
+from dungeonmind.contracts.evidence import SourceArtifactV2, SourceRevision
 from dungeonmind.contracts.identity import IdentityOutcome
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import ContributionMaterializationError
@@ -55,6 +58,133 @@ def _materialize(
         state or _build_review_state(_submission(_intent(parent=parent))),
         parent=parent,
         graph_reader=_reader(),
+    )
+
+
+def _producer_source_snapshot(
+    state, *, artifact_changes=None, missing=False, revision_changes=None
+):
+    contribution = state.reviewed_contribution
+    artifact_id = contribution.assertions[0].evidence_refs[0].source_artifact_id
+    revision_id = contribution.assertions[0].evidence_refs[0].source_revision_id
+    artifact = SourceArtifactV2(
+        source_artifact_id=artifact_id,
+        source_domain_key="producer.custom-recap",
+        source_domain="session_recap",
+        world_id=state.record.world_id,
+        campaign_id=state.record.campaign_id,
+        session_id="session-2",
+        uri="test://synthetic/recap",
+        current_revision_id=revision_id,
+        authority="primary",
+        visibility="gm",
+        artifact_kind="document",
+        document_class=None,
+        review_state=None,
+        source_visibility_state="private",
+        workspace_document_ref=None,
+        status="active",
+        created_at=state.record.reviewed_at,
+        updated_at=state.record.reviewed_at,
+    )
+    if artifact_changes:
+        artifact = artifact.model_copy(update=artifact_changes)
+    revisions = {}
+    if revision_id:
+        revision = SourceRevision(
+            source_revision_id=revision_id,
+            source_artifact_id=artifact_id,
+            content_sha256=sha256(b"Synthetic traveler arrived.").hexdigest(),
+            body_storage="external",
+            locator="test://synthetic/recap",
+            created_at=state.record.reviewed_at,
+        )
+        if revision_changes:
+            revision = revision.model_copy(update=revision_changes)
+        revisions[revision_id] = revision
+    return SourceProvenanceSnapshot.from_loaded(
+        requested_artifact_ids=frozenset({artifact_id}),
+        requested_revision_ids=frozenset({revision_id}) if revision_id else frozenset(),
+        artifacts={} if missing else {artifact_id: artifact},
+        revisions=revisions,
+    )
+
+
+def test_v6_lift_preserves_authoritative_producer_key_separately_from_generic_domain():
+    parent = _stored_parent()
+    state = _build_review_state(_submission(_intent(parent=parent)))
+    before = state.model_dump(mode="json")
+    result = materialize_finalized_review_v6(
+        state,
+        parent=parent,
+        graph_reader=_reader(),
+        source_snapshot=_producer_source_snapshot(state),
+    )
+    records = [
+        r
+        for r in result.graph_payload["evidence_refs"]
+        if r["evidence_ref_id"] != EXISTING_EVIDENCE_ID
+    ]
+    assert records
+    assert all(r["source_domain_key"] == "producer.custom-recap" for r in records)
+    assert all(r["source_domain"] == "session_recap" for r in records)
+    assert state.model_dump(mode="json") == before
+    assert result.graph_payload["evidence_refs"][0] == parent.graph_payload["evidence_refs"][0]
+
+
+@pytest.mark.parametrize(
+    ("changes", "missing", "reason"),
+    [
+        ({}, True, "source_artifact_missing"),
+        ({"world_id": "world:other"}, False, "source_world_mismatch"),
+        ({"source_domain": None}, False, "evidence_source_domain_mismatch"),
+    ],
+)
+def test_v6_source_aware_lift_fails_closed(changes, missing, reason):
+    from dungeonmind.domain.errors import ContributionMaterializationError
+
+    parent = _stored_parent()
+    state = _build_review_state(_submission(_intent(parent=parent)))
+    with pytest.raises(ContributionMaterializationError) as caught:
+        materialize_finalized_review_v6(
+            state,
+            parent=parent,
+            graph_reader=_reader(),
+            source_snapshot=_producer_source_snapshot(
+                state, artifact_changes=changes, missing=missing
+            ),
+        )
+    assert caught.value.reason == reason
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_v6_lift_rejects_missing_or_misbound_named_revision(missing):
+    from dungeonmind.domain.errors import ContributionMaterializationError
+
+    parent = _stored_parent()
+    candidate = _candidate()
+    for assertion in candidate.assertions:
+        assertion.evidence_refs = [
+            ref.model_copy(update={"source_revision_id": "revision:synthetic"})
+            for ref in assertion.evidence_refs
+        ]
+    state = _build_review_state(_submission(_intent(parent=parent, candidate=candidate)))
+    snapshot = _producer_source_snapshot(
+        state, revision_changes={"source_artifact_id": "artifact:other"}
+    )
+    if missing:
+        snapshot = SourceProvenanceSnapshot.from_loaded(
+            requested_artifact_ids=snapshot.requested_artifact_ids,
+            requested_revision_ids=snapshot.requested_revision_ids,
+            artifacts=snapshot.artifacts,
+            revisions={},
+        )
+    with pytest.raises(ContributionMaterializationError) as caught:
+        materialize_finalized_review_v6(
+            state, parent=parent, graph_reader=_reader(), source_snapshot=snapshot
+        )
+    assert caught.value.reason == (
+        "source_revision_missing" if missing else "source_revision_artifact_mismatch"
     )
 
 
