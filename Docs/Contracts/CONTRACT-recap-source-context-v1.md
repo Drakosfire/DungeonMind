@@ -2,6 +2,13 @@
 
 **Status:** code-only Core read contract. It creates no graph/source data and does not authorize publication.
 
+V1 remains the default discovery and resolution policy. The additive
+[V2 contract](CONTRACT-recap-source-context-v2.md) requires explicit discovery
+and resolution capability opt-in. A saved `dm-context-anchor:v1:` ID always
+reconstructs this V1 selector, including when a newer reader supports V2.
+Existing V1 descriptors, ID preimages and product continuation semantics are
+unchanged; V2 does not reinterpret V1's canonical H1 requirement.
+
 `WorldGraphRetrievalService.list_source_context_index()` and `resolve_source_context()` expose a separate context-only affordance for recap source revisions. This is not `SourceAnchorMetadata`, claim evidence, or a support citation. The identifier has its own `dm-context-anchor:v1:` namespace. Evidence/support APIs continue to accept only their existing identities; passing a context ID to `resolve_source_anchor()` produces a miss.
 
 The request is a pinned `WorldGraphProjectionRequestV2` with GM admissibility and `WORLD`, `CAMPAIGN`, or `WORLD_CROSS_CAMPAIGN` scope. `WORLD` remains world-owned only. `CAMPAIGN` keeps its exact campaign binding. `WORLD_CROSS_CAMPAIGN` admits campaign-owned provenance across that World in one exact graph revision; it does not silently redefine `WORLD`. At that revision, Core considers only artifact/revision pairs reached from provenance of admitted objects, relationships, assertions, and reviewed source observations. It does not enumerate the source catalog to discover eligible pairs. Each candidate chain is revalidated against the same coherent source snapshot. A pair needs at least one admitted `can_open_source=true` chain; a context token cannot bypass an explicit source-openability denial. The artifact must explicitly declare `session_recap`, World/campaign/session scope must be valid, the source revision must belong to that artifact, and the revision must carry a nonblank URI and full lowercase SHA-256 digest. Opaque `source_domain_key` is never interpreted as a recap classification. Duplicate evidence refs for one pair produce one descriptor. Overflow returns a count and no partial entries.
