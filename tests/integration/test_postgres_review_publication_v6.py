@@ -50,7 +50,7 @@ from dungeonmind.contracts.contribution_review_v2 import (
     contribution_v2_payload_sha256,
     derive_review_intent_sha256_v2,
 )
-from dungeonmind.contracts.evidence import EvidenceRef, EvidenceRole, SourceDomain
+from dungeonmind.contracts.evidence import EvidenceRef, EvidenceRole, SourceArtifactV2, SourceDomain
 from dungeonmind.contracts.graph import StoredGraphRevision
 from dungeonmind.contracts.identity import IdentityOutcome
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
@@ -106,6 +106,14 @@ def _adopt(pg) -> None:
         graph_reader=eldyrwild_graph_reader(),
     )
     assert receipt.published_revision_id == PUBLISHED_REVISION_ID
+    pg.sources.put_artifact(SourceArtifactV2(
+        source_artifact_id=NEW_EVIDENCE_ARTIFACT, source_domain_key="session_recap",
+        source_domain=SourceDomain.SESSION_RECAP, world_id=WORLD_ID,
+        campaign_id=CAMPAIGN_ID, session_id="session-99", uri=None, current_revision_id=None,
+        authority="primary", visibility="gm", artifact_kind=None, document_class=None,
+        review_state=None, source_visibility_state=None, workspace_document_ref=None,
+        status="active", created_at=NOW, updated_at=NOW,
+    ))
 
 
 def _evidence(evidence_ref_id: str) -> EvidenceRef:
@@ -612,7 +620,8 @@ def test_postgres_v6_alias_fallback_evidence_synthesized(pg) -> None:
         record["evidence_ref_id"]: record for record in child.graph_payload["evidence_refs"]
     }
     assert evidence[fallback_id]["source_artifact_id"] == NEW_EVIDENCE_ARTIFACT
-    assert evidence[fallback_id]["source_domain_key"] == "manual_seed"
+    assert evidence[fallback_id]["source_domain_key"] == "session_recap"
+    assert evidence[fallback_id]["source_domain"] == "session_recap"
     objects = {obj["object_id"]: obj for obj in child.graph_payload["objects"]}
     alias = objects[ADOPTED_OBJECT_ID]["aliases"][-1]
     assert alias["value"] == "Barin the Cutover Witness"
@@ -731,6 +740,18 @@ def _guarded_pg_review(pg):
     pg.identity_decisions.append(decision)
     pg.sources.put_artifact(artifact)
     pg.sources.put_revision(source_revision)
+    # Complete the independent recap authority used by the guarded candidate.
+    for assertion in intent.candidate_contribution.assertions:
+        for ref in assertion.evidence_refs:
+            if pg.sources.get_artifact(ref.source_artifact_id) is None:
+                pg.sources.put_artifact(artifact.model_copy(update={
+                    "source_artifact_id": ref.source_artifact_id,
+                    "source_domain_key": ref.source_domain.value,
+                    "source_domain": ref.source_domain,
+                    "campaign_id": CAMPAIGN_ID,
+                    "session_id": "session-2",
+                    "current_revision_id": ref.source_revision_id,
+                }))
     state = finalize_contribution_review_v2(
         guarded_submission(intent),
         capability_policy=_policy(intent),

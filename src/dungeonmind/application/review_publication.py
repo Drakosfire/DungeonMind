@@ -52,7 +52,7 @@ from .review_materialization import (
     FinalizedReviewGraphMaterialization,
     materialize_finalized_review,
 )
-from .review_materialization_v6 import materialize_finalized_review_v6
+from .review_materialization_v6 import materialize_finalized_review_v6, review_source_refs_v6
 from .source_provenance_snapshot import SourceProvenanceSnapshot
 
 
@@ -164,10 +164,15 @@ def publish_finalized_review(
         )
 
     if isinstance(state, ContributionReviewStateV2):
+        artifact_ids, revision_ids = review_source_refs_v6(state)
+        source_snapshot = publication_repository.get_provenance_snapshot(
+            artifact_ids=artifact_ids, revision_ids=revision_ids,
+        )
         materialization = materialize_finalized_review_v6(
             state,
             parent=parent,
             graph_reader=graph_reader,
+            source_snapshot=source_snapshot,
         )
     else:
         materialization = materialize_finalized_review(

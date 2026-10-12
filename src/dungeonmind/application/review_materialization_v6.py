@@ -31,7 +31,7 @@ from ..contracts.contribution_review_v2 import (
     REVIEWABLE_V2_ASSERTION_KINDS,
     ContributionReviewStateV2,
 )
-from ..contracts.evidence import EvidenceRefV2, EvidenceRole
+from ..contracts.evidence import EvidenceRefV2, EvidenceRole, SourceArtifactV2
 from ..contracts.graph import StoredGraphRevision
 from ..contracts.knowledge_assertion import (
     EpistemicKindV2,
@@ -50,6 +50,7 @@ from .graph_snapshot_v6 import (
     UnionGraphV6Payload,
 )
 from .review_materialization import FinalizedReviewGraphMaterialization
+from .source_provenance_snapshot import SourceProvenanceSnapshot
 
 # Adopted-era records carry ``ka:*`` synthetic assertion ids produced by the
 # existing-world adoption pipeline.  Correcting adopted-era knowledge requires
@@ -254,17 +255,117 @@ def _metadata(
         )
 
 
+def review_source_refs_v6(
+    state: ContributionReviewStateV2,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Bound one snapshot to the evidence actually applied by this review."""
+    artifacts: set[str] = set()
+    revisions: set[str] = set()
+    contribution = state.reviewed_contribution
+    for assertion in contribution.assertions:
+        if (
+            assertion.acceptance_state is not AcceptanceState.ACCEPTED
+            or assertion.identity_resolution_outcome in NON_MUTATING_IDENTITY_OUTCOMES
+        ):
+            continue
+        if assertion.evidence_refs:
+            for ref in assertion.evidence_refs:
+                artifacts.add(ref.source_artifact_id)
+                if ref.source_revision_id:
+                    revisions.add(ref.source_revision_id)
+        else:
+            artifacts.add(
+                assertion.source_artifact_id or contribution.source_artifact_id
+                or f"artifact:{contribution.contribution_id}"
+            )
+            revision_id = assertion.source_revision_id or contribution.source_revision_id
+            if revision_id:
+                revisions.add(revision_id)
+    return tuple(sorted(artifacts)), tuple(sorted(revisions))
+
+
+def _source_for_evidence(
+    artifact_id: str,
+    revision_id: str | None,
+    *,
+    world_id: str,
+    sources: SourceProvenanceSnapshot,
+) -> SourceArtifactV2:
+    artifact = sources.get_artifact(artifact_id)
+    if artifact is None:
+        _fail("source_artifact_missing", source_artifact_id=artifact_id)
+    if not isinstance(artifact, SourceArtifactV2):
+        _fail("source_artifact_schema_not_v2", source_artifact_id=artifact_id)
+    if artifact.world_id != world_id:
+        _fail("source_world_mismatch", source_artifact_id=artifact_id)
+    if revision_id:
+        revision = sources.get_revision(revision_id)
+        if revision is None:
+            _fail("source_revision_missing", source_revision_id=revision_id)
+        if revision.source_artifact_id != artifact_id:
+            _fail("source_revision_artifact_mismatch", source_revision_id=revision_id)
+    return artifact
+
+
+def introduced_evidence_v6(
+    parent: StoredGraphRevision,
+    child_payload: dict[str, Any],
+) -> list[EvidenceRefV2]:
+    """Keep historical evidence bytes intact; validate only introduced rows."""
+    old = {row["evidence_ref_id"]: row for row in parent.graph_payload["evidence_refs"]}
+    introduced = []
+    for row in child_payload["evidence_refs"]:
+        previous = old.get(row["evidence_ref_id"])
+        if previous is not None:
+            if previous != row:
+                _fail("parent_evidence_mutation", evidence_ref_id=row["evidence_ref_id"])
+        else:
+            introduced.append(EvidenceRefV2.model_validate(row))
+    return introduced
+
+
+def validate_materialized_source_domains_v6(
+    records: list[EvidenceRefV2],
+    *,
+    world_id: str,
+    sources: SourceProvenanceSnapshot,
+) -> None:
+    """Recheck introduced evidence under the publication writer fence."""
+    for record in records:
+        artifact = _source_for_evidence(
+            record.source_artifact_id, record.source_revision_id,
+            world_id=world_id, sources=sources,
+        )
+        if (
+            artifact.source_domain_key != record.source_domain_key
+            or artifact.source_domain != record.source_domain
+        ):
+            _fail("evidence_source_domain_mismatch", evidence_ref_id=record.evidence_ref_id)
+
+
 def _lift_evidence(
     assertion: GraphContributionAssertionV2,
+    *,
+    world_id: str,
+    sources: SourceProvenanceSnapshot | None,
 ) -> dict[str, EvidenceRefV2]:
     """Lift the assertion's v1 evidence refs to lossless v2 payload records."""
     lifted: dict[str, EvidenceRefV2] = {}
     for ref in assertion.evidence_refs:
+        producer_key = ref.source_domain.value
+        if sources is not None:
+            artifact = _source_for_evidence(
+                ref.source_artifact_id, ref.source_revision_id,
+                world_id=world_id, sources=sources,
+            )
+            if artifact.source_domain != ref.source_domain:
+                _fail("evidence_source_domain_mismatch", evidence_ref_id=ref.evidence_ref_id)
+            producer_key = artifact.source_domain_key
         record = EvidenceRefV2(
             evidence_ref_id=ref.evidence_ref_id,
             source_artifact_id=ref.source_artifact_id,
             source_revision_id=ref.source_revision_id,
-            source_domain_key=ref.source_domain.value,
+            source_domain_key=producer_key,
             source_domain=ref.source_domain,
             evidence_role=ref.evidence_role,
             can_open_source=ref.can_open_source,
@@ -325,6 +426,8 @@ def _assertion_evidence(
     reviewed_source_artifact_id: str | None,
     reviewed_source_revision_id: str | None,
     graph_object_id: str,
+    world_id: str,
+    sources: SourceProvenanceSnapshot | None,
 ) -> tuple[list[str], dict[str, EvidenceRefV2]]:
     """Evidence ids for one applied assertion plus any new payload records.
 
@@ -334,7 +437,7 @@ def _assertion_evidence(
     Buddy-side replay derives the identical id.  ``evidence_ref`` assertions
     name no graph-object key in the dispatch and stay fail-closed.
     """
-    lifted = _lift_evidence(assertion)
+    lifted = _lift_evidence(assertion, world_id=world_id, sources=sources)
     if lifted:
         return sorted(lifted), lifted
     if kind not in _FALLBACK_EVIDENCE_KINDS:
@@ -349,6 +452,15 @@ def _assertion_evidence(
         reviewed_source_revision_id=reviewed_source_revision_id,
         graph_object_id=graph_object_id,
     )
+    if sources is not None:
+        artifact = _source_for_evidence(
+            fallback.source_artifact_id, fallback.source_revision_id,
+            world_id=world_id, sources=sources,
+        )
+        fallback = fallback.model_copy(update={
+            "source_domain_key": artifact.source_domain_key,
+            "source_domain": artifact.source_domain,
+        })
     return [fallback.evidence_ref_id], {fallback.evidence_ref_id: fallback}
 
 
@@ -380,11 +492,13 @@ class _V6Materialization:
         state: ContributionReviewStateV2,
         parent_payload: UnionGraphV6Payload,
         parent_snapshot: ParsedGraphSnapshot,
+        source_snapshot: SourceProvenanceSnapshot | None,
     ) -> None:
         self.state = state
         self.record = state.record
         self.reviewed = state.reviewed_contribution
         self.parent_snapshot = parent_snapshot
+        self.source_snapshot = source_snapshot
         self.objects: dict[str, GraphObjectV6Record] = {
             record.object_id: record for record in parent_payload.objects
         }
@@ -451,6 +565,8 @@ class _V6Materialization:
             reviewed_source_artifact_id=self.reviewed.source_artifact_id,
             reviewed_source_revision_id=self.reviewed.source_revision_id,
             graph_object_id=object_id,
+            world_id=self.record.world_id,
+            sources=self.source_snapshot,
         )
         session_refs = _session_refs(assertion, value)
         self._register_evidence(evidence_records)
@@ -569,6 +685,8 @@ class _V6Materialization:
             reviewed_source_artifact_id=self.reviewed.source_artifact_id,
             reviewed_source_revision_id=self.reviewed.source_revision_id,
             graph_object_id=relationship_id,
+            world_id=self.record.world_id,
+            sources=self.source_snapshot,
         )
         session_refs = _session_refs(assertion, value)
         existing = self.relationships.get(relationship_id)
@@ -640,6 +758,8 @@ class _V6Materialization:
             reviewed_source_artifact_id=self.reviewed.source_artifact_id,
             reviewed_source_revision_id=self.reviewed.source_revision_id,
             graph_object_id=object_id,
+            world_id=self.record.world_id,
+            sources=self.source_snapshot,
         )
         session_refs = _session_refs(assertion, value)
         self._register_evidence(evidence_records)
@@ -680,6 +800,8 @@ class _V6Materialization:
             reviewed_source_artifact_id=self.reviewed.source_artifact_id,
             reviewed_source_revision_id=self.reviewed.source_revision_id,
             graph_object_id=graph_object_id,
+            world_id=self.record.world_id,
+            sources=self.source_snapshot,
         )
         self._register_evidence(evidence_records)
 
@@ -786,6 +908,7 @@ def materialize_finalized_review_v6(
     *,
     parent: StoredGraphRevision,
     graph_reader: GraphSnapshotReader,
+    source_snapshot: SourceProvenanceSnapshot | None = None,
 ) -> FinalizedReviewGraphMaterialization:
     """Materialize one finalized v2 review into one validated v6 graph payload."""
     verified_state = _reload_state(state)
@@ -802,6 +925,7 @@ def materialize_finalized_review_v6(
         state=verified_state,
         parent_payload=parent_payload,
         parent_snapshot=parent_snapshot,
+        source_snapshot=source_snapshot,
     )
 
     for assertion in verified_state.reviewed_contribution.assertions:

@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from psycopg import Connection, sql
 from pydantic import ValidationError
 
+from ...application.graph_snapshot import GRAPH_SCHEMA_V6
+from ...application.review_materialization_v6 import (
+    introduced_evidence_v6,
+    validate_materialized_source_domains_v6,
+)
+from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
 from ...contracts.contribution_review import ContributionReviewState
 from ...contracts.graph import PublishRevisionCommand, StoredGraphRevision, WorldGraphRevision
 from ...contracts.review_publication import (
@@ -31,6 +37,7 @@ from .records import (
     _ARTIFACT_SELECT,
     _IDENTITY_SELECT,
     _REVIEW_SELECT,
+    PostgresSourceRepository,
     _return_artifact,
     _return_identity,
     _return_review_state,
@@ -333,6 +340,44 @@ class PostgresFinalizedReviewPublicationRepository:
         self._graph = PostgresWorldGraphRepository(database)
         self._failure_hook = failure_hook
 
+    def get_provenance_snapshot(
+        self,
+        *,
+        artifact_ids: Sequence[str],
+        revision_ids: Sequence[str],
+    ) -> SourceProvenanceSnapshot:
+        return PostgresSourceRepository(self._database).get_provenance_snapshot(
+            artifact_ids=artifact_ids, revision_ids=revision_ids,
+        )
+
+    @staticmethod
+    def _locked_source_snapshot(
+        conn: Connection[Any],
+        *,
+        artifact_ids: Sequence[str],
+        revision_ids: Sequence[str],
+    ) -> SourceProvenanceSnapshot:
+        artifact_rows = conn.execute(
+            sql.SQL(
+                f"SELECT {_ARTIFACT_SELECT} FROM {{}}.source_artifacts "
+                "WHERE source_artifact_id = ANY(%s) ORDER BY source_artifact_id FOR SHARE"
+            ).format(sql.Identifier(SCHEMA)),
+            (list(artifact_ids),),
+        ).fetchall()
+        revision_rows = conn.execute(
+            sql.SQL(
+                f"SELECT {_SOURCE_REVISION_SELECT} FROM {{}}.source_revisions "
+                "WHERE source_revision_id = ANY(%s) ORDER BY source_revision_id FOR SHARE"
+            ).format(sql.Identifier(SCHEMA)),
+            (list(revision_ids),),
+        ).fetchall()
+        return SourceProvenanceSnapshot.from_loaded(
+            requested_artifact_ids=frozenset(artifact_ids),
+            requested_revision_ids=frozenset(revision_ids),
+            artifacts={row["source_artifact_id"]: _return_artifact(row) for row in artifact_rows},
+            revisions={row["source_revision_id"]: _return_revision(row) for row in revision_rows},
+        )
+
     @staticmethod
     def _reload_command(
         command: FinalizedReviewPublicationCommand,
@@ -608,7 +653,10 @@ class PostgresFinalizedReviewPublicationRepository:
         with self._database.transaction() as conn:
             from ...contracts.review_publication import GuardedFinalizedReviewPublicationCommand
 
-            if isinstance(validated_command, GuardedFinalizedReviewPublicationCommand):
+            if (
+                isinstance(validated_command, GuardedFinalizedReviewPublicationCommand)
+                or validated_command.graph_schema == GRAPH_SCHEMA_V6
+            ):
                 # Authority reads after the World-lock wait need a fresh statement snapshot.
                 conn.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
             lock_world(
@@ -648,6 +696,18 @@ class PostgresFinalizedReviewPublicationRepository:
                 return existing
 
             self._validate_guard_in_transaction(conn, validated_command, parent)
+
+            if validated_command.graph_schema == GRAPH_SCHEMA_V6:
+                new_evidence = introduced_evidence_v6(parent, validated_command.graph_payload)
+                source_snapshot = self._locked_source_snapshot(
+                    conn,
+                    artifact_ids=tuple(sorted({r.source_artifact_id for r in new_evidence})),
+                    revision_ids=tuple(sorted({r.source_revision_id for r in new_evidence
+                                               if r.source_revision_id})),
+                )
+                validate_materialized_source_domains_v6(
+                    new_evidence, world_id=validated_command.world_id, sources=source_snapshot,
+                )
 
             existing_revision_row = _revision_row(
                 conn,

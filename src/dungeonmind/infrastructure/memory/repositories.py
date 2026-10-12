@@ -549,6 +549,18 @@ class InMemoryFinalizedReviewPublicationRepository:
             identity_repository._lock if identity_repository else threading.RLock()
         )
 
+    def get_provenance_snapshot(
+        self,
+        *,
+        artifact_ids: Sequence[str],
+        revision_ids: Sequence[str],
+    ) -> SourceProvenanceSnapshot | None:
+        if self._sources is None:
+            return None
+        return self._sources.get_provenance_snapshot(
+            artifact_ids=artifact_ids, revision_ids=revision_ids,
+        )
+
     @staticmethod
     def _reload_command(
         command: FinalizedReviewPublicationCommand,
@@ -868,7 +880,10 @@ class InMemoryFinalizedReviewPublicationRepository:
         from ...contracts.review_publication import GuardedFinalizedReviewPublicationCommand
 
         guarded = isinstance(validated_command, GuardedFinalizedReviewPublicationCommand)
-        source_lock = self._source_lock if guarded else nullcontext()
+        source_lock = (
+            self._source_lock if guarded or validated_command.graph_schema == GRAPH_SCHEMA_V6
+            else nullcontext()
+        )
         identity_lock = self._identity_lock if guarded else nullcontext()
         with self._graph._lock_for(world_id), source_lock, identity_lock:
             state = self._reviews.get(world_id, validated_command.review_id)
@@ -924,6 +939,21 @@ class InMemoryFinalizedReviewPublicationRepository:
                     parent=parent,
                     decisions=self._identity.list_for_world(world_id),
                     sources=snapshot,
+                )
+            if validated_command.graph_schema == GRAPH_SCHEMA_V6 and self._sources is not None:
+                from ...application.review_materialization_v6 import (
+                    introduced_evidence_v6,
+                    validate_materialized_source_domains_v6,
+                )
+
+                new_evidence = introduced_evidence_v6(parent, validated_command.graph_payload)
+                snapshot = self._sources.get_provenance_snapshot(
+                    artifact_ids=tuple(sorted({r.source_artifact_id for r in new_evidence})),
+                    revision_ids=tuple(sorted({r.source_revision_id for r in new_evidence
+                                               if r.source_revision_id})),
+                )
+                validate_materialized_source_domains_v6(
+                    new_evidence, world_id=world_id, sources=snapshot,
                 )
             existing_revision = self._graph._revisions.get(
                 (world_id, validated_command.expected_published_revision_id)
