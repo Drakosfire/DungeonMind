@@ -51,10 +51,20 @@ from ..contracts.contribution_review_v2 import (
     ContributionReviewStateV2,
     contribution_v2_payload_sha256,
 )
-from ..contracts.evidence import EvidenceRef, EvidenceRefV2, EvidenceRole, SourceArtifactRecord, SourceDomain
+from ..contracts.evidence import (
+    EvidenceRef,
+    EvidenceRefV2,
+    EvidenceRole,
+    SourceArtifactRecord,
+    SourceDomain,
+)
 from ..contracts.knowledge_assertion import KnowledgeAssertionMetadataV1
 from ..contracts.projection import Admissibility
-from ..contracts.projection_v2 import ProjectionSnapshotV2, ScopeModeV2, WorldGraphProjectionRequestV2
+from ..contracts.projection_v2 import (
+    ProjectionSnapshotV2,
+    ScopeModeV2,
+    WorldGraphProjectionRequestV2,
+)
 from ..contracts.retrieval import ResolvedReferent
 from ..contracts.vocabulary import Visibility
 from ..domain.canonical import canonical_json, canonical_sha256
@@ -1007,7 +1017,7 @@ def _derive_context_anchor_id(
     """
     if not section_selector_identity:
         raise ValueError("context section selector identity is required")
-    return f"{CONTEXT_ANCHOR_ID_PREFIX}{canonical_sha256({
+    payload = {
         'schema': CONTEXT_ANCHOR_SCHEMA,
         'world_id': snapshot.world_id,
         'campaign_id': snapshot.campaign_id,
@@ -1020,7 +1030,8 @@ def _derive_context_anchor_id(
         'source_uri': pair.source_uri,
         'content_sha256': pair.content_sha256,
         'section_selector_identity': section_selector_identity,
-    })}"
+    }
+    return f"{CONTEXT_ANCHOR_ID_PREFIX}{canonical_sha256(payload)}"
 
 
 def _normalize_seeds(seed_object_ids: Iterable[str], *, required: bool) -> list[str]:
@@ -2836,10 +2847,10 @@ __all__ = [
     "GraphSearchResult",
     "NeighborhoodResult",
     "ObjectLookupResult",
-    "RetrievalBounds",
-    "RetrievalCoverage",
     "RecapContextSectionSelectorV1",
     "RecapSourceContextV1",
+    "RetrievalBounds",
+    "RetrievalCoverage",
     "SelectedObjectCompleteness",
     "SelectedSourceAnchorIndexRequest",
     "SelectedSourceAnchorIndexResult",

@@ -24,8 +24,8 @@ from dungeonmind.application.world_graph_retrieval import (
     RetrievalBounds,
     SelectedObjectCompleteness,
     SelectedSourceAnchorIndexRequest,
-    SourceContextIndexRequest,
     SourceAnchorIndexRequest,
+    SourceContextIndexRequest,
     WorldGraphRetrievalService,
     derive_source_anchor_id,
 )
@@ -714,7 +714,9 @@ def test_recap_context_identity_is_distinct_and_revision_scope_bound():
         section_selector_identity="different-section",
     )
     assert token != retrieval_module._derive_context_anchor_id(
-        snapshot=result.snapshot.model_copy(update={"campaign_id": None, "scope_mode": ScopeModeV2.WORLD}),
+        snapshot=result.snapshot.model_copy(
+            update={"campaign_id": None, "scope_mode": ScopeModeV2.WORLD}
+        ),
         pair=pair,
         section_selector_identity="test-recap-section-v1",
     )
