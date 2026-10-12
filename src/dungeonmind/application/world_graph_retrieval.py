@@ -523,7 +523,7 @@ class RecapSourceContextV1:
 
 @dataclass(frozen=True)
 class SourceContextIndexRequest:
-    """Bounded context-only index for one exact GM World/campaign projection."""
+    """Bounded context-only index for one exact GM projection."""
 
     projection: WorldGraphProjectionRequestV2
     max_entries: int = 512
@@ -535,8 +535,12 @@ class SourceContextIndexRequest:
             raise ValueError("source-context index requires an exact revision pin")
         if self.projection.admissibility is not Admissibility.GM:
             raise ValueError("source-context index requires GM admissibility")
-        if self.projection.scope_mode not in (ScopeModeV2.WORLD, ScopeModeV2.CAMPAIGN):
-            raise ValueError("source-context index requires World or campaign scope")
+        if self.projection.scope_mode not in (
+            ScopeModeV2.WORLD,
+            ScopeModeV2.CAMPAIGN,
+            ScopeModeV2.WORLD_CROSS_CAMPAIGN,
+        ):
+            raise ValueError("source-context index requires a v2 World or campaign scope")
 
 
 @dataclass(frozen=True)
@@ -1027,6 +1031,7 @@ def _derive_context_anchor_id(
         'revision_id': snapshot.revision_id,
         'source_artifact_id': pair.source_artifact_id,
         'source_revision_id': pair.source_revision_id,
+        'source_campaign_id': pair.campaign_id,
         'source_uri': pair.source_uri,
         'content_sha256': pair.content_sha256,
         'section_selector_identity': section_selector_identity,
