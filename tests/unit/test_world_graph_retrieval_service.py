@@ -743,7 +743,8 @@ def test_recap_context_index_and_resolution_are_context_only():
     assert descriptor.content_sha256 == "ab" * 32
     assert descriptor.section_selector.expected_session_id == "session-22"
     assert descriptor.section_selector.expected_heading == "# Session 22 Recap"
-    assert descriptor.section_selector.policy == "single_session_recap_h1_v1"
+    assert descriptor.section_selector.kind == "recap_section"
+    assert descriptor.section_selector.policy == "markdown-session-recap-v1"
     assert descriptor.context_anchor_id.startswith(retrieval_module.CONTEXT_ANCHOR_ID_PREFIX)
     assert not hasattr(descriptor, "evidence_ref_id")
     assert not hasattr(descriptor, "supporting_assertion_ids")

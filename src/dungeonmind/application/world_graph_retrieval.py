@@ -467,8 +467,9 @@ class RecapContextSectionSelectorV1:
     """Exact H1 section policy; Buddy computes ranges from verified bytes.
 
     Core has no source body or authoritative line ranges. The product must
-    verify the full revision digest first, then find exactly one matching H1
-    and stop before the next H1 or EOF. No whole-document fallback is implied.
+    verify the full revision digest first, then find exactly one matching H1.
+    The section begins after that heading and stops before the next H1 or EOF.
+    No whole-document fallback is implied.
     """
 
     expected_session_id: str
@@ -476,8 +477,8 @@ class RecapContextSectionSelectorV1:
     schema_version: Literal["dm_recap_context_section_selector_v1"] = (
         RECAP_CONTEXT_SECTION_SELECTOR_SCHEMA
     )
-    kind: Literal["recap_section_v1"] = "recap_section_v1"
-    policy: Literal["single_session_recap_h1_v1"] = "single_session_recap_h1_v1"
+    kind: Literal["recap_section"] = "recap_section"
+    policy: Literal["markdown-session-recap-v1"] = "markdown-session-recap-v1"
 
     def __post_init__(self) -> None:
         match = re.fullmatch(r"session-([1-9][0-9]*)", self.expected_session_id)
