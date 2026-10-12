@@ -6,6 +6,7 @@ by ``VersionedUnionGraphSnapshotReader`` under the bundled D&D v3 profile, and
 composed through the landed v2 projection service.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -576,7 +577,7 @@ def _complete_object_services(
 
 def _recap_context_services(
     *, extra_recap: bool = False, recap_digest: str = "ab" * 32,
-    recap_can_open: bool = True,
+    recap_can_open: bool = True, beta_recap: bool = False,
 ):
     """Synthetic recap pair; no private recap bytes or real source IDs."""
     payload = _payload()
@@ -589,6 +590,15 @@ def _recap_context_services(
         session_id="session-22",
         can_open_source=recap_can_open,
     )
+    if beta_recap:
+        beta_evidence = next(
+            row for row in payload["evidence_refs"] if row["evidence_ref_id"] == "ev:beta"
+        )
+        beta_evidence.update(
+            source_domain_key="fixture.recap",
+            source_domain="session_recap",
+            session_id="session-23",
+        )
     if extra_recap:
         payload["evidence_refs"].append(
             {
@@ -610,10 +620,10 @@ def _recap_context_services(
     graph = InMemoryWorldGraphRepository()
     published = _publish(graph, payload)
     sources = InMemorySourceRepository()
-    for artifact_id, revision_id, campaign_id in (
-        ("src:world-lore", "srcrev:world-lore-v1", None),
-        ("src:beta-notes", "srcrev:beta-notes-v1", CAMPAIGN_B),
-    ):
+    ordinary_sources = [("src:world-lore", "srcrev:world-lore-v1", None)]
+    if not beta_recap:
+        ordinary_sources.append(("src:beta-notes", "srcrev:beta-notes-v1", CAMPAIGN_B))
+    for artifact_id, revision_id, campaign_id in ordinary_sources:
         _put_source(
             sources,
             artifact_id=artifact_id,
@@ -621,15 +631,22 @@ def _recap_context_services(
             campaign_id=campaign_id,
         )
 
-    def put_recap(artifact_id: str, revision_id: str) -> None:
+    def put_recap(
+        artifact_id: str,
+        revision_id: str,
+        *,
+        campaign_id: str = CAMPAIGN_A,
+        session_id: str = "session-22",
+        world_id: str = WORLD_ID,
+    ) -> None:
         sources.put_artifact(
             SourceArtifactV2(
                 source_artifact_id=artifact_id,
                 source_domain_key="fixture.recap",
                 source_domain=SourceDomain.SESSION_RECAP,
-                world_id=WORLD_ID,
-                campaign_id=CAMPAIGN_A,
-                session_id="session-22",
+                world_id=world_id,
+                campaign_id=campaign_id,
+                session_id=session_id,
                 uri=f"fixture://{artifact_id}",
                 current_revision_id=revision_id,
                 authority=None,
@@ -658,6 +675,12 @@ def _recap_context_services(
 
     put_recap("src:alpha-notes", "srcrev:alpha-notes-v1")
     put_recap("src:catalog-only", "srcrev:catalog-only-v1")
+    put_recap("src:foreign-catalog", "srcrev:foreign-catalog-v1", world_id="world:foreign")
+    if beta_recap:
+        put_recap(
+            "src:beta-notes", "srcrev:beta-notes-v1",
+            campaign_id=CAMPAIGN_B, session_id="session-23",
+        )
     if extra_recap:
         put_recap("src:alpha-extra", "srcrev:alpha-extra-v1")
     service, projection = _services(graph, sources)
@@ -690,6 +713,88 @@ def test_recap_context_pair_selection_requires_admitted_provenance():
     assert service._admitted_recap_source_pairs(wrong_scope, wrong_context) == ()
 
 
+def test_recap_context_cross_campaign_union_preserves_world_and_campaign_scopes():
+    service, _projection, published, graph = _recap_context_services(beta_recap=True)
+    revision_pin = published.revision_id
+    cross = _request(
+        scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN, revision_pin=revision_pin
+    )
+    world = _request(scope_mode=ScopeModeV2.WORLD, revision_pin=revision_pin)
+    campaign_a = _campaign_a(revision_pin=revision_pin)
+    campaign_b = _request(
+        scope_mode=ScopeModeV2.CAMPAIGN,
+        campaign_id=CAMPAIGN_B,
+        revision_pin=revision_pin,
+    )
+
+    cross_index = service.list_source_context_index(SourceContextIndexRequest(cross))
+    assert cross_index.status == "complete"
+    assert {entry.source_artifact_id for entry in cross_index.entries} == {
+        "src:alpha-notes", "src:beta-notes"
+    }
+    assert {entry.campaign_id for entry in cross_index.entries} == {CAMPAIGN_A, CAMPAIGN_B}
+    assert all(entry.world_id == WORLD_ID for entry in cross_index.entries)
+    assert "catalog-only" not in repr(cross_index.entries)
+    assert "foreign-catalog" not in repr(cross_index.entries)
+    rejected, _projection, rejected_revision, _graph = _recap_context_services(
+        beta_recap=True, recap_can_open=False
+    )
+    rejected_cross = _request(
+        scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN,
+        revision_pin=rejected_revision.revision_id,
+    )
+    assert {
+        entry.source_artifact_id
+        for entry in rejected.list_source_context_index(
+            SourceContextIndexRequest(rejected_cross)
+        ).entries
+    } == {"src:beta-notes"}
+
+    assert service.list_source_context_index(SourceContextIndexRequest(world)).entries == ()
+    a_entry, = service.list_source_context_index(SourceContextIndexRequest(campaign_a)).entries
+    b_entry, = service.list_source_context_index(SourceContextIndexRequest(campaign_b)).entries
+    assert a_entry.source_artifact_id == "src:alpha-notes"
+    assert b_entry.source_artifact_id == "src:beta-notes"
+    cross_by_artifact = {entry.source_artifact_id: entry for entry in cross_index.entries}
+    cross_result, cross_context = service._establish(cross)
+    alpha_pair = next(
+        pair for pair in service._admitted_recap_source_pairs(cross_result, cross_context)
+        if pair.source_artifact_id == "src:alpha-notes"
+    )
+    alpha_selector = cross_by_artifact["src:alpha-notes"].section_selector
+    selector_identity = retrieval_module.canonical_sha256(alpha_selector.identity_payload())
+    assert retrieval_module._derive_context_anchor_id(
+        snapshot=cross_result.snapshot,
+        pair=replace(alpha_pair, campaign_id=CAMPAIGN_B),
+        section_selector_identity=selector_identity,
+    ) != cross_by_artifact["src:alpha-notes"].context_anchor_id
+    for local, opposite in ((a_entry, campaign_b), (b_entry, campaign_a)):
+        cross_entry = cross_by_artifact[local.source_artifact_id]
+        assert cross_entry.context_anchor_id != local.context_anchor_id
+        assert service.resolve_source_context(
+            cross, context_anchor_id=cross_entry.context_anchor_id
+        ).found
+        assert not service.resolve_source_context(
+            opposite, context_anchor_id=cross_entry.context_anchor_id
+        ).found
+        assert not service.resolve_source_context(
+            world, context_anchor_id=cross_entry.context_anchor_id
+        ).found
+        assert not service.resolve_source_context(
+            cross, context_anchor_id=local.context_anchor_id
+        ).found
+
+    child = _publish(
+        graph, _payload(), parent_revision_id=revision_pin,
+        operation_id="op:cross-recap-child",
+    )
+    stale_cross = cross.model_copy(update={"revision_pin": child.revision_id})
+    assert not service.resolve_source_context(
+        stale_cross,
+        context_anchor_id=cross_index.entries[0].context_anchor_id,
+    ).found
+
+
 def test_recap_context_identity_is_distinct_and_revision_scope_bound():
     service, _projection, published, _graph = _recap_context_services()
     request = _campaign_a(revision_pin=published.revision_id)
@@ -712,6 +817,11 @@ def test_recap_context_identity_is_distinct_and_revision_scope_bound():
         snapshot=result.snapshot,
         pair=pair,
         section_selector_identity="different-section",
+    )
+    assert token != retrieval_module._derive_context_anchor_id(
+        snapshot=result.snapshot,
+        pair=replace(pair, campaign_id=CAMPAIGN_B),
+        section_selector_identity="test-recap-section-v1",
     )
     assert token != retrieval_module._derive_context_anchor_id(
         snapshot=result.snapshot.model_copy(
@@ -793,7 +903,7 @@ def test_recap_context_index_and_resolution_are_context_only():
     ).found is False
 
 
-def test_recap_context_request_rejects_non_gm_unpinned_and_cross_campaign():
+def test_recap_context_request_rejects_non_gm_and_unpinned():
     service, _projection, published, _graph = _recap_context_services()
     with pytest.raises(ValueError, match="exact revision pin"):
         SourceContextIndexRequest(_campaign_a())
@@ -801,10 +911,11 @@ def test_recap_context_request_rejects_non_gm_unpinned_and_cross_campaign():
         SourceContextIndexRequest(
             _campaign_a(admissibility=Admissibility.PLAYER, revision_pin=published.revision_id)
         )
-    with pytest.raises(ValueError, match="World or campaign scope"):
+    with pytest.raises(ValueError, match="GM admissibility"):
         SourceContextIndexRequest(
             _request(
                 scope_mode=ScopeModeV2.WORLD_CROSS_CAMPAIGN,
+                admissibility=Admissibility.PLAYER,
                 revision_pin=published.revision_id,
             )
         )
