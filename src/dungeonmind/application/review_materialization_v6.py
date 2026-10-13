@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import copy
 import json
-from typing import Any, NoReturn
+from typing import Any, NoReturn, cast
 
 from ..contracts.contribution import (
     AcceptanceState,
@@ -365,32 +365,35 @@ def _lift_evidence(
     lifted: dict[str, EvidenceRefV2] = {}
     for ref in assertion.evidence_refs:
         if isinstance(assertion, GraphContributionAssertionV3):
+            # The loop variable is inferred from the V2 base assertion; V3's
+            # overridden evidence_refs field is typed EvidenceRefV2.
+            typed_ref = cast(EvidenceRefV2, ref)
             if sources is None:
-                _fail("source_snapshot_missing", evidence_ref_id=ref.evidence_ref_id)
+                _fail("source_snapshot_missing", evidence_ref_id=typed_ref.evidence_ref_id)
             artifact = _source_for_evidence(
-                ref.source_artifact_id,
-                ref.source_revision_id,
+                typed_ref.source_artifact_id,
+                typed_ref.source_revision_id,
                 world_id=world_id,
                 sources=sources,
             )
             if (
                 artifact.campaign_id != assertion.campaign_scope
-                or artifact.source_domain_key != ref.source_domain_key
-                or artifact.source_domain != ref.source_domain
+                or artifact.source_domain_key != typed_ref.source_domain_key
+                or artifact.source_domain != typed_ref.source_domain
                 or (
                     assertion.source_artifact_id
-                    and assertion.source_artifact_id != ref.source_artifact_id
+                    and assertion.source_artifact_id != typed_ref.source_artifact_id
                 )
                 or (
                     assertion.source_revision_id
-                    and assertion.source_revision_id != ref.source_revision_id
+                    and assertion.source_revision_id != typed_ref.source_revision_id
                 )
             ):
-                _fail("evidence_source_mismatch", evidence_ref_id=ref.evidence_ref_id)
-            prior = lifted.get(ref.evidence_ref_id)
-            if prior is not None and prior != ref:
-                _fail("accepted_evidence_conflict", evidence_ref_id=ref.evidence_ref_id)
-            lifted[ref.evidence_ref_id] = ref
+                _fail("evidence_source_mismatch", evidence_ref_id=typed_ref.evidence_ref_id)
+            prior = lifted.get(typed_ref.evidence_ref_id)
+            if prior is not None and prior != typed_ref:
+                _fail("accepted_evidence_conflict", evidence_ref_id=typed_ref.evidence_ref_id)
+            lifted[typed_ref.evidence_ref_id] = typed_ref
             continue
         producer_key = ref.source_domain.value
         if sources is not None:
