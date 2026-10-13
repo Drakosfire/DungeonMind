@@ -23,7 +23,14 @@ from ..contracts.contribution_review_v2 import (
     CONTRIBUTION_REVIEW_STATE_V2_SCHEMA,
     ContributionReviewRecordV2,
     ContributionReviewStateV2,
+    GuardedContributionReviewRecordV2,
     ReviewedIdentityPublicationPreconditionsV1,
+)
+from ..contracts.contribution_review_v3 import (
+    CONTRIBUTION_REVIEW_STATE_V3_SCHEMA,
+    ContributionReviewRecordV3,
+    ContributionReviewStateV3,
+    GuardedContributionReviewRecordV3,
 )
 from ..contracts.graph import StoredGraphRevision
 from ..contracts.review_publication import (
@@ -72,7 +79,11 @@ def _reload_review(
     try:
         dumped = state.model_dump(mode="json")
         schema_version = dumped.get("schema_version")
-        if schema_version == CONTRIBUTION_REVIEW_STATE_V2_SCHEMA:
+        if schema_version == CONTRIBUTION_REVIEW_STATE_V3_SCHEMA:
+            reloaded: DurableContributionReviewState = ContributionReviewStateV3.model_validate(
+                dumped
+            )
+        elif schema_version == CONTRIBUTION_REVIEW_STATE_V2_SCHEMA:
             reloaded: DurableContributionReviewState = ContributionReviewStateV2.model_validate(
                 dumped
             )
@@ -163,10 +174,11 @@ def publish_finalized_review(
             f"revision {expected_parent_revision_id!r} not found for world {world_id!r}"
         )
 
-    if isinstance(state, ContributionReviewStateV2):
+    if isinstance(state, (ContributionReviewStateV2, ContributionReviewStateV3)):
         artifact_ids, revision_ids = review_source_refs_v6(state)
         source_snapshot = publication_repository.get_provenance_snapshot(
-            artifact_ids=artifact_ids, revision_ids=revision_ids,
+            artifact_ids=artifact_ids,
+            revision_ids=revision_ids,
         )
         materialization = materialize_finalized_review_v6(
             state,
@@ -194,17 +206,19 @@ def publish_finalized_review(
         graph_payload_sha256=graph_payload_sha256,
     )
     try:
-        from ..contracts.contribution_review_v2 import GuardedContributionReviewRecordV2
         from ..contracts.review_publication import GuardedFinalizedReviewPublicationCommand
 
+        guarded = isinstance(
+            record, (GuardedContributionReviewRecordV2, GuardedContributionReviewRecordV3)
+        )
         command_type: Any = (
             GuardedFinalizedReviewPublicationCommand
-            if isinstance(record, GuardedContributionReviewRecordV2)
+            if guarded
             else FinalizedReviewPublicationCommand
         )
         guard_fields = (
             {"reviewed_identity_preconditions": record.reviewed_identity_preconditions}
-            if isinstance(record, GuardedContributionReviewRecordV2)
+            if guarded
             else {}
         )
         command = command_type(
@@ -396,7 +410,7 @@ def validate_reviewed_identity_publication_preconditions(
 
 def validate_guarded_command_binding(
     command: FinalizedReviewPublicationCommand,
-    record: ContributionReviewRecord | ContributionReviewRecordV2,
+    record: ContributionReviewRecord | ContributionReviewRecordV2 | ContributionReviewRecordV3,
 ) -> None:
     """Reject guard replacement, stripping or addition at the owning boundary."""
     from ..domain.errors import IdempotencyConflictError

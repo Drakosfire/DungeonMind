@@ -19,12 +19,13 @@ from typing import Any, Literal, Self
 from pydantic import Field, field_validator, model_validator
 
 from .base import DungeonMindModel
-from .evidence import EvidenceRef
+from .evidence import EvidenceRef, EvidenceRefV2
 from .identity import IdentityOutcome
 from .vocabulary import ContributionEpistemicKind, EpistemicKind, Visibility
 
 GRAPH_CONTRIBUTION_SCHEMA = "dm_graph_contribution_v1"
 GRAPH_CONTRIBUTION_V2_SCHEMA = "dm_graph_contribution_v2"
+GRAPH_CONTRIBUTION_V3_SCHEMA = "dm_graph_contribution_v3"
 
 
 class ContributionSourceKind(StrEnum):
@@ -102,9 +103,7 @@ class GraphContribution(DungeonMindModel):
     authored_by: str | None = None
     diagnostics: dict[str, Any] = {}
 
-    def partition_assertions(
-        self, state: AcceptanceState
-    ) -> list[GraphContributionAssertion]:
+    def partition_assertions(self, state: AcceptanceState) -> list[GraphContributionAssertion]:
         return [a for a in self.assertions if a.acceptance_state is state]
 
 
@@ -209,7 +208,39 @@ class GraphContributionV2(DungeonMindModel):
     diagnostics: dict[str, Any] = {}
     assertion_corrections: list[GraphContributionAssertionCorrection] = []
 
-    def partition_assertions(
-        self, state: AcceptanceState
-    ) -> list[GraphContributionAssertionV2]:
+    def partition_assertions(self, state: AcceptanceState) -> list[GraphContributionAssertionV2]:
+        return [a for a in self.assertions if a.acceptance_state is state]
+
+
+class GraphContributionAssertionV3(GraphContributionAssertionV2):
+    """Versioned governed assertion with first-class typed evidence."""
+
+    evidence_refs: list[EvidenceRefV2] = []
+
+    @model_validator(mode="after")
+    def _typed_evidence_source_identity(self) -> Self:
+        for ref in self.evidence_refs:
+            if not ref.source_revision_id:
+                raise ValueError("typed evidence requires an immutable source revision")
+            if self.source_artifact_id and ref.source_artifact_id != self.source_artifact_id:
+                raise ValueError("typed evidence source artifact differs from assertion")
+            if self.source_revision_id and ref.source_revision_id != self.source_revision_id:
+                raise ValueError("typed evidence source revision differs from assertion")
+        return self
+
+
+class GraphContributionV3(GraphContributionV2):
+    """Durable governed contribution carrying typed evidence refs."""
+
+    schema_version: Literal["dm_graph_contribution_v3"] = GRAPH_CONTRIBUTION_V3_SCHEMA
+    assertions: list[GraphContributionAssertionV3] = []
+
+    @model_validator(mode="after")
+    def _assertion_scope(self) -> Self:
+        for assertion in self.assertions:
+            if assertion.campaign_scope != self.campaign_scope:
+                raise ValueError("candidate assertion campaign differs from review intent")
+        return self
+
+    def partition_assertions(self, state: AcceptanceState) -> list[GraphContributionAssertionV3]:
         return [a for a in self.assertions if a.acceptance_state is state]

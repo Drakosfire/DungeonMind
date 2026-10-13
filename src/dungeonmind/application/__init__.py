@@ -11,6 +11,10 @@ from .contribution_review_v2 import (
     finalize_contribution_review_v2,
     load_contribution_review_v2,
 )
+from .contribution_review_v3 import (
+    finalize_contribution_review_v3,
+    load_contribution_review_v3,
+)
 from .existing_world_adoption import adopt_existing_world
 from .existing_world_adoption_repair import (
     repair_existing_world_adoption_source_classification,
@@ -181,9 +185,11 @@ __all__ = [
     "evaluate_fictional_time_query",
     "finalize_contribution_review",
     "finalize_contribution_review_v2",
+    "finalize_contribution_review_v3",
     "initialize_reviewed_world",
     "load_contribution_review",
     "load_contribution_review_v2",
+    "load_contribution_review_v3",
     "materialize_finalized_review",
     "materialize_finalized_review_v6",
     "materialize_identity_reconciliation",

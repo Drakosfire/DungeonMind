@@ -23,6 +23,7 @@ from ..contracts.contribution import (
     ContributionStatus,
     GraphContribution,
     GraphContributionV2,
+    GraphContributionV3,
 )
 from ..contracts.contribution_review import (
     ContributionReviewState,
@@ -30,6 +31,7 @@ from ..contracts.contribution_review import (
 from ..contracts.contribution_review_v2 import (
     ContributionReviewStateV2,
 )
+from ..contracts.contribution_review_v3 import ContributionReviewStateV3
 from ..contracts.evidence import SourceArtifactRecord, SourceRevision
 from ..contracts.existing_world_adoption import (
     ExistingWorldAdoptionCommandV1,
@@ -74,11 +76,11 @@ from ..domain.canonical import canonical_json
 from ..domain.errors import IdempotencyConflictError
 from .source_provenance_snapshot import SourceProvenanceSnapshot
 
-DurableGraphContribution: TypeAlias = GraphContribution | GraphContributionV2
+DurableGraphContribution: TypeAlias = GraphContribution | GraphContributionV2 | GraphContributionV3
 DurableIdentityDecision: TypeAlias = IdentityDecisionRecord | IdentityDecisionRecordV2
 DurableIdentityHistoryRecord: TypeAlias = DurableIdentityDecision | IdentityReconciliationDecision
 DurableContributionReviewState: TypeAlias = (
-    ContributionReviewState | ContributionReviewStateV2
+    ContributionReviewState | ContributionReviewStateV2 | ContributionReviewStateV3
 )
 DurableExistingWorldAdoptionCommand: TypeAlias = (
     ExistingWorldAdoptionCommandV1 | ExistingWorldAdoptionCommandV2
