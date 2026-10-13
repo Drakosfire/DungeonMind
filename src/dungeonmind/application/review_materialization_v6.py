@@ -19,11 +19,12 @@ from __future__ import annotations
 
 import copy
 import json
-from typing import Any, NoReturn
+from typing import Any, NoReturn, cast
 
 from ..contracts.contribution import (
     AcceptanceState,
     GraphContributionAssertionV2,
+    GraphContributionAssertionV3,
 )
 from ..contracts.contribution_review import ContributionIdentityVerdictKind
 from ..contracts.contribution_review_v2 import (
@@ -31,6 +32,7 @@ from ..contracts.contribution_review_v2 import (
     REVIEWABLE_V2_ASSERTION_KINDS,
     ContributionReviewStateV2,
 )
+from ..contracts.contribution_review_v3 import ContributionReviewStateV3
 from ..contracts.evidence import EvidenceRefV2, EvidenceRole, SourceArtifactV2
 from ..contracts.graph import StoredGraphRevision
 from ..contracts.knowledge_assertion import (
@@ -76,9 +78,16 @@ def _fail(reason: str, **details: Any) -> NoReturn:
     raise ContributionMaterializationError(reason, details=details) from None
 
 
-def _reload_state(state: ContributionReviewStateV2) -> ContributionReviewStateV2:
+def _reload_state(
+    state: ContributionReviewStateV2 | ContributionReviewStateV3,
+) -> ContributionReviewStateV2 | ContributionReviewStateV3:
     try:
-        return ContributionReviewStateV2.model_validate(state.model_dump(mode="json"))
+        model = (
+            ContributionReviewStateV3
+            if isinstance(state, ContributionReviewStateV3)
+            else ContributionReviewStateV2
+        )
+        return model.model_validate(state.model_dump(mode="json"))
     except Exception:
         _fail("state_reload_validation")
 
@@ -100,7 +109,7 @@ def _reload_parent(parent: StoredGraphRevision) -> StoredGraphRevision:
 def _parse_parent(
     parent: StoredGraphRevision,
     *,
-    state: ContributionReviewStateV2,
+    state: ContributionReviewStateV2 | ContributionReviewStateV3,
     graph_reader: GraphSnapshotReader,
 ) -> tuple[UnionGraphV6Payload, ParsedGraphSnapshot]:
     record = state.record
@@ -256,7 +265,7 @@ def _metadata(
 
 
 def review_source_refs_v6(
-    state: ContributionReviewStateV2,
+    state: ContributionReviewStateV2 | ContributionReviewStateV3,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Bound one snapshot to the evidence actually applied by this review."""
     artifacts: set[str] = set()
@@ -275,7 +284,8 @@ def review_source_refs_v6(
                     revisions.add(ref.source_revision_id)
         else:
             artifacts.add(
-                assertion.source_artifact_id or contribution.source_artifact_id
+                assertion.source_artifact_id
+                or contribution.source_artifact_id
                 or f"artifact:{contribution.contribution_id}"
             )
             revision_id = assertion.source_revision_id or contribution.source_revision_id
@@ -333,8 +343,10 @@ def validate_materialized_source_domains_v6(
     """Recheck introduced evidence under the publication writer fence."""
     for record in records:
         artifact = _source_for_evidence(
-            record.source_artifact_id, record.source_revision_id,
-            world_id=world_id, sources=sources,
+            record.source_artifact_id,
+            record.source_revision_id,
+            world_id=world_id,
+            sources=sources,
         )
         if (
             artifact.source_domain_key != record.source_domain_key
@@ -352,11 +364,44 @@ def _lift_evidence(
     """Lift the assertion's v1 evidence refs to lossless v2 payload records."""
     lifted: dict[str, EvidenceRefV2] = {}
     for ref in assertion.evidence_refs:
+        if isinstance(assertion, GraphContributionAssertionV3):
+            # The loop variable is inferred from the V2 base assertion; V3's
+            # overridden evidence_refs field is typed EvidenceRefV2.
+            typed_ref = cast(EvidenceRefV2, ref)
+            if sources is None:
+                _fail("source_snapshot_missing", evidence_ref_id=typed_ref.evidence_ref_id)
+            artifact = _source_for_evidence(
+                typed_ref.source_artifact_id,
+                typed_ref.source_revision_id,
+                world_id=world_id,
+                sources=sources,
+            )
+            if (
+                artifact.campaign_id != assertion.campaign_scope
+                or artifact.source_domain_key != typed_ref.source_domain_key
+                or artifact.source_domain != typed_ref.source_domain
+                or (
+                    assertion.source_artifact_id
+                    and assertion.source_artifact_id != typed_ref.source_artifact_id
+                )
+                or (
+                    assertion.source_revision_id
+                    and assertion.source_revision_id != typed_ref.source_revision_id
+                )
+            ):
+                _fail("evidence_source_mismatch", evidence_ref_id=typed_ref.evidence_ref_id)
+            prior = lifted.get(typed_ref.evidence_ref_id)
+            if prior is not None and prior != typed_ref:
+                _fail("accepted_evidence_conflict", evidence_ref_id=typed_ref.evidence_ref_id)
+            lifted[typed_ref.evidence_ref_id] = typed_ref
+            continue
         producer_key = ref.source_domain.value
         if sources is not None:
             artifact = _source_for_evidence(
-                ref.source_artifact_id, ref.source_revision_id,
-                world_id=world_id, sources=sources,
+                ref.source_artifact_id,
+                ref.source_revision_id,
+                world_id=world_id,
+                sources=sources,
             )
             if artifact.source_domain != ref.source_domain:
                 _fail("evidence_source_domain_mismatch", evidence_ref_id=ref.evidence_ref_id)
@@ -454,13 +499,17 @@ def _assertion_evidence(
     )
     if sources is not None:
         artifact = _source_for_evidence(
-            fallback.source_artifact_id, fallback.source_revision_id,
-            world_id=world_id, sources=sources,
+            fallback.source_artifact_id,
+            fallback.source_revision_id,
+            world_id=world_id,
+            sources=sources,
         )
-        fallback = fallback.model_copy(update={
-            "source_domain_key": artifact.source_domain_key,
-            "source_domain": artifact.source_domain,
-        })
+        fallback = fallback.model_copy(
+            update={
+                "source_domain_key": artifact.source_domain_key,
+                "source_domain": artifact.source_domain,
+            }
+        )
     return [fallback.evidence_ref_id], {fallback.evidence_ref_id: fallback}
 
 
@@ -489,7 +538,7 @@ class _V6Materialization:
     def __init__(
         self,
         *,
-        state: ContributionReviewStateV2,
+        state: ContributionReviewStateV2 | ContributionReviewStateV3,
         parent_payload: UnionGraphV6Payload,
         parent_snapshot: ParsedGraphSnapshot,
         source_snapshot: SourceProvenanceSnapshot | None,
@@ -904,7 +953,7 @@ class _V6Materialization:
 
 
 def materialize_finalized_review_v6(
-    state: ContributionReviewStateV2,
+    state: ContributionReviewStateV2 | ContributionReviewStateV3,
     *,
     parent: StoredGraphRevision,
     graph_reader: GraphSnapshotReader,

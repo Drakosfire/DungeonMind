@@ -60,6 +60,7 @@ from ...contracts.contribution import (
     ContributionStatus,
     GraphContribution,
     GraphContributionV2,
+    GraphContributionV3,
 )
 from ...contracts.contribution_review import (
     ContributionReviewRecord,
@@ -69,6 +70,10 @@ from ...contracts.contribution_review_v2 import (
     ContributionReviewRecordV2,
     ContributionReviewStateV2,
     contribution_v2_payload_sha256,
+)
+from ...contracts.contribution_review_v3 import (
+    ContributionReviewRecordV3,
+    ContributionReviewStateV3,
 )
 from ...contracts.evidence import SourceArtifactRecord, SourceArtifactV2, SourceRevision
 from ...contracts.existing_world_adoption import (
@@ -368,14 +373,16 @@ class InMemoryContributionReviewRepository:
     ) -> None:
         self._contributions = contributions
         self._records: dict[
-            tuple[str, str], ContributionReviewRecord | ContributionReviewRecordV2
+            tuple[str, str],
+            ContributionReviewRecord | ContributionReviewRecordV2 | ContributionReviewRecordV3,
         ] = {}
         self._lock = contributions._lock
         self._failure_hook = failure_hook
 
     def _reconstruct_unlocked(
-        self, record: ContributionReviewRecord | ContributionReviewRecordV2
-    ) -> ContributionReviewState | ContributionReviewStateV2:
+        self,
+        record: ContributionReviewRecord | ContributionReviewRecordV2 | ContributionReviewRecordV3,
+    ) -> DurableContributionReviewState:
         candidate = self._contributions._items.get(
             (record.world_id, record.stored_candidate_contribution_id)
         )
@@ -387,6 +394,18 @@ class InMemoryContributionReviewRepository:
                 f"review {record.review_id!r} is missing a contribution child"
             )
         try:
+            if isinstance(record, ContributionReviewRecordV3):
+                if not isinstance(candidate, GraphContributionV3) or not isinstance(
+                    reviewed, GraphContributionV3
+                ):
+                    raise PersistenceIntegrityError(
+                        f"review {record.review_id!r} received a non-v3 contribution"
+                    )
+                return ContributionReviewStateV3(
+                    record=_copy(record),
+                    candidate_contribution=_copy(candidate),
+                    reviewed_contribution=_copy(reviewed),
+                )
             if isinstance(record, ContributionReviewRecordV2):
                 if not isinstance(candidate, GraphContributionV2) or not isinstance(
                     reviewed, GraphContributionV2
@@ -417,13 +436,13 @@ class InMemoryContributionReviewRepository:
                 f"review {record.review_id!r} failed reconstruction"
             ) from None
 
-    def finalize(
-        self, state: ContributionReviewState | ContributionReviewStateV2
-    ) -> ContributionReviewState | ContributionReviewStateV2:
+    def finalize(self, state: DurableContributionReviewState) -> DurableContributionReviewState:
         try:
             dumped = state.model_dump(mode="json")
-            validated: ContributionReviewState | ContributionReviewStateV2 = (
-                ContributionReviewStateV2.model_validate(dumped)
+            validated: DurableContributionReviewState = (
+                ContributionReviewStateV3.model_validate(dumped)
+                if isinstance(state, ContributionReviewStateV3)
+                else ContributionReviewStateV2.model_validate(dumped)
                 if isinstance(state, ContributionReviewStateV2)
                 else ContributionReviewState.model_validate(dumped)
             )
@@ -497,16 +516,14 @@ class InMemoryContributionReviewRepository:
                 self._records.pop((record.world_id, record.review_id), None)
                 raise
 
-    def get(
-        self, world_id: str, review_id: str
-    ) -> ContributionReviewState | ContributionReviewStateV2 | None:
+    def get(self, world_id: str, review_id: str) -> DurableContributionReviewState | None:
         with self._lock:
             record = self._records.get((world_id, review_id))
             return None if record is None else self._reconstruct_unlocked(record)
 
     def get_for_plan(
         self, world_id: str, source_plan_id: str
-    ) -> ContributionReviewState | ContributionReviewStateV2 | None:
+    ) -> DurableContributionReviewState | None:
         with self._lock:
             record = next(
                 (
@@ -558,7 +575,8 @@ class InMemoryFinalizedReviewPublicationRepository:
         if self._sources is None:
             return None
         return self._sources.get_provenance_snapshot(
-            artifact_ids=artifact_ids, revision_ids=revision_ids,
+            artifact_ids=artifact_ids,
+            revision_ids=revision_ids,
         )
 
     @staticmethod
@@ -766,9 +784,13 @@ class InMemoryFinalizedReviewPublicationRepository:
             graph_payload_sha256=verified.parent_graph_payload_sha256,
         )
         from ...contracts.review_publication import GuardedFinalizedReviewPublicationCommand
+
         guard = getattr(state.record, "reviewed_identity_preconditions", None)
-        command_type = (GuardedFinalizedReviewPublicationCommand
-                        if guard is not None else FinalizedReviewPublicationCommand)
+        command_type = (
+            GuardedFinalizedReviewPublicationCommand
+            if guard is not None
+            else FinalizedReviewPublicationCommand
+        )
         guard_fields = {"reviewed_identity_preconditions": guard} if guard is not None else {}
         command = command_type(
             **guard_fields,
@@ -881,7 +903,8 @@ class InMemoryFinalizedReviewPublicationRepository:
 
         guarded = isinstance(validated_command, GuardedFinalizedReviewPublicationCommand)
         source_lock = (
-            self._source_lock if guarded or validated_command.graph_schema == GRAPH_SCHEMA_V6
+            self._source_lock
+            if guarded or validated_command.graph_schema == GRAPH_SCHEMA_V6
             else nullcontext()
         )
         identity_lock = self._identity_lock if guarded else nullcontext()
@@ -949,11 +972,14 @@ class InMemoryFinalizedReviewPublicationRepository:
                 new_evidence = introduced_evidence_v6(parent, validated_command.graph_payload)
                 snapshot = self._sources.get_provenance_snapshot(
                     artifact_ids=tuple(sorted({r.source_artifact_id for r in new_evidence})),
-                    revision_ids=tuple(sorted({r.source_revision_id for r in new_evidence
-                                               if r.source_revision_id})),
+                    revision_ids=tuple(
+                        sorted({r.source_revision_id for r in new_evidence if r.source_revision_id})
+                    ),
                 )
                 validate_materialized_source_domains_v6(
-                    new_evidence, world_id=world_id, sources=snapshot,
+                    new_evidence,
+                    world_id=world_id,
+                    sources=snapshot,
                 )
             existing_revision = self._graph._revisions.get(
                 (world_id, validated_command.expected_published_revision_id)
@@ -1028,8 +1054,7 @@ class InMemoryIdentityDecisionRepository:
     def append(self, decision: DurableIdentityDecision) -> DurableIdentityDecision:
         if not isinstance(decision, (IdentityDecisionRecord, IdentityDecisionRecordV2)):
             raise PersistenceIntegrityError(
-                "canonical reconciliation decisions must use the atomic reconciliation "
-                "publisher"
+                "canonical reconciliation decisions must use the atomic reconciliation publisher"
             )
         key = (decision.world_id, decision.decision_id)
         with self._lock:
@@ -1124,9 +1149,7 @@ class InMemorySourceRepository:
             self._revisions[revision.source_revision_id] = _copy(revision)
             return _copy(revision)
 
-    def get_source_admission(
-        self, admission_id: str
-    ) -> SourceAdmissionReceiptV1 | None:
+    def get_source_admission(self, admission_id: str) -> SourceAdmissionReceiptV1 | None:
         with self._lock:
             receipt = self._source_admissions.get(admission_id)
             return _copy(receipt) if receipt is not None else None
@@ -1153,17 +1176,15 @@ class InMemorySourceRepository:
                 return _copy(existing_receipt)
 
             existing_artifact = self._artifacts.get(artifact.source_artifact_id)
-            if (
-                existing_artifact is not None
-                and _fingerprint(existing_artifact) != _fingerprint(artifact)
+            if existing_artifact is not None and _fingerprint(existing_artifact) != _fingerprint(
+                artifact
             ):
                 raise IdempotencyConflictError(
                     f"source artifact {artifact.source_artifact_id!r} already has different content"
                 )
             existing_revision = self._revisions.get(revision.source_revision_id)
-            if (
-                existing_revision is not None
-                and _fingerprint(existing_revision) != _fingerprint(revision)
+            if existing_revision is not None and _fingerprint(existing_revision) != _fingerprint(
+                revision
             ):
                 raise IdempotencyConflictError(
                     f"source revision {revision.source_revision_id!r} already has different content"
@@ -1886,9 +1907,7 @@ class InMemoryExistingWorldAdoptionRepository:
     ) -> DurableExistingWorldAdoptionReceipt:
         schema = getattr(receipt, "schema_version", None)
         if schema == EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA:
-            receipt_type: type[DurableExistingWorldAdoptionReceipt] = (
-                ExistingWorldAdoptionReceiptV1
-            )
+            receipt_type: type[DurableExistingWorldAdoptionReceipt] = ExistingWorldAdoptionReceiptV1
         elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V2_SCHEMA:
             receipt_type = ExistingWorldAdoptionReceiptV2
         elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V4_SCHEMA:
@@ -1896,9 +1915,7 @@ class InMemoryExistingWorldAdoptionRepository:
         elif schema == EXISTING_WORLD_ADOPTION_RECEIPT_V3_SCHEMA:
             receipt_type = ExistingWorldAdoptionReceiptV3
         else:
-            raise PersistenceIntegrityError(
-                "existing-world adoption receipt failed reconstruction"
-            )
+            raise PersistenceIntegrityError("existing-world adoption receipt failed reconstruction")
         try:
             return receipt_type.model_validate(receipt.model_dump(mode="json"))
         except Exception:
@@ -2334,9 +2351,7 @@ class InMemoryExistingWorldAdoptionRepository:
                         details={
                             "reason": "adoption_repair_effective_mismatch",
                             "world_id": world_id,
-                            "expected_membership_sha256": (
-                                command.effective_membership_sha256
-                            ),
+                            "expected_membership_sha256": (command.effective_membership_sha256),
                             "observed_membership_sha256": observed_m1,
                         },
                     )
@@ -2430,9 +2445,7 @@ class InMemoryExistingWorldAdoptionRepository:
         self, command: AdoptedAssertionWithdrawalCommand
     ) -> AdoptedAssertionWithdrawalReceipt:
         """Atomically publish one adoption-bound neutral withdrawal."""
-        command = type(command).model_validate(
-            command.model_dump(mode="json")
-        )
+        command = type(command).model_validate(command.model_dump(mode="json"))
         # The database receipt key is operation_id alone. Serialize this
         # receipt check-through-insert boundary across worlds to provide the
         # same global uniqueness guarantee in the in-memory authority.
@@ -2480,9 +2493,7 @@ class InMemoryExistingWorldAdoptionRepository:
                     expected_parent_revision_id=command.expected_parent_revision_id,
                     actual_head_revision_id=actual_parent,
                 )
-            adopted_stored = self._graph._revisions.get(
-                (world_id, adoption.published_revision_id)
-            )
+            adopted_stored = self._graph._revisions.get((world_id, adoption.published_revision_id))
             parent_stored = self._graph._revisions.get(
                 (world_id, command.expected_parent_revision_id)
             )
@@ -2530,31 +2541,33 @@ class InMemoryExistingWorldAdoptionRepository:
                     if isinstance(command, AdoptedAssertionWithdrawalCommandV2)
                     else AdoptedAssertionWithdrawalReceiptV1
                 )
-                receipt = receipt_type.model_validate(dict(
-                    operation_id=command.operation_id,
-                    world_id=world_id,
-                    adoption_id=command.adoption_id,
-                    request_sha256=request_sha,
-                    adoption_receipt_fingerprint=canonical_sha256(
-                        adoption.model_dump(mode="json")
-                    ),
-                    parent_revision_id=command.expected_parent_revision_id,
-                    parent_payload_sha256=parent_sha,
-                    published_revision_id=revision.revision_id,
-                    relationship_id=command.relationship_id,
-                    assertion_id=command.assertion_id,
-                    subject_object_id=command.subject_object_id,
-                    predicate=command.predicate,
-                    object_object_id=command.object_object_id,
-                    evidence_ref_id=command.evidence_ref_id,
-                    source_artifact_id=command.source_artifact_id,
-                    source_revision_id=command.source_revision_id,
-                    source_span_ref_id=command.source_span_ref_id,
-                    source_locator=command.source_locator,
-                    disposition=command.disposition,
-                    actor=command.actor,
-                    completed_at=command.requested_at,
-                ))
+                receipt = receipt_type.model_validate(
+                    dict(
+                        operation_id=command.operation_id,
+                        world_id=world_id,
+                        adoption_id=command.adoption_id,
+                        request_sha256=request_sha,
+                        adoption_receipt_fingerprint=canonical_sha256(
+                            adoption.model_dump(mode="json")
+                        ),
+                        parent_revision_id=command.expected_parent_revision_id,
+                        parent_payload_sha256=parent_sha,
+                        published_revision_id=revision.revision_id,
+                        relationship_id=command.relationship_id,
+                        assertion_id=command.assertion_id,
+                        subject_object_id=command.subject_object_id,
+                        predicate=command.predicate,
+                        object_object_id=command.object_object_id,
+                        evidence_ref_id=command.evidence_ref_id,
+                        source_artifact_id=command.source_artifact_id,
+                        source_revision_id=command.source_revision_id,
+                        source_span_ref_id=command.source_span_ref_id,
+                        source_locator=command.source_locator,
+                        disposition=command.disposition,
+                        actor=command.actor,
+                        completed_at=command.requested_at,
+                    )
+                )
                 self._withdrawal_receipts[receipt_key] = receipt
                 if self._failure_hook is not None:
                     self._failure_hook("withdrawal_receipt")
@@ -2598,26 +2611,28 @@ class InMemoryExistingWorldAdoptionRepository:
             if isinstance(receipt, AdoptedAssertionWithdrawalReceiptV2)
             else AdoptedAssertionWithdrawalCommandV1
         )
-        command = command_type.model_validate(dict(
-            operation_id=receipt.operation_id,
-            world_id=receipt.world_id,
-            adoption_id=receipt.adoption_id,
-            expected_parent_revision_id=receipt.parent_revision_id,
-            relationship_id=receipt.relationship_id,
-            assertion_id=receipt.assertion_id,
-            subject_object_id=receipt.subject_object_id,
-            predicate=receipt.predicate,
-            object_object_id=receipt.object_object_id,
-            evidence_ref_id=receipt.evidence_ref_id,
-            source_artifact_id=receipt.source_artifact_id,
-            source_revision_id=receipt.source_revision_id,
-            source_span_ref_id=receipt.source_span_ref_id,
-            source_locator=receipt.source_locator,
-            parent_payload_sha256=receipt.parent_payload_sha256,
-            disposition=receipt.disposition,
-            actor=receipt.actor,
-            requested_at=receipt.completed_at,
-        ))
+        command = command_type.model_validate(
+            dict(
+                operation_id=receipt.operation_id,
+                world_id=receipt.world_id,
+                adoption_id=receipt.adoption_id,
+                expected_parent_revision_id=receipt.parent_revision_id,
+                relationship_id=receipt.relationship_id,
+                assertion_id=receipt.assertion_id,
+                subject_object_id=receipt.subject_object_id,
+                predicate=receipt.predicate,
+                object_object_id=receipt.object_object_id,
+                evidence_ref_id=receipt.evidence_ref_id,
+                source_artifact_id=receipt.source_artifact_id,
+                source_revision_id=receipt.source_revision_id,
+                source_span_ref_id=receipt.source_span_ref_id,
+                source_locator=receipt.source_locator,
+                parent_payload_sha256=receipt.parent_payload_sha256,
+                disposition=receipt.disposition,
+                actor=receipt.actor,
+                requested_at=receipt.completed_at,
+            )
+        )
         if withdrawal_request_sha256(command) != receipt.request_sha256:
             raise PersistenceIntegrityError("withdrawal receipt request hash drift")
         expected_child = materialize_withdrawal_payload(
@@ -2649,9 +2664,7 @@ class InMemoryReviewedWorldInitializationRepository:
         self._contributions = contribution_repository
         self._identity = identity_repository
         self._receipts_by_world: dict[str, ReviewedWorldInitializationReceiptV1] = {}
-        self._receipts_by_initialization: dict[str, ReviewedWorldInitializationReceiptV1] = (
-            {}
-        )
+        self._receipts_by_initialization: dict[str, ReviewedWorldInitializationReceiptV1] = {}
         self._failure_hook = failure_hook
         self._adoption_lookup = adoption_lookup
 
@@ -2676,9 +2689,7 @@ class InMemoryReviewedWorldInitializationRepository:
                 "reviewed-world initialization target is not pristine",
                 details={"reason": "non_pristine_target", "family": "contribution"},
             )
-        if self._identity is not None and any(
-            key[0] == world_id for key in self._identity._items
-        ):
+        if self._identity is not None and any(key[0] == world_id for key in self._identity._items):
             raise PersistenceIntegrityError(
                 "reviewed-world initialization target is not pristine",
                 details={"reason": "non_pristine_target", "family": "identity_decision"},
@@ -2910,9 +2921,7 @@ class InMemoryReviewedWorldInitializationRepository:
                     materialization = FirstWorldMaterialization(
                         world_id=validated.world_id,
                         initialization_id=validated.initialization_id,
-                        reviewed_contribution_id=(
-                            validated.reviewed_contribution.contribution_id
-                        ),
+                        reviewed_contribution_id=(validated.reviewed_contribution.contribution_id),
                         reviewed_contribution_sha256=contribution_v2_payload_sha256(
                             validated.reviewed_contribution
                         ),

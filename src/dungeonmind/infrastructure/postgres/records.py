@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from ...application.existing_world_adoption import require_v2_contribution_correction_closure
 from ...application.repositories import (
+    DurableContributionReviewState,
     DurableGraphContribution,
     DurableIdentityDecision,
     DurableIdentityHistoryRecord,
@@ -21,9 +22,11 @@ from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
 from ...contracts.contribution import (
     GRAPH_CONTRIBUTION_SCHEMA,
     GRAPH_CONTRIBUTION_V2_SCHEMA,
+    GRAPH_CONTRIBUTION_V3_SCHEMA,
     ContributionStatus,
     GraphContribution,
     GraphContributionV2,
+    GraphContributionV3,
 )
 from ...contracts.contribution_review import (
     CONTRIBUTION_REVIEW_RECORD_SCHEMA,
@@ -35,6 +38,12 @@ from ...contracts.contribution_review_v2 import (
     ContributionReviewRecordV2,
     ContributionReviewStateV2,
     GuardedContributionReviewRecordV2,
+)
+from ...contracts.contribution_review_v3 import (
+    CONTRIBUTION_REVIEW_RECORD_V3_SCHEMA,
+    ContributionReviewRecordV3,
+    ContributionReviewStateV3,
+    GuardedContributionReviewRecordV3,
 )
 from ...contracts.evidence import (
     SOURCE_ARTIFACT_SCHEMA,
@@ -143,6 +152,8 @@ def _return_contribution(row: dict[str, Any]) -> DurableGraphContribution:
         model_type: type[DurableGraphContribution] = GraphContribution
     elif schema_version == GRAPH_CONTRIBUTION_V2_SCHEMA:
         model_type = GraphContributionV2
+    elif schema_version == GRAPH_CONTRIBUTION_V3_SCHEMA:
+        model_type = GraphContributionV3
     else:
         raise PersistenceIntegrityError(f"unsupported contribution schema {schema_version!r}")
     return reconstruct(
@@ -414,7 +425,7 @@ def _get_contribution_in_transaction_any_schema(
 
 def _return_review_record(
     row: dict[str, Any],
-) -> ContributionReviewRecord | ContributionReviewRecordV2:
+) -> ContributionReviewRecord | ContributionReviewRecordV2 | ContributionReviewRecordV3:
     schema_version = row["schema_version"]
     if schema_version == CONTRIBUTION_REVIEW_RECORD_SCHEMA:
         model_type: type[ContributionReviewRecord | ContributionReviewRecordV2] = (
@@ -425,6 +436,12 @@ def _return_review_record(
             GuardedContributionReviewRecordV2
             if "reviewed_identity_preconditions" in row["payload"]
             else ContributionReviewRecordV2
+        )
+    elif schema_version == CONTRIBUTION_REVIEW_RECORD_V3_SCHEMA:
+        model_type = (
+            GuardedContributionReviewRecordV3
+            if "reviewed_identity_preconditions" in row["payload"]
+            else ContributionReviewRecordV3
         )
     else:
         raise PersistenceIntegrityError(
@@ -459,8 +476,35 @@ def _return_review_record(
 def _return_review_state(
     conn: Any,
     row: dict[str, Any],
-) -> ContributionReviewState | ContributionReviewStateV2:
+) -> DurableContributionReviewState:
     record = _return_review_record(row)
+    if isinstance(record, ContributionReviewRecordV3):
+        candidate = _get_contribution_in_transaction_any_schema(
+            conn,
+            world_id=record.world_id,
+            contribution_id=record.stored_candidate_contribution_id,
+        )
+        reviewed = _get_contribution_in_transaction_any_schema(
+            conn,
+            world_id=record.world_id,
+            contribution_id=record.reviewed_contribution_id,
+        )
+        if not isinstance(candidate, GraphContributionV3) or not isinstance(
+            reviewed, GraphContributionV3
+        ):
+            raise PersistenceIntegrityError(
+                f"review {record.review_id!r} received a non-v3 contribution"
+            )
+        try:
+            return ContributionReviewStateV3(
+                record=record,
+                candidate_contribution=candidate,
+                reviewed_contribution=reviewed,
+            )
+        except ValidationError:
+            raise PersistenceIntegrityError(
+                f"review {record.review_id!r} failed cross-record reconstruction"
+            ) from None
     if isinstance(record, ContributionReviewRecordV2):
         candidate = _get_contribution_in_transaction_any_schema(
             conn,
@@ -680,13 +724,13 @@ class PostgresContributionReviewRepository:
             (world_id, source_plan_id),
         ).fetchone()
 
-    def finalize(
-        self, state: ContributionReviewState | ContributionReviewStateV2
-    ) -> ContributionReviewState | ContributionReviewStateV2:
+    def finalize(self, state: DurableContributionReviewState) -> DurableContributionReviewState:
         try:
             dumped = state.model_dump(mode="json")
-            validated: ContributionReviewState | ContributionReviewStateV2 = (
-                ContributionReviewStateV2.model_validate(dumped)
+            validated: DurableContributionReviewState = (
+                ContributionReviewStateV3.model_validate(dumped)
+                if isinstance(state, ContributionReviewStateV3)
+                else ContributionReviewStateV2.model_validate(dumped)
                 if isinstance(state, ContributionReviewStateV2)
                 else ContributionReviewState.model_validate(dumped)
             )
@@ -1153,10 +1197,7 @@ def _insert_source_admission_receipt(
     if row is None:
         raise PersistenceIntegrityError("source admission receipt missing after insert")
     stored = _return_source_admission(row)
-    if (
-        stored.world_id != receipt.world_id
-        or stored.command_sha256 != receipt.command_sha256
-    ):
+    if stored.world_id != receipt.world_id or stored.command_sha256 != receipt.command_sha256:
         raise IdempotencyConflictError(
             f"source admission {receipt.admission_id!r} replayed with different input"
         )
@@ -1206,9 +1247,7 @@ class PostgresSourceRepository:
         with self._database.transaction() as conn:
             return _put_revision_in_transaction(conn, revision)
 
-    def get_source_admission(
-        self, admission_id: str
-    ) -> SourceAdmissionReceiptV1 | None:
+    def get_source_admission(self, admission_id: str) -> SourceAdmissionReceiptV1 | None:
         with self._database.transaction() as conn:
             row = conn.execute(
                 sql.SQL(
@@ -1256,15 +1295,13 @@ class PostgresSourceRepository:
             # The graph publisher takes this same row lock. It both proves
             # this is an existing World and serializes the expected-head CAS.
             world = conn.execute(
-                sql.SQL(
-                    "SELECT world_id FROM {}.worlds WHERE world_id = %s FOR UPDATE"
-                ).format(sql.Identifier(SCHEMA)),
+                sql.SQL("SELECT world_id FROM {}.worlds WHERE world_id = %s FOR UPDATE").format(
+                    sql.Identifier(SCHEMA)
+                ),
                 (receipt.world_id,),
             ).fetchone()
             if world is None:
-                raise HeadNotFoundError(
-                    f"World {receipt.world_id!r} does not exist"
-                )
+                raise HeadNotFoundError(f"World {receipt.world_id!r} does not exist")
             head = conn.execute(
                 sql.SQL(
                     "SELECT head_revision_id FROM {}.world_graph_heads WHERE world_id = %s"
@@ -1273,9 +1310,7 @@ class PostgresSourceRepository:
             ).fetchone()
             actual_head = head["head_revision_id"] if head is not None else None
             if actual_head is None:
-                raise HeadNotFoundError(
-                    f"World {receipt.world_id!r} has no graph head"
-                )
+                raise HeadNotFoundError(f"World {receipt.world_id!r} has no graph head")
             if actual_head != receipt.expected_head_revision_id:
                 raise StaleParentRevisionError(
                     world_id=receipt.world_id,

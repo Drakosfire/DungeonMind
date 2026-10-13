@@ -9,15 +9,36 @@ from typing import Any
 
 from psycopg import Connection, sql
 
-from ...contracts.evidence import EvidenceRef
+from ...contracts.evidence import (
+    EVIDENCE_REF_SCHEMA,
+    EVIDENCE_REF_V2_SCHEMA,
+    EvidenceRef,
+    EvidenceRefV2,
+)
 from ...domain.errors import IdempotencyConflictError, PersistenceIntegrityError
 from .database import SCHEMA, jsonb
 from .serialization import dump_payload, model_fingerprint, reconstruct
 
 
-def upsert_evidence_refs(conn: Connection[Any], evidence: list[EvidenceRef]) -> None:
+def _evidence_model(schema_version: str) -> type[EvidenceRef] | type[EvidenceRefV2]:
+    if schema_version == EVIDENCE_REF_SCHEMA:
+        return EvidenceRef
+    if schema_version == EVIDENCE_REF_V2_SCHEMA:
+        return EvidenceRefV2
+    raise PersistenceIntegrityError(f"unsupported evidence_ref schema {schema_version!r}")
+
+
+def upsert_evidence_refs(
+    conn: Connection[Any], evidence: list[EvidenceRef | EvidenceRefV2]
+) -> None:
     """Persist evidence refs with atomic insert/reconcile idempotency."""
     for item in evidence:
+        if item.source_domain is None:
+            # The existing extraction table requires a classified source domain.
+            # Do not coerce a typed V2 domain to OTHER or alter historical schema.
+            raise PersistenceIntegrityError(
+                f"evidence_ref {item.evidence_ref_id!r} has no extracted source domain"
+            )
         fingerprint = model_fingerprint(item)
         payload = dump_payload(item)
         conn.execute(
@@ -74,7 +95,7 @@ def upsert_evidence_refs(conn: Connection[Any], evidence: list[EvidenceRef]) -> 
                 f"evidence_ref {item.evidence_ref_id!r} replayed with different payload"
             )
         reconstruct(
-            EvidenceRef,
+            _evidence_model(existing["schema_version"]),
             dict(existing["payload"]),
             expected_fingerprint=existing["record_fingerprint"],
             identity={
@@ -88,10 +109,12 @@ def upsert_evidence_refs(conn: Connection[Any], evidence: list[EvidenceRef]) -> 
         )
 
 
-def collect_evidence_from_contribution_payload(contribution: Any) -> list[EvidenceRef]:
+def collect_evidence_from_contribution_payload(
+    contribution: Any,
+) -> list[EvidenceRef | EvidenceRefV2]:
     """Deduplicate evidence IDs across assertions; reject conflicting duplicates."""
-    by_id: dict[str, EvidenceRef] = {}
-    ordered: list[EvidenceRef] = []
+    by_id: dict[str, EvidenceRef | EvidenceRefV2] = {}
+    ordered: list[EvidenceRef | EvidenceRefV2] = []
     for assertion in getattr(contribution, "assertions", []) or []:
         for ref in getattr(assertion, "evidence_refs", []) or []:
             prior = by_id.get(ref.evidence_ref_id)
