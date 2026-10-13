@@ -24,8 +24,8 @@ from .contribution import (
     GraphContributionAssertionCorrection,
     GraphContributionAssertionCorrectionKind,
     GraphContributionAssertionV2,
-    GraphContributionV2,
     GraphContributionAssertionV3,
+    GraphContributionV2,
     GraphContributionV3,
 )
 from .contribution_review import (
