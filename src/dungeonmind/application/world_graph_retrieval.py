@@ -1520,6 +1520,22 @@ class WorldGraphRetrievalService:
                                     or stored_ref.source_revision_id != source_revision_id
                                     or stored_ref.locator != ref.locator
                                     or stored_ref.evidence_role != ref.evidence_role
+                                    or (
+                                        isinstance(ref, EvidenceRefV2)
+                                        and (
+                                            not isinstance(stored_ref, EvidenceRefV2)
+                                            or any(
+                                                getattr(stored_ref, field, None)
+                                                != getattr(ref, field, None)
+                                                for field in (
+                                                    "source_domain_key", "source_domain",
+                                                    "source_span_ref_id", "session_id",
+                                                    "source_locator", "line_ref", "uri",
+                                                    "can_open_source", "can_highlight_span",
+                                                )
+                                            )
+                                        )
+                                    )
                                 ):
                                     local_gaps.add("reviewed_source_observation_evidence_invalid")
                                     valid = False

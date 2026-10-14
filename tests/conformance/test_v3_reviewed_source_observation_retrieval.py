@@ -348,3 +348,49 @@ def test_v3_correction_excludes_only_target_and_preserves_prior_revision(
     assert "reviewed_source_observation_correction_unresolved" in corrected.coverage.gap_codes
     prior = service.get_complete_object(f._request(child_id), object_id=f.EXISTING_OBJECT_ID)
     assert len(prior.reviewed_source_observations) == initial_count
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("source_span_ref_id", "fixture:OTHER-SPAN"),
+        ("source_domain_key", "other"),
+        ("can_highlight_span", False),
+    ],
+)
+def test_descendant_cannot_change_reviewed_typed_evidence_identity(monkeypatch, field, value):
+    import copy
+
+    service, graph, _, _, child, spans, _ = v3_fixture(monkeypatch)
+    revision = graph.get_revision(f.WORLD_ID, child)
+    payload = copy.deepcopy(revision.graph_payload)
+    target = next(row for row in payload["evidence_refs"] if row["evidence_ref_id"] in spans)
+    changed_id = target["evidence_ref_id"]
+    target[field] = value
+    descendant = graph.publish_revision(
+        f.PublishRevisionCommand(
+            world_id=f.WORLD_ID,
+            parent_revision_id=child,
+            expected_parent_revision_id=child,
+            operation_ids=["read:typed-evidence-mismatch:" + field],
+            graph_schema=f.GRAPH_SCHEMA_V6,
+            graph_payload=payload,
+            created_at=f.REVIEWED_AT + f.timedelta(minutes=2),
+        )
+    )
+    result = service.get_complete_object(
+        f._request(descendant.revision_id),
+        object_id=f.EXISTING_OBJECT_ID,
+    )
+    assert len(result.reviewed_source_observations) == 5
+    assert all(
+        changed_id not in row.evidence_ref_ids for row in result.reviewed_source_observations
+    )
+    expected_gap = (
+        "evidence_source_domain_mismatch" if field == "source_domain_key"
+        else "reviewed_source_observation_evidence_invalid"
+    )
+    assert expected_gap in result.coverage.gap_codes
+    prior = service.get_complete_object(f._request(child), object_id=f.EXISTING_OBJECT_ID)
+    assert len(prior.reviewed_source_observations) == 6
+    assert prior.object.summary == "Original authored prose."
