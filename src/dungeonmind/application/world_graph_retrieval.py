@@ -45,11 +45,19 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeVar
 
-from ..contracts.contribution import AcceptanceState, GraphContributionAssertionV2
+from ..contracts.contribution import (
+    AcceptanceState,
+    GraphContributionAssertionV2,
+    GraphContributionAssertionV3,
+)
 from ..contracts.contribution_review_v2 import (
     NON_MUTATING_IDENTITY_OUTCOMES,
     ContributionReviewStateV2,
     contribution_v2_payload_sha256,
+)
+from ..contracts.contribution_review_v3 import (
+    ContributionReviewStateV3,
+    contribution_v3_payload_sha256,
 )
 from ..contracts.evidence import (
     EvidenceRef,
@@ -1322,7 +1330,7 @@ class WorldGraphRetrievalService:
 
     @staticmethod
     def _observation_value(
-        assertion: GraphContributionAssertionV2,
+        assertion: GraphContributionAssertionV2 | GraphContributionAssertionV3,
     ) -> tuple[str, str, Literal["session_observation", "worldbuilding_observation"]] | None:
         """Normalize explicitly supported reviewed source observations."""
         if assertion.value is None:
@@ -1416,12 +1424,14 @@ class WorldGraphRetrievalService:
                     raise PersistenceIntegrityError(
                         "reviewed source observation review disagrees with publication"
                     )
-                if isinstance(state, ContributionReviewStateV2):
+                if isinstance(state, (ContributionReviewStateV2, ContributionReviewStateV3)):
                     contribution = state.reviewed_contribution
-                    if (
-                        contribution_v2_payload_sha256(contribution)
-                        != publication.reviewed_contribution_sha256
-                    ):
+                    digest = (
+                        contribution_v3_payload_sha256(contribution)
+                        if isinstance(state, ContributionReviewStateV3)
+                        else contribution_v2_payload_sha256(contribution)
+                    )
+                    if digest != publication.reviewed_contribution_sha256:
                         raise PersistenceIntegrityError(
                             "reviewed source observation contribution digest disagrees"
                         )
