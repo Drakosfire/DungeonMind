@@ -1501,6 +1501,57 @@ def test_search_result_caps_and_truncation_are_explicit():
     assert result.matched_object_ids == tuple(sorted(result.matched_object_ids))
 
 
+def test_resolved_subject_precedes_incidental_lexical_matches():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, projection = _services(world_graph)
+    result = service.search(
+        _cross(),
+        query_text="Does Alpha Keep have a bustling tavern at the crossroads with population?",
+        bounds=RetrievalBounds(max_objects=1),
+    )
+    assert result.matched_object_ids == ("obj:alpha-keep",)
+    assert "resolved_mention" in result.match_reasons["obj:alpha-keep"]
+    assert "objects" in result.coverage.truncated_fields
+    assert projection.project_calls == 1
+
+
+def test_explicit_seed_precedes_resolved_subject_with_no_remaining_budget():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, _ = _services(world_graph)
+    result = service.search(
+        _cross(), query_text="Tell me about Alpha Keep",
+        seed_object_ids=["obj:world-gate"], bounds=RetrievalBounds(max_objects=1),
+    )
+    assert result.matched_object_ids == ("obj:world-gate",)
+    assert "objects" in result.coverage.truncated_fields
+
+
+def test_multiple_resolved_subjects_remain_bounded_and_deterministic():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, _ = _services(world_graph)
+    kwargs = {
+        "query_text": "Compare Alpha Keep and Beta Crypt",
+        "bounds": RetrievalBounds(max_objects=1),
+    }
+    first = service.search(_cross(), **kwargs)
+    second = service.search(_cross(), **kwargs)
+    assert len(first.matched_object_ids) == 1
+    assert first.matched_object_ids == second.matched_object_ids
+    assert "objects" in first.coverage.truncated_fields
+
+
+def test_resolved_subject_cannot_cross_campaign_scope():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, _ = _services(world_graph)
+    result = service.search(_campaign_a(), query_text="Tell me about Beta Crypt")
+    assert "obj:beta-crypt" not in result.matched_object_ids
+    assert not any(r.object_id == "obj:beta-crypt" for r in result.referents)
+
+
 def test_search_seeds_survive_result_bounds():
     world_graph = InMemoryWorldGraphRepository()
     _publish(world_graph)
