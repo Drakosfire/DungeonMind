@@ -255,7 +255,7 @@ class ReviewedSourceObservation:
 
     assertion_id: str
     subject_object_id: str
-    observation_kind: Literal["session_observation"]
+    observation_kind: Literal["session_observation", "worldbuilding_observation"]
     text: str
     entity_kind: str
     review_id: str
@@ -1323,8 +1323,8 @@ class WorldGraphRetrievalService:
     @staticmethod
     def _observation_value(
         assertion: GraphContributionAssertionV2,
-    ) -> tuple[str, str] | None:
-        """Normalize the supported historical nested session observation."""
+    ) -> tuple[str, str, Literal["session_observation", "worldbuilding_observation"]] | None:
+        """Normalize explicitly supported reviewed source observations."""
         if assertion.value is None:
             raise ValueError("source observation value is missing")
         try:
@@ -1333,7 +1333,8 @@ class WorldGraphRetrievalService:
             raise ValueError("source observation value is not JSON") from exc
         if not isinstance(value, dict):
             raise ValueError("source observation value is not an object")
-        if value.get("property_term") != "session_observation":
+        observation_kind = value.get("property_term")
+        if observation_kind not in ("session_observation", "worldbuilding_observation"):
             return None
         text = value.get("summary")
         kind = value.get("kind")
@@ -1345,7 +1346,7 @@ class WorldGraphRetrievalService:
             or not kind.strip()
         ):
             raise ValueError("source observation text/kind shape is unsupported")
-        return text, kind
+        return text, kind, observation_kind
 
     def _reviewed_source_observations(
         self,
@@ -1525,11 +1526,11 @@ class WorldGraphRetrievalService:
                             blocked_ids.add(assertion.assertion_id)
                             gap_codes.add("reviewed_source_observation_identity_conflict")
                             continue
-                        text, kind = parsed
+                        text, kind, observation_kind = parsed
                         observations[assertion.assertion_id] = ReviewedSourceObservation(
                             assertion_id=assertion.assertion_id,
                             subject_object_id=subject,
-                            observation_kind="session_observation",
+                            observation_kind=observation_kind,
                             text=text,
                             entity_kind=kind,
                             review_id=record.review_id,
