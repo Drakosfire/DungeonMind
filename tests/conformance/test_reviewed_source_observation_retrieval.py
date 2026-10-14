@@ -64,12 +64,13 @@ def _source(
     artifact_id: str,
     revision_id: str | None,
     visibility: Visibility = Visibility.PLAYER,
+    source_domain: SourceDomain = SourceDomain.SESSION_RECAP,
 ) -> None:
     sources.put_artifact(
         SourceArtifactV2(
             source_artifact_id=artifact_id,
-            source_domain_key="session_recap",
-            source_domain=SourceDomain.SESSION_RECAP,
+            source_domain_key=str(source_domain),
+            source_domain=source_domain,
             world_id=WORLD_ID,
             campaign_id=CAMPAIGN_ID,
             session_id="session-2",
@@ -107,17 +108,20 @@ def _candidate_with_observation(
     text: object = OBSERVATION_TEXT,
     accepted: bool = True,
     count: int = 1,
+    observation_values: tuple[tuple[str, str], ...] | None = None,
 ) -> tuple[GraphContributionV2, list[ContributionAssertionVerdict]]:
     raw = _candidate().model_dump(mode="json")
     raw["source_revision_id"] = SOURCE_REVISION_ID
     template = next(row for row in raw["assertions"] if row["assertion_id"] == ASSERTION_ID)
     raw["assertions"] = [row for row in raw["assertions"] if row is not template]
-    for index in range(count):
+    values = observation_values or tuple(("session_observation", text) for _ in range(count))
+    count = len(values)
+    for index, (observation_kind, observation_text) in enumerate(values):
         assertion = dict(template)
         assertion["assertion_id"] = ASSERTION_ID if count == 1 else f"{ASSERTION_ID}:{index:02d}"
         assertion["subject_object_id"] = subject_id
         assertion["value"] = json.dumps(
-            {"property_term": "session_observation", "summary": text, "kind": "npc"}
+            {"property_term": observation_kind, "summary": observation_text, "kind": "npc"}
         )
         assertion["source_artifact_id"] = SOURCE_ARTIFACT_ID
         assertion["source_revision_id"] = SOURCE_REVISION_ID
@@ -147,6 +151,8 @@ def _fixture(
     accepted: bool = True,
     count: int = 1,
     publish: bool = True,
+    observation_values: tuple[tuple[str, str], ...] | None = None,
+    source_domain: SourceDomain = SourceDomain.SESSION_RECAP,
 ) -> tuple[
     WorldGraphRetrievalService,
     InMemoryWorldGraphRepository,
@@ -183,12 +189,21 @@ def _fixture(
         sources,
         artifact_id=SOURCE_ARTIFACT_ID,
         revision_id=SOURCE_REVISION_ID,
+        source_domain=source_domain,
     )
     reviews = InMemoryContributionReviewRepository(InMemoryContributionRepository())
     publications = InMemoryFinalizedReviewPublicationRepository(reviews, graph)
     candidate, verdicts = _candidate_with_observation(
-        subject_id=subject_id, text=text, accepted=accepted, count=count
+        subject_id=subject_id, text=text, accepted=accepted, count=count,
+        observation_values=observation_values,
     )
+    if source_domain != SourceDomain.SESSION_RECAP:
+        raw = candidate.model_dump(mode="json")
+        for assertion in raw["assertions"]:
+            for ref in assertion["evidence_refs"]:
+                if ref["source_artifact_id"] == SOURCE_ARTIFACT_ID:
+                    ref["source_domain"] = str(source_domain)
+        candidate = GraphContributionV2.model_validate(raw)
     intent = _intent(candidate=candidate, parent=parent, assertion_verdicts=verdicts)
     state = _build_review_state(_submission(intent))
     reviews.finalize(state)
