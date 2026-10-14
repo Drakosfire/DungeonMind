@@ -58,6 +58,7 @@ from ..contracts.evidence import (
     SourceArtifactRecord,
     SourceDomain,
 )
+from ..contracts.identity import IdentityOutcome
 from ..contracts.knowledge_assertion import KnowledgeAssertionMetadataV1
 from ..contracts.projection import Admissibility
 from ..contracts.projection_v2 import (
@@ -1920,7 +1921,20 @@ class WorldGraphRetrievalService:
                 # consume the remaining budget.
                 seed_set = set(present_seeds)
                 ranked_seeds = [oid for oid in ranked_ids if oid in seed_set]
-                ranked_others = [oid for oid in ranked_ids if oid not in seed_set]
+                resolved_ids = {
+                    referent.object_id
+                    for referent in referents
+                    if referent.outcome == IdentityOutcome.RESOLVED_EXISTING
+                    and referent.object_id is not None
+                    and referent.object_id in scores
+                    and referent.object_id not in seed_set
+                }
+                for object_id in resolved_ids:
+                    reasons.setdefault(object_id, []).append("resolved_mention")
+                ranked_others = sorted(
+                    (oid for oid in ranked_ids if oid not in seed_set),
+                    key=lambda oid: (oid not in resolved_ids, -scores[oid], oid),
+                )
                 remaining = max(bounds.max_objects - len(ranked_seeds), 0)
                 capped_others, objects_truncated = self._cap(ranked_others, remaining)
                 selected_ids = ranked_seeds + list(capped_others)
