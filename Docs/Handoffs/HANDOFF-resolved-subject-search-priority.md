@@ -21,3 +21,7 @@ Remote main and open PRs checked; no open Core PRs returned. Existing local kern
 Rollout after accepted review: pin the accepted Core dependency in a separate Buddy-owned deployment, then rerun captured question/source probes and a real Harness answer. Unit tests alone do not establish connected user acceptance.
 
 Benchmark evidence is retained privately at `pippa-admitted-source-audit` in the existing World-context experiment: six source-backed questions on both APIs, plus changed name-only/seed probes and exact scoped resolver output. No corpus enters this PR. Migration requires no schema/data changes. Rollback restores the prior Core pin; preserve source roots and database authority during either rollout.
+
+Topology: serial. No unmerged behavioral parent. PRIME owns post-merge re-anchor and release of the shared retrieval reader lease to the next reviewed-worldbuilding observation handoff.
+
+Mutable predecessor sync: none; this changes bounded search prioritization, without activating or settling another runtime or publication lane. The consuming Buddy pin/rollout handoff will record this exact accepted Core merge and its adoption evidence.
