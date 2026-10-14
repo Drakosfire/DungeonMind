@@ -151,6 +151,7 @@ def _fixture(
     accepted: bool = True,
     count: int = 1,
     publish: bool = True,
+    authored_summary: str | None = None,
     observation_values: tuple[tuple[str, str], ...] | None = None,
     source_domain: SourceDomain = SourceDomain.SESSION_RECAP,
 ) -> tuple[
@@ -165,6 +166,11 @@ def _fixture(
         obj["assertion_metadata"]["visibility"] = "player"
         for alias in obj["aliases"]:
             alias["assertion_metadata"]["visibility"] = "player"
+    if authored_summary is not None:
+        obj = next(row for row in payload["objects"] if row["object_id"] == EXISTING_OBJECT_ID)
+        metadata = dict(obj["assertion_metadata"])
+        metadata["assertion_id"] = "ka:summary:existing"
+        obj["summary"] = {"value": authored_summary, "assertion_metadata": metadata}
     parent = _stored_parent(payload)
     graph = InMemoryWorldGraphRepository()
     root = graph.publish_revision(

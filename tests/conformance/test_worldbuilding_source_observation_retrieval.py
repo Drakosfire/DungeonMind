@@ -29,6 +29,7 @@ def test_six_worldbuilding_sections_and_session_survive_reviewed_publication():
     service, graph, _sources, parent, child = _fixture(
         observation_values=VALUES,
         source_domain=SourceDomain.WORLDBUILDING,
+        authored_summary="Existing authored prose must survive.",
     )
     before = graph.get_revision(WORLD_ID, child).graph_payload
     result = service.get_complete_object(_request(child), object_id=EXISTING_OBJECT_ID)
@@ -40,7 +41,7 @@ def test_six_worldbuilding_sections_and_session_survive_reviewed_publication():
     assert all(r.review_id and r.contribution_id and r.evidence_ref_ids for r in rows)
     assert all(r.publication_revision_id == child for r in rows)
     prior = service.get_complete_object(_request(parent), object_id=EXISTING_OBJECT_ID)
-    assert result.object.summary == prior.object.summary
+    assert result.object.summary == prior.object.summary == "Existing authored prose must survive."
     assert graph.get_revision(WORLD_ID, child).graph_payload == before
     assert (
         service.get_complete_object(
