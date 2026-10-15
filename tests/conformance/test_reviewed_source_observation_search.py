@@ -193,3 +193,18 @@ def test_corrected_observation_is_not_discovered_at_descendant(monkeypatch):
     assert not result.matched_object_ids
     assert not result.reviewed_source_observation_matches
     assert "reviewed_source_observation_correction_unresolved" in result.coverage.gap_codes
+
+
+@pytest.mark.parametrize(("query", "phrase"), [
+    ("representative", "Representatives of Commerce"),
+    ("representatives", "Representative of Commerce"),
+])
+@pytest.mark.parametrize("prefix", ["A distant introduction. ", "Straße introduction. "])
+def test_excerpt_locates_singular_plural_match_using_search_rules(query, phrase, prefix):
+    text = prefix * 100 + phrase
+    service, _, _, _, child = f._fixture(text=text)
+    result = service.search(f._request(child), query_text=query)
+    assert result.reviewed_source_observation_matches
+    match = result.reviewed_source_observation_matches[0]
+    assert phrase in match.text_excerpt
+    assert match.text_excerpt == text[match.excerpt_start:match.excerpt_end]

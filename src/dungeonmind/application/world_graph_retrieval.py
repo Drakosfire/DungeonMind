@@ -992,10 +992,17 @@ def _observation_search_match(
     # Keep local context before the earliest matching term. Explicit offsets,
     # length and digest prevent a navigation excerpt masquerading as full text.
     text = observation.text
+    folded_parts = [char.casefold() for char in text]
+    folded = "".join(folded_parts)
+    # Case folding can expand a character (for example ß → ss), so retain
+    # original Unicode offsets rather than slicing the original at folded ones.
+    original_offsets = [index for index, part in enumerate(folded_parts) for _ in part]
     positions = [
-        match.start()
-        for token in tokens
-        if (match := re.search(r"(?<!\w)" + re.escape(token) + r"(?!\w)", text, re.IGNORECASE))
+        original_offsets[word.start()]
+        for word in _TOKEN_PATTERN.finditer(folded)
+        if any(_token_matches(
+            token, folded[max(0, word.start() - 1):word.end() + 1],
+        ) for token in tokens)
     ]
     start = max(0, min(positions, default=0) - 128)
     end = min(len(text), start + 768)
