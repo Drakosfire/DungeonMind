@@ -1716,6 +1716,7 @@ def _assert_world_graph_retrieval_compatibility() -> None:
             "property_assertions",
             "anchors",
             "coverage",
+            "reviewed_source_observation_matches",
         ),
         "NeighborhoodResult": (
             "snapshot",

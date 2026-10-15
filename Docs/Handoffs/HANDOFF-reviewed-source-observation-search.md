@@ -49,3 +49,9 @@ Run existing native retrieval/observation conformance and owning search unit
 suite, Ruff and cumulative diff. Open PR, request independent exact-head review.
 Buddy adoption must measure complete serialized Harness payload, including its
 ledger; no live conversation acceptance is claimed by this producer slice.
+
+CI contract settlement: additionally lease
+`tests/unit/test_vnext_knowledge_read_context.py`, changing only the shared
+expected `GraphSearchResult` field tuple to include this intentional additive
+reviewed-source match facet. The three vNext suites reuse that expectation;
+retain their checks for every other public type, field and service signature.
