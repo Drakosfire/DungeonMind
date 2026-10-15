@@ -1425,12 +1425,12 @@ class WorldGraphRetrievalService:
                         "reviewed source observation review disagrees with publication"
                     )
                 if isinstance(state, (ContributionReviewStateV2, ContributionReviewStateV3)):
-                    contribution = state.reviewed_contribution
-                    digest = (
-                        contribution_v3_payload_sha256(contribution)
-                        if isinstance(state, ContributionReviewStateV3)
-                        else contribution_v2_payload_sha256(contribution)
-                    )
+                    if isinstance(state, ContributionReviewStateV3):
+                        contribution = state.reviewed_contribution
+                        digest = contribution_v3_payload_sha256(contribution)
+                    else:
+                        contribution = state.reviewed_contribution
+                        digest = contribution_v2_payload_sha256(contribution)
                     if digest != publication.reviewed_contribution_sha256:
                         raise PersistenceIntegrityError(
                             "reviewed source observation contribution digest disagrees"
