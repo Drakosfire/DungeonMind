@@ -21,6 +21,7 @@ from dungeonmind_dnd.application.world_object_vocabulary import (
     builtin_world_object_v5_vocabulary_ref,
     load_builtin_world_object_v4_vocabulary,
     load_builtin_world_object_v5_vocabulary,
+    load_builtin_world_object_v6_vocabulary,
     vocabulary_sha256,
 )
 from dungeonmind_dnd.contracts.relationship_aspect_materialization import (
@@ -449,6 +450,15 @@ def test_explicit_v5_vocabulary_required() -> None:
         materialize_relationship_aspect_plan_v1(
             _raw(),
             world_object_vocabulary=load_builtin_world_object_v4_vocabulary(),
+        )
+    assert exc.value.details["reason"] == "vocabulary_pin_mismatch"
+
+
+def test_world_object_v6_is_not_accepted_by_v5_materializer() -> None:
+    with pytest.raises(DndRelationshipAspectMaterializationError) as exc:
+        materialize_relationship_aspect_plan_v1(
+            _raw(),
+            world_object_vocabulary=load_builtin_world_object_v6_vocabulary(),
         )
     assert exc.value.details["reason"] == "vocabulary_pin_mismatch"
 

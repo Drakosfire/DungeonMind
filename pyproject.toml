@@ -50,8 +50,12 @@ packages = ["src/dungeonmind", "src/dungeonmind_dnd"]
 "src/dungeonmind_dnd/vocabularies/world-object-v2.json" = "dungeonmind_dnd/vocabularies/world-object-v2.json"
 "src/dungeonmind_dnd/vocabularies/world-object-v3.json" = "dungeonmind_dnd/vocabularies/world-object-v3.json"
 "src/dungeonmind_dnd/vocabularies/world-object-v4.json" = "dungeonmind_dnd/vocabularies/world-object-v4.json"
+"src/dungeonmind_dnd/vocabularies/world-object-v5.json" = "dungeonmind_dnd/vocabularies/world-object-v5.json"
+"src/dungeonmind_dnd/vocabularies/world-object-v6.json" = "dungeonmind_dnd/vocabularies/world-object-v6.json"
 "src/dungeonmind_dnd/vocabularies/world-property-v1.json" = "dungeonmind_dnd/vocabularies/world-property-v1.json"
 "src/dungeonmind_dnd/vocabularies/world-property-v2.json" = "dungeonmind_dnd/vocabularies/world-property-v2.json"
+"src/dungeonmind_dnd/vocabularies/world-property-v3.json" = "dungeonmind_dnd/vocabularies/world-property-v3.json"
+"src/dungeonmind_dnd/vocabularies/world-property-v4.json" = "dungeonmind_dnd/vocabularies/world-property-v4.json"
 "src/dungeonmind/application/vnext/data/dm_legacy_world_compat_v1.json" = "dungeonmind/application/vnext/data/dm_legacy_world_compat_v1.json"
 
 [tool.ruff]
