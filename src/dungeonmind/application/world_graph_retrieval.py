@@ -48,6 +48,7 @@ from typing import Any, Literal, TypeVar
 
 from ..contracts.contribution import (
     AcceptanceState,
+    ContributionSourceKind,
     GraphContributionAssertionV2,
     GraphContributionAssertionV3,
 )
@@ -1401,6 +1402,7 @@ class WorldGraphRetrievalService:
     @staticmethod
     def _observation_value(
         assertion: GraphContributionAssertionV2 | GraphContributionAssertionV3,
+        *, node_description: bool = False,
     ) -> tuple[str, str, Literal["session_observation", "worldbuilding_observation"]] | None:
         """Normalize explicitly supported reviewed source observations."""
         if assertion.value is None:
@@ -1411,9 +1413,24 @@ class WorldGraphRetrievalService:
             raise ValueError("source observation value is not JSON") from exc
         if not isinstance(value, dict):
             raise ValueError("source observation value is not an object")
-        observation_kind = value.get("property_term")
-        if observation_kind not in ("session_observation", "worldbuilding_observation"):
-            return None
+        if node_description:
+            # Current V3 extraction stores created descriptions on the accepted
+            # node assertion. Read them as source context, never authored summary.
+            if (
+                not isinstance(assertion, GraphContributionAssertionV3)
+                or not assertion.evidence_refs
+                or not all(isinstance(ref, EvidenceRefV2)
+                    and ref.source_domain is SourceDomain.WORLDBUILDING
+                    for ref in assertion.evidence_refs)
+                or value.get("property_term") is not None
+                or value.get("summary") is None
+            ):
+                return None
+            observation_kind = "worldbuilding_observation"
+        else:
+            observation_kind = value.get("property_term")
+            if observation_kind not in ("session_observation", "worldbuilding_observation"):
+                return None
         text = value.get("summary")
         kind = value.get("kind")
         if (
@@ -1510,8 +1527,13 @@ class WorldGraphRetrievalService:
                         for item in contribution.assertion_corrections
                     )
                     for assertion in contribution.assertions:
+                        node_description = (
+                            isinstance(state, ContributionReviewStateV3)
+                            and contribution.source_kind is ContributionSourceKind.EXTRACTION
+                            and assertion.assertion_kind == "node"
+                        )
                         if (
-                            assertion.assertion_kind != "attribute"
+                            (assertion.assertion_kind != "attribute" and not node_description)
                             or assertion.acceptance_state is not AcceptanceState.ACCEPTED
                             or assertion.identity_resolution_outcome
                             in NON_MUTATING_IDENTITY_OUTCOMES
@@ -1533,7 +1555,9 @@ class WorldGraphRetrievalService:
                         ):
                             continue
                         try:
-                            parsed = self._observation_value(assertion)
+                            parsed = self._observation_value(
+                                assertion, node_description=node_description,
+                            )
                         except ValueError:
                             gap_codes.add("reviewed_source_observation_unsupported_shape")
                             continue
