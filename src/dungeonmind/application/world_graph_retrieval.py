@@ -39,10 +39,11 @@ evidence/source identity, locator identity) makes the old anchor unresolvable.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, TypeVar
 
 from ..contracts.contribution import (
@@ -279,6 +280,35 @@ class ReviewedSourceObservation:
 
 
 @dataclass(frozen=True)
+class ReviewedSourceObservationMatch:
+    """Bounded discovery excerpt; never a canonical object assertion.
+
+    Offsets index the original observation's Unicode text. The exact full value
+    remains available through complete-object lookup and its source anchors.
+    """
+
+    assertion_id: str
+    subject_object_id: str
+    observation_kind: Literal["session_observation", "worldbuilding_observation"]
+    text_excerpt: str
+    excerpt_start: int
+    excerpt_end: int
+    text_length: int
+    text_sha256: str
+    entity_kind: str
+    review_id: str
+    contribution_id: str
+    publication_revision_id: str
+    source_artifact_id: str
+    source_revision_id: str
+    evidence_ref_ids: tuple[str, ...]
+    campaign_scope: str | None
+    visibility: Visibility
+    epistemic_kind: str
+    temporal_scope: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
 class SourceAnchorMetadata:
     """Admitted source-anchor identity plus the records a product opener needs.
 
@@ -398,6 +428,7 @@ class GraphSearchResult:
     property_assertions: tuple[AdmittedAssertionValue, ...]
     anchors: tuple[SourceAnchorMetadata, ...]
     coverage: RetrievalCoverage
+    reviewed_source_observation_matches: tuple[ReviewedSourceObservationMatch, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -943,6 +974,38 @@ def _score_object(
             score += _SCORE_TOKEN_SUMMARY
             reasons.append(f"token:{token}:summary")
     return score, sorted(set(reasons))
+
+
+def _score_reviewed_observation(text: str, query_cf: str, tokens: list[str]) -> int:
+    """Discovery never outranks exact identities or compounds across history."""
+    text_cf = text.casefold()
+    matched = sum(_token_matches(token, text_cf) for token in tokens)
+    if not matched:
+        return 0
+    phrase = 200 if contains_exact_phrase(text_cf, query_cf) else 0
+    return max(phrase, min(250, matched * 40))
+
+
+def _observation_search_match(
+    observation: ReviewedSourceObservation, tokens: list[str],
+) -> ReviewedSourceObservationMatch:
+    # Keep local context before the earliest matching term. Explicit offsets,
+    # length and digest prevent a navigation excerpt masquerading as full text.
+    text = observation.text
+    positions = [
+        match.start()
+        for token in tokens
+        if (match := re.search(r"(?<!\w)" + re.escape(token) + r"(?!\w)", text, re.IGNORECASE))
+    ]
+    start = max(0, min(positions, default=0) - 128)
+    end = min(len(text), start + 768)
+    metadata = asdict(observation)
+    metadata.pop("text")
+    return ReviewedSourceObservationMatch(
+        **metadata, text_excerpt=text[start:end], excerpt_start=start,
+        excerpt_end=end, text_length=len(text),
+        text_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+    )
 
 
 def _extend_scores_with_relationships(
@@ -1892,9 +1955,9 @@ class WorldGraphRetrievalService:
 
         Exact object IDs, exact admitted labels/aliases, and lexical
         phrase/token matches over admitted kind/summary/property/relationship
-        text rank candidates; explicit seeds are admitted before ranking and
-        always survive ``max_objects`` bounding (non-seed matches consume the
-        remaining budget). A
+        text and finalized source observations rank candidates. Explicit seeds are
+        admitted before ranking and always survive ``max_objects`` bounding;
+        non-seed matches consume the remaining budget. A
         query that phrase-matches an omitted or ambiguous alias never recovers
         the blocked object as a candidate. An empty query selects seeds only.
         """
@@ -1927,6 +1990,20 @@ class WorldGraphRetrievalService:
                 _extend_scores_with_relationships(
                     graph.objects, graph.relationships, query_cf, tokens, scores, reasons
                 )
+
+                observations, observation_gaps, observation_missing = (
+                    self._reviewed_source_observations(
+                        result, context, selected_object_id=None,
+                    ) if tokens else ((), (), ())
+                )
+                matching_observations: list[tuple[int, ReviewedSourceObservation]] = []
+                for observation in observations:
+                    score = _score_reviewed_observation(observation.text, query_cf, tokens)
+                    if score:
+                        subject = observation.subject_object_id
+                        scores[subject] = max(scores.get(subject, 0), score)
+                        reasons.setdefault(subject, []).append("reviewed_source_observation")
+                        matching_observations.append((score, observation))
 
                 present_seeds = [seed for seed in seeds if seed in graph.objects]
                 missing_seeds = tuple(
@@ -1976,9 +2053,21 @@ class WorldGraphRetrievalService:
                 for object_id in selected_ids
                 for row in _assertion_rows_for_object(graph.objects[object_id])
             ]
+            selected_rank = {object_id: index for index, object_id in enumerate(selected_ids)}
+            matched_observations, observation_truncated = self._cap(
+                [observation for score, observation in sorted(
+                    matching_observations,
+                    key=lambda pair: (
+                        selected_rank.get(pair[1].subject_object_id, len(selected_ids)),
+                        -pair[0], pair[1].assertion_id,
+                    ),
+                ) if observation.subject_object_id in selected_set],
+                bounds.max_assertions,
+            )
+            matches = tuple(_observation_search_match(row, tokens) for row in matched_observations)
             assertions, assertion_truncated = self._cap(
                 sorted(assertion_rows, key=lambda row: row.assertion_id),
-                bounds.max_assertions,
+                max(0, bounds.max_assertions - len(matches)),
             )
             with recorder.phase("anchor_derivation"):
                 anchors, anchor_truncated, anchor_gaps = self._anchors_for(
@@ -1987,6 +2076,7 @@ class WorldGraphRetrievalService:
                     object_ids=selected_set,
                     relationship_ids={rel.relationship_id for rel in relationships},
                     assertion_ids={row.assertion_id for row in assertions},
+                    reviewed_source_observations=tuple(matched_observations),
                     max_anchors=bounds.max_anchors,
                 )
             op_result = GraphSearchResult(
@@ -2002,6 +2092,7 @@ class WorldGraphRetrievalService:
                 relationships=relationships,
                 property_assertions=assertions,
                 anchors=anchors,
+                reviewed_source_observation_matches=matches,
                 coverage=RetrievalCoverage(
                     requested_seed_object_ids=tuple(seeds),
                     missing_seed_object_ids=missing_seeds,
@@ -2010,9 +2101,13 @@ class WorldGraphRetrievalService:
                         relationships=relationship_truncated,
                         assertions=assertion_truncated,
                         anchors=anchor_truncated,
-                    ),
-                    gap_codes=anchor_gaps[0],
-                    missing_ids=anchor_gaps[1],
+                    ) + (("reviewed_source_observations",) if observation_truncated else ())
+                    + (("reviewed_source_observation_text",) if any(
+                        match.excerpt_start != 0 or match.excerpt_end != match.text_length
+                        for match in matches
+                    ) else ()),
+                    gap_codes=tuple(sorted(set(anchor_gaps[0]) | set(observation_gaps))),
+                    missing_ids=tuple(sorted(set(anchor_gaps[1]) | set(observation_missing))),
                 ),
             )
         except Exception as exc:
@@ -2036,7 +2131,10 @@ class WorldGraphRetrievalService:
             phase_durations=recorder.phases,
             result_object_count=len(op_result.matched_object_ids),
             result_relationship_count=len(op_result.relationships),
-            result_assertion_count=len(op_result.property_assertions),
+            result_assertion_count=(
+                len(op_result.property_assertions)
+                + len(op_result.reviewed_source_observation_matches)
+            ),
             result_anchor_count=len(op_result.anchors),
             requested_seed_count=len(coverage.requested_seed_object_ids),
             present_seed_count=(
@@ -3028,6 +3126,7 @@ __all__ = [
     "EvidenceRetrievalResult",
     "EvidenceTarget",
     "GraphSearchResult",
+    "ReviewedSourceObservationMatch",
     "NeighborhoodResult",
     "ObjectLookupResult",
     "RecapContextSectionSelectorV1",
