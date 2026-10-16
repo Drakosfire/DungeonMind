@@ -37,6 +37,7 @@ from ...application.repositories import (
     DurableExistingWorldAdoptionReceipt,
     DurableGraphContribution,
     DurableIdentityDecision,
+    VerifiedPublicationHistoryEntry,
     normalize_semantic_document_batch,
 )
 from ...application.reviewed_world_initialization import (
@@ -839,6 +840,26 @@ class InMemoryFinalizedReviewPublicationRepository:
                 review_id=review_id,
             )
             return None if publication is None else self._reconstruct_unlocked(publication)
+
+    def read_verified_ancestry(
+        self, world_id: str, revision_id: str
+    ) -> tuple[VerifiedPublicationHistoryEntry, ...]:
+        with self._graph._lock_for(world_id):
+            rows: list[VerifiedPublicationHistoryEntry] = []
+            visited: set[str] = set()
+            current: str | None = revision_id
+            while current is not None:
+                if current in visited:
+                    raise PersistenceIntegrityError("graph revision ancestry contains a cycle")
+                visited.add(current)
+                stored = self._graph.get_revision(world_id, current)
+                if stored is None or stored.revision.world_id != world_id:
+                    raise PersistenceIntegrityError("graph revision ancestry is incomplete")
+                publication = self.get_for_published_revision(world_id, current)
+                state = self._reviews.get(world_id, publication.review_id) if publication else None
+                rows.append(VerifiedPublicationHistoryEntry(stored.revision, publication, state))
+                current = stored.revision.parent_revision_id
+            return tuple(rows)
 
     def get_for_published_revision(
         self,

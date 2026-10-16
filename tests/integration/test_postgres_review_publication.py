@@ -662,3 +662,64 @@ def test_postgres_two_finalized_reviews_pinned_to_one_parent_have_one_cas_winner
     assert pg.finalized_review_publications.get_for_review(WORLD_ID, loser_review_id) is None
     assert pg.world_graph.get_head(WORLD_ID).head_revision_id == winner.published_revision_id  # type: ignore[union-attr]
     assert pg.world_graph.get_revision(WORLD_ID, PARENT_REVISION_ID) is not None
+
+
+def test_verified_ancestry_uses_one_connection_and_one_reconstruction_per_revision(pg, monkeypatch):
+    from dungeonmind.infrastructure.postgres import review_publication as module
+
+    _seed_tripod(pg)
+    _publish(pg, _reader())
+    expected = pg.finalized_review_publications.get_for_published_revision(
+        WORLD_ID, PUBLISHED_REVISION_ID)
+    original_connect = pg.database.connect
+    original_reconstruct = module._reconstruct_stored_revision
+    connections, revision_ids = [], []
+    def connect():
+        connections.append(True)
+        return original_connect()
+    def reconstruct(row):
+        revision_ids.append(row['revision_id'])
+        return original_reconstruct(row)
+    monkeypatch.setattr(pg.database, 'connect', connect)
+    monkeypatch.setattr(module, '_reconstruct_stored_revision', reconstruct)
+    rows = pg.finalized_review_publications.read_verified_ancestry(WORLD_ID, PUBLISHED_REVISION_ID)
+    assert len(connections) == 1
+    assert revision_ids == [PUBLISHED_REVISION_ID, PARENT_REVISION_ID]
+    assert [row.revision.revision_id for row in rows] == revision_ids
+    assert rows[0].publication == expected
+    assert rows[0].review == _state()
+    original_revision = rows[0].revision.model_copy(deep=True)
+    rows[0].revision.operation_ids.append('caller:only')
+    rows[0].review.reviewed_contribution.assertions.clear()
+    again = pg.finalized_review_publications.read_verified_ancestry(WORLD_ID, PUBLISHED_REVISION_ID)
+    assert again[0].revision == original_revision
+    assert again[0].review == _state()
+    assert again[0].publication == expected
+
+
+@pytest.mark.parametrize('damage', ['publication', 'parent', 'child', 'review', 'contribution'])
+def test_verified_ancestry_rejects_corrupt_join(pg, damage):
+    from psycopg import sql
+
+    _seed_tripod(pg)
+    _publish(pg, _reader())
+    table, column, value = {
+        'publication': ('finalized_review_publications', 'review_id', REVIEW_ID),
+        'parent': ('graph_revisions', 'revision_id', PARENT_REVISION_ID),
+        'child': ('graph_revisions', 'revision_id', PUBLISHED_REVISION_ID),
+        'review': ('contribution_reviews', 'review_id', REVIEW_ID),
+        'contribution': ('graph_contributions', 'contribution_id',
+                         _state().record.reviewed_contribution_id),
+    }[damage]
+    with pg.database.transaction() as conn:
+        conn.execute(sql.SQL('UPDATE dungeonmind.{} SET record_fingerprint = %s WHERE {} = %s')
+                     .format(sql.Identifier(table), sql.Identifier(column)), ('bad', value))
+    with pytest.raises(PersistenceIntegrityError):
+        pg.finalized_review_publications.read_verified_ancestry(WORLD_ID, PUBLISHED_REVISION_ID)
+
+
+def test_verified_ancestry_rejects_missing_or_foreign_start(pg):
+    _seed_tripod(pg)
+    for world, revision in [(WORLD_ID, 'missing'), ('other', PARENT_REVISION_ID)]:
+        with pytest.raises(PersistenceIntegrityError):
+            pg.finalized_review_publications.read_verified_ancestry(world, revision)

@@ -9,6 +9,7 @@ from psycopg import Connection, sql
 from pydantic import ValidationError
 
 from ...application.graph_snapshot import GRAPH_SCHEMA_V6
+from ...application.repositories import VerifiedPublicationHistoryEntry
 from ...application.review_materialization_v6 import (
     introduced_evidence_v6,
     validate_materialized_source_domains_v6,
@@ -426,28 +427,28 @@ class PostgresFinalizedReviewPublicationRepository:
         cls,
         conn: Connection[Any],
         row: dict[str, Any],
+        *,
+        revision_loader: Callable[[str], StoredGraphRevision] | None = None,
+        review_loader: Callable[[str], ContributionReviewState] | None = None,
     ) -> FinalizedReviewPublication:
         publication = _return_publication(row)
         try:
-            state = cls._load_review(
-                conn,
-                world_id=publication.world_id,
-                review_id=publication.review_id,
-            )
+            state = (review_loader(publication.review_id) if review_loader is not None
+                     else cls._load_review(conn, world_id=publication.world_id,
+                                           review_id=publication.review_id))
         except ContributionReviewNotFoundError:
             raise PersistenceIntegrityError(
                 "finalized publication references a missing review"
             ) from None
         _validate_record_review(publication, state)
-        stored = cls._load_revision(
-            conn,
-            world_id=publication.world_id,
-            revision_id=publication.published_revision_id,
-        )
-        parent = cls._load_revision(
-            conn,
-            world_id=publication.world_id,
-            revision_id=publication.expected_parent_revision_id,
+        stored = (revision_loader(publication.published_revision_id) if revision_loader is not None
+                  else cls._load_revision(conn, world_id=publication.world_id,
+                                          revision_id=publication.published_revision_id))
+        parent = (
+            revision_loader(publication.expected_parent_revision_id)
+            if revision_loader is not None else cls._load_revision(
+                conn, world_id=publication.world_id,
+                revision_id=publication.expected_parent_revision_id)
         )
         _validate_parent_revision(
             parent,
@@ -575,6 +576,49 @@ class PostgresFinalizedReviewPublicationRepository:
                 review_id=review_id,
             )
             return None if row is None else self._load_verified(conn, row)
+
+    def read_verified_ancestry(
+        self, world_id: str, revision_id: str
+    ) -> tuple[VerifiedPublicationHistoryEntry, ...]:
+        # Local maps belong to this one coherent read, never the repository.
+        # Even internal validation joins reuse only records verified here.
+        with self._database.transaction() as conn:
+            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            revisions: dict[str, StoredGraphRevision] = {}
+            reviews: dict[str, ContributionReviewState] = {}
+
+            def revision(key: str) -> StoredGraphRevision:
+                if key not in revisions:
+                    revisions[key] = self._load_revision(conn, world_id=world_id, revision_id=key)
+                return revisions[key]
+
+            def review(key: str) -> ContributionReviewState:
+                if key not in reviews:
+                    reviews[key] = self._load_review(conn, world_id=world_id, review_id=key)
+                return reviews[key]
+
+            rows: list[VerifiedPublicationHistoryEntry] = []
+            visited: set[str] = set()
+            current: str | None = revision_id
+            while current is not None:
+                if current in visited:
+                    raise PersistenceIntegrityError("graph revision ancestry contains a cycle")
+                visited.add(current)
+                stored = revision(current)
+                row = _publication_row(conn, world_id=world_id, published_revision_id=current)
+                publication = (
+                    self._load_verified(conn, row, revision_loader=revision, review_loader=review)
+                    if row is not None else None
+                )
+                state = review(publication.review_id) if publication is not None else None
+                rows.append(VerifiedPublicationHistoryEntry(stored.revision, publication, state))
+                current = stored.revision.parent_revision_id
+                # Only the next parent can be needed again in a linear scan.
+                # Returned facts omit full historical graph bodies altogether.
+                for key in tuple(revisions):
+                    if key != current:
+                        del revisions[key]
+            return tuple(rows)
 
     def get_for_published_revision(
         self,

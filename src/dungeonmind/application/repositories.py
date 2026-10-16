@@ -12,6 +12,7 @@ Failure model (from ``domain.errors``):
 """
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol, TypeAlias
 
@@ -212,6 +213,15 @@ class ContributionReviewRepository(Protocol):
     ) -> DurableContributionReviewState | None: ...
 
 
+@dataclass(frozen=True)
+class VerifiedPublicationHistoryEntry:
+    """Caller-owned facts from one exact ancestry read; not durable authority."""
+
+    revision: WorldGraphRevision
+    publication: FinalizedReviewPublication | None
+    review: DurableContributionReviewState | None
+
+
 class FinalizedReviewPublicationRepository(Protocol):
     """Atomic terminal publication unit of work.
 
@@ -219,6 +229,16 @@ class FinalizedReviewPublicationRepository(Protocol):
     reconciliation, head CAS, and publication-record persistence in one store
     transaction or one shared in-memory lock.
     """
+
+    def read_verified_ancestry(
+        self, world_id: str, revision_id: str
+    ) -> tuple[VerifiedPublicationHistoryEntry, ...]:
+        """Newest to genesis, complete and verified in one operation-local view.
+
+        Missing/cyclic ancestry or damaged publication joins raise integrity
+        errors. Models are fresh caller-owned values, never global cache entries.
+        """
+        ...
 
     def get_provenance_snapshot(
         self,

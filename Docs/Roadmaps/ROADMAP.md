@@ -8,7 +8,23 @@
 
 This document replaces the earlier L.1–L.6 forward lanes as the canonical execution roadmap.
 
-## Current active slice
+## Current priority — reviewed-source read efficiency, 2026-10-16
+
+Operator priority is MIND retrieval efficiency before further Agent inference.
+PR #130 merged at `c5784612e4c3315919864564a33b3fc265018077`: removing a redundant
+fresh-record copy preserved complete evidence and reduced fixed Float/Council
+acquisition by about 19.5%/23.1% in one paired pass. It did not remove repeated
+ancestry scans. The active bounded successor is
+[operation-local verified publication ancestry](../Plans/HANDOFF-MIND-verified-publication-ancestry.md).
+Reuse exact verified revisions/reviews within one coherent read transaction;
+retain all integrity and source/scope checks. Compare live evidence hashes and
+query/connection/reconstruction work without model calls. No serving adoption,
+new migration or global admitted-result cache is implied. Buddy's Jev controller
+and one-shot writer are consumers; ordinary integration follows accepted MIND
+performance evidence. The existing structural performance architecture remains
+binding. This does not activate unfinished V7/V8/V11 cutover gates.
+
+## Historical activation checkpoint — 2026-09-29
 
 The current MIND-authorized slice is design-only qualification of the existing
 D_A adoption fixture at `tests/fixtures/v7_bridge_genesis/authority_v1.json`;

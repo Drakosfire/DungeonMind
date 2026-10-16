@@ -1624,28 +1624,29 @@ class WorldGraphRetrievalService:
         blocked_ids: set[str] = set()
         gap_codes: set[str] = set()
         missing_ids: set[str] = set()
-        while revision_id is not None:
+        history = self._finalized_review_publications.read_verified_ancestry(world_id, revision_id)
+        for entry in history:
+            if revision_id is None or entry.revision.revision_id != revision_id:
+                raise PersistenceIntegrityError("graph revision ancestry order differs")
             if revision_id in visited:
                 raise PersistenceIntegrityError("graph revision ancestry contains a cycle")
             visited.add(revision_id)
-            stored = self._world_graph.get_revision(world_id, revision_id)
-            if stored is None or stored.revision.world_id != world_id:
+            revision = entry.revision
+            if revision.world_id != world_id:
                 raise PersistenceIntegrityError("graph revision ancestry is incomplete")
-            publication = self._finalized_review_publications.get_for_published_revision(
-                world_id, revision_id
-            )
+            publication = entry.publication
             if publication is not None:
                 if (
                     publication.published_revision_id != revision_id
                     or publication.expected_parent_revision_id
-                    != stored.revision.parent_revision_id
+                    != revision.parent_revision_id
                     or publication.graph_payload_sha256
-                    != stored.revision.graph_payload_sha256
+                    != revision.graph_payload_sha256
                 ):
                     raise PersistenceIntegrityError(
                         "reviewed source observation publication disagrees with revision"
                     )
-                state = self._contribution_reviews.get(world_id, publication.review_id)
+                state = entry.review
                 if state is None:
                     raise PersistenceIntegrityError(
                         "reviewed source observation publication has no durable review"
@@ -1831,7 +1832,9 @@ class WorldGraphRetrievalService:
                             epistemic_kind=str(assertion.epistemic_kind),
                             temporal_scope=assertion.temporal_scope,
                         )
-            revision_id = stored.revision.parent_revision_id
+            revision_id = revision.parent_revision_id
+        if revision_id is not None:
+            raise PersistenceIntegrityError("graph revision ancestry is incomplete")
         return (
             tuple(observations[key] for key in sorted(observations)),
             tuple(sorted(gap_codes)),
