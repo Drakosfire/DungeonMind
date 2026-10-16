@@ -1,6 +1,6 @@
 # Reviewed source observation discovery
 
-Status: ACTIVE. PRIME solo implementation; ARCHITECTURE independent review.
+Status: SETTLED. Merged Core #126 as `b64e10b71c25814fadde8a2a76bba8f700d3d7d0`; Buddy consumer #1253 merged as `76db867872aa793fbad2e81163d41d11c3375219` and adopted. Implementation lease ended. Discovery alone does not establish ordinary multi-entity answer acceptance.
 Base: DungeonMind origin/main `df755a00e6119f3a3997a5431420d8dfcdee9caf`.
 Branch/checkout: `codex/reviewed-source-discovery`, `/tmp/prime-mind-reviewed-source-search`.
 Topology: serial Core prerequisite; Buddy consumer requires accepted exact Core pin and separate handoff. Current Core open PR inventory is empty.
