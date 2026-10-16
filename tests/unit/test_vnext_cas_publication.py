@@ -480,7 +480,8 @@ def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
         assert actual == digest, f"{relative} changed since {IMPLEMENTATION_BASE}"
     # Freeze publication/rollback mechanics rather than the entire adapter:
     # optimizing fresh read reconstruction does not change publication authority.
-    tree = ast.parse((REPO_ROOT / "src/dungeonmind/infrastructure/postgres/graph.py").read_text())
+    graph_source = (REPO_ROOT / "src/dungeonmind/infrastructure/postgres/graph.py").read_text()
+    tree = ast.parse(graph_source)
     graph_repo = next(node for node in tree.body if isinstance(node, ast.ClassDef)
                       and node.name == "PostgresWorldGraphRepository")
     methods = ("_publish_revision_in_transaction", "publish_revision", "rollback_head")
@@ -490,9 +491,13 @@ def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
     nodes += [node for node in tree.body if isinstance(node, ast.FunctionDef)
               and node.name in helpers]
     assert len(nodes) == len(methods) + len(helpers)
-    publication_ast = ast.dump(ast.Module(body=nodes, type_ignores=[]), include_attributes=False)
-    assert hashlib.sha256(publication_ast.encode()).hexdigest() == (
-        "bf68533a431cac0884cf333844658cacd194ab6fc1af78ba89a4e7fe1688df9d"
+    # Source segments are stable across supported Python versions, whereas
+    # ast.dump adds/removes empty fields between interpreter releases.
+    publication_source = "\n".join(
+        ast.get_source_segment(graph_source, node) or "" for node in nodes
+    )
+    assert hashlib.sha256(publication_source.encode()).hexdigest() == (
+        "417ca5ca9eec34052cac31fdf6000f5b39bed88da397157fcd4f9113e7d96120"
     )
     publication_methods = ("_publish_revision_locked", "publish_revision")
     publication = hashlib.sha256()
