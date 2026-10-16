@@ -23,6 +23,7 @@ from typing import Any, NoReturn, cast
 
 from ..contracts.contribution import (
     AcceptanceState,
+    GraphContributionAssertionCorrectionKind,
     GraphContributionAssertionV2,
     GraphContributionAssertionV3,
 )
@@ -52,6 +53,7 @@ from .graph_snapshot_v6 import (
     UnionGraphV6Payload,
 )
 from .review_materialization import FinalizedReviewGraphMaterialization
+from .source_description_correction import SourceDescriptionCorrectionProof
 from .source_provenance_snapshot import SourceProvenanceSnapshot
 
 # Adopted-era records carry ``ka:*`` synthetic assertion ids produced by the
@@ -854,8 +856,15 @@ class _V6Materialization:
         )
         self._register_evidence(evidence_records)
 
-    def apply_corrections(self) -> None:
+    def apply_corrections(self, proof: SourceDescriptionCorrectionProof | None) -> None:
         for correction in self.reviewed.assertion_corrections:
+            if (correction.correction_kind
+                    is GraphContributionAssertionCorrectionKind.CONTRADICTS_SOURCE_DESCRIPTION):
+                if proof is None or not proof.admits(self.record, correction):
+                    _fail("source_description_correction_proof_required")
+                # This is a read-facet withdrawal. Existence, authored fields and
+                # historical evidence remain in the immutable graph payload.
+                continue
             target_id = correction.target_assertion_id
             if target_id.startswith(_ADOPTED_ERA_ASSERTION_ID_PREFIX):
                 # Adopted-era correction is a future receipt-aware slice; fail
@@ -958,6 +967,7 @@ def materialize_finalized_review_v6(
     parent: StoredGraphRevision,
     graph_reader: GraphSnapshotReader,
     source_snapshot: SourceProvenanceSnapshot | None = None,
+    source_description_correction_proof: SourceDescriptionCorrectionProof | None = None,
 ) -> FinalizedReviewGraphMaterialization:
     """Materialize one finalized v2 review into one validated v6 graph payload."""
     verified_state = _reload_state(state)
@@ -1000,7 +1010,11 @@ def materialize_finalized_review_v6(
         else:
             workspace.apply_evidence_only(assertion)
 
-    workspace.apply_corrections()
+    if source_description_correction_proof is not None and not (
+        source_description_correction_proof.matches(verified_state, verified_parent)
+    ):
+        _fail("source_description_correction_proof_mismatch")
+    workspace.apply_corrections(source_description_correction_proof)
 
     payload = workspace.result_payload(parent_payload)
     try:

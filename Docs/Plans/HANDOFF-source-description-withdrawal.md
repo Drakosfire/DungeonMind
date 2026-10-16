@@ -26,6 +26,7 @@ Normal finalized-review authorization, parent CAS and publication replay remain.
 
 ## Exclusive write set
 - This handoff
+- src/dungeonmind/contracts/contribution_review_v3.py
 - src/dungeonmind/contracts/contribution.py
 - src/dungeonmind/application/source_description_correction.py (new)
 - src/dungeonmind/application/review_publication.py
@@ -41,3 +42,18 @@ No runtime/database/provider/retained publication/corpus writes. Synthetic
 in-memory owning boundaries only in this slice. Preserve before/end refs;
 complete one PR and independent exact-head review before PRIME merge. Retained
 Mirathorn withdrawal requires separate exact-plan review after implementation.
+
+Scope clarification: V3 review intent/record verdict lists may be empty only
+for a correction-only description withdrawal; the intent/state must reject
+empty ordinary or mixed-kind reviews. This is necessary to avoid fake audit
+assertions for a real, confirmed facet withdrawal. V2 contracts are unchanged.
+
+Author evidence: 147 focused tests pass across 23 new withdrawal cases and
+existing V2/V3 review, materialization, current-node/worldbuilding observation
+retrieval and search suites. New tests use actual capability-checked finalization,
+publication, a fresh retrieval service, historical source-anchor resolution,
+exact replay, descendants, same-subject observation preservation, failed competing
+CAS, incomplete evidence, corrupt ancestry, and missing/stale/forged internal
+proofs. Existing correction serialization remains identical. Ruff and cumulative
+diff checks pass. No provider or retained/runtime action occurred. PostgreSQL
+and retained Mirathorn acceptance remain unclaimed.

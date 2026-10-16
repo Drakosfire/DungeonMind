@@ -49,6 +49,7 @@ from typing import Any, Literal, TypeVar
 from ..contracts.contribution import (
     AcceptanceState,
     ContributionSourceKind,
+    GraphContributionAssertionCorrectionKind,
     GraphContributionAssertionV2,
     GraphContributionAssertionV3,
 )
@@ -1468,6 +1469,7 @@ class WorldGraphRetrievalService:
         revision_id: str | None = result.snapshot.revision_id
         visited: set[str] = set()
         corrected: set[tuple[str, str]] = set()
+        withdrawn_descriptions: set[tuple[str, str]] = set()
         observations: dict[str, ReviewedSourceObservation] = {}
         blocked_ids: set[str] = set()
         gap_codes: set[str] = set()
@@ -1525,6 +1527,15 @@ class WorldGraphRetrievalService:
                     corrected.update(
                         (item.target_contribution_id, item.target_assertion_id)
                         for item in contribution.assertion_corrections
+                        if item.correction_kind != (
+                            GraphContributionAssertionCorrectionKind.CONTRADICTS_SOURCE_DESCRIPTION
+                        )
+                    )
+                    withdrawn_descriptions.update(
+                        (item.target_contribution_id, item.target_assertion_id)
+                        for item in contribution.assertion_corrections
+                        if item.correction_kind
+                        is GraphContributionAssertionCorrectionKind.CONTRADICTS_SOURCE_DESCRIPTION
                     )
                     for assertion in contribution.assertions:
                         node_description = (
@@ -1562,6 +1573,12 @@ class WorldGraphRetrievalService:
                             gap_codes.add("reviewed_source_observation_unsupported_shape")
                             continue
                         if parsed is None:
+                            continue
+                        if node_description and (
+                            contribution.contribution_id, assertion.assertion_id
+                        ) in withdrawn_descriptions:
+                            # Withdrawal targets only this extracted description;
+                            # it does not deny the source or object existence.
                             continue
                         if (contribution.contribution_id, assertion.assertion_id) in corrected:
                             gap_codes.add("reviewed_source_observation_correction_unresolved")

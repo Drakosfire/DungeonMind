@@ -114,6 +114,7 @@ def _require_nonblank_id(value: str, *, field_name: str) -> str:
 
 
 class GraphContributionAssertionCorrectionKind(StrEnum):
+    CONTRADICTS_SOURCE_DESCRIPTION = "contradicts_source_description"
     CONTRADICTS = "contradicts"
     CONTRADICTS_AND_REPLACES = "contradicts_and_replaces"
 
@@ -142,8 +143,11 @@ class GraphContributionAssertionCorrection(DungeonMindModel):
     def _kind_nullability(self) -> Self:
         kind = self.correction_kind
         replacement = self.replacement_assertion_id
-        if kind is GraphContributionAssertionCorrectionKind.CONTRADICTS and replacement is not None:
-            raise ValueError("contradicts requires replacement_assertion_id to be null")
+        if kind in {
+            GraphContributionAssertionCorrectionKind.CONTRADICTS,
+            GraphContributionAssertionCorrectionKind.CONTRADICTS_SOURCE_DESCRIPTION,
+        } and replacement is not None:
+            raise ValueError(f"{kind.value} requires replacement_assertion_id to be null")
         if (
             kind is GraphContributionAssertionCorrectionKind.CONTRADICTS_AND_REPLACES
             and replacement is None
@@ -207,6 +211,25 @@ class GraphContributionV2(DungeonMindModel):
     authored_by: str | None = None
     diagnostics: dict[str, Any] = {}
     assertion_corrections: list[GraphContributionAssertionCorrection] = []
+
+    @model_validator(mode="after")
+    def _source_description_withdrawal_contract(self) -> Self:
+        if any(
+            item.correction_kind
+            is GraphContributionAssertionCorrectionKind.CONTRADICTS_SOURCE_DESCRIPTION
+            for item in self.assertion_corrections
+        ):
+            reason = self.diagnostics.get("source_description_withdrawal_reason")
+            if (
+                self.schema_version != GRAPH_CONTRIBUTION_V3_SCHEMA
+                or self.source_kind is not ContributionSourceKind.GRAPH_REVIEW
+                or not isinstance(reason, str)
+                or not reason.strip()
+            ):
+                raise ValueError(
+                    "source-description withdrawal requires V3 Graph review and reason"
+                )
+        return self
 
     def partition_assertions(self, state: AcceptanceState) -> list[GraphContributionAssertionV2]:
         return [a for a in self.assertions if a.acceptance_state is state]

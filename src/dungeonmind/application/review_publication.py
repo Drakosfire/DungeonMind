@@ -60,6 +60,7 @@ from .review_materialization import (
     materialize_finalized_review,
 )
 from .review_materialization_v6 import materialize_finalized_review_v6, review_source_refs_v6
+from .source_description_correction import verify_source_description_corrections
 from .source_provenance_snapshot import SourceProvenanceSnapshot
 
 
@@ -180,11 +181,16 @@ def publish_finalized_review(
             artifact_ids=artifact_ids,
             revision_ids=revision_ids,
         )
+        correction_proof = verify_source_description_corrections(
+            state, parent=parent, world_graph=world_graph_repository,
+            reviews=review_repository, publications=publication_repository,
+        )
         materialization = materialize_finalized_review_v6(
             state,
             parent=parent,
             graph_reader=graph_reader,
             source_snapshot=source_snapshot,
+            source_description_correction_proof=correction_proof,
         )
     else:
         materialization = materialize_finalized_review(
