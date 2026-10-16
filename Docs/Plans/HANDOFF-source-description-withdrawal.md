@@ -33,13 +33,14 @@ Normal finalized-review authorization, parent CAS and publication replay remain.
 - src/dungeonmind/application/review_materialization_v6.py
 - src/dungeonmind/application/world_graph_retrieval.py
 - tests/conformance/test_source_description_withdrawal.py (new)
+- tests/integration/test_postgres_source_description_withdrawal.py (new)
 
 Prove real finalize → publish → fresh retrieval, unchanged graph payload,
 historical openable evidence, unrelated observations, descendants and exact
 replay. Reject stale/missing proof, duplicate/repeated withdrawals, unsupported
 or unresolved targets. Pin existing serialized correction bytes/digests.
-No runtime/database/provider/retained publication/corpus writes. Synthetic
-in-memory owning boundaries only in this slice. Preserve before/end refs;
+No runtime/provider/retained publication/corpus writes. Synthetic in-memory
+and newly created disposable PostgreSQL owning boundaries only in this slice. Preserve before/end refs;
 complete one PR and independent exact-head review before PRIME merge. Retained
 Mirathorn withdrawal requires separate exact-plan review after implementation.
 
@@ -55,5 +56,9 @@ publication, a fresh retrieval service, historical source-anchor resolution,
 exact replay, descendants, same-subject observation preservation, failed competing
 CAS, incomplete evidence, corrupt ancestry, and missing/stale/forged internal
 proofs. Existing correction serialization remains identical. Ruff and cumulative
-diff checks pass. No provider or retained/runtime action occurred. PostgreSQL
-and retained Mirathorn acceptance remain unclaimed.
+diff checks pass. No provider or retained/runtime action occurred. The additional PostgreSQL witness passed in a fresh migrated disposable database
+and the database was removed. Retained Mirathorn acceptance remains unclaimed.
+
+Persistence gate added: exercise correction-only finalized review storage,
+publication, fresh repository/service readback and replay in a freshly created
+disposable PostgreSQL database. Never pass a retained DSN to truncating fixtures.
