@@ -315,3 +315,27 @@ def test_failed_publish_via_trigger_leaves_prior_head(pg, db) -> None:
                 "DROP FUNCTION IF EXISTS dungeonmind.abort_fail_world_publish()"
             )
             conn.commit()
+
+
+@pytest.mark.integration
+def test_fresh_revision_reads_isolate_nested_caller_mutations(pg) -> None:
+    from dungeonmind.domain.canonical import canonical_sha256
+
+    payload = {"nested": {"objects": [{"label": "Harbor", "tags": ["port"]}]}}
+    repo = pg.world_graph
+    revision = repo.publish_revision(make_publish(payload=payload))
+    first = repo.get_revision(WORLD_ID, revision.revision_id)
+    second = repo.get_revision(WORLD_ID, revision.revision_id)
+    assert first is not None and second is not None
+    first.graph_payload["nested"]["objects"][0]["tags"].append("changed")
+    first.graph_payload["nested"]["objects"][0]["label"] = "Changed"
+    first.revision.operation_ids.append("op:caller-only")
+    first.revision.world_id = "world:caller-only"
+
+    third = repo.get_revision(WORLD_ID, revision.revision_id)
+    assert third is not None
+    for unaffected in (second, third):
+        assert unaffected.graph_payload == payload
+        assert unaffected.revision.world_id == WORLD_ID
+        assert unaffected.revision.operation_ids == ["op:bootstrap"]
+        assert canonical_sha256(unaffected.graph_payload) == revision.graph_payload_sha256

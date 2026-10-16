@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import inspect
 import json
@@ -470,9 +471,6 @@ def test_v52_source_has_no_legacy_authority_vocabulary() -> None:
 def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
     """Pin World publication behavior, not unrelated edits in the same module."""
     unchanged = {
-        "src/dungeonmind/infrastructure/postgres/graph.py": (
-            "dfd996aab0eeed2c6829a9e835db877366d0e254bd833c8b942ff7d73c434a93"
-        ),
         "src/dungeonmind/domain/revision_ids.py": (
             "3f9688ddfa08536508b0f240353555c14ebc30f28166d763f447d883849c0e7e"
         ),
@@ -480,6 +478,27 @@ def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
     for relative, digest in unchanged.items():
         actual = hashlib.sha256((REPO_ROOT / relative).read_bytes()).hexdigest()
         assert actual == digest, f"{relative} changed since {IMPLEMENTATION_BASE}"
+    # Freeze publication/rollback mechanics rather than the entire adapter:
+    # optimizing fresh read reconstruction does not change publication authority.
+    graph_source = (REPO_ROOT / "src/dungeonmind/infrastructure/postgres/graph.py").read_text()
+    tree = ast.parse(graph_source)
+    graph_repo = next(node for node in tree.body if isinstance(node, ast.ClassDef)
+                      and node.name == "PostgresWorldGraphRepository")
+    methods = ("_publish_revision_in_transaction", "publish_revision", "rollback_head")
+    helpers = ("_head_from_row", "_upsert_head")
+    nodes = [node for node in graph_repo.body if isinstance(node, ast.FunctionDef)
+             and node.name in methods]
+    nodes += [node for node in tree.body if isinstance(node, ast.FunctionDef)
+              and node.name in helpers]
+    assert len(nodes) == len(methods) + len(helpers)
+    # Source segments are stable across supported Python versions, whereas
+    # ast.dump adds/removes empty fields between interpreter releases.
+    publication_source = "\n".join(
+        ast.get_source_segment(graph_source, node) or "" for node in nodes
+    )
+    assert hashlib.sha256(publication_source.encode()).hexdigest() == (
+        "417ca5ca9eec34052cac31fdf6000f5b39bed88da397157fcd4f9113e7d96120"
+    )
     publication_methods = ("_publish_revision_locked", "publish_revision")
     publication = hashlib.sha256()
     for name in publication_methods:

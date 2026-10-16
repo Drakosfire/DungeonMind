@@ -396,4 +396,7 @@ def _reconstruct_stored_revision(row: dict[str, Any]) -> StoredGraphRevision:
         raise PersistenceIntegrityError(
             f"StoredGraphRevision graph_payload hash mismatch for {row['revision_id']!r}"
         )
-    return stored.model_copy(deep=True)
+    # This model is reconstructed from this query's freshly decoded JSON row.
+    # No repository cache or shared model owns it; a second whole-payload deep
+    # copy adds work without providing any additional caller isolation.
+    return stored
