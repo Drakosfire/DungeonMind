@@ -30,6 +30,7 @@ publication discovery, not pending/failed attempt history.
 - This handoff
 - `src/dungeonmind/application/publication_history.py` (new)
 - `src/dungeonmind/application/__init__.py`
+- `src/dungeonmind/application/world_graph_retrieval.py` (CI repair below)
 - `tests/unit/test_publication_history.py` (new)
 - `tests/integration/test_postgres_publication_history.py` (new)
 
@@ -52,3 +53,11 @@ Ruff and cumulative diff checks pass. Disposable database was removed. An initia
 test-runner setup restored schema without Alembic version rows and failed migration
 with DuplicateTable; the corrected runner starts from an empty disposable database
 and executes real migrations. No retained data, runtime, provider or corpus writes.
+
+PRIME scope amendment: CI exposed 38 inherited Pyright errors in the earlier
+observation-selection constructor's untyped dict expansion (same failing Core job
+on prior #127). Repair only that constructor through typed dataclass replacement,
+preserving serialized result bytes, full-record selection and exact byte counting.
+This sixth path restores the merge gate; no new retrieval behavior or contract.
+Re-run observation-selection regressions and type checking; obtain independent
+review of the amended cumulative head before merge.
