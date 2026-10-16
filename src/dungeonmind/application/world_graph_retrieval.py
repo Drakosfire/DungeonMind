@@ -471,6 +471,34 @@ class SourceAnchorResolution:
 
 
 @dataclass(frozen=True)
+class SourceAnchorBatchRequest:
+    """Ordered, bounded selectors; only the pinned projection grants authority."""
+
+    projection: WorldGraphProjectionRequestV2
+    anchor_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.projection.revision_pin or not self.projection.revision_pin.strip():
+            raise ValueError("batch anchor resolution requires an exact revision pin")
+        if not isinstance(self.anchor_ids, tuple) or not 1 <= len(self.anchor_ids) <= 128:
+            raise ValueError("anchor_ids must be a tuple containing 1..128 IDs")
+        if any(not isinstance(value, str) or not value or value != value.strip()
+               or len(value) > 512 or any(ch in value for ch in "\r\n\t\x00")
+               for value in self.anchor_ids):
+            raise ValueError("anchor IDs must be distinct nonblank bounded strings")
+        if len(set(self.anchor_ids)) != len(self.anchor_ids):
+            raise ValueError("anchor IDs must be distinct")
+
+
+@dataclass(frozen=True)
+class SourceAnchorBatchResolution:
+    """Every selector resolved or explicitly missed in one context; no bodies."""
+
+    snapshot: ProjectionSnapshotV2
+    resolutions: tuple[SourceAnchorResolution, ...]
+
+
+@dataclass(frozen=True)
 class SourceAnchorIndexRequest:
     """Bounded metadata-only index request for one exact pinned GM projection.
 
@@ -2622,34 +2650,9 @@ class WorldGraphRetrievalService:
                 result, context = self._establish(request)
             projected = result
             with recorder.phase("anchor_derivation"):
-                assertion_index = _index_admitted_assertions(result)
-                observations, _gaps, _missing = self._reviewed_source_observations(
-                    result, context, selected_object_id=None
-                )
-                anchors, _truncated, _gaps = self._anchors_for(
-                    result,
-                    context=context,
-                    object_ids=set(result.graph.objects),
-                    relationship_ids=set(result.graph.relationships),
-                    assertion_ids=set(assertion_index),
-                    reviewed_source_observations=observations,
-                    max_anchors=None,
-                )
-                op_result = SourceAnchorResolution(
-                    snapshot=result.snapshot,
-                    found=False,
-                    anchor_id=anchor_id,
-                    anchor=None,
-                )
-                for anchor in anchors:
-                    if anchor.anchor_id == anchor_id:
-                        op_result = SourceAnchorResolution(
-                            snapshot=result.snapshot,
-                            found=True,
-                            anchor_id=anchor_id,
-                            anchor=anchor,
-                        )
-                        break
+                op_result = self._resolve_source_anchors_in_context(
+                    result, context, (anchor_id,)
+                )[0]
         except Exception as exc:
             self._emit(
                 self._error_observation(
@@ -2669,6 +2672,64 @@ class WorldGraphRetrievalService:
             )
         )
         return op_result
+
+    def _resolve_source_anchors_in_context(
+        self,
+        result: WorldGraphProjectionResult,
+        context: WorldGraphReadContext,
+        anchor_ids: tuple[str, ...],
+    ) -> tuple[SourceAnchorResolution, ...]:
+        assertion_index = _index_admitted_assertions(result)
+        observations, _gaps, _missing = self._reviewed_source_observations(
+            result, context, selected_object_id=None
+        )
+        anchors, _truncated, _gaps = self._anchors_for(
+            result, context=context, object_ids=set(result.graph.objects),
+            relationship_ids=set(result.graph.relationships),
+            assertion_ids=set(assertion_index),
+            reviewed_source_observations=observations, max_anchors=None,
+        )
+        by_id: dict[str, SourceAnchorMetadata] = {}
+        for anchor in anchors:
+            by_id.setdefault(anchor.anchor_id, anchor)
+        return tuple(SourceAnchorResolution(
+            snapshot=result.snapshot, found=anchor_id in by_id,
+            anchor_id=anchor_id, anchor=by_id.get(anchor_id),
+        ) for anchor_id in anchor_ids)
+
+    def resolve_source_anchors(
+        self, request: SourceAnchorBatchRequest,
+    ) -> SourceAnchorBatchResolution:
+        """Revalidate all selectors with one projection and anchor derivation.
+
+        Unknown or foreign-context anchors are explicit misses in input order.
+        Projection/integrity/unavailability failures raise without returning a
+        successful prefix. This returns admitted metadata, never source bodies.
+        """
+        recorder = PhaseRecorder(self._read_clock)
+        projected: WorldGraphProjectionResult | None = None
+        try:
+            with recorder.phase("projection"):
+                result, context = self._establish(request.projection)
+            projected = result
+            with recorder.phase("anchor_derivation"):
+                resolutions = self._resolve_source_anchors_in_context(
+                    result, context, request.anchor_ids
+                )
+                batch = SourceAnchorBatchResolution(result.snapshot, resolutions)
+        except Exception as exc:
+            self._emit(self._error_observation(
+                recorder, request.projection, "resolve_source_anchors", exc, projected
+            ))
+            raise
+        self._emit(WorldGraphReadObservation(
+            operation="resolve_source_anchors",
+            outcome="success" if any(item.found for item in resolutions) else "miss",
+            duration_seconds=recorder.total_seconds(), phase_durations=recorder.phases,
+            result_anchor_count=sum(item.found for item in resolutions),
+            **self._request_fields(request.projection), **self._graph_fields(result),
+        ))
+        return batch
 
     def select_reviewed_source_observations(
         self, request: ReviewedObservationSelectionRequest,

@@ -78,6 +78,7 @@ WorldGraphReadOperation = Literal[
     "get_neighborhood",
     "get_evidence",
     "resolve_source_anchor",
+    "resolve_source_anchors",
 ]
 """Closed vocabulary of instrumented direct-read operations."""
 
