@@ -24,6 +24,7 @@ from .base import DungeonMindModel
 from .contribution import (
     AcceptanceState,
     ContributionStatus,
+    GraphContributionAssertionCorrectionKind,
     GraphContributionAssertionV3,
     GraphContributionV3,
 )
@@ -231,7 +232,7 @@ class ContributionReviewIntentV3(DungeonMindModel):
     candidate_contribution: GraphContributionV3
     identity_proposals: list[ContributionIdentityProposal] = []
     identity_verdicts: list[ContributionIdentityVerdict] = []
-    assertion_verdicts: list[ContributionAssertionVerdict] = Field(min_length=1)
+    assertion_verdicts: list[ContributionAssertionVerdict]
     reviewer_id: str = Field(min_length=1)
     reviewed_at: datetime
     review_intent_sha256: str
@@ -274,6 +275,16 @@ class ContributionReviewIntentV3(DungeonMindModel):
             raise ValueError("review intents contain no identity decision IDs")
 
         assertions = contribution.assertions
+        if not assertions and (
+            not contribution.assertion_corrections
+            or any(
+                item.correction_kind != (
+                    GraphContributionAssertionCorrectionKind.CONTRADICTS_SOURCE_DESCRIPTION
+                )
+                for item in contribution.assertion_corrections
+            )
+        ):
+            raise ValueError("empty review requires description-only withdrawals")
         assertion_ids = [assertion.assertion_id for assertion in assertions]
         if len(assertion_ids) != len(set(assertion_ids)):
             raise ValueError("candidate assertion IDs must be unique")
@@ -473,7 +484,7 @@ class ContributionReviewRecordV3(DungeonMindModel):
     reviewed_contribution_sha256: str
     identity_proposals: list[ContributionIdentityProposal] = []
     identity_verdicts: list[ContributionIdentityVerdict] = []
-    assertion_verdicts: list[ContributionAssertionVerdict] = Field(min_length=1)
+    assertion_verdicts: list[ContributionAssertionVerdict]
     reviewer_id: str = Field(min_length=1)
     reviewed_at: datetime
     confirmation_id: str
