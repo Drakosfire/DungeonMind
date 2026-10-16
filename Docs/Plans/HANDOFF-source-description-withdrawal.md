@@ -1,0 +1,43 @@
+# Source-description facet withdrawal
+
+ACTIVE. PRIME solo implementation; ARCHITECTURE review/advice. Base
+30c7f64ea52d74bde65dbb46efe3d462042c92e3; branch
+codex/source-description-facet-correction. Serial Core slice; no open Core PRs.
+Buddy #1243 is merged; DOGFOOD owns separate Buddy UI/source packaging work.
+
+## Outcome
+Permit a finalized V3 Graph-review contribution to withdraw an exact published
+V3 extraction-node worldbuilding description facet. New correction kind
+`contradicts_source_description` requires null replacement and an audited
+`diagnostics.source_description_withdrawal_reason` nonblank string. Existing
+correction serialization/digests stay unchanged. This withdraws the extracted
+interpretation, not the original source or object existence.
+
+Resolve targets through the exact pinned parent's publication ancestry. Verify
+revision/publication/review/contribution bindings, accepted extraction node,
+current subject identity/kind/scope, exact source artifact/revision and complete
+typed supporting evidence. Reject foreign/unpublished/adopted/unsupported,
+already suppressed or duplicate targets. An internal non-wire proof binds the
+review, parent, and target pairs. Pure materialization requires this proof and
+preserves graph object/relationship/evidence bytes; do not add description IDs
+to whole-assertion corrected IDs. Retrieval applies the kind only to node
+source descriptions, preserving other same-subject observations and history.
+Normal finalized-review authorization, parent CAS and publication replay remain.
+
+## Exclusive write set
+- This handoff
+- src/dungeonmind/contracts/contribution.py
+- src/dungeonmind/application/source_description_correction.py (new)
+- src/dungeonmind/application/review_publication.py
+- src/dungeonmind/application/review_materialization_v6.py
+- src/dungeonmind/application/world_graph_retrieval.py
+- tests/conformance/test_source_description_withdrawal.py (new)
+
+Prove real finalize → publish → fresh retrieval, unchanged graph payload,
+historical openable evidence, unrelated observations, descendants and exact
+replay. Reject stale/missing proof, duplicate/repeated withdrawals, unsupported
+or unresolved targets. Pin existing serialized correction bytes/digests.
+No runtime/database/provider/retained publication/corpus writes. Synthetic
+in-memory owning boundaries only in this slice. Preserve before/end refs;
+complete one PR and independent exact-head review before PRIME merge. Retained
+Mirathorn withdrawal requires separate exact-plan review after implementation.
