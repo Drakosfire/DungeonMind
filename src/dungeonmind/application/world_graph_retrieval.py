@@ -744,6 +744,67 @@ class ReviewedSourceDiscoveryRequest:
 
 
 @dataclass(frozen=True)
+class ReviewedObservationSelectionRequest:
+    """Full exact-source observation selection, not a source-body read."""
+
+    projection: WorldGraphProjectionRequestV2
+    source_artifact_id: str
+    source_revision_id: str
+    assertion_ids: tuple[str, ...]
+    max_bytes: int = 262144
+
+    def __post_init__(self) -> None:
+        ReviewedSourceDiscoveryRequest(
+            self.projection, self.source_artifact_id, self.source_revision_id,
+        )
+        if (not isinstance(self.assertion_ids, tuple) or not 1 <= len(self.assertion_ids) <= 8
+                or any(not isinstance(value, str) or not value or value != value.strip()
+                    or len(value) > 4096 or any(ch in value for ch in "\r\n\t")
+                    for value in self.assertion_ids)
+                or len(set(self.assertion_ids)) != len(self.assertion_ids)):
+            raise ValueError("selection requires 1..8 distinct exact observation IDs")
+        if type(self.max_bytes) is not int or not 256 <= self.max_bytes <= 262144:
+            raise ValueError("max_bytes must be an integer within 256..262144")
+
+
+@dataclass(frozen=True)
+class ReviewedObservationSubject:
+    subject_object_id: str
+    subject_label: str
+    subject_kind: str
+
+
+@dataclass(frozen=True)
+class ReviewedObservationSelectionResult:
+    snapshot: ProjectionSnapshotV2
+    source_artifact_id: str
+    source_revision_id: str
+    requested_assertion_ids: tuple[str, ...]
+    status: Literal["complete", "unavailable", "overflow"]
+    max_bytes: int
+    required_bytes: int = 0
+    unavailable_assertion_ids: tuple[str, ...] = ()
+    observations: tuple[ReviewedSourceObservation, ...] = ()
+    subjects: tuple[ReviewedObservationSubject, ...] = ()
+    anchors: tuple[SourceAnchorMetadata, ...] = ()
+    coverage: RetrievalCoverage = field(default_factory=RetrievalCoverage)
+
+
+def _selection_wire_value(value: Any) -> Any:
+    """Canonical JSON value for the complete native selection result."""
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if hasattr(value, "__dataclass_fields__"):
+        return {name: _selection_wire_value(getattr(value, name))
+                for name in value.__dataclass_fields__}
+    if isinstance(value, dict):
+        return {key: _selection_wire_value(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_selection_wire_value(item) for item in value]
+    return value
+
+
+@dataclass(frozen=True)
 class ReviewedSourceDiscoveryEntry:
     """Qualified navigation metadata; obtain complete records before claiming."""
 
@@ -2608,6 +2669,71 @@ class WorldGraphRetrievalService:
             )
         )
         return op_result
+
+    def select_reviewed_source_observations(
+        self, request: ReviewedObservationSelectionRequest,
+    ) -> ReviewedObservationSelectionResult:
+        """One context, exact source and atomic full-record/anchor selection.
+
+        No unrelated authored object facts, relationships, body reads or latest
+        substitutions. A missing ID or incomplete anchor closure returns no
+        records; an aggregate byte overflow is a distinct empty result.
+        """
+        if self._world_graph is None:
+            raise ValueError("reviewed observation selection requires publication authority ports")
+        result, context = self._establish(request.projection)
+        observations, gaps, missing = self._reviewed_source_observations(
+            result, context, selected_object_id=None,
+        )
+        requested = tuple(sorted(request.assertion_ids))
+        eligible = {row.assertion_id: row for row in observations
+            if row.source_artifact_id == request.source_artifact_id
+            and row.source_revision_id == request.source_revision_id}
+        unavailable = tuple(value for value in requested if value not in eligible)
+        base = dict(snapshot=result.snapshot, source_artifact_id=request.source_artifact_id,
+            source_revision_id=request.source_revision_id, requested_assertion_ids=requested,
+            max_bytes=request.max_bytes)
+        coverage = RetrievalCoverage(gap_codes=gaps, missing_ids=missing)
+        if unavailable:
+            return ReviewedObservationSelectionResult(**base, status="unavailable",
+                unavailable_assertion_ids=unavailable, coverage=coverage)
+        selected = tuple(
+            ReviewedSourceObservation(**asdict(eligible[value])) for value in requested
+        )
+        anchors, _, anchor_gaps = self._anchors_for(
+            result, context=context, object_ids=set(), relationship_ids=set(),
+            assertion_ids=set(), reviewed_source_observations=selected, max_anchors=None,
+        )
+        unavailable = tuple(row.assertion_id for row in selected if any(
+            not any(anchor.evidence_ref_id == evidence_id
+                and row.assertion_id in anchor.supporting_assertion_ids
+                and anchor.source_artifact_id == request.source_artifact_id
+                and anchor.source_revision_id == request.source_revision_id for anchor in anchors)
+            for evidence_id in row.evidence_ref_ids))
+        coverage = RetrievalCoverage(
+            gap_codes=tuple(sorted(set(gaps) | set(anchor_gaps[0]))),
+            missing_ids=tuple(sorted(set(missing) | set(anchor_gaps[1]))),
+        )
+        if unavailable:
+            return ReviewedObservationSelectionResult(**base, status="unavailable",
+                unavailable_assertion_ids=unavailable, coverage=coverage)
+        subjects = tuple(ReviewedObservationSubject(subject, result.graph.objects[subject].label,
+            result.graph.objects[subject].kind)
+            for subject in sorted({row.subject_object_id for row in selected}))
+        fields = dict(**base, status="complete", observations=selected,
+            subjects=subjects, anchors=tuple(anchors), coverage=coverage)
+        # Include the measurement field itself in the canonical byte count.
+        required = 0
+        while True:
+            complete = ReviewedObservationSelectionResult(**fields, required_bytes=required)
+            size = len(canonical_json(_selection_wire_value(complete)).encode("utf-8"))
+            if size == required:
+                break
+            required = size
+        if required > request.max_bytes:
+            return ReviewedObservationSelectionResult(**base, status="overflow",
+                required_bytes=required, coverage=coverage)
+        return complete
 
     def discover_reviewed_source_observations(
         self, request: ReviewedSourceDiscoveryRequest,
