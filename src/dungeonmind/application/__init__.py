@@ -31,6 +31,11 @@ from .graph_snapshot import (
 )
 from .mind_turn import FixedClock, MindTurnService
 from .parsed_revision_cache import ParsedImmutableRevisionCache
+from .publication_history import (
+    HistoricalReviewPublication,
+    PublicationHistory,
+    discover_review_publications,
+)
 from .query_embedding import QueryEmbeddingProvider
 from .repositories import (
     ContributionRepository,
@@ -135,6 +140,7 @@ __all__ = [
     "GraphRelationshipView",
     "GraphSearchResult",
     "GraphSnapshotReader",
+    "HistoricalReviewPublication",
     "IdentityDecisionRepository",
     "IdentityReconciliationPublicationResult",
     "MindThreadRepository",
@@ -145,6 +151,7 @@ __all__ = [
     "ParsedImmutableRevisionCache",
     "PhaseRecorder",
     "ProjectionClock",
+    "PublicationHistory",
     "QueryEmbeddingProvider",
     "RecapContextSectionSelectorV1",
     "RecapSourceContextV1",
@@ -181,6 +188,7 @@ __all__ = [
     "adopt_existing_world",
     "classify_read_failure",
     "derive_source_anchor_id",
+    "discover_review_publications",
     "emit_read_observation",
     "evaluate_fictional_time_query",
     "finalize_contribution_review",

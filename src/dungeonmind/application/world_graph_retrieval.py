@@ -43,7 +43,7 @@ import hashlib
 import json
 import re
 from collections.abc import Iterable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Literal, TypeVar
 
 from ..contracts.contribution import (
@@ -2690,12 +2690,13 @@ class WorldGraphRetrievalService:
             if row.source_artifact_id == request.source_artifact_id
             and row.source_revision_id == request.source_revision_id}
         unavailable = tuple(value for value in requested if value not in eligible)
-        base = dict(snapshot=result.snapshot, source_artifact_id=request.source_artifact_id,
+        base = ReviewedObservationSelectionResult(
+            snapshot=result.snapshot, source_artifact_id=request.source_artifact_id,
             source_revision_id=request.source_revision_id, requested_assertion_ids=requested,
-            max_bytes=request.max_bytes)
+            max_bytes=request.max_bytes, status="unavailable")
         coverage = RetrievalCoverage(gap_codes=gaps, missing_ids=missing)
         if unavailable:
-            return ReviewedObservationSelectionResult(**base, status="unavailable",
+            return replace(base,
                 unavailable_assertion_ids=unavailable, coverage=coverage)
         selected = tuple(
             ReviewedSourceObservation(**asdict(eligible[value])) for value in requested
@@ -2715,23 +2716,23 @@ class WorldGraphRetrievalService:
             missing_ids=tuple(sorted(set(missing) | set(anchor_gaps[1]))),
         )
         if unavailable:
-            return ReviewedObservationSelectionResult(**base, status="unavailable",
+            return replace(base,
                 unavailable_assertion_ids=unavailable, coverage=coverage)
         subjects = tuple(ReviewedObservationSubject(subject, result.graph.objects[subject].label,
             result.graph.objects[subject].kind)
             for subject in sorted({row.subject_object_id for row in selected}))
-        fields = dict(**base, status="complete", observations=selected,
+        complete = replace(base, status="complete", observations=selected,
             subjects=subjects, anchors=tuple(anchors), coverage=coverage)
         # Include the measurement field itself in the canonical byte count.
         required = 0
         while True:
-            complete = ReviewedObservationSelectionResult(**fields, required_bytes=required)
+            complete = replace(complete, required_bytes=required)
             size = len(canonical_json(_selection_wire_value(complete)).encode("utf-8"))
             if size == required:
                 break
             required = size
         if required > request.max_bytes:
-            return ReviewedObservationSelectionResult(**base, status="overflow",
+            return replace(base, status="overflow",
                 required_bytes=required, coverage=coverage)
         return complete
 
