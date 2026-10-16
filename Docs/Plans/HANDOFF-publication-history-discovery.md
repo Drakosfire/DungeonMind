@@ -43,3 +43,12 @@ fail closed; no mutation. Use synthetic memory and a newly created disposable
 PostgreSQL database, never a retained DSN with truncating fixtures. Review cumulative
 base-to-head diff, push/open one PR promptly, dispatch exact head to ARCHITECTURE,
 then merge only after independent review. Preserve beginning/end refs for task gold.
+
+Author evidence: 82 focused tests pass, including three fresh PostgreSQL discovery
+and corruption cases, existing publication/withdrawal regressions, 130 intervening
+revisions, and two matching historical publications after a description withdrawal.
+The additional explicit two-receipt assertion passes in the 22-test focused suite.
+Ruff and cumulative diff checks pass. Disposable database was removed. An initial
+test-runner setup restored schema without Alembic version rows and failed migration
+with DuplicateTable; the corrected runner starts from an empty disposable database
+and executes real migrations. No retained data, runtime, provider or corpus writes.
