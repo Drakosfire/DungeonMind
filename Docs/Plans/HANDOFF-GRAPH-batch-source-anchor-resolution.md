@@ -48,3 +48,14 @@ Inspect cumulative diff; test, lint/typecheck affected contracts; commit/push/op
 the assigned PR and send exact head promptly for independent review. No merge
 until review passes. Preserve implementation beginning/end refs and failures for
 local-model task evaluation. Settle superseded handoff facts in the next consumer.
+
+## Author verification
+
+The new batch boundary plus existing retrieval and read-observability suites pass
+162 tests. Ruff and full Pyright pass (zero errors/warnings); cumulative diff
+inspection/check pass. Initial pytest collection accidentally imported the installed
+older package; reran with this checkout's `PYTHONPATH=src`. Initial lint found export
+ordering and long test lines; corrected before the passing checks. A temporary
+runtime `.venv` symlink used for type discovery is removed after checking.
+No provider call, retained write, source read benchmark, runtime change, or claim
+of improved end-to-end performance is part of this implementation evidence.
