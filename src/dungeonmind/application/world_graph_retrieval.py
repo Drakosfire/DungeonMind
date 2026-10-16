@@ -717,6 +717,67 @@ class SourceAnchorIndexResult:
 
 
 @dataclass(frozen=True)
+class ReviewedSourceDiscoveryRequest:
+    """Exact-source discovery, not authority to claim facts or open bodies."""
+
+    projection: WorldGraphProjectionRequestV2
+    source_artifact_id: str
+    source_revision_id: str
+    max_entries: int = 16
+    page_token: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.projection.revision_pin or not self.projection.revision_pin.strip():
+            raise ValueError("reviewed source discovery requires an exact Graph revision")
+        for value in (self.source_artifact_id, self.source_revision_id):
+            if (not isinstance(value, str) or not value or value != value.strip()
+                    or len(value) > 4096 or any(ch in value for ch in "\r\n\t")):
+                raise ValueError("reviewed source discovery requires exact source identity")
+        if type(self.max_entries) is not int or not 1 <= self.max_entries <= 64:
+            raise ValueError("max_entries must be an integer within 1..64")
+        if self.page_token is not None and (
+            not isinstance(self.page_token, str) or not re.fullmatch(
+                r"dm-source-discovery:v1:[0-9a-f]{64}:[1-9][0-9]{0,9}", self.page_token
+            )
+        ):
+            raise ValueError("invalid reviewed source discovery page token")
+
+
+@dataclass(frozen=True)
+class ReviewedSourceDiscoveryEntry:
+    """Qualified navigation metadata; obtain complete records before claiming."""
+
+    subject_object_id: str
+    subject_label: str
+    subject_kind: str
+    assertion_id: str
+    observation_kind: Literal["session_observation", "worldbuilding_observation"]
+    excerpt: str
+    excerpt_truncated: bool
+    label_truncated: bool
+    epistemic_kind: str
+    temporal_scope: dict[str, Any] | None
+    source_anchors: tuple[SourceAnchorIndexEntry, ...]
+    discovery_only: Literal[True] = True
+
+
+@dataclass(frozen=True)
+class ReviewedSourceDiscoveryResult:
+    """One page of the admitted reviewed-observation facet, not whole-source coverage."""
+
+    snapshot: ProjectionSnapshotV2
+    source_artifact_id: str
+    source_revision_id: str
+    eligible_count: int
+    offset: int
+    max_entries: int
+    entries: tuple[ReviewedSourceDiscoveryEntry, ...]
+    next_page_token: str | None
+    coverage: RetrievalCoverage
+    discovery_only: Literal[True] = True
+
+
+@dataclass(frozen=True)
 class SelectedSourceAnchorIndexRequest:
     """Separate metadata-only index for 1-8 explicit, nontransitive targets."""
 
@@ -2548,6 +2609,89 @@ class WorldGraphRetrievalService:
         )
         return op_result
 
+    def discover_reviewed_source_observations(
+        self, request: ReviewedSourceDiscoveryRequest,
+    ) -> ReviewedSourceDiscoveryResult:
+        """Discover only this source pair's currently admitted observations.
+
+        No latest-source substitution, alias merge, relationship inference or
+        body read occurs. Existing observation admission owns all filtering.
+        Cursor identity excludes volatile read time and head identity, so an
+        unchanged historical pin remains pageable as the head advances.
+        """
+        if self._world_graph is None:
+            raise ValueError("reviewed source discovery requires publication authority ports")
+        result, context = self._establish(request.projection)
+        observations, gaps, missing = self._reviewed_source_observations(
+            result, context, selected_object_id=None,
+        )
+        eligible = tuple(sorted((row for row in observations
+            if row.source_artifact_id == request.source_artifact_id
+            and row.source_revision_id == request.source_revision_id),
+            key=lambda row: (row.subject_object_id, row.assertion_id)))
+        snapshot = result.snapshot
+        commitment = canonical_sha256({
+            "schema": "dm_reviewed_source_discovery_cursor_v1",
+            "world_id": snapshot.world_id, "campaign_id": snapshot.campaign_id,
+            "scope_mode": str(snapshot.scope_mode),
+            "focus": snapshot.focus.model_dump(mode="json"),
+            "admissibility": str(snapshot.admissibility),
+            "graph_revision": snapshot.revision_id,
+            "source_artifact_id": request.source_artifact_id,
+            "source_revision_id": request.source_revision_id,
+            "max_entries": request.max_entries,
+            "observations": [asdict(row) for row in eligible],
+        })
+        prefix = f"dm-source-discovery:v1:{commitment}:"
+        offset = 0
+        if request.page_token is not None:
+            token = request.page_token
+            suffix = token.removeprefix(prefix)
+            if (not token.startswith(prefix) or not suffix.isascii() or not suffix.isdecimal()
+                    or str(int(suffix)) != suffix):
+                raise ValueError("reviewed source discovery cursor differs from pinned context")
+            offset = int(suffix)
+            if offset <= 0 or offset >= len(eligible) or offset % request.max_entries:
+                raise ValueError("reviewed source discovery cursor offset is invalid")
+        selected = eligible[offset:offset + request.max_entries]
+        anchors, _, anchor_gaps = self._anchors_for(
+            result, context=context, object_ids=set(), relationship_ids=set(),
+            assertion_ids=set(), reviewed_source_observations=selected, max_anchors=None,
+        )
+        entries = []
+        for row in selected:
+            subject = result.graph.objects[row.subject_object_id]
+            own_anchors = tuple(SourceAnchorIndexEntry(
+                anchor.anchor_id, anchor.evidence_ref_id,
+                anchor.source_artifact_id, request.source_revision_id,
+            ) for anchor in anchors
+                if row.assertion_id in anchor.supporting_assertion_ids
+                and anchor.evidence_ref_id in row.evidence_ref_ids
+                and anchor.source_artifact_id == request.source_artifact_id
+                and anchor.source_revision_id == request.source_revision_id)
+            entries.append(ReviewedSourceDiscoveryEntry(
+                subject_object_id=row.subject_object_id,
+                subject_label=subject.label[:240], subject_kind=subject.kind,
+                assertion_id=row.assertion_id, observation_kind=row.observation_kind,
+                excerpt=row.text[:240], excerpt_truncated=len(row.text) > 240,
+                label_truncated=len(subject.label) > 240,
+                epistemic_kind=row.epistemic_kind,
+                temporal_scope=(json.loads(json.dumps(row.temporal_scope))
+                                if row.temporal_scope is not None else None),
+                source_anchors=own_anchors,
+            ))
+        end = offset + len(entries)
+        return ReviewedSourceDiscoveryResult(
+            snapshot=snapshot, source_artifact_id=request.source_artifact_id,
+            source_revision_id=request.source_revision_id, eligible_count=len(eligible),
+            offset=offset, max_entries=request.max_entries, entries=tuple(entries),
+            next_page_token=f"{prefix}{end}" if end < len(eligible) else None,
+            coverage=RetrievalCoverage(
+                gap_codes=tuple(sorted(set(gaps) | set(anchor_gaps[0]))),
+                missing_ids=tuple(sorted(set(missing) | set(anchor_gaps[1]))),
+            ),
+        )
+
     def list_source_anchor_index(
         self, request: SourceAnchorIndexRequest
     ) -> SourceAnchorIndexResult:
@@ -3180,6 +3324,9 @@ __all__ = [
     "RecapSourceContextV1",
     "RetrievalBounds",
     "RetrievalCoverage",
+    "ReviewedSourceDiscoveryEntry",
+    "ReviewedSourceDiscoveryRequest",
+    "ReviewedSourceDiscoveryResult",
     "ReviewedSourceObservationMatch",
     "SelectedObjectCompleteness",
     "SelectedSourceAnchorIndexRequest",
