@@ -201,6 +201,7 @@ V7/V8/V11 and later vNext/storage gates remain unsatisfied by these experiments.
 | CE-03 preflight | Existing venv lacks `psycopg_pool`; transport probe pinned above | Pool implementation unavailable in the existing environment; no installation attempted | Measure read-only connection cost independently before choosing a pool/dependency change |
 | CE-03 first attempt | Default unit in the inherited configuration reader is obsolete | Reader's PID assertion failed before any database connection; traceback retained in `ce03-connection-probe.log` | Read-only unit inventory identified an active API; pin its selection in local `ce03-config.json` and retry the changed configuration, preserving the failed attempt |
 | CE-03 changed configuration | Local config SHA256 `7c1a76f25f753101cf20f215206d101aafbb3966be3172b9535c1bc6ce80c076`; same pinned probe; 5 samples/mode; existing local PostgreSQL | Ten read-only SELECTs passed. Median fresh connect 1.323 ms; fresh transaction/query 0.269 ms; retained transaction/query 0.138 ms | This small local transport sample does not justify a pooling/dependency rollout or establish graph/whole-turn cost. Keep pooling conditional and investigate measured graph-sized work first |
+| CE-05 | Begin/end `dcf5c86aa3e5387dffaa2ce7f558b3f8cfb400b8`; unchanged Core code, independent retained caches; pinned local script, 5 samples/mode at 1k/5k | Result digests equal. Repeated medians current/deepcopy: 422.48/335.81 ms at 1k, 2834.25/2877.83 ms at 5k; CPU shows the same mixed direction | No consistent gain across sizes: reject a wholesale production `deepcopy` replacement. Retain this negative result for the next natural register update rather than opening a separate bookkeeping PR |
 
 CE-02 observations (milliseconds):
 
@@ -240,6 +241,10 @@ existing `(reader compatibility, world, revision)` key alone is insufficient
 authority for sharing across databases. Request ARCHITECTURE review of that
 boundary before consumer adoption. Profiling/copy experiments can continue
 independently; do not reimplement the already accepted ancestry/session work.
+CE-05 raw samples: `ce05-copy-comparison.json`, SHA256
+`cc05a2a6166f67a9ebf224fb97fe2f72c6ce7c99f5515f9b04121d71361234ed`.
+This result is carried on the experiment branch for the next dependent source
+slice; accepted PR #135's reviewed head is left unchanged during CI/merge.
 
 Raw private traces and reports referenced by the assignment are inherited
 evidence, not newly reproduced results. Raw Jev responses absent from the
