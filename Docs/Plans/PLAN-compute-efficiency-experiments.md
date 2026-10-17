@@ -143,7 +143,8 @@ Its exclusive output lease is `ce03-connection-probe.json` and `.log` in task
 scratch, with factual register update only; no source/runtime implementation.
 
 ```bash
-"$DM_PY" "$DM_EVIDENCE/ce03_connection_probe.py"
+DMB_WITNESS_API_UNIT="$(jq -r .unit "$DM_EVIDENCE/ce03-config.json")" \
+  "$DM_PY" "$DM_EVIDENCE/ce03_connection_probe.py"
 ```
 
 ## Correctness and product gates
@@ -173,6 +174,7 @@ V7/V8/V11 and later vNext/storage gates remain unsatisfied by these experiments.
 | CE-00 | Same source; existing cached pyperf; one process, five samples, one loop; already-warm benchmark fixture | Object lookup mean 27.5 ms (100) / 357 ms (1k); standard deviations 6.7 / 61 ms; pyperf flags instability | Keep raw `ce00-classic-object.json` and log; treat as exploratory observations, not stable percentiles or a performance claim |
 | CE-02 | Harness begin/end `f3032649ffa2002a94eccafc60c443fb8a5fed25`; SHA256 `d739671dd94dcf41dbebef27c515fffb958d76f663e2bd581d158fcde77382cb`; 5 samples/mode/size, alternating order; one fixed memory authority | Exact semantic digests match across every sample. Parses 5→1; cache isolation copies 10→6; head/revision/source snapshot/initialization receipt reads stay 5 each | Compatible cache lifetime removes work, but full revision load, copy and scope work remain. Review a separately bounded resource-lifetime/authority namespace contract before any consumer adoption |
 | CE-03 preflight | Existing venv lacks `psycopg_pool`; transport probe pinned above | Pool implementation unavailable in the existing environment; no installation attempted | Measure read-only connection cost independently before choosing a pool/dependency change |
+| CE-03 first attempt | Default unit in the inherited configuration reader is obsolete | Reader's PID assertion failed before any database connection; traceback retained in `ce03-connection-probe.log` | Read-only unit inventory identified an active API; pin its selection in local `ce03-config.json` and retry the changed configuration, preserving the failed attempt |
 
 CE-02 observations (milliseconds):
 
@@ -204,6 +206,12 @@ the pinned fixture and harness. No private runtime evidence is included.
 Raw private traces and reports referenced by the assignment are inherited
 evidence, not newly reproduced results. Raw Jev responses absent from the
 retained Council failure cannot be reconstructed or advertised as exact replay.
+Documentation predecessor #134 merged at
+`3b93acb841e031767b01982ff8e543031e0b592e` after ARCHITECTURE PASS on
+`8f5c7ef7d98c5906a5a2c5468cb21ca6a9f71fe7`. This measurement branch incorporates
+that main merge while preserving measured harness commit `f303264...` in its
+ancestry; the harness SHA256 remains unchanged. This settles the parent only;
+it does not claim acceptance of these results or any production optimization.
 
 ## Completion and storage record
 
