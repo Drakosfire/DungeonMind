@@ -1186,9 +1186,12 @@ def test_42_boundary_guards_no_dnd_imports_in_vnext() -> None:
 
 
 # 43. Historical reader files remain at pinned content digests (CI-portable)
+# PR #136 re-anchors only the authorized nonsemantic scalar evidence-copy helper
+# and its scope call sites. The historical parsers and all other pins stay fixed;
+# semantic parity and isolation tests remain the behavior oracle.
 _HISTORICAL_READER_SHA256: dict[str, str] = {
     "src/dungeonmind/application/graph_snapshot.py": (
-        "8d0fb363e27ac78004fe8a0f2b11916b72a4b41ea9b53e536c588c5927a42fa7"
+        "efc79dbe4bf3391dc7bbc2bf43e7789a62430c6f85aa6ee1ef2b4e431131300a"
     ),
     "src/dungeonmind/application/graph_snapshot_v4.py": (
         "2a041e7b7b4059da2199c23071b440ed11f8dc50f2d566905e30f2fb02fa5bdc"
@@ -1200,7 +1203,7 @@ _HISTORICAL_READER_SHA256: dict[str, str] = {
         "06afb20e30398ade199dece69f6ea38465fd154fb9b521659e161654988a2548"
     ),
     "src/dungeonmind/application/graph_scope.py": (
-        "94d4c57306df85ee900f6723e09236da4279b13546dd845e47fdd6ff99108da2"
+        "329e1b617d82d193952579cb7d001dcf71c880af3972e9eb111c616e82395a16"
     ),
 }
 

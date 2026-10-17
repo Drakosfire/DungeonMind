@@ -134,8 +134,9 @@ CE-03 transport-only preflight is now leased locally: task scratch script
 `ce03_connection_probe.py`, SHA256
 `5878e934367f585c554e9ada1ab4c73139760fc8d711a31c2768b80a6471a658`.
 It reads the existing serving configuration without printing it and asserts the
-already authorized loopback authority port. Five fresh connections and one
-retained sequential connection each execute five `SELECT 1` transactions with
+already authorized loopback authority port. Five fresh connections execute one
+`SELECT 1` transaction each; one retained connection executes five transactions,
+for ten SELECTs total, with
 read-only enforcement and a statement timeout, alternating mode order. It
 touches no knowledge/source tables and adds no pool package (none is installed).
 This supplies a transport lower bound, not a pooling, graph-read or load result.
@@ -147,7 +148,168 @@ DMB_WITNESS_API_UNIT="$(jq -r .unit "$DM_EVIDENCE/ce03-config.json")" \
   "$DM_PY" "$DM_EVIDENCE/ce03_connection_probe.py"
 ```
 
+### CE-05 bounded isolation-copy comparison
+
+After the accepted CE-02 review, the next independent experiment compares the
+current field-by-field deep isolation with standard-library `copy.deepcopy`
+over the complete parsed snapshot. Both configurations retain their own cache
+within the same fixed memory authority. This is a full selected-object read,
+not just a Python copy microbenchmark; revision/source admission stays fresh.
+Use the unchanged `classic_read_lifetime` harness SHA pinned above, five samples
+per mode at 1k and 5k, alternate order, and separate each first cache miss from
+the four repeated reads. Digest equality is necessary, not sufficient: any
+proposed production replacement also needs nested ownership and existing
+freshness/history/profile/integrity gates. Reject a slower or behavior-changing
+candidate; record a negative result instead of creating an optimization PR.
+
+This experiment's exclusive write lease is this register and local task scratch
+script/output/log `ce05-copy-comparison.*`. No production implementation is
+changed by the comparison. Script SHA256:
+`dde113698e550263f6b08c10a997d4d14388a42a8e9ecf46c37e739deebdb8f0`.
+Pin this plan commit before timing; artifacts record beginning/end refs.
+
+```bash
+"$DM_PY" "$DM_EVIDENCE/ce05-copy-comparison.py"
+```
+
 ## Correctness and product gates
+
+### Next bounded Core candidate: guarded scalar evidence copies
+
+Owner MIND, branch `codex/mind-scalar-evidence-copy`, same assigned checkout,
+base merged #135 `09d0c376402343311cc56bbc2a33a11c2fd434c0`. Carry the CE-05
+negative result into this substantive slice. One question: can exact scalar-only
+`EvidenceRefV2` models avoid recursive copying while retaining independent model
+state and every graph/provenance behavior? Field-by-field records, graph objects,
+assertion metadata and source snapshots retain deep isolation. Full-copying
+fallback remains mandatory for subclasses, mutable values, private or extra state.
+No serialization round trip: excluded internal assertion metadata must survive.
+
+Exclusive candidate write set, if measurement supports implementation:
+`src/dungeonmind/application/graph_snapshot.py` (internal evidence-copy helper),
+`src/dungeonmind/application/parsed_revision_cache.py`,
+`src/dungeonmind/application/graph_scope.py` (evidence model copies only),
+new `tests/unit/test_evidence_record_copy.py`, and this register. No contract,
+namespace, source-artifact, repository, dependency, publication or runtime change.
+
+#### PR #136 CI repair rebrief — 2026-10-17
+
+Before further edits, extend this slice's exclusive write lease by exactly
+`tests/unit/test_vnext_legacy_compatibility.py` (six paths total). PRIME concurs
+with ARCHITECTURE's bounded guard re-anchor. CI run `39063010738` on
+`4d782d68e3729e531782305c513e01d5c7494c38` reported 2474 passed, 8 skipped,
+and five failures rooted in the historical-reader content guard, including
+subprocess witnesses. Integration, benchmark smoke, lint and type checks passed.
+
+Retain every manifest member and the exact digest guard. Re-anchor only the two
+intentionally changed current classic files: `graph_snapshot.py` from
+`8d0fb363e27ac78004fe8a0f2b11916b72a4b41ea9b53e536c588c5927a42fa7` to
+`efc79dbe4bf3391dc7bbc2bf43e7789a62430c6f85aa6ee1ef2b4e431131300a`
+(guarded scalar evidence-copy helper), and `graph_scope.py` from
+`94d4c57306df85ee900f6723e09236da4279b13546dd845e47fdd6ff99108da2` to
+`329e1b617d82d193952579cb7d001dcf71c880af3972e9eb111c616e82395a16`
+(three evidence-copy call sites). These are nonsemantic isolation changes;
+historical v1-v6 parser implementations and compatibility identities remain
+unchanged. Verify every manifest member, the legacy compatibility/read-context/
+entity suites with subprocess witnesses, and existing read/provenance/isolation
+gates. The prior independent PASS does not cover this repair: request a new
+exact-head cumulative review and require applicable CI before merge. This repair
+is not product-latency evidence and does not authorize runtime adoption.
+
+Repair validation: the complete legacy compatibility, vNext read-context/entity
+and evidence-copy suites passed (255 tests, including subprocess witnesses).
+The scoped current read-context/observability, reviewed-source-session,
+scope/provenance and genesis cohort also passed (105 tests). Ruff on the modified
+test and `git diff --check` passed. An earlier invocation used nonexistent test
+filenames and exited 4 before running tests; corrected paths were discovered
+from the repository, not treated as a passing result. Updated CI and independent
+exact-head review remain required.
+
+Before production edits, run the local experiment-only `EvidenceRefV2.model_copy`
+patch with exact-type/scalar/private/extra guards. Script in task scratch:
+`ce05-scalar-evidence.py`, SHA256
+`b192ceaa65c70ec596f5b8cf77c926d81710891433029791e1045cc71b9dff69`.
+Same fixed-authority 1k/5k fixtures, five alternating samples per mode, retained
+compatible caches, exact result digests and copy counts. Pin this plan commit
+before timing; artifact beginning/end refs identify it. A positive prototype is
+only implementation motivation; production must repeat the actual public reads
+and pass nested mutation, malformed/future state fallback, profile, freshness,
+scope, historical, provenance, observability and reviewed-session gates.
+
+```bash
+"$DM_PY" "$DM_EVIDENCE/ce05-scalar-evidence.py"
+```
+
+The prototype preserved digests and observed warm medians 431.30→304.87 ms
+at 1k and 2977.15→2864.44 ms at 5k (only four repeated samples). This motivates
+the narrow implementation, not a deployment claim. Prototype artifact SHA256:
+`6c894fb63608e89754b9d6f0de7cb45f886f6305851f82b109899736db456ee4`.
+The implementation owns the model dictionary/fields-set and uses a guarded
+scalar path only for the exact V2 evidence class. All other model/state shapes
+retain deep copying. Before timing it, 134 affected Core cases passed, including
+new mutation/fallback/cache-isolation cases; scoped Ruff and changed-module
+Pyright passed. Type-check preflight failures from missing `.venv` and a task
+config include-path mistake are retained locally; the passing run explicitly
+selects source files and existing dependency/stub paths without an environment
+change.
+
+Pin the implementation commit before the actual-code comparison. Local script
+`ce05-scalar-production.py`, SHA256
+`4d6314869e57f0e1ef479940983fd9e9e11fd6eccc6beba5537040fc48dc63cc`,
+compares the real helper against forced legacy recursive copying at its two
+consumer-module bindings. This same-code counterfactual adds helper/counter
+instrumentation; it is not an uninstrumented comparison of two releases.
+Use nine alternating samples at 100/1k/5k, keep the first miss separate, and
+record recursive evidence-copy counts, CPU, phases, RSS and full digest parity.
+
+```bash
+"$DM_PY" "$DM_EVIDENCE/ce05-scalar-production.py"
+```
+
+Actual-code trial at `e743c684fc8632f5a005b6a20ac2effc1c93a5ee` preserved
+all three digests and replaced 750/7,500/37,500 recursive V2 evidence copies per
+warm read with the same number of independent scalar-shell copies. The eight
+warm-sample medians were mixed: 23.75→20.88 ms (100), 372.63→395.53 ms (1k),
+2983.21→2897.87 ms (5k). Do not omit the 1k regression or call this an overall
+latency win. Raw artifact SHA256:
+`cab5a5e87f0e81fb9266c9f7c227be439713b7cc7623217a417936c69bf44fdb`.
+
+Resolve that remaining concern before proposing adoption: local diagnostic
+`ce05-scalar-gc.py`, SHA256
+`74827bf3289206df30553f581ba5891704f3694b1b1282de7aed38030f08764f`,
+measures per-copy CPU (five rounds of 10,000 copies) and repeats full warmed
+reads at 1k/5k with explicit collection **before** each sample, outside timing.
+GC remains enabled while reads execute; record collection generation/duration
+with callbacks. Twelve 1k and six 5k samples per mode alternate order. This is
+a separately labeled diagnostic condition, not a replacement of the original
+mixed results and not a request to change production GC settings. The existing
+source write lease is unchanged; pin this update before running.
+
+```bash
+"$DM_PY" "$DM_EVIDENCE/ce05-scalar-gc.py"
+```
+
+Diagnostic begin/end `392c4fc4a2f100ac847ec2991a683ddd5200a212`: all digests
+match. Median per-copy process CPU across five 10k-copy rounds is
+3,864.17 ns legacy versus 1,104.13 ns guarded scalar copy. Under the explicitly
+precollected, GC-enabled condition, median read wall times are 272.59→250.48 ms
+at 1k (12 samples/mode) and 2891.62→2778.17 ms at 5k (6 samples/mode); process
+CPU follows the same direction. GC callbacks cover the whole measurement call,
+including post-read digest/serialization, so their durations are diagnostic
+and must not be added to phase times or treated as an exact latency breakdown.
+The original mixed ordinary-state result remains above. No production GC
+policy changed. Artifact SHA256:
+`ace17d4e18f48411d11ce533cef5438a2aaf1819f7dfb739f3d969c3d1515fcd`.
+
+Decision: submit the narrow guarded scalar-copy implementation for independent
+review as reduced per-record CPU work with preserved model ownership. Keep
+uncertain end-to-end latency explicit. Point reads still fetch, copy and scope
+graph-sized data; the cache/resource lifetime and remaining allocations require
+separate measured work. The existing database namespace, fresh source admission,
+historical readers, integrity validation, publication and consumer runtime are
+unchanged by this candidate. Core #135 is settled at merge
+`09d0c376402343311cc56bbc2a33a11c2fd434c0`; this substantive successor carries
+the rejected whole-snapshot-copy result and the CE-03 wording clarification.
 
 Every deterministic candidate retains evidence/qualifiers and output digest
 parity, fresh source admission and withdrawal at the same graph revision,
@@ -176,6 +338,7 @@ V7/V8/V11 and later vNext/storage gates remain unsatisfied by these experiments.
 | CE-03 preflight | Existing venv lacks `psycopg_pool`; transport probe pinned above | Pool implementation unavailable in the existing environment; no installation attempted | Measure read-only connection cost independently before choosing a pool/dependency change |
 | CE-03 first attempt | Default unit in the inherited configuration reader is obsolete | Reader's PID assertion failed before any database connection; traceback retained in `ce03-connection-probe.log` | Read-only unit inventory identified an active API; pin its selection in local `ce03-config.json` and retry the changed configuration, preserving the failed attempt |
 | CE-03 changed configuration | Local config SHA256 `7c1a76f25f753101cf20f215206d101aafbb3966be3172b9535c1bc6ce80c076`; same pinned probe; 5 samples/mode; existing local PostgreSQL | Ten read-only SELECTs passed. Median fresh connect 1.323 ms; fresh transaction/query 0.269 ms; retained transaction/query 0.138 ms | This small local transport sample does not justify a pooling/dependency rollout or establish graph/whole-turn cost. Keep pooling conditional and investigate measured graph-sized work first |
+| CE-05 | Begin/end `dcf5c86aa3e5387dffaa2ce7f558b3f8cfb400b8`; unchanged Core code, independent retained caches; pinned local script, 5 samples/mode at 1k/5k | Result digests equal. Repeated medians current/deepcopy: 422.48/335.81 ms at 1k, 2834.25/2877.83 ms at 5k; CPU shows the same mixed direction | No consistent gain across sizes: reject a wholesale production `deepcopy` replacement. Retain this negative result for the next natural register update rather than opening a separate bookkeeping PR |
 
 CE-02 observations (milliseconds):
 
@@ -215,6 +378,10 @@ existing `(reader compatibility, world, revision)` key alone is insufficient
 authority for sharing across databases. Request ARCHITECTURE review of that
 boundary before consumer adoption. Profiling/copy experiments can continue
 independently; do not reimplement the already accepted ancestry/session work.
+CE-05 raw samples: `ce05-copy-comparison.json`, SHA256
+`cc05a2a6166f67a9ebf224fb97fe2f72c6ce7c99f5515f9b04121d71361234ed`.
+This result is carried on the experiment branch for the next dependent source
+slice; accepted PR #135's reviewed head is left unchanged during CI/merge.
 
 Raw private traces and reports referenced by the assignment are inherited
 evidence, not newly reproduced results. Raw Jev responses absent from the

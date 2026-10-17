@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol, Self
+from typing import Any, Literal, Protocol, Self, TypeVar
 
 from pydantic import Field, ValidationError, model_validator
 
@@ -161,6 +161,29 @@ class GraphEvidenceRecord(DungeonMindModel):
 GraphEvidenceRecordV2 = EvidenceRefV2
 
 GraphEvidenceLedgerRecord = GraphEvidenceRecord | GraphEvidenceRecordV2
+
+_TEvidenceModel = TypeVar("_TEvidenceModel", bound=DungeonMindModel)
+_SCALAR_EVIDENCE_VALUE_TYPES = frozenset(
+    {str, bool, int, float, type(None), SourceDomain, EvidenceRole}
+)
+
+
+def _isolate_evidence_record(record: _TEvidenceModel) -> _TEvidenceModel:
+    """Own the model state without recursively copying exact scalar V2 fields.
+
+    A shallow Pydantic copy owns its dictionary and fields-set. The exact V2
+    contract contains scalar values only; unknown/subclass/private/extra or
+    unexpectedly mutable state still takes the established deep-copy path.
+    No validation, field serialization or admission decision is skipped here.
+    """
+    if (
+        type(record) is EvidenceRefV2
+        and record.__pydantic_private__ is None
+        and record.__pydantic_extra__ is None
+        and all(type(value) in _SCALAR_EVIDENCE_VALUE_TYPES for value in record.__dict__.values())
+    ):
+        return record.model_copy()
+    return record.model_copy(deep=True)
 
 
 class AdmittedAliasAssertion(DungeonMindModel):

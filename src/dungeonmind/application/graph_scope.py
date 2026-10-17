@@ -67,6 +67,7 @@ from .graph_snapshot import (
     GraphObjectView,
     GraphRelationshipView,
     ParsedGraphSnapshot,
+    _isolate_evidence_record,
     build_label_and_alias_indexes,
     contains_exact_phrase,
 )
@@ -122,7 +123,7 @@ def genesis_evidence_compatibility_from_d0(
             or artifact.source_domain_key != _GENESIS_WORLDBUILDING_DOMAIN_KEY
         ):
             continue
-        eligible[evidence_ref_id] = record.model_copy(deep=True)
+        eligible[evidence_ref_id] = _isolate_evidence_record(record)
     return GenesisEvidenceCompatibility(
         world_id=world_id,
         d0_revision_id=d0_revision_id,
@@ -568,7 +569,7 @@ def _resolve_v2_evidence_provenance(
 
     return ValidatedProvenance(
         record=record,
-        evidence=record.model_copy(deep=True),
+        evidence=_isolate_evidence_record(record),
         artifact=artifact,
     )
 
@@ -1209,7 +1210,7 @@ def project_scoped_snapshot(
         for evidence_ref_id in rel.evidence_ref_ids
     }
     evidence = {
-        evidence_ref_id: record.model_copy(deep=True)
+        evidence_ref_id: _isolate_evidence_record(record)
         for evidence_ref_id, record in snapshot.evidence.items()
         if evidence_ref_id in retained_evidence_ids
     }
