@@ -62,7 +62,7 @@ export DM_EVIDENCE=/home/drakosfire/Projects/.codex/mind-compute-efficiency-2026
 export TMPDIR="$DM_EVIDENCE"
 export UV_CACHE_DIR=/home/drakosfire/Projects/.codex/mind-compute-efficiency-20261017/cache
 export PYTHONDONTWRITEBYTECODE=1
-export PYTHONPATH="$PWD/src:$PWD"
+export PYTHONPATH="$PWD/src:$PWD:/home/drakosfire/.cache/uv/archive-v0/AKJlMlsqJbbxmbhqFBFWM"
 git rev-parse HEAD
 "$DM_PY" -c 'import sys,pydantic; print(sys.executable, sys.version, pydantic.__version__)'
 ```
@@ -98,13 +98,14 @@ CE-00/01 reproducible owning-boundary commands:
   tests/conformance/test_reviewed_source_session.py
 ```
 
-Existing component benchmark command (requires the already available `pyperf`
-package; if absent, record that failure and use an existing cached package,
-without creating an environment):
+The final `PYTHONPATH` entry selects the existing cached `pyperf` package after
+the interpreter preflight found it absent from the venv. It does not install
+packages or create an environment. Existing component benchmark command:
 
 ```bash
 "$DM_PY" benchmarks/world_graph_reads.py --sizes 100 1000 \
   --cases get_object --processes 1 --values 5 --warmups 1 --loops 1 \
+  --inherit-environ PYTHONPATH,TMPDIR,PYTHONDONTWRITEBYTECODE \
   -o "$DM_EVIDENCE/ce00-classic-object.json"
 ```
 
@@ -152,7 +153,8 @@ V7/V8/V11 and later vNext/storage gates remain unsatisfied by these experiments.
 | --- | --- | --- | --- |
 | Re-entry 2026-10-17 | Core baseline above; no open Core PR; research hash verified; assigned checkout clean | README drift and short classic cache lifetime confirmed by code; #131/#132/#133 are already merged | Documentation PR first, then CE-00/01 and CE-02 without another operator prompt |
 | Environment preflight | Existing system Python, before environment selection | `ModuleNotFoundError: pydantic`; existing venv works; its `pyperf` import is absent | Reuse installed dependencies; retain failure; do not create an environment |
-| CE-00/01 | Pending execution after plan commit | No passing experiment claimed yet | Run owning tests and classic baseline |
+| CE-01 | Docs head `8f5c7ef7d98c5906a5a2c5468cb21ca6a9f71fe7`; existing Python; Core source unchanged | Freshness/context/observability/genesis/session cohort passed (84 cases); `ce01-freshness-tests.log` retained locally | Proceed to cache-lifetime measurement; these are mechanical gates, not product answer acceptance |
+| CE-00 | Same source; existing cached pyperf; one process, five samples, one loop; already-warm benchmark fixture | Object lookup mean 27.5 ms (100) / 357 ms (1k); standard deviations 6.7 / 61 ms; pyperf flags instability | Keep raw `ce00-classic-object.json` and log; treat as exploratory observations, not stable percentiles or a performance claim |
 | CE-02 | Pending successor harness / head | No measured gain claimed | Compare compatible cache lifetime before production changes |
 
 Raw private traces and reports referenced by the assignment are inherited
