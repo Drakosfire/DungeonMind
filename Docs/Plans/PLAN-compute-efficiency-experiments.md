@@ -175,6 +175,7 @@ V7/V8/V11 and later vNext/storage gates remain unsatisfied by these experiments.
 | CE-02 | Harness begin/end `f3032649ffa2002a94eccafc60c443fb8a5fed25`; SHA256 `d739671dd94dcf41dbebef27c515fffb958d76f663e2bd581d158fcde77382cb`; 5 samples/mode/size, alternating order; one fixed memory authority | Exact semantic digests match across every sample. Parses 5→1; cache isolation copies 10→6; head/revision/source snapshot/initialization receipt reads stay 5 each | Compatible cache lifetime removes work, but full revision load, copy and scope work remain. Review a separately bounded resource-lifetime/authority namespace contract before any consumer adoption |
 | CE-03 preflight | Existing venv lacks `psycopg_pool`; transport probe pinned above | Pool implementation unavailable in the existing environment; no installation attempted | Measure read-only connection cost independently before choosing a pool/dependency change |
 | CE-03 first attempt | Default unit in the inherited configuration reader is obsolete | Reader's PID assertion failed before any database connection; traceback retained in `ce03-connection-probe.log` | Read-only unit inventory identified an active API; pin its selection in local `ce03-config.json` and retry the changed configuration, preserving the failed attempt |
+| CE-03 changed configuration | Local config SHA256 `7c1a76f25f753101cf20f215206d101aafbb3966be3172b9535c1bc6ce80c076`; same pinned probe; 5 samples/mode; existing local PostgreSQL | Ten read-only SELECTs passed. Median fresh connect 1.323 ms; fresh transaction/query 0.269 ms; retained transaction/query 0.138 ms | This small local transport sample does not justify a pooling/dependency rollout or establish graph/whole-turn cost. Keep pooling conditional and investigate measured graph-sized work first |
 
 CE-02 observations (milliseconds):
 
@@ -203,6 +204,18 @@ source refs, output size and result digest. Full serialized requests/responses
 were not captured; synthetic inputs and request selection are reproducible from
 the pinned fixture and harness. No private runtime evidence is included.
 
+CE-03 result artifact: local `ce03-connection-probe.json`, SHA256
+`8de62c58b30e5522115070c888d2743e38d6b1b221040875b6621b1c70548db1`.
+The two attempt logs and local unit selection are retained together. No DSN,
+credential, source text or retained database rows were exported. The next
+Core question is which repeated immutable parse/copy preparation can be removed
+with explicit authority/database isolation and unchanged caller ownership.
+Any shared consumer resource needs an owner-bound namespace; the cache's
+existing `(reader compatibility, world, revision)` key alone is insufficient
+authority for sharing across databases. Request ARCHITECTURE review of that
+boundary before consumer adoption. Profiling/copy experiments can continue
+independently; do not reimplement the already accepted ancestry/session work.
+
 Raw private traces and reports referenced by the assignment are inherited
 evidence, not newly reproduced results. Raw Jev responses absent from the
 retained Council failure cannot be reconstructed or advertised as exact replay.
@@ -219,6 +232,12 @@ Created: task-owned `scratch` and `cache` under the Projects root above. Owner:
 MIND; retained for reproducible experiment evidence and required temporary files.
 Reused: assigned existing Core checkout; no new worktree/mirror/environment.
 Removed: nothing; reclaimed bytes: zero. No deletion is authorized here.
+Current inventory: task scratch holds approximately 67 kB of synthetic result
+JSON, logs, the local connection probe/config and the preserved setup failure;
+cache is empty. Both benchmark processes completed; no service was started or
+changed. Source checkout is committed and is pushed with the measurement PR,
+including the unique measured source ref in its ancestry. The verified backing
+filesystem remains Projects UUID `48fa5d10-fe99-4557-9fc9-d8a2a4b41ac8`.
 At each handback record active processes/mounts, dirty files and unpushed commits
 before cleanup. Follow-up: after evidence review and PRIME merge decisions,
 inventory these two task directories and propose removal only of reproducible
