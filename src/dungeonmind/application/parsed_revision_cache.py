@@ -27,7 +27,7 @@ import threading
 from collections import OrderedDict
 from collections.abc import Callable
 
-from .graph_snapshot import ParsedGraphSnapshot
+from .graph_snapshot import ParsedGraphSnapshot, _isolate_evidence_record
 
 DEFAULT_PARSED_REVISION_CACHE_MAX_ENTRIES = 8
 
@@ -62,7 +62,7 @@ def isolate_parsed_graph(snapshot: ParsedGraphSnapshot) -> ParsedGraphSnapshot:
             for relationship_id, rel in snapshot.relationships.items()
         },
         evidence={
-            evidence_id: record.model_copy(deep=True)
+            evidence_id: _isolate_evidence_record(record)
             for evidence_id, record in snapshot.evidence.items()
         },
         label_index={key: list(ids) for key, ids in snapshot.label_index.items()},

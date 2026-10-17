@@ -207,6 +207,32 @@ scope, historical, provenance, observability and reviewed-session gates.
 "$DM_PY" "$DM_EVIDENCE/ce05-scalar-evidence.py"
 ```
 
+The prototype preserved digests and observed warm medians 431.30→304.87 ms
+at 1k and 2977.15→2864.44 ms at 5k (only four repeated samples). This motivates
+the narrow implementation, not a deployment claim. Prototype artifact SHA256:
+`6c894fb63608e89754b9d6f0de7cb45f886f6305851f82b109899736db456ee4`.
+The implementation owns the model dictionary/fields-set and uses a guarded
+scalar path only for the exact V2 evidence class. All other model/state shapes
+retain deep copying. Before timing it, 134 affected Core cases passed, including
+new mutation/fallback/cache-isolation cases; scoped Ruff and changed-module
+Pyright passed. Type-check preflight failures from missing `.venv` and a task
+config include-path mistake are retained locally; the passing run explicitly
+selects source files and existing dependency/stub paths without an environment
+change.
+
+Pin the implementation commit before the actual-code comparison. Local script
+`ce05-scalar-production.py`, SHA256
+`4d6314869e57f0e1ef479940983fd9e9e11fd6eccc6beba5537040fc48dc63cc`,
+compares the real helper against forced legacy recursive copying at its two
+consumer-module bindings. This same-code counterfactual adds helper/counter
+instrumentation; it is not an uninstrumented comparison of two releases.
+Use nine alternating samples at 100/1k/5k, keep the first miss separate, and
+record recursive evidence-copy counts, CPU, phases, RSS and full digest parity.
+
+```bash
+"$DM_PY" "$DM_EVIDENCE/ce05-scalar-production.py"
+```
+
 Every deterministic candidate retains evidence/qualifiers and output digest
 parity, fresh source admission and withdrawal at the same graph revision,
 scope/caller isolation, profile compatibility and historical identity. Exercise
