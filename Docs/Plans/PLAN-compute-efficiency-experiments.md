@@ -8,8 +8,8 @@ orchestration, context/writer policy, UI and serving; GE owns provider execution
 
 ## Authority and code inventory
 
-Read the [pinned assignment](https://github.com/Drakosfire/DungeonOverMind/blob/8057603f5779b71969ac0da720f4423e7a67b974/Docs/Plans/HANDOFF-MIND-compute-efficiency.md)
-and [complete research](https://github.com/Drakosfire/DungeonOverMind/blob/8057603f5779b71969ac0da720f4423e7a67b974/Docs/Research/RESEARCH-dungeonmind-compute-efficiency-2026-10-17.txt).
+Read the [pinned assignment](https://github.com/Drakosfire/DungeonOverMind/blob/c5a8f8ce601bc48cc54c320eb663908d76e601a0/Docs/Plans/HANDOFF-MIND-compute-efficiency.md)
+and [complete research](https://github.com/Drakosfire/DungeonOverMind/blob/c5a8f8ce601bc48cc54c320eb663908d76e601a0/Docs/Research/RESEARCH-dungeonmind-compute-efficiency-2026-10-17.txt).
 The research supplies hypotheses, not proof of a production bottleneck. Private
 corpus/runtime evidence stays local; this register records reproducible commands,
 synthetic results and decisions without duplicating that payload.
@@ -130,6 +130,22 @@ fixture and command here; use prior results to select it. A lack of usable pool,
 representative DB or owning evidence is recorded as deferred, not silently
 replaced by guessed timings. Continue independent safe work during review/CI.
 
+CE-03 transport-only preflight is now leased locally: task scratch script
+`ce03_connection_probe.py`, SHA256
+`5878e934367f585c554e9ada1ab4c73139760fc8d711a31c2768b80a6471a658`.
+It reads the existing serving configuration without printing it and asserts the
+already authorized loopback authority port. Five fresh connections and one
+retained sequential connection each execute five `SELECT 1` transactions with
+read-only enforcement and a statement timeout, alternating mode order. It
+touches no knowledge/source tables and adds no pool package (none is installed).
+This supplies a transport lower bound, not a pooling, graph-read or load result.
+Its exclusive output lease is `ce03-connection-probe.json` and `.log` in task
+scratch, with factual register update only; no source/runtime implementation.
+
+```bash
+"$DM_PY" "$DM_EVIDENCE/ce03_connection_probe.py"
+```
+
 ## Correctness and product gates
 
 Every deterministic candidate retains evidence/qualifiers and output digest
@@ -155,7 +171,35 @@ V7/V8/V11 and later vNext/storage gates remain unsatisfied by these experiments.
 | Environment preflight | Existing system Python, before environment selection | `ModuleNotFoundError: pydantic`; existing venv works; its `pyperf` import is absent | Reuse installed dependencies; retain failure; do not create an environment |
 | CE-01 | Docs head `8f5c7ef7d98c5906a5a2c5468cb21ca6a9f71fe7`; existing Python; Core source unchanged | Freshness/context/observability/genesis/session cohort passed (84 cases); `ce01-freshness-tests.log` retained locally | Proceed to cache-lifetime measurement; these are mechanical gates, not product answer acceptance |
 | CE-00 | Same source; existing cached pyperf; one process, five samples, one loop; already-warm benchmark fixture | Object lookup mean 27.5 ms (100) / 357 ms (1k); standard deviations 6.7 / 61 ms; pyperf flags instability | Keep raw `ce00-classic-object.json` and log; treat as exploratory observations, not stable percentiles or a performance claim |
-| CE-02 | Pending successor harness / head | No measured gain claimed | Compare compatible cache lifetime before production changes |
+| CE-02 | Harness begin/end `f3032649ffa2002a94eccafc60c443fb8a5fed25`; SHA256 `d739671dd94dcf41dbebef27c515fffb958d76f663e2bd581d158fcde77382cb`; 5 samples/mode/size, alternating order; one fixed memory authority | Exact semantic digests match across every sample. Parses 5→1; cache isolation copies 10→6; head/revision/source snapshot/initialization receipt reads stay 5 each | Compatible cache lifetime removes work, but full revision load, copy and scope work remain. Review a separately bounded resource-lifetime/authority namespace contract before any consumer adoption |
+| CE-03 preflight | Existing venv lacks `psycopg_pool`; transport probe pinned above | Pool implementation unavailable in the existing environment; no installation attempted | Measure read-only connection cost independently before choosing a pool/dependency change |
+
+CE-02 observations (milliseconds):
+
+| Objects | First local / shared | Repeated median local / shared (4 samples each) | Synthetic result SHA256 |
+| --- | --- | --- | --- |
+| 100 | 37.29 / 34.74 | 38.43 / 24.00 | `b4ee15af2dca87f5d4f14975c96affd8e5af083b046f75f0fd1c113ed4b1f5fd` |
+| 1,000 | 551.94 / 505.97 | 617.73 / 361.57 | `594439722da62e581f9e96c1c5e492772bdae64dbd2d75343bbb1aecf2a85e34` |
+| 5,000 | 4,911.49 / 4,536.49 | 5,313.00 / 2,841.44 | `cb905286b5f786eb69ab92f8090437818fc8211d9b92dc2470b211e2dcf5819c` |
+
+These are counter-instrumented memory-repository observations on a loaded host,
+not a controlled Buddy/deployment latency gain or a percentile estimate. The
+recorded final load average was 6.88/5.17/3.42. Process high-water RSS reached
+567,582,720 bytes across the complete ladder and includes imports, fixtures and
+caches; it cannot attribute memory savings by mode. SQL/connections/decode are
+explicitly unmeasured. The independent 1k profiler run uses two samples/mode;
+its shared warm traced allocation peak is 46,224,362 bytes versus about
+67.5 MB for the miss configurations. Its roughly 4–6 second profiled samples
+must not be compared to unprofiled latency.
+
+Artifacts under task scratch: `ce02-classic-lifetime.json` SHA256
+`0b8805ad1e63caf247dda9f625040d2c81e1d2846af0f891f92e13c12c8deb6d`;
+`ce02-classic-lifetime-profile.json` SHA256
+`1375e897f0f0974b34d1e7fd16e6b1c39fc7aa0273e6e883607277a0a9e970a1`.
+The artifacts retain all raw timing/count/phase/CPU/RSS samples, fixture digest,
+source refs, output size and result digest. Full serialized requests/responses
+were not captured; synthetic inputs and request selection are reproducible from
+the pinned fixture and harness. No private runtime evidence is included.
 
 Raw private traces and reports referenced by the assignment are inherited
 evidence, not newly reproduced results. Raw Jev responses absent from the
