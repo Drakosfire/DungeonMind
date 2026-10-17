@@ -174,6 +174,39 @@ Pin this plan commit before timing; artifacts record beginning/end refs.
 
 ## Correctness and product gates
 
+### Next bounded Core candidate: guarded scalar evidence copies
+
+Owner MIND, branch `codex/mind-scalar-evidence-copy`, same assigned checkout,
+base merged #135 `09d0c376402343311cc56bbc2a33a11c2fd434c0`. Carry the CE-05
+negative result into this substantive slice. One question: can exact scalar-only
+`EvidenceRefV2` models avoid recursive copying while retaining independent model
+state and every graph/provenance behavior? Field-by-field records, graph objects,
+assertion metadata and source snapshots retain deep isolation. Full-copying
+fallback remains mandatory for subclasses, mutable values, private or extra state.
+No serialization round trip: excluded internal assertion metadata must survive.
+
+Exclusive candidate write set, if measurement supports implementation:
+`src/dungeonmind/application/graph_snapshot.py` (internal evidence-copy helper),
+`src/dungeonmind/application/parsed_revision_cache.py`,
+`src/dungeonmind/application/graph_scope.py` (evidence model copies only),
+new `tests/unit/test_evidence_record_copy.py`, and this register. No contract,
+namespace, source-artifact, repository, dependency, publication or runtime change.
+
+Before production edits, run the local experiment-only `EvidenceRefV2.model_copy`
+patch with exact-type/scalar/private/extra guards. Script in task scratch:
+`ce05-scalar-evidence.py`, SHA256
+`b192ceaa65c70ec596f5b8cf77c926d81710891433029791e1045cc71b9dff69`.
+Same fixed-authority 1k/5k fixtures, five alternating samples per mode, retained
+compatible caches, exact result digests and copy counts. Pin this plan commit
+before timing; artifact beginning/end refs identify it. A positive prototype is
+only implementation motivation; production must repeat the actual public reads
+and pass nested mutation, malformed/future state fallback, profile, freshness,
+scope, historical, provenance, observability and reviewed-session gates.
+
+```bash
+"$DM_PY" "$DM_EVIDENCE/ce05-scalar-evidence.py"
+```
+
 Every deterministic candidate retains evidence/qualifiers and output digest
 parity, fresh source admission and withdrawal at the same graph revision,
 scope/caller isolation, profile compatibility and historical identity. Exercise
