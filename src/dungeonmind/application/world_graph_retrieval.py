@@ -42,8 +42,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field, replace
+from threading import RLock
 from typing import Any, Literal, TypeVar
 
 from ..contracts.contribution import (
@@ -772,6 +775,20 @@ class ReviewedSourceDiscoveryRequest:
 
 
 @dataclass(frozen=True)
+class ReviewedSourceSessionRequest:
+    """One exact source and projection; no latest substitution during a wave."""
+
+    projection: WorldGraphProjectionRequestV2
+    source_artifact_id: str
+    source_revision_id: str
+
+    def __post_init__(self) -> None:
+        ReviewedSourceDiscoveryRequest(
+            self.projection, self.source_artifact_id, self.source_revision_id,
+        )
+
+
+@dataclass(frozen=True)
 class ReviewedObservationSelectionRequest:
     """Full exact-source observation selection, not a source-body read."""
 
@@ -1497,6 +1514,10 @@ class _AnchorAccum:
     supporting_assertion_ids: set[str] = field(default_factory=set)
 
 
+_ReviewedObservationBundle = tuple[
+    tuple[ReviewedSourceObservation, ...], tuple[str, ...], tuple[str, ...]
+]
+
 _ItemT = TypeVar("_ItemT")
 
 _DEFAULT_BOUNDS = RetrievalBounds()
@@ -1549,6 +1570,26 @@ class WorldGraphRetrievalService:
 
         context = self._projection.open_read_context(request)
         return WorldGraphProjectionResult.from_read_context(context), context
+
+    @contextmanager
+    def reviewed_source_session(
+        self, request: ReviewedSourceSessionRequest,
+    ) -> Iterator[_ReviewedSourceReadSession]:
+        """Own a pinned acquisition wave; close before dispatching any provider."""
+        if self._world_graph is None:
+            raise ValueError("reviewed source session requires publication authority ports")
+        # The caller's mutable request cannot change this session after opening.
+        captured = deepcopy(request)
+        ReviewedSourceSessionRequest(
+            captured.projection, captured.source_artifact_id, captured.source_revision_id,
+        )
+        result, context = self._establish(captured.projection)
+        reviewed = self._reviewed_source_observations(result, context, selected_object_id=None)
+        session = _ReviewedSourceReadSession(self, captured, result, context, reviewed)
+        try:
+            yield session
+        finally:
+            session.close()
 
     @staticmethod
     def _observation_value(
@@ -2676,15 +2717,16 @@ class WorldGraphRetrievalService:
         )
         return op_result
 
-    def _resolve_source_anchors_in_context(
+    def _source_anchor_map_in_context(
         self,
         result: WorldGraphProjectionResult,
         context: WorldGraphReadContext,
-        anchor_ids: tuple[str, ...],
-    ) -> tuple[SourceAnchorResolution, ...]:
+        reviewed: _ReviewedObservationBundle | None = None,
+    ) -> dict[str, SourceAnchorMetadata]:
         assertion_index = _index_admitted_assertions(result)
-        observations, _gaps, _missing = self._reviewed_source_observations(
-            result, context, selected_object_id=None
+        observations, _gaps, _missing = (
+            self._reviewed_source_observations(result, context, selected_object_id=None)
+            if reviewed is None else reviewed
         )
         anchors, _truncated, _gaps = self._anchors_for(
             result, context=context, object_ids=set(result.graph.objects),
@@ -2695,6 +2737,15 @@ class WorldGraphRetrievalService:
         by_id: dict[str, SourceAnchorMetadata] = {}
         for anchor in anchors:
             by_id.setdefault(anchor.anchor_id, anchor)
+        return by_id
+
+    def _resolve_source_anchors_in_context(
+        self,
+        result: WorldGraphProjectionResult,
+        context: WorldGraphReadContext,
+        anchor_ids: tuple[str, ...],
+    ) -> tuple[SourceAnchorResolution, ...]:
+        by_id = self._source_anchor_map_in_context(result, context)
         return tuple(SourceAnchorResolution(
             snapshot=result.snapshot, found=anchor_id in by_id,
             anchor_id=anchor_id, anchor=by_id.get(anchor_id),
@@ -2746,9 +2797,19 @@ class WorldGraphRetrievalService:
         if self._world_graph is None:
             raise ValueError("reviewed observation selection requires publication authority ports")
         result, context = self._establish(request.projection)
-        observations, gaps, missing = self._reviewed_source_observations(
+        reviewed = self._reviewed_source_observations(
             result, context, selected_object_id=None,
         )
+        return self._select_reviewed_observations_in_context(request, result, context, reviewed)
+
+    def _select_reviewed_observations_in_context(
+        self,
+        request: ReviewedObservationSelectionRequest,
+        result: WorldGraphProjectionResult,
+        context: WorldGraphReadContext,
+        reviewed: _ReviewedObservationBundle,
+    ) -> ReviewedObservationSelectionResult:
+        observations, gaps, missing = reviewed
         requested = tuple(sorted(request.assertion_ids))
         eligible = {row.assertion_id: row for row in observations
             if row.source_artifact_id == request.source_artifact_id
@@ -3497,6 +3558,96 @@ class WorldGraphRetrievalService:
         return tuple(sorted(name for name, flag in flags.items() if flag))
 
 
+@dataclass(frozen=True)
+class _ReviewedSourceSessionState:
+    result: WorldGraphProjectionResult
+    context: WorldGraphReadContext
+    reviewed: _ReviewedObservationBundle
+
+
+class _ReviewedSourceReadSession:
+    """Opaque operation-owned context; no raw state or caller-supplied retargeting."""
+
+    def __init__(
+        self, service: WorldGraphRetrievalService, request: ReviewedSourceSessionRequest,
+        result: WorldGraphProjectionResult, context: WorldGraphReadContext,
+        reviewed: _ReviewedObservationBundle,
+    ) -> None:
+        self.__service = service
+        self.__request = request
+        self.__state: _ReviewedSourceSessionState | None = _ReviewedSourceSessionState(
+            result, context, reviewed,
+        )
+        self.__anchors: dict[str, SourceAnchorMetadata] | None = None
+        self.__lock = RLock()
+
+    def close(self) -> None:
+        with self.__lock:
+            self.__state = None
+            self.__anchors = None
+
+    def __active(self) -> _ReviewedSourceSessionState:
+        if self.__state is None:
+            raise RuntimeError("reviewed-source session is closed")
+        return self.__state
+
+    def select_observations(
+        self, assertion_ids: tuple[str, ...], *, max_bytes: int = 262144,
+    ) -> ReviewedObservationSelectionResult:
+        with self.__lock:
+            state = self.__active()
+            request = ReviewedObservationSelectionRequest(
+                self.__request.projection, self.__request.source_artifact_id,
+                self.__request.source_revision_id, assertion_ids, max_bytes,
+            )
+            try:
+                return deepcopy(self.__service._select_reviewed_observations_in_context(
+                    request, state.result, state.context, state.reviewed,
+                ))
+            except Exception:
+                self.close()
+                raise
+
+    def resolve_anchors(self, anchor_ids: tuple[str, ...]) -> SourceAnchorBatchResolution:
+        with self.__lock:
+            state = self.__active()
+            request = SourceAnchorBatchRequest(self.__request.projection, anchor_ids)
+            recorder = PhaseRecorder(self.__service._read_clock)
+            try:
+                with recorder.phase("anchor_derivation"):
+                    if self.__anchors is None:
+                        anchors = self.__service._source_anchor_map_in_context(
+                            state.result, state.context, state.reviewed,
+                        )
+                        self.__anchors = {
+                            key: value for key, value in anchors.items()
+                            if value.source_artifact_id == self.__request.source_artifact_id
+                            and value.source_revision_id == self.__request.source_revision_id
+                        }
+                    resolutions = tuple(SourceAnchorResolution(
+                        snapshot=state.result.snapshot, found=key in self.__anchors,
+                        anchor_id=key, anchor=self.__anchors.get(key),
+                    ) for key in request.anchor_ids)
+                    result = deepcopy(SourceAnchorBatchResolution(
+                        state.result.snapshot, resolutions,
+                    ))
+            except Exception as exc:
+                self.__service._emit(self.__service._error_observation(
+                    recorder, request.projection, "resolve_source_anchors", exc, state.result,
+                ))
+                self.close()
+                raise
+            self.__service._emit(WorldGraphReadObservation(
+                operation="resolve_source_anchors",
+                outcome="success" if any(item.found for item in resolutions) else "miss",
+                duration_seconds=recorder.total_seconds(), phase_durations=recorder.phases,
+                result_anchor_count=sum(item.found for item in resolutions),
+                **self.__service._request_fields(request.projection),
+                **self.__service._graph_fields(state.result),
+            ))
+            return result
+
+
 __all__ = [
     "CONTEXT_ANCHOR_ID_PREFIX",
     "CONTEXT_ANCHOR_SCHEMA",
@@ -3519,6 +3670,7 @@ __all__ = [
     "ReviewedSourceDiscoveryRequest",
     "ReviewedSourceDiscoveryResult",
     "ReviewedSourceObservationMatch",
+    "ReviewedSourceSessionRequest",
     "SelectedObjectCompleteness",
     "SelectedSourceAnchorIndexRequest",
     "SelectedSourceAnchorIndexResult",
