@@ -134,8 +134,9 @@ CE-03 transport-only preflight is now leased locally: task scratch script
 `ce03_connection_probe.py`, SHA256
 `5878e934367f585c554e9ada1ab4c73139760fc8d711a31c2768b80a6471a658`.
 It reads the existing serving configuration without printing it and asserts the
-already authorized loopback authority port. Five fresh connections and one
-retained sequential connection each execute five `SELECT 1` transactions with
+already authorized loopback authority port. Five fresh connections execute one
+`SELECT 1` transaction each; one retained connection executes five transactions,
+for ten SELECTs total, with
 read-only enforcement and a statement timeout, alternating mode order. It
 touches no knowledge/source tables and adds no pool package (none is installed).
 This supplies a transport lower bound, not a pooling, graph-read or load result.
@@ -145,6 +146,30 @@ scratch, with factual register update only; no source/runtime implementation.
 ```bash
 DMB_WITNESS_API_UNIT="$(jq -r .unit "$DM_EVIDENCE/ce03-config.json")" \
   "$DM_PY" "$DM_EVIDENCE/ce03_connection_probe.py"
+```
+
+### CE-05 bounded isolation-copy comparison
+
+After the accepted CE-02 review, the next independent experiment compares the
+current field-by-field deep isolation with standard-library `copy.deepcopy`
+over the complete parsed snapshot. Both configurations retain their own cache
+within the same fixed memory authority. This is a full selected-object read,
+not just a Python copy microbenchmark; revision/source admission stays fresh.
+Use the unchanged `classic_read_lifetime` harness SHA pinned above, five samples
+per mode at 1k and 5k, alternate order, and separate each first cache miss from
+the four repeated reads. Digest equality is necessary, not sufficient: any
+proposed production replacement also needs nested ownership and existing
+freshness/history/profile/integrity gates. Reject a slower or behavior-changing
+candidate; record a negative result instead of creating an optimization PR.
+
+This experiment's exclusive write lease is this register and local task scratch
+script/output/log `ce05-copy-comparison.*`. No production implementation is
+changed by the comparison. Script SHA256:
+`dde113698e550263f6b08c10a997d4d14388a42a8e9ecf46c37e739deebdb8f0`.
+Pin this plan commit before timing; artifacts record beginning/end refs.
+
+```bash
+"$DM_PY" "$DM_EVIDENCE/ce05-copy-comparison.py"
 ```
 
 ## Correctness and product gates
