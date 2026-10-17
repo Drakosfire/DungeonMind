@@ -233,6 +233,29 @@ record recursive evidence-copy counts, CPU, phases, RSS and full digest parity.
 "$DM_PY" "$DM_EVIDENCE/ce05-scalar-production.py"
 ```
 
+Actual-code trial at `e743c684fc8632f5a005b6a20ac2effc1c93a5ee` preserved
+all three digests and replaced 750/7,500/37,500 recursive V2 evidence copies per
+warm read with the same number of independent scalar-shell copies. The eight
+warm-sample medians were mixed: 23.75→20.88 ms (100), 372.63→395.53 ms (1k),
+2983.21→2897.87 ms (5k). Do not omit the 1k regression or call this an overall
+latency win. Raw artifact SHA256:
+`cab5a5e87f0e81fb9266c9f7c227be439713b7cc7623217a417936c69bf44fdb`.
+
+Resolve that remaining concern before proposing adoption: local diagnostic
+`ce05-scalar-gc.py`, SHA256
+`74827bf3289206df30553f581ba5891704f3694b1b1282de7aed38030f08764f`,
+measures per-copy CPU (five rounds of 10,000 copies) and repeats full warmed
+reads at 1k/5k with explicit collection **before** each sample, outside timing.
+GC remains enabled while reads execute; record collection generation/duration
+with callbacks. Twelve 1k and six 5k samples per mode alternate order. This is
+a separately labeled diagnostic condition, not a replacement of the original
+mixed results and not a request to change production GC settings. The existing
+source write lease is unchanged; pin this update before running.
+
+```bash
+"$DM_PY" "$DM_EVIDENCE/ce05-scalar-gc.py"
+```
+
 Every deterministic candidate retains evidence/qualifiers and output digest
 parity, fresh source admission and withdrawal at the same graph revision,
 scope/caller isolation, profile compatibility and historical identity. Exercise
