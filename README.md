@@ -25,9 +25,9 @@ DungeonMind has crossed the boundary from architecture experiment to independent
 
 A real external consumer, DungeonMindBuddy, has migrated the Eldyrwild World Graph authority into DungeonMind/PostgreSQL and proven a current-client read contract against DungeonMind-native semantics. The adopted world has immutable published revisions, a living PostgreSQL head, governed post-adoption publication, exact historical pinning, GM/PLAYER admissibility, campaign and cross-campaign projection, native lookup/search/neighborhood/evidence retrieval, and source-anchor derivation/revalidation.
 
-The current active library lane is **R.3a — native World Graph read optimization**. The semantics are accepted; the remaining blocker to switching DungeonMindBuddy from its temporary hydrated read bridge to direct native reads is performance. The R.3 real-world witness measured roughly 20.7s for a direct projection versus roughly 1.7s for the hydrated compatibility path. R.3a must improve the native implementation without changing the accepted result contract.
+The current measurement lane is **quality-preserving compute efficiency on the classic World Graph route**. R.3a is completed historical work, and Buddy retired its direct-read rollout toggle. Buddy's inspected direct adapter constructs classic projection/retrieval services; its accepted native-vNext complete-object adapter remains a dormant integration proof. A library `main` ref is not proof of which code a serving process runs.
 
-The production direct-read rollout flag is owned by DungeonMindBuddy and remains default-off until that optimization is accepted. That rollout state is a client integration concern, not a second DungeonMind authority.
+Core #130–#133 already reduce copying, publication-ancestry reconstruction, review-child queries, and repeated reviewed-source preparation. Reviewed-source sessions reuse one coherent acquisition context and close before provider dispatch. They do not cache admission across turns. See the [executable experiment plan and register](Docs/Plans/PLAN-compute-efficiency-experiments.md) for current code pins, confirmed findings, measurement commands, and consumer boundaries. Future vNext migration and V11 acceptance remain separate roadmap gates.
 
 ## Library boundary
 
@@ -67,7 +67,7 @@ The first real consumer pressure produced evidence that several core abstraction
 
 The cutover also exposed the next design questions:
 
-- native read performance needs a coherent reusable read context;
+- remaining classic-route work needs measured resource lifetimes and less repeated preparation; coherent read contexts and operation-local reviewed-source reuse already exist;
 - source/provenance state means an authorized projection cannot be cached safely by graph revision alone;
 - some founding-era MindTurn/agent/context machinery may not belong in the long-term independent library and will be evaluated rather than grandfathered in;
 - extensibility must be demonstrated by additional consumers and profile pressure, not claimed from abstraction shape alone.

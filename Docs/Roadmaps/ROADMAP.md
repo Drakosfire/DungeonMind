@@ -1,28 +1,41 @@
 # DungeonMind — vNext Governed Knowledge Roadmap
 
 **Status:** current forward roadmap  
-**Updated:** 2026-09-29
+**Updated:** 2026-10-17 (current-route efficiency amendment; vNext gates unchanged)
 **Main re-anchor used for this amendment:** DungeonMind remote `main` at PR #94 merge (`19b9e8d71635d8736e9ad5f0db3aa075f635d510`); PRIME Cycle 2 PASS `5346386227` accepts the V7 activation-gate amendment as reviewable, not as gate satisfaction or implementation authority. PR #93's `PARTIAL_MEMORY_BASELINE_THROUGH_10K` remains accepted; 50k/100k remain deferred, PostgreSQL remains inactive, and V7 implementation remains blocked
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
 This document replaces the earlier L.1–L.6 forward lanes as the canonical execution roadmap.
 
-## Current priority — reviewed-source read efficiency, 2026-10-16
+## Current priority — compute efficiency on the current route, 2026-10-17
 
-Operator priority is MIND retrieval efficiency before further Agent inference.
-PR #130 merged at `c5784612e4c3315919864564a33b3fc265018077`: removing a redundant
-fresh-record copy preserved complete evidence and reduced fixed Float/Council
-acquisition by about 19.5%/23.1% in one paired pass. It did not remove repeated
-ancestry scans. The active bounded successor is
-[operation-local verified publication ancestry](../Plans/HANDOFF-MIND-verified-publication-ancestry.md).
-Reuse exact verified revisions/reviews within one coherent read transaction;
-retain all integrity and source/scope checks. Compare live evidence hashes and
-query/connection/reconstruction work without model calls. No serving adoption,
-new migration or global admitted-result cache is implied. Buddy's Jev controller
-and one-shot writer are consumers; ordinary integration follows accepted MIND
-performance evidence. The existing structural performance architecture remains
-binding. This does not activate unfinished V7/V8/V11 cutover gates.
+MIND owns Core measurement, optimization sequencing and implementation under the
+[compute-efficiency plan/register](../Plans/PLAN-compute-efficiency-experiments.md).
+Its inspected baseline is remote `main@632468ac43d8b321bf5379589a737aede9d7327c`.
+Core #130, #131, #132 and #133 are merged: fresh-record ownership, coherent
+verified publication ancestry, paired review-child reads and an operation-local
+reviewed-source session are existing baseline capabilities. Their handoffs are
+evidence, not an unimplemented successor queue. Buddy #1340 consumes sessions
+within one acquisition wave; resource lifetime outside that wave is a measured
+question, not permission for cross-turn admission caching.
+
+Sequence: correlate the current classic read baseline; prove source freshness
+and caller isolation; measure compatible parse/resource lifetime and connection
+reuse; remove remaining duplicate reconstruction; measure copying,
+serialization/materialization and write amplification; consider concurrency or
+storage only when the results justify them. Preserve evidence, qualification,
+scope, corruption detection and historical identity before claiming a gain.
+
+The [pinned research and assignment](https://github.com/Drakosfire/DungeonOverMind/blob/8057603f5779b71969ac0da720f4423e7a67b974/Docs/Plans/HANDOFF-MIND-compute-efficiency.md)
+authorizes this current-route program. Buddy owns Jev/context/writer policy and
+serving adoption; GE owns provider execution; ARCHITECTURE reviews; PRIME merges.
+MIND also owns knowledge-side publication/provenance/history dependencies for
+Mirathorn and later World/campaign continuity. Complete product acceptance still
+requires saved-source ingestion, reviewed publication, useful cited answers,
+restart and historical reads after edits, and operator inspection. The current
+Buddy Council context refusal is a Buddy-owned issue, not measured Core SQL
+latency. This amendment neither activates nor waives V7–V11.
 
 ## Historical activation checkpoint — 2026-09-29
 
