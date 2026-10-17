@@ -1,6 +1,6 @@
 # DungeonMind — Post-vNext Performance Roadmap
 
-**Status:** BLOCKED for the post-vNext successor — activates after V11 accepts the post-cutover baseline  
+**Status:** BLOCKED for the post-vNext successor — activates after V11 accepts the post-cutover baseline
 **Predecessor exit:** `POST_CUTOVER_PERFORMANCE_BASELINE_ACCEPTED` and `VNEXT_ROADMAP_COMPLETE`  
 **First phase:** O1 — Hot-path work elimination
 
