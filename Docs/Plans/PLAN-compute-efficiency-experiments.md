@@ -192,6 +192,39 @@ Exclusive candidate write set, if measurement supports implementation:
 new `tests/unit/test_evidence_record_copy.py`, and this register. No contract,
 namespace, source-artifact, repository, dependency, publication or runtime change.
 
+#### PR #136 CI repair rebrief — 2026-10-17
+
+Before further edits, extend this slice's exclusive write lease by exactly
+`tests/unit/test_vnext_legacy_compatibility.py` (six paths total). PRIME concurs
+with ARCHITECTURE's bounded guard re-anchor. CI run `39063010738` on
+`4d782d68e3729e531782305c513e01d5c7494c38` reported 2474 passed, 8 skipped,
+and five failures rooted in the historical-reader content guard, including
+subprocess witnesses. Integration, benchmark smoke, lint and type checks passed.
+
+Retain every manifest member and the exact digest guard. Re-anchor only the two
+intentionally changed current classic files: `graph_snapshot.py` from
+`8d0fb363e27ac78004fe8a0f2b11916b72a4b41ea9b53e536c588c5927a42fa7` to
+`efc79dbe4bf3391dc7bbc2bf43e7789a62430c6f85aa6ee1ef2b4e431131300a`
+(guarded scalar evidence-copy helper), and `graph_scope.py` from
+`94d4c57306df85ee900f6723e09236da4279b13546dd845e47fdd6ff99108da2` to
+`329e1b617d82d193952579cb7d001dcf71c880af3972e9eb111c616e82395a16`
+(three evidence-copy call sites). These are nonsemantic isolation changes;
+historical v1-v6 parser implementations and compatibility identities remain
+unchanged. Verify every manifest member, the legacy compatibility/read-context/
+entity suites with subprocess witnesses, and existing read/provenance/isolation
+gates. The prior independent PASS does not cover this repair: request a new
+exact-head cumulative review and require applicable CI before merge. This repair
+is not product-latency evidence and does not authorize runtime adoption.
+
+Repair validation: the complete legacy compatibility, vNext read-context/entity
+and evidence-copy suites passed (255 tests, including subprocess witnesses).
+The scoped current read-context/observability, reviewed-source-session,
+scope/provenance and genesis cohort also passed (105 tests). Ruff on the modified
+test and `git diff --check` passed. An earlier invocation used nonexistent test
+filenames and exited 4 before running tests; corrected paths were discovered
+from the repository, not treated as a passing result. Updated CI and independent
+exact-head review remain required.
+
 Before production edits, run the local experiment-only `EvidenceRefV2.model_copy`
 patch with exact-type/scalar/private/extra guards. Script in task scratch:
 `ce05-scalar-evidence.py`, SHA256
