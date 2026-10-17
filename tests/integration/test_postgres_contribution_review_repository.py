@@ -293,3 +293,91 @@ def test_postgres_review_reload_detects_record_and_child_corruption(pg) -> None:
         )
     with pytest.raises(PersistenceIntegrityError):
         pg.contribution_reviews.get(intent.world_id, state.record.review_id)
+
+
+@pytest.fixture
+def finalized_review(pg):
+    intent = _intent()
+    _publish_fixture_revision(pg)
+    return finalize_contribution_review(
+        _submission(intent),
+        capability_policy=_policy(intent),
+        world_graph_repository=pg.world_graph,
+        review_repository=pg.contribution_reviews,
+    )
+
+
+def test_review_reload_reads_both_children_in_one_query(pg, finalized_review, monkeypatch):
+    from psycopg import Connection
+
+    queries = []
+    original = Connection.execute
+
+    def execute(conn, query, *args, **kwargs):
+        text = query.as_string(conn) if hasattr(query, "as_string") else str(query)
+        if "SELECT" in text and ".graph_contributions" in text:
+            queries.append(text)
+        return original(conn, query, *args, **kwargs)
+
+    monkeypatch.setattr(Connection, "execute", execute)
+    record = finalized_review.record
+    loaded = pg.contribution_reviews.get(record.world_id, record.review_id)
+    assert loaded == finalized_review
+    assert len(queries) == 1 and "ANY" in queries[0]
+    loaded.candidate_contribution.assertions.clear()
+    loaded.reviewed_contribution.assertions.clear()
+    assert pg.contribution_reviews.get(record.world_id, record.review_id) == finalized_review
+
+
+@pytest.mark.parametrize("position", ["candidate", "reviewed"])
+def test_review_batch_rejects_corrupt_child(pg, finalized_review, position):
+    child = getattr(finalized_review, position + "_contribution")
+    with pg.database.transaction() as conn:
+        conn.execute(
+            "UPDATE dungeonmind.graph_contributions SET record_fingerprint='bad' "
+            "WHERE world_id=%s AND contribution_id=%s",
+            (child.world_id, child.contribution_id),
+        )
+    with pytest.raises(PersistenceIntegrityError, match="failed reconstruction"):
+        pg.contribution_reviews.get(child.world_id, finalized_review.record.review_id)
+
+
+@pytest.mark.parametrize("position", ["candidate", "reviewed", "foreign_world"])
+def test_review_child_batch_rejects_missing_and_foreign_children(pg, finalized_review, position):
+    from dungeonmind.infrastructure.postgres.records import _get_review_contribution_pair
+
+    record = finalized_review.record
+    with (
+        pg.database.transaction() as conn,
+        pytest.raises(PersistenceIntegrityError, match="is missing"),
+    ):
+        _get_review_contribution_pair(
+            conn,
+            world_id="world:foreign" if position == "foreign_world" else record.world_id,
+            candidate_id=(
+                "missing" if position == "candidate" else record.stored_candidate_contribution_id
+            ),
+            reviewed_id="missing" if position == "reviewed" else record.reviewed_contribution_id,
+        )
+
+
+def test_review_child_pair_preserves_order_and_repeated_id_isolation(pg, finalized_review):
+    from dungeonmind.infrastructure.postgres.records import _get_review_contribution_pair
+
+    record = finalized_review.record
+    with pg.database.transaction() as conn:
+        left, right = _get_review_contribution_pair(
+            conn, world_id=record.world_id,
+            candidate_id=record.reviewed_contribution_id,
+            reviewed_id=record.stored_candidate_contribution_id,
+        )
+        assert left == finalized_review.reviewed_contribution
+        assert right == finalized_review.candidate_contribution
+        first, second = _get_review_contribution_pair(
+            conn, world_id=record.world_id,
+            candidate_id=record.stored_candidate_contribution_id,
+            reviewed_id=record.stored_candidate_contribution_id,
+        )
+        assert first == second == finalized_review.candidate_contribution
+        first.assertions.clear()
+        assert second == finalized_review.candidate_contribution

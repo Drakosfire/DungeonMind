@@ -365,64 +365,6 @@ def _load_contribution_in_transaction(
     return _return_contribution(row)
 
 
-def _get_contribution_in_transaction(
-    conn: Any,
-    *,
-    world_id: str,
-    contribution_id: str,
-) -> GraphContribution:
-    row = conn.execute(
-        sql.SQL(
-            f"""
-            SELECT {_CONTRIBUTION_SELECT}
-            FROM {{}}.graph_contributions
-            WHERE world_id = %s AND contribution_id = %s
-            """
-        ).format(sql.Identifier(SCHEMA)),
-        (world_id, contribution_id),
-    ).fetchone()
-    if row is None:
-        raise PersistenceIntegrityError(f"review contribution child {contribution_id!r} is missing")
-    try:
-        loaded = _return_contribution(row)
-    except PersistenceIntegrityError:
-        raise PersistenceIntegrityError(
-            f"review contribution child {contribution_id!r} failed reconstruction"
-        ) from None
-    if not isinstance(loaded, GraphContribution):
-        raise PersistenceIntegrityError(
-            f"review contribution child {contribution_id!r} is not dm_graph_contribution_v1"
-        )
-    return loaded
-
-
-def _get_contribution_in_transaction_any_schema(
-    conn: Any,
-    *,
-    world_id: str,
-    contribution_id: str,
-) -> DurableGraphContribution:
-    """Load one review contribution child of either contribution generation."""
-    row = conn.execute(
-        sql.SQL(
-            f"""
-            SELECT {_CONTRIBUTION_SELECT}
-            FROM {{}}.graph_contributions
-            WHERE world_id = %s AND contribution_id = %s
-            """
-        ).format(sql.Identifier(SCHEMA)),
-        (world_id, contribution_id),
-    ).fetchone()
-    if row is None:
-        raise PersistenceIntegrityError(f"review contribution child {contribution_id!r} is missing")
-    try:
-        return _return_contribution(row)
-    except PersistenceIntegrityError:
-        raise PersistenceIntegrityError(
-            f"review contribution child {contribution_id!r} failed reconstruction"
-        ) from None
-
-
 def _return_review_record(
     row: dict[str, Any],
 ) -> ContributionReviewRecord | ContributionReviewRecordV2 | ContributionReviewRecordV3:
@@ -473,22 +415,52 @@ def _return_review_record(
     return record
 
 
+def _get_review_contribution_pair(
+    conn: Any,
+    *,
+    world_id: str,
+    candidate_id: str,
+    reviewed_id: str,
+) -> tuple[DurableGraphContribution, DurableGraphContribution]:
+    """Load the two exact review children together; never share reconstructed models."""
+    rows = conn.execute(
+        sql.SQL(
+            f"SELECT {_CONTRIBUTION_SELECT} FROM {{}}.graph_contributions "
+            "WHERE world_id = %s AND contribution_id = ANY(%s)"
+        ).format(sql.Identifier(SCHEMA)),
+        (world_id, [candidate_id, reviewed_id]),
+    ).fetchall()
+    by_id = {row["contribution_id"]: row for row in rows}
+
+    def child(contribution_id: str) -> DurableGraphContribution:
+        row = by_id.get(contribution_id)
+        if row is None:
+            raise PersistenceIntegrityError(
+                f"review contribution child {contribution_id!r} is missing"
+            )
+        try:
+            return _return_contribution(row)
+        except PersistenceIntegrityError:
+            raise PersistenceIntegrityError(
+                f"review contribution child {contribution_id!r} failed reconstruction"
+            ) from None
+
+    # Preserve the two independently owned slots, including the repeated-ID case.
+    return child(candidate_id), child(reviewed_id)
+
+
 def _return_review_state(
     conn: Any,
     row: dict[str, Any],
 ) -> DurableContributionReviewState:
     record = _return_review_record(row)
+    candidate, reviewed = _get_review_contribution_pair(
+        conn,
+        world_id=record.world_id,
+        candidate_id=record.stored_candidate_contribution_id,
+        reviewed_id=record.reviewed_contribution_id,
+    )
     if isinstance(record, ContributionReviewRecordV3):
-        candidate = _get_contribution_in_transaction_any_schema(
-            conn,
-            world_id=record.world_id,
-            contribution_id=record.stored_candidate_contribution_id,
-        )
-        reviewed = _get_contribution_in_transaction_any_schema(
-            conn,
-            world_id=record.world_id,
-            contribution_id=record.reviewed_contribution_id,
-        )
         if not isinstance(candidate, GraphContributionV3) or not isinstance(
             reviewed, GraphContributionV3
         ):
@@ -506,16 +478,6 @@ def _return_review_state(
                 f"review {record.review_id!r} failed cross-record reconstruction"
             ) from None
     if isinstance(record, ContributionReviewRecordV2):
-        candidate = _get_contribution_in_transaction_any_schema(
-            conn,
-            world_id=record.world_id,
-            contribution_id=record.stored_candidate_contribution_id,
-        )
-        reviewed = _get_contribution_in_transaction_any_schema(
-            conn,
-            world_id=record.world_id,
-            contribution_id=record.reviewed_contribution_id,
-        )
         if not isinstance(candidate, GraphContributionV2) or not isinstance(
             reviewed, GraphContributionV2
         ):
@@ -532,16 +494,16 @@ def _return_review_state(
             raise PersistenceIntegrityError(
                 f"review {record.review_id!r} failed cross-record reconstruction"
             ) from None
-    candidate = _get_contribution_in_transaction(
-        conn,
-        world_id=record.world_id,
-        contribution_id=record.stored_candidate_contribution_id,
-    )
-    reviewed = _get_contribution_in_transaction(
-        conn,
-        world_id=record.world_id,
-        contribution_id=record.reviewed_contribution_id,
-    )
+    if not isinstance(candidate, GraphContribution):
+        raise PersistenceIntegrityError(
+            f"review contribution child {candidate.contribution_id!r} "
+            "is not dm_graph_contribution_v1"
+        )
+    if not isinstance(reviewed, GraphContribution):
+        raise PersistenceIntegrityError(
+            f"review contribution child {reviewed.contribution_id!r} "
+            "is not dm_graph_contribution_v1"
+        )
     try:
         return ContributionReviewState(
             record=record,
