@@ -256,6 +256,28 @@ source write lease is unchanged; pin this update before running.
 "$DM_PY" "$DM_EVIDENCE/ce05-scalar-gc.py"
 ```
 
+Diagnostic begin/end `392c4fc4a2f100ac847ec2991a683ddd5200a212`: all digests
+match. Median per-copy process CPU across five 10k-copy rounds is
+3,864.17 ns legacy versus 1,104.13 ns guarded scalar copy. Under the explicitly
+precollected, GC-enabled condition, median read wall times are 272.59→250.48 ms
+at 1k (12 samples/mode) and 2891.62→2778.17 ms at 5k (6 samples/mode); process
+CPU follows the same direction. GC callbacks cover the whole measurement call,
+including post-read digest/serialization, so their durations are diagnostic
+and must not be added to phase times or treated as an exact latency breakdown.
+The original mixed ordinary-state result remains above. No production GC
+policy changed. Artifact SHA256:
+`ace17d4e18f48411d11ce533cef5438a2aaf1819f7dfb739f3d969c3d1515fcd`.
+
+Decision: submit the narrow guarded scalar-copy implementation for independent
+review as reduced per-record CPU work with preserved model ownership. Keep
+uncertain end-to-end latency explicit. Point reads still fetch, copy and scope
+graph-sized data; the cache/resource lifetime and remaining allocations require
+separate measured work. The existing database namespace, fresh source admission,
+historical readers, integrity validation, publication and consumer runtime are
+unchanged by this candidate. Core #135 is settled at merge
+`09d0c376402343311cc56bbc2a33a11c2fd434c0`; this substantive successor carries
+the rejected whole-snapshot-copy result and the CE-03 wording clarification.
+
 Every deterministic candidate retains evidence/qualifiers and output digest
 parity, fresh source admission and withdrawal at the same graph revision,
 scope/caller isolation, profile compatibility and historical identity. Exercise
