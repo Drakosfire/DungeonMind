@@ -23,10 +23,12 @@ from ...contracts.contribution import (
     GRAPH_CONTRIBUTION_SCHEMA,
     GRAPH_CONTRIBUTION_V2_SCHEMA,
     GRAPH_CONTRIBUTION_V3_SCHEMA,
+    GRAPH_CONTRIBUTION_V4_SCHEMA,
     ContributionStatus,
     GraphContribution,
     GraphContributionV2,
     GraphContributionV3,
+    GraphContributionV4,
 )
 from ...contracts.contribution_review import (
     CONTRIBUTION_REVIEW_RECORD_SCHEMA,
@@ -44,6 +46,12 @@ from ...contracts.contribution_review_v3 import (
     ContributionReviewRecordV3,
     ContributionReviewStateV3,
     GuardedContributionReviewRecordV3,
+)
+from ...contracts.contribution_review_v4 import (
+    CONTRIBUTION_REVIEW_RECORD_V4_SCHEMA,
+    ContributionReviewRecordV4,
+    ContributionReviewStateV4,
+    GuardedContributionReviewRecordV4,
 )
 from ...contracts.evidence import (
     SOURCE_ARTIFACT_SCHEMA,
@@ -152,6 +160,8 @@ def _return_contribution(row: dict[str, Any]) -> DurableGraphContribution:
         model_type: type[DurableGraphContribution] = GraphContribution
     elif schema_version == GRAPH_CONTRIBUTION_V2_SCHEMA:
         model_type = GraphContributionV2
+    elif schema_version == GRAPH_CONTRIBUTION_V4_SCHEMA:
+        model_type = GraphContributionV4
     elif schema_version == GRAPH_CONTRIBUTION_V3_SCHEMA:
         model_type = GraphContributionV3
     else:
@@ -379,6 +389,12 @@ def _return_review_record(
             if "reviewed_identity_preconditions" in row["payload"]
             else ContributionReviewRecordV2
         )
+    elif schema_version == CONTRIBUTION_REVIEW_RECORD_V4_SCHEMA:
+        model_type = (
+            GuardedContributionReviewRecordV4
+            if "reviewed_identity_preconditions" in row["payload"]
+            else ContributionReviewRecordV4
+        )
     elif schema_version == CONTRIBUTION_REVIEW_RECORD_V3_SCHEMA:
         model_type = (
             GuardedContributionReviewRecordV3
@@ -460,6 +476,23 @@ def _return_review_state(
         candidate_id=record.stored_candidate_contribution_id,
         reviewed_id=record.reviewed_contribution_id,
     )
+    if isinstance(record, ContributionReviewRecordV4):
+        if not isinstance(candidate, GraphContributionV4) or not isinstance(
+            reviewed, GraphContributionV4
+        ):
+            raise PersistenceIntegrityError(
+                f"review {record.review_id!r} received a non-v4 contribution"
+            )
+        try:
+            return ContributionReviewStateV4(
+                record=record,
+                candidate_contribution=candidate,
+                reviewed_contribution=reviewed,
+            )
+        except ValidationError:
+            raise PersistenceIntegrityError(
+                f"review {record.review_id!r} failed cross-record reconstruction"
+            ) from None
     if isinstance(record, ContributionReviewRecordV3):
         if not isinstance(candidate, GraphContributionV3) or not isinstance(
             reviewed, GraphContributionV3
@@ -688,9 +721,14 @@ class PostgresContributionReviewRepository:
 
     def finalize(self, state: DurableContributionReviewState) -> DurableContributionReviewState:
         try:
+            if isinstance(state, ContributionReviewStateV4):
+                GraphContributionV4.model_validate(state.candidate_contribution)
+                GraphContributionV4.model_validate(state.reviewed_contribution)
             dumped = state.model_dump(mode="json")
             validated: DurableContributionReviewState = (
-                ContributionReviewStateV3.model_validate(dumped)
+                ContributionReviewStateV4.model_validate(dumped)
+                if isinstance(state, ContributionReviewStateV4)
+                else ContributionReviewStateV3.model_validate(dumped)
                 if isinstance(state, ContributionReviewStateV3)
                 else ContributionReviewStateV2.model_validate(dumped)
                 if isinstance(state, ContributionReviewStateV2)

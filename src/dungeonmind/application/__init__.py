@@ -15,6 +15,7 @@ from .contribution_review_v3 import (
     finalize_contribution_review_v3,
     load_contribution_review_v3,
 )
+from .contribution_review_v4 import finalize_contribution_review_v4, load_contribution_review_v4
 from .existing_world_adoption import adopt_existing_world
 from .existing_world_adoption_repair import (
     repair_existing_world_adoption_source_classification,
@@ -57,6 +58,7 @@ from .review_materialization import (
     FinalizedReviewGraphMaterialization,
     materialize_finalized_review,
 )
+from .review_materialization_v4 import materialize_finalized_review_v4
 from .review_materialization_v6 import materialize_finalized_review_v6
 from .review_publication import (
     FinalizedReviewPublication,
@@ -212,4 +214,10 @@ __all__ = [
     "publish_identity_reconciliation",
     "query_fictional_time_shadow_at_revision",
     "repair_existing_world_adoption_source_classification",
+]
+
+__all__ += [
+    "finalize_contribution_review_v4",
+    "load_contribution_review_v4",
+    "materialize_finalized_review_v4",
 ]

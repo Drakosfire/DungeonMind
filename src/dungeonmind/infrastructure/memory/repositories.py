@@ -62,6 +62,7 @@ from ...contracts.contribution import (
     GraphContribution,
     GraphContributionV2,
     GraphContributionV3,
+    GraphContributionV4,
 )
 from ...contracts.contribution_review import (
     ContributionReviewRecord,
@@ -75,6 +76,10 @@ from ...contracts.contribution_review_v2 import (
 from ...contracts.contribution_review_v3 import (
     ContributionReviewRecordV3,
     ContributionReviewStateV3,
+)
+from ...contracts.contribution_review_v4 import (
+    ContributionReviewRecordV4,
+    ContributionReviewStateV4,
 )
 from ...contracts.evidence import SourceArtifactRecord, SourceArtifactV2, SourceRevision
 from ...contracts.existing_world_adoption import (
@@ -395,6 +400,18 @@ class InMemoryContributionReviewRepository:
                 f"review {record.review_id!r} is missing a contribution child"
             )
         try:
+            if isinstance(record, ContributionReviewRecordV4):
+                if not isinstance(candidate, GraphContributionV4) or not isinstance(
+                    reviewed, GraphContributionV4
+                ):
+                    raise PersistenceIntegrityError(
+                        f"review {record.review_id!r} received a non-v4 contribution"
+                    )
+                return ContributionReviewStateV4(
+                    record=_copy(record),
+                    candidate_contribution=_copy(candidate),
+                    reviewed_contribution=_copy(reviewed),
+                )
             if isinstance(record, ContributionReviewRecordV3):
                 if not isinstance(candidate, GraphContributionV3) or not isinstance(
                     reviewed, GraphContributionV3
@@ -439,9 +456,14 @@ class InMemoryContributionReviewRepository:
 
     def finalize(self, state: DurableContributionReviewState) -> DurableContributionReviewState:
         try:
+            if isinstance(state, ContributionReviewStateV4):
+                GraphContributionV4.model_validate(state.candidate_contribution)
+                GraphContributionV4.model_validate(state.reviewed_contribution)
             dumped = state.model_dump(mode="json")
             validated: DurableContributionReviewState = (
-                ContributionReviewStateV3.model_validate(dumped)
+                ContributionReviewStateV4.model_validate(dumped)
+                if isinstance(state, ContributionReviewStateV4)
+                else ContributionReviewStateV3.model_validate(dumped)
                 if isinstance(state, ContributionReviewStateV3)
                 else ContributionReviewStateV2.model_validate(dumped)
                 if isinstance(state, ContributionReviewStateV2)
@@ -1002,6 +1024,21 @@ class InMemoryFinalizedReviewPublicationRepository:
                     world_id=world_id,
                     sources=snapshot,
                 )
+            if isinstance(state, ContributionReviewStateV4):
+                from ...application.review_materialization_v4 import (
+                    review_source_refs_v4,
+                    validate_reviewed_property_delta_v4,
+                )
+                artifact_ids, revision_ids = review_source_refs_v4(state)
+                property_sources = self._sources.get_provenance_snapshot(
+                    artifact_ids=artifact_ids, revision_ids=revision_ids) if self._sources else None
+                # Check the caller's raw literals before generic command serialization
+                # can normalize tuples/other mutated Python values into JSON.
+                validate_reviewed_property_delta_v4(state, parent=parent,
+                    graph_payload=command.graph_payload, source_snapshot=property_sources)
+                validate_reviewed_property_delta_v4(state, parent=parent,
+                    graph_payload=validated_command.graph_payload, source_snapshot=property_sources)
+
             existing_revision = self._graph._revisions.get(
                 (world_id, validated_command.expected_published_revision_id)
             )
