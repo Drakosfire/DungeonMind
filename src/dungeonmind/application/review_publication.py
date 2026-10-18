@@ -14,6 +14,7 @@ from typing import Any, NoReturn
 
 from pydantic import ValidationError
 
+from ..contracts.contribution import GraphContributionV4
 from ..contracts.contribution_review import (
     CONTRIBUTION_REVIEW_STATE_SCHEMA,
     ContributionReviewRecord,
@@ -31,6 +32,11 @@ from ..contracts.contribution_review_v3 import (
     ContributionReviewRecordV3,
     ContributionReviewStateV3,
     GuardedContributionReviewRecordV3,
+)
+from ..contracts.contribution_review_v4 import (
+    CONTRIBUTION_REVIEW_STATE_V4_SCHEMA,
+    ContributionReviewStateV4,
+    GuardedContributionReviewRecordV4,
 )
 from ..contracts.graph import StoredGraphRevision
 from ..contracts.review_publication import (
@@ -59,6 +65,7 @@ from .review_materialization import (
     FinalizedReviewGraphMaterialization,
     materialize_finalized_review,
 )
+from .review_materialization_v4 import materialize_finalized_review_v4, review_source_refs_v4
 from .review_materialization_v6 import materialize_finalized_review_v6, review_source_refs_v6
 from .source_description_correction import verify_source_description_corrections
 from .source_provenance_snapshot import SourceProvenanceSnapshot
@@ -78,9 +85,14 @@ def _reload_review(
     review_id: str,
 ) -> DurableContributionReviewState:
     try:
+        if isinstance(state, ContributionReviewStateV4):
+            GraphContributionV4.model_validate(state.candidate_contribution)
+            GraphContributionV4.model_validate(state.reviewed_contribution)
         dumped = state.model_dump(mode="json")
         schema_version = dumped.get("schema_version")
-        if schema_version == CONTRIBUTION_REVIEW_STATE_V3_SCHEMA:
+        if schema_version == CONTRIBUTION_REVIEW_STATE_V4_SCHEMA:
+            reloaded = ContributionReviewStateV4.model_validate(dumped)
+        elif schema_version == CONTRIBUTION_REVIEW_STATE_V3_SCHEMA:
             reloaded: DurableContributionReviewState = ContributionReviewStateV3.model_validate(
                 dumped
             )
@@ -175,8 +187,13 @@ def publish_finalized_review(
             f"revision {expected_parent_revision_id!r} not found for world {world_id!r}"
         )
 
-    if isinstance(state, (ContributionReviewStateV2, ContributionReviewStateV3)):
-        artifact_ids, revision_ids = review_source_refs_v6(state)
+    if isinstance(state, (
+        ContributionReviewStateV2, ContributionReviewStateV3, ContributionReviewStateV4,
+    )):
+        artifact_ids, revision_ids = (
+            review_source_refs_v4(state) if isinstance(state, ContributionReviewStateV4)
+            else review_source_refs_v6(state)
+        )
         source_snapshot = publication_repository.get_provenance_snapshot(
             artifact_ids=artifact_ids,
             revision_ids=revision_ids,
@@ -185,7 +202,9 @@ def publish_finalized_review(
             state, parent=parent, world_graph=world_graph_repository,
             reviews=review_repository, publications=publication_repository,
         )
-        materialization = materialize_finalized_review_v6(
+        materializer = (materialize_finalized_review_v4
+            if isinstance(state, ContributionReviewStateV4) else materialize_finalized_review_v6)
+        materialization = materializer(
             state,
             parent=parent,
             graph_reader=graph_reader,
@@ -215,7 +234,8 @@ def publish_finalized_review(
         from ..contracts.review_publication import GuardedFinalizedReviewPublicationCommand
 
         guarded = isinstance(
-            record, (GuardedContributionReviewRecordV2, GuardedContributionReviewRecordV3)
+            record, (GuardedContributionReviewRecordV2, GuardedContributionReviewRecordV3,
+                     GuardedContributionReviewRecordV4)
         )
         command_type: Any = (
             GuardedFinalizedReviewPublicationCommand

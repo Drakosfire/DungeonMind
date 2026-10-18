@@ -16,6 +16,7 @@ from .contribution import (
     GRAPH_CONTRIBUTION_SCHEMA,
     GRAPH_CONTRIBUTION_V2_SCHEMA,
     GRAPH_CONTRIBUTION_V3_SCHEMA,
+    GRAPH_CONTRIBUTION_V4_SCHEMA,
     AcceptanceState,
     ContributionSourceKind,
     ContributionStatus,
@@ -25,8 +26,11 @@ from .contribution import (
     GraphContributionAssertionCorrectionKind,
     GraphContributionAssertionV2,
     GraphContributionAssertionV3,
+    GraphContributionAssertionV4,
     GraphContributionV2,
     GraphContributionV3,
+    GraphContributionV4,
+    ReviewedPropertyLiteralV1,
 )
 from .contribution_review import (
     COMMIT_CONFIRMATION_RECEIPT_SCHEMA,
@@ -72,6 +76,18 @@ from .contribution_review_v3 import (
     ContributionReviewRecordV3,
     ContributionReviewStateV3,
     ContributionReviewSubmissionV3,
+)
+from .contribution_review_v4 import (
+    COMMIT_CONFIRMATION_RECEIPT_V4_SCHEMA,
+    CONTRIBUTION_REVIEW_INTENT_V4_SCHEMA,
+    CONTRIBUTION_REVIEW_RECORD_V4_SCHEMA,
+    CONTRIBUTION_REVIEW_STATE_V4_SCHEMA,
+    CONTRIBUTION_REVIEW_SUBMISSION_V4_SCHEMA,
+    CommitConfirmationReceiptV4,
+    ContributionReviewIntentV4,
+    ContributionReviewRecordV4,
+    ContributionReviewStateV4,
+    ContributionReviewSubmissionV4,
 )
 from .evidence import (
     EVIDENCE_REF_SCHEMA,
@@ -493,4 +509,21 @@ __all__ = [
     "existing_world_adoption_bundle_v2_canonical_bytes",
     "new_id",
     "sha256_bytes",
+]
+
+__all__ += [
+    "COMMIT_CONFIRMATION_RECEIPT_V4_SCHEMA",
+    "CONTRIBUTION_REVIEW_INTENT_V4_SCHEMA",
+    "CONTRIBUTION_REVIEW_RECORD_V4_SCHEMA",
+    "CONTRIBUTION_REVIEW_STATE_V4_SCHEMA",
+    "CONTRIBUTION_REVIEW_SUBMISSION_V4_SCHEMA",
+    "GRAPH_CONTRIBUTION_V4_SCHEMA",
+    "CommitConfirmationReceiptV4",
+    "ContributionReviewIntentV4",
+    "ContributionReviewRecordV4",
+    "ContributionReviewStateV4",
+    "ContributionReviewSubmissionV4",
+    "GraphContributionAssertionV4",
+    "GraphContributionV4",
+    "ReviewedPropertyLiteralV1",
 ]

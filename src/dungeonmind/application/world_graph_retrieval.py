@@ -65,6 +65,10 @@ from ..contracts.contribution_review_v3 import (
     ContributionReviewStateV3,
     contribution_v3_payload_sha256,
 )
+from ..contracts.contribution_review_v4 import (
+    ContributionReviewStateV4,
+    contribution_v4_payload_sha256,
+)
 from ..contracts.evidence import (
     EvidenceRef,
     EvidenceRefV2,
@@ -1705,8 +1709,13 @@ class WorldGraphRetrievalService:
                     raise PersistenceIntegrityError(
                         "reviewed source observation review disagrees with publication"
                     )
-                if isinstance(state, (ContributionReviewStateV2, ContributionReviewStateV3)):
-                    if isinstance(state, ContributionReviewStateV3):
+                if isinstance(state, (
+                    ContributionReviewStateV2, ContributionReviewStateV3, ContributionReviewStateV4,
+                )):
+                    if isinstance(state, ContributionReviewStateV4):
+                        contribution = state.reviewed_contribution
+                        digest = contribution_v4_payload_sha256(contribution)
+                    elif isinstance(state, ContributionReviewStateV3):
                         contribution = state.reviewed_contribution
                         digest = contribution_v3_payload_sha256(contribution)
                     else:
@@ -1731,7 +1740,8 @@ class WorldGraphRetrievalService:
                     )
                     for assertion in contribution.assertions:
                         node_description = (
-                            isinstance(state, ContributionReviewStateV3)
+                            isinstance(state, (ContributionReviewStateV3,
+                                               ContributionReviewStateV4))
                             and contribution.source_kind is ContributionSourceKind.EXTRACTION
                             and assertion.assertion_kind == "node"
                         )

@@ -10,12 +10,17 @@ from pydantic import ValidationError
 
 from ...application.graph_snapshot import GRAPH_SCHEMA_V6
 from ...application.repositories import VerifiedPublicationHistoryEntry
+from ...application.review_materialization_v4 import (
+    review_source_refs_v4,
+    validate_reviewed_property_delta_v4,
+)
 from ...application.review_materialization_v6 import (
     introduced_evidence_v6,
     validate_materialized_source_domains_v6,
 )
 from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
 from ...contracts.contribution_review import ContributionReviewState
+from ...contracts.contribution_review_v4 import ContributionReviewStateV4
 from ...contracts.graph import PublishRevisionCommand, StoredGraphRevision, WorldGraphRevision
 from ...contracts.review_publication import (
     FinalizedReviewPublication,
@@ -693,6 +698,9 @@ class PostgresFinalizedReviewPublicationRepository:
         self,
         command: FinalizedReviewPublicationCommand,
     ) -> FinalizedReviewPublication:
+        from ...application.review_materialization_v4 import capture_property_literals_v4
+
+        raw_literals = capture_property_literals_v4(command.graph_payload)
         validated_command = self._reload_command(command)
         with self._database.transaction() as conn:
             from ...contracts.review_publication import GuardedFinalizedReviewPublicationCommand
@@ -752,6 +760,14 @@ class PostgresFinalizedReviewPublicationRepository:
                 validate_materialized_source_domains_v6(
                     new_evidence, world_id=validated_command.world_id, sources=source_snapshot,
                 )
+
+            if isinstance(state, ContributionReviewStateV4):
+                artifact_ids, revision_ids = review_source_refs_v4(state)
+                property_sources = self._locked_source_snapshot(conn,
+                    artifact_ids=artifact_ids, revision_ids=revision_ids)
+                validate_reviewed_property_delta_v4(state, parent=parent,
+                    graph_payload=validated_command.graph_payload, source_snapshot=property_sources,
+                    raw_literals=raw_literals)
 
             existing_revision_row = _revision_row(
                 conn,
