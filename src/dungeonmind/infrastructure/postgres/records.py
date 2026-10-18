@@ -742,6 +742,10 @@ class PostgresContributionReviewRepository:
         fingerprint = model_fingerprint(record)
         with self._database.transaction() as conn:
             lock_world(conn, record.world_id, created_at=record.reviewed_at)
+            from ...application.publication_admission import profile_ref
+            from .publication_admission import record_profile_use
+
+            record_profile_use(conn, profile_ref(record.plan_ref.semantic_profile))
             if record.campaign_id is not None:
                 ensure_campaign(
                     conn,
