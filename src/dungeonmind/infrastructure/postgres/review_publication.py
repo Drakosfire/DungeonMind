@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -9,6 +10,16 @@ from psycopg import Connection, sql
 from pydantic import ValidationError
 
 from ...application.graph_snapshot import GRAPH_SCHEMA_V6
+from ...application.publication_admission import (
+    PublicationAdmissionRegistry,
+    admission_source_refs,
+    context_for,
+    denied,
+    require_command_policy,
+    verified_profile,
+    verify_receipt,
+    verify_retained_revisions,
+)
 from ...application.repositories import VerifiedPublicationHistoryEntry
 from ...application.review_materialization_v4 import (
     review_source_refs_v4,
@@ -21,12 +32,22 @@ from ...application.review_materialization_v6 import (
 from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
 from ...contracts.contribution_review import ContributionReviewState
 from ...contracts.contribution_review_v4 import ContributionReviewStateV4
+from ...contracts.evidence import SourceRevision
 from ...contracts.graph import PublishRevisionCommand, StoredGraphRevision, WorldGraphRevision
+from ...contracts.publication_admission import (
+    CONTEXT_BYTES,
+    GRAPH_BYTES,
+    PublicationAdmissionPolicyV1,
+    bounded_canonical,
+    bounded_sha256,
+)
 from ...contracts.review_publication import (
     FinalizedReviewPublication,
     FinalizedReviewPublicationCommand,
+    FinalizedReviewPublicationV2,
     decode_finalized_review_publication_command,
 )
+from ...contracts.semantic_profile import SemanticProfileRef
 from ...domain.canonical import canonical_sha256
 from ...domain.errors import (
     ContributionReviewNotFoundError,
@@ -39,6 +60,7 @@ from .graph import (
     PostgresWorldGraphRepository,
     _reconstruct_stored_revision,
 )
+from .publication_admission import PostgresPublicationAdmissionRepository, get_policy, lock_profile
 from .records import (
     _ARTIFACT_SELECT,
     _IDENTITY_SELECT,
@@ -175,9 +197,17 @@ def _return_publication(row: dict[str, Any]) -> FinalizedReviewPublication:
             "schema_version",
         )
     }
+    if row["schema_version"] == "dm_finalized_review_publication_v2" and (
+        row["payload"].get("schema_version") != row["schema_version"]
+    ):
+        denied("admission_receipt_family_missing")
     try:
         publication = reconstruct(
-            FinalizedReviewPublication,
+            (
+                FinalizedReviewPublicationV2
+                if row["schema_version"] == "dm_finalized_review_publication_v2"
+                else FinalizedReviewPublication
+            ),
             dict(row["payload"]),
             expected_fingerprint=row["record_fingerprint"],
             identity=identity,
@@ -341,10 +371,18 @@ class PostgresFinalizedReviewPublicationRepository:
         database: PostgresDatabase,
         *,
         failure_hook: Callable[[], None] | None = None,
+        admission_registry: PublicationAdmissionRegistry | None = None,
     ) -> None:
         self._database = database
         self._graph = PostgresWorldGraphRepository(database)
         self._failure_hook = failure_hook
+        self._admission_registry = admission_registry or PublicationAdmissionRegistry()
+        self._admission = PostgresPublicationAdmissionRepository(database)
+
+    def get_admission_policy(
+        self, profile_ref: SemanticProfileRef | None
+    ) -> PublicationAdmissionPolicyV1 | None:
+        return self._admission.get(profile_ref)
 
     def get_provenance_snapshot(
         self,
@@ -353,7 +391,8 @@ class PostgresFinalizedReviewPublicationRepository:
         revision_ids: Sequence[str],
     ) -> SourceProvenanceSnapshot:
         return PostgresSourceRepository(self._database).get_provenance_snapshot(
-            artifact_ids=artifact_ids, revision_ids=revision_ids,
+            artifact_ids=artifact_ids,
+            revision_ids=revision_ids,
         )
 
     @staticmethod
@@ -438,22 +477,33 @@ class PostgresFinalizedReviewPublicationRepository:
     ) -> FinalizedReviewPublication:
         publication = _return_publication(row)
         try:
-            state = (review_loader(publication.review_id) if review_loader is not None
-                     else cls._load_review(conn, world_id=publication.world_id,
-                                           review_id=publication.review_id))
+            state = (
+                review_loader(publication.review_id)
+                if review_loader is not None
+                else cls._load_review(
+                    conn, world_id=publication.world_id, review_id=publication.review_id
+                )
+            )
         except ContributionReviewNotFoundError:
             raise PersistenceIntegrityError(
                 "finalized publication references a missing review"
             ) from None
         _validate_record_review(publication, state)
-        stored = (revision_loader(publication.published_revision_id) if revision_loader is not None
-                  else cls._load_revision(conn, world_id=publication.world_id,
-                                          revision_id=publication.published_revision_id))
+        stored = (
+            revision_loader(publication.published_revision_id)
+            if revision_loader is not None
+            else cls._load_revision(
+                conn, world_id=publication.world_id, revision_id=publication.published_revision_id
+            )
+        )
         parent = (
             revision_loader(publication.expected_parent_revision_id)
-            if revision_loader is not None else cls._load_revision(
-                conn, world_id=publication.world_id,
-                revision_id=publication.expected_parent_revision_id)
+            if revision_loader is not None
+            else cls._load_revision(
+                conn,
+                world_id=publication.world_id,
+                revision_id=publication.expected_parent_revision_id,
+            )
         )
         _validate_parent_revision(
             parent,
@@ -463,6 +513,20 @@ class PostgresFinalizedReviewPublicationRepository:
             graph_payload_sha256=publication.parent_graph_payload_sha256,
         )
         _validate_record_revision(publication, stored)
+        profile = verified_profile(state, parent, stored.graph_payload)
+        verify_receipt(publication, state, parent, stored, get_policy(conn, profile))
+
+        def immutable_source_revision(revision_id: str) -> SourceRevision | None:
+            row = conn.execute(
+                sql.SQL(
+                    f"SELECT {_SOURCE_REVISION_SELECT} FROM {{}}.source_revisions "
+                    "WHERE source_revision_id=%s"
+                ).format(sql.Identifier(SCHEMA)),
+                (revision_id,),
+            ).fetchone()
+            return _return_revision(row) if row is not None else None
+
+        verify_retained_revisions(publication, immutable_source_revision)
         return publication
 
     @classmethod
@@ -471,6 +535,13 @@ class PostgresFinalizedReviewPublicationRepository:
         command: FinalizedReviewPublicationCommand,
         publication: FinalizedReviewPublication,
     ) -> None:
+        if (
+            getattr(command, "admission_policy_ref", None)
+            != getattr(publication, "admission_policy_ref", None)
+        ) or (
+            getattr(command, "validator_ref", None) != getattr(publication, "validator_ref", None)
+        ):
+            raise IdempotencyConflictError("publication admission replay differs")
         if (
             publication.world_id != command.world_id
             or publication.review_id != command.review_id
@@ -613,7 +684,8 @@ class PostgresFinalizedReviewPublicationRepository:
                 row = _publication_row(conn, world_id=world_id, published_revision_id=current)
                 publication = (
                     self._load_verified(conn, row, revision_loader=revision, review_loader=review)
-                    if row is not None else None
+                    if row is not None
+                    else None
                 )
                 state = review(publication.review_id) if publication is not None else None
                 rows.append(VerifiedPublicationHistoryEntry(stored.revision, publication, state))
@@ -701,16 +773,18 @@ class PostgresFinalizedReviewPublicationRepository:
         from ...application.review_materialization_v4 import capture_property_literals_v4
 
         raw_literals = capture_property_literals_v4(command.graph_payload)
+        try:
+            raw_graph_bytes = bounded_canonical(command.graph_payload, max_bytes=GRAPH_BYTES)
+        except (ValueError, TypeError, RecursionError):
+            raw_graph_bytes = None
+        from ...contracts.review_publication import FinalizedReviewPublicationCommandV2
+
+        if isinstance(command, FinalizedReviewPublicationCommandV2) and raw_graph_bytes is None:
+            denied("admission_context_limit_exceeded")
         validated_command = self._reload_command(command)
         with self._database.transaction() as conn:
-            from ...contracts.review_publication import GuardedFinalizedReviewPublicationCommand
-
-            if (
-                isinstance(validated_command, GuardedFinalizedReviewPublicationCommand)
-                or validated_command.graph_schema == GRAPH_SCHEMA_V6
-            ):
-                # Authority reads after the World-lock wait need a fresh statement snapshot.
-                conn.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+            # The profile fence may wait on a different World's first use.
+            conn.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
             lock_world(
                 conn,
                 validated_command.world_id,
@@ -747,6 +821,19 @@ class PostgresFinalizedReviewPublicationRepository:
                 self._validate_command_record(validated_command, existing)
                 return existing
 
+            profile = verified_profile(state, parent, validated_command.graph_payload)
+            lock_profile(conn, profile)
+            policy = get_policy(conn, profile)
+            require_command_policy(validated_command, policy)
+            if policy is not None:
+                admission_source_refs(state)
+            if policy is not None and (
+                raw_graph_bytes is None
+                or bounded_sha256(validated_command.graph_payload, max_bytes=GRAPH_BYTES)
+                != hashlib.sha256(raw_graph_bytes).hexdigest()
+            ):
+                denied("admission_context_limit_exceeded")
+
             self._validate_guard_in_transaction(conn, validated_command, parent)
 
             if validated_command.graph_schema == GRAPH_SCHEMA_V6:
@@ -754,20 +841,46 @@ class PostgresFinalizedReviewPublicationRepository:
                 source_snapshot = self._locked_source_snapshot(
                     conn,
                     artifact_ids=tuple(sorted({r.source_artifact_id for r in new_evidence})),
-                    revision_ids=tuple(sorted({r.source_revision_id for r in new_evidence
-                                               if r.source_revision_id})),
+                    revision_ids=tuple(
+                        sorted({r.source_revision_id for r in new_evidence if r.source_revision_id})
+                    ),
                 )
                 validate_materialized_source_domains_v6(
-                    new_evidence, world_id=validated_command.world_id, sources=source_snapshot,
+                    new_evidence,
+                    world_id=validated_command.world_id,
+                    sources=source_snapshot,
                 )
 
             if isinstance(state, ContributionReviewStateV4):
                 artifact_ids, revision_ids = review_source_refs_v4(state)
-                property_sources = self._locked_source_snapshot(conn,
-                    artifact_ids=artifact_ids, revision_ids=revision_ids)
-                validate_reviewed_property_delta_v4(state, parent=parent,
-                    graph_payload=validated_command.graph_payload, source_snapshot=property_sources,
-                    raw_literals=raw_literals)
+                property_sources = self._locked_source_snapshot(
+                    conn, artifact_ids=artifact_ids, revision_ids=revision_ids
+                )
+                validate_reviewed_property_delta_v4(
+                    state,
+                    parent=parent,
+                    graph_payload=validated_command.graph_payload,
+                    source_snapshot=property_sources,
+                    raw_literals=raw_literals,
+                )
+
+            admission_context = None
+            if policy is not None:
+                artifact_ids, revision_ids = admission_source_refs(state)
+                sources = self._locked_source_snapshot(
+                    conn, artifact_ids=artifact_ids, revision_ids=revision_ids
+                )
+                admission_context, parent_bytes, child_bytes = context_for(
+                    state, parent, validated_command, policy, sources
+                )
+                self._admission_registry.validate(
+                    policy,
+                    bounded_canonical(
+                        admission_context.model_dump(mode="json"), max_bytes=CONTEXT_BYTES
+                    ),
+                    parent_bytes,
+                    child_bytes,
+                )
 
             existing_revision_row = _revision_row(
                 conn,
@@ -775,6 +888,8 @@ class PostgresFinalizedReviewPublicationRepository:
                 revision_id=validated_command.expected_published_revision_id,
             )
             if existing_revision_row is not None:
+                if policy is not None:
+                    denied("admission_raw_revision_adoption_forbidden")
                 existing_revision = self._load_revision(
                     conn,
                     world_id=validated_command.world_id,
@@ -805,6 +920,16 @@ class PostgresFinalizedReviewPublicationRepository:
             if self._failure_hook is not None:
                 self._failure_hook()
             publication = _record_from_revision(validated_command, revision)
+            if admission_context is not None:
+                publication = FinalizedReviewPublicationV2(
+                    **publication.model_dump(mode="python", exclude={"schema_version"}),
+                    admission_policy_ref=policy.reference,
+                    validator_ref=policy.validator_ref,
+                    admission_context=admission_context,
+                    admission_context_sha256=bounded_sha256(
+                        admission_context.model_dump(mode="json"), max_bytes=CONTEXT_BYTES
+                    ),
+                )
             row = self._insert_publication(conn, publication)
             if self._failure_hook is not None:
                 self._failure_hook()

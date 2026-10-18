@@ -32,6 +32,11 @@ from .graph_snapshot import (
 )
 from .mind_turn import FixedClock, MindTurnService
 from .parsed_revision_cache import ParsedImmutableRevisionCache
+from .publication_admission import (
+    InMemoryPublicationAdmissionRepository,
+    PublicationAdmissionRegistry,
+    PublicationAdmissionValidator,
+)
 from .publication_history import (
     HistoricalReviewPublication,
     PublicationHistory,
@@ -46,6 +51,7 @@ from .repositories import (
     FinalizedReviewPublicationRepository,
     IdentityDecisionRepository,
     MindThreadRepository,
+    PublicationAdmissionPolicyRepository,
     RetrievalSessionRepository,
     ReviewedWorldInitializationRepository,
     SemanticDocumentRepository,
@@ -148,6 +154,7 @@ __all__ = [
     "HistoricalReviewPublication",
     "IdentityDecisionRepository",
     "IdentityReconciliationPublicationResult",
+    "InMemoryPublicationAdmissionRepository",
     "MindThreadRepository",
     "MindTurnService",
     "NeighborhoodResult",
@@ -156,6 +163,9 @@ __all__ = [
     "ParsedImmutableRevisionCache",
     "PhaseRecorder",
     "ProjectionClock",
+    "PublicationAdmissionPolicyRepository",
+    "PublicationAdmissionRegistry",
+    "PublicationAdmissionValidator",
     "PublicationHistory",
     "QueryEmbeddingProvider",
     "RecapContextSectionSelectorV1",

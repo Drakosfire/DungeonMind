@@ -10,7 +10,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..contracts.review_publication import FinalizedReviewPublication
+from ..contracts.review_publication import (
+    FinalizedReviewPublication,
+    decode_finalized_review_publication,
+    publication_record_payload,
+)
 from ..domain.canonical import canonical_sha256
 from ..domain.errors import PersistenceIntegrityError
 from .repositories import (
@@ -67,9 +71,15 @@ def discover_review_publications(
     Exact selectors must be derived by the owning consumer, not treated as access
     authorization. Ordinary API capability/World access checks remain upstream.
     """
-    if any(not value.strip() for value in (
-        world_id, revision_id, reviewer_id, source_plan_schema,
-    )):
+    if any(
+        not value.strip()
+        for value in (
+            world_id,
+            revision_id,
+            reviewer_id,
+            source_plan_schema,
+        )
+    ):
         raise ValueError("publication history requires nonblank exact selectors")
 
     visited: set[str] = set()
@@ -89,10 +99,14 @@ def discover_review_publications(
             revision.world_id != world_id
             or revision.revision_id != current_id
             or canonical_sha256(stored.graph_payload) != revision.graph_payload_sha256
-            or (expected_parent_digest is not None
-                and revision.graph_payload_sha256 != expected_parent_digest)
-            or (expected_parent_schema is not None
-                and revision.graph_schema != expected_parent_schema)
+            or (
+                expected_parent_digest is not None
+                and revision.graph_payload_sha256 != expected_parent_digest
+            )
+            or (
+                expected_parent_schema is not None
+                and revision.graph_schema != expected_parent_schema
+            )
         ):
             raise PersistenceIntegrityError("publication history revision binding disagrees")
 
@@ -100,8 +114,8 @@ def discover_review_publications(
         expected_parent_digest = None
         expected_parent_schema = None
         if publication is not None:
-            publication = FinalizedReviewPublication.model_validate(
-                publication.model_dump(mode="json")
+            publication = decode_finalized_review_publication(
+                publication_record_payload(publication)
             )
             if (
                 publication.world_id != world_id

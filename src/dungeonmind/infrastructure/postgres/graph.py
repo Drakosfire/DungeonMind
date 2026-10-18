@@ -111,6 +111,11 @@ class PostgresWorldGraphRepository:
         if not world_locked:
             lock_world(conn, command.world_id, created_at=command.created_at)
 
+        from ...application.publication_admission import profile_ref
+        from .publication_admission import record_profile_use
+
+        record_profile_use(conn, profile_ref(command.graph_payload.get("semantic_profile")))
+
         head_row = conn.execute(
             sql.SQL(
                 f"""

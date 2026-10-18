@@ -59,6 +59,7 @@ from ..contracts.identity import (
     IdentityReconciliationDecision,
 )
 from ..contracts.mind_turn import MindTurnRequest, MindTurnResponse
+from ..contracts.publication_admission import PublicationAdmissionPolicyV1
 from ..contracts.retrieval import GraphRetrievalSession
 from ..contracts.review_publication import (
     FinalizedReviewPublication,
@@ -74,6 +75,7 @@ from ..contracts.semantic import (
     SemanticDocument,
     SemanticQuery,
 )
+from ..contracts.semantic_profile import SemanticProfileRef
 from ..contracts.source_admission import SourceAdmissionReceiptV1
 from ..domain.canonical import canonical_json
 from ..domain.errors import IdempotencyConflictError
@@ -85,8 +87,10 @@ DurableGraphContribution: TypeAlias = (
 DurableIdentityDecision: TypeAlias = IdentityDecisionRecord | IdentityDecisionRecordV2
 DurableIdentityHistoryRecord: TypeAlias = DurableIdentityDecision | IdentityReconciliationDecision
 DurableContributionReviewState: TypeAlias = (
-    ContributionReviewState | ContributionReviewStateV2
-    | ContributionReviewStateV3 | ContributionReviewStateV4
+    ContributionReviewState
+    | ContributionReviewStateV2
+    | ContributionReviewStateV3
+    | ContributionReviewStateV4
 )
 DurableExistingWorldAdoptionCommand: TypeAlias = (
     ExistingWorldAdoptionCommandV1 | ExistingWorldAdoptionCommandV2
@@ -97,12 +101,8 @@ DurableExistingWorldAdoptionReceipt: TypeAlias = (
     | ExistingWorldAdoptionReceiptV3
     | ExistingWorldAdoptionReceiptV4
 )
-DurableReviewedWorldInitializationCommand: TypeAlias = (
-    ReviewedWorldInitializationCommandV1
-)
-DurableReviewedWorldInitializationReceipt: TypeAlias = (
-    ReviewedWorldInitializationReceiptV1
-)
+DurableReviewedWorldInitializationCommand: TypeAlias = ReviewedWorldInitializationCommandV1
+DurableReviewedWorldInitializationReceipt: TypeAlias = ReviewedWorldInitializationReceiptV1
 
 
 def normalize_semantic_document_batch(
@@ -205,13 +205,9 @@ class ContributionReviewRepository(Protocol):
     adapter reconstructs whichever generation the durable record names.
     """
 
-    def finalize(
-        self, state: DurableContributionReviewState
-    ) -> DurableContributionReviewState: ...
+    def finalize(self, state: DurableContributionReviewState) -> DurableContributionReviewState: ...
 
-    def get(
-        self, world_id: str, review_id: str
-    ) -> DurableContributionReviewState | None: ...
+    def get(self, world_id: str, review_id: str) -> DurableContributionReviewState | None: ...
 
     def get_for_plan(
         self, world_id: str, source_plan_id: str
@@ -227,6 +223,14 @@ class VerifiedPublicationHistoryEntry:
     review: DurableContributionReviewState | None
 
 
+class PublicationAdmissionPolicyRepository(Protocol):
+    """Operator/bootstrap-only immutable registration and exact policy read."""
+
+    def get(self, ref: SemanticProfileRef | None) -> PublicationAdmissionPolicyV1 | None: ...
+
+    def register(self, policy: PublicationAdmissionPolicyV1) -> PublicationAdmissionPolicyV1: ...
+
+
 class FinalizedReviewPublicationRepository(Protocol):
     """Atomic terminal publication unit of work.
 
@@ -234,6 +238,12 @@ class FinalizedReviewPublicationRepository(Protocol):
     reconciliation, head CAS, and publication-record persistence in one store
     transaction or one shared in-memory lock.
     """
+
+    def get_admission_policy(
+        self, profile_ref: SemanticProfileRef | None
+    ) -> PublicationAdmissionPolicyV1 | None:
+        """Durable selection; owning publish rechecks under its profile fence."""
+        ...
 
     def read_verified_ancestry(
         self, world_id: str, revision_id: str
@@ -443,9 +453,7 @@ class ReviewedWorldInitializationRepository(Protocol):
         self, world_id: str, initialization_id: str
     ) -> ReviewedWorldInitializationReceiptV1 | None: ...
 
-    def get_for_world(
-        self, world_id: str
-    ) -> ReviewedWorldInitializationReceiptV1 | None: ...
+    def get_for_world(self, world_id: str) -> ReviewedWorldInitializationReceiptV1 | None: ...
 
     def list_world_ids(self) -> list[str]:
         """Read-only enumeration of worlds with an init receipt, ordered."""
@@ -479,9 +487,7 @@ class SourceRepository(Protocol):
 
     def put_revision(self, revision: SourceRevision) -> SourceRevision: ...
 
-    def get_source_admission(
-        self, admission_id: str
-    ) -> SourceAdmissionReceiptV1 | None: ...
+    def get_source_admission(self, admission_id: str) -> SourceAdmissionReceiptV1 | None: ...
 
     def admit_source_revision(
         self,

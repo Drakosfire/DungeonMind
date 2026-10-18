@@ -238,6 +238,14 @@ from .projection_v2 import (
     ScopeModeV2,
     WorldGraphProjectionRequestV2,
 )
+from .publication_admission import (
+    AdmissionCatalogRefV1,
+    AdmissionPolicyRefV1,
+    AdmissionValidatorRefV1,
+    PublicationAdmissionContextV1,
+    PublicationAdmissionPolicyV1,
+    PublicationAdmissionResultV1,
+)
 from .retrieval import (
     RETRIEVAL_SESSION_SCHEMA,
     Claim,
@@ -258,6 +266,9 @@ from .review_publication import (
     FINALIZED_REVIEW_PUBLICATION_SCHEMA,
     FinalizedReviewPublication,
     FinalizedReviewPublicationCommand,
+    FinalizedReviewPublicationCommandV2,
+    FinalizedReviewPublicationV2,
+    GuardedFinalizedReviewPublicationCommandV2,
 )
 from .review_publication_transport import (
     FINALIZED_REVIEW_PUBLICATION_REQUEST_SCHEMA,
@@ -362,6 +373,9 @@ __all__ = [
     "WORKSPACE_DOCUMENT_REF_SCHEMA",
     "AcceptanceState",
     "Admissibility",
+    "AdmissionCatalogRefV1",
+    "AdmissionPolicyRefV1",
+    "AdmissionValidatorRefV1",
     "CallerScope",
     "CandidateChannel",
     "CanonState",
@@ -441,7 +455,9 @@ __all__ = [
     "FictionalTimeUnresolvedReason",
     "FinalizedReviewPublication",
     "FinalizedReviewPublicationCommand",
+    "FinalizedReviewPublicationCommandV2",
     "FinalizedReviewPublicationRequest",
+    "FinalizedReviewPublicationV2",
     "FocusKind",
     "GraphContribution",
     "GraphContributionAssertion",
@@ -453,6 +469,7 @@ __all__ = [
     "GraphContributionV3",
     "GraphRetrievalSession",
     "GraphScope",
+    "GuardedFinalizedReviewPublicationCommandV2",
     "IdentityAliasMapRewrite",
     "IdentityDecisionKind",
     "IdentityDecisionRecord",
@@ -469,6 +486,9 @@ __all__ = [
     "ProjectionFocus",
     "ProjectionSnapshot",
     "ProjectionSnapshotV2",
+    "PublicationAdmissionContextV1",
+    "PublicationAdmissionPolicyV1",
+    "PublicationAdmissionResultV1",
     "PublishRevisionCommand",
     "ResolvedReferent",
     "RetrievalOperation",

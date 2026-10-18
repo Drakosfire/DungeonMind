@@ -370,7 +370,15 @@ def test_public_seam_accepts_only_durable_review_identifiers() -> None:
         "world_graph_repository",
         "publication_repository",
         "graph_reader",
+        "allowed_receipt_schemas",
     }
+    ceiling = inspect.signature(publish_finalized_review).parameters["allowed_receipt_schemas"]
+    assert ceiling.kind is inspect.Parameter.KEYWORD_ONLY
+    assert type(ceiling.default) is frozenset
+    assert ceiling.default == frozenset({
+        "dm_finalized_review_publication_v1",
+        "dm_finalized_review_publication_v2",
+    })
     assert not names & {
         "state",
         "contribution",
@@ -872,6 +880,7 @@ def test_failed_world_rollback_preserves_concurrent_other_world_commit() -> None
                 confirmation_id=base_record.confirmation_id,
                 operation_id=base_record.operation_id,
                 plan_ref=SimpleNamespace(
+                    semantic_profile=base_record.plan_ref.semantic_profile,
                     expected_parent_revision_id=parent_ids[world_id],
                     base_graph_payload_sha256=base_record.plan_ref.base_graph_payload_sha256,
                     base_graph_schema=base_record.plan_ref.base_graph_schema,

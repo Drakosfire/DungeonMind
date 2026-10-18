@@ -40,7 +40,12 @@ from ..contracts.world_campaign_ingest_context import (
     WorldCampaignIngestContextRequestV1,
     WorldCampaignIngestContextV1,
 )
-from ..domain.errors import DungeonMindError, PersistenceIntegrityError, PersistenceUnavailableError
+from ..domain.errors import (
+    CapabilityDeniedError,
+    DungeonMindError,
+    PersistenceIntegrityError,
+    PersistenceUnavailableError,
+)
 from .demo_access import DemoAccessBinding, authorize_demo_request
 from .error_mapping import (
     error_envelope,
@@ -312,7 +317,18 @@ def create_publication_app(
             world_graph_repository=state.world_graph_repository,
             publication_repository=state.publication_repository,
             graph_reader=state.graph_reader,
+            allowed_receipt_schemas=frozenset({"dm_finalized_review_publication_v1"}),
         )
+        # This host exposes V1 only. Never inspect unsupported receipt content
+        # through serialization, strip its evidence, or relabel it as V1.
+        if (
+            type(publication) is not FinalizedReviewPublication
+            or publication.schema_version != "dm_finalized_review_publication_v1"
+        ):
+            raise CapabilityDeniedError(
+                "Publication access denied.",
+                details={"reason": "publication_receipt_transport_unsupported"},
+            )
         return JSONResponse(
             status_code=200,
             content=publication.model_dump(mode="json"),

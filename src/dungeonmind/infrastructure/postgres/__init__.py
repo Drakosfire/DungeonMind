@@ -5,9 +5,11 @@ Importing this package requires the ``postgres`` extra
 package.
 """
 
+from ...application.publication_admission import PublicationAdmissionRegistry
 from .database import PostgresDatabase
 from .existing_world_adoption import PostgresExistingWorldAdoptionRepository
 from .graph import PostgresWorldGraphRepository
+from .publication_admission import PostgresPublicationAdmissionRepository
 from .records import (
     PostgresContributionRepository,
     PostgresContributionReviewRepository,
@@ -36,6 +38,7 @@ __all__ = [
     "PostgresIdentityDecisionRepository",
     "PostgresMindThreadRepository",
     "PostgresNativeSourceEvidenceRepository",
+    "PostgresPublicationAdmissionRepository",
     "PostgresRetrievalSessionRepository",
     "PostgresReviewedWorldInitializationRepository",
     "PostgresSemanticDocumentRepository",
@@ -49,12 +52,20 @@ __all__ = [
 class PostgresRepositoryBundle:
     """Optional convenience wiring; individual repositories stay explicit."""
 
-    def __init__(self, database: PostgresDatabase) -> None:
+    def __init__(
+        self,
+        database: PostgresDatabase,
+        *,
+        admission_registry: PublicationAdmissionRegistry | None = None,
+    ) -> None:
         self.database = database
+        self.publication_admission = PostgresPublicationAdmissionRepository(database)
         self.world_graph = PostgresWorldGraphRepository(database)
         self.contributions = PostgresContributionRepository(database)
         self.contribution_reviews = PostgresContributionReviewRepository(database)
-        self.finalized_review_publications = PostgresFinalizedReviewPublicationRepository(database)
+        self.finalized_review_publications = PostgresFinalizedReviewPublicationRepository(
+            database, admission_registry=admission_registry
+        )
         self.existing_world_adoptions = PostgresExistingWorldAdoptionRepository(database)
         self.reviewed_world_initializations = PostgresReviewedWorldInitializationRepository(
             database

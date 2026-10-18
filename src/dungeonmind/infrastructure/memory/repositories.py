@@ -31,6 +31,18 @@ from ...application.existing_world_adoption_repair import (
     prepare_source_classification_repair,
 )
 from ...application.graph_snapshot import GRAPH_SCHEMA_V6
+from ...application.publication_admission import (
+    InMemoryPublicationAdmissionRepository,
+    PublicationAdmissionRegistry,
+    admission_source_refs,
+    context_for,
+    denied,
+    profile_ref,
+    require_command_policy,
+    verified_profile,
+    verify_receipt,
+    verify_retained_revisions,
+)
 from ...application.repositories import (
     DurableContributionReviewState,
     DurableExistingWorldAdoptionCommand,
@@ -103,10 +115,20 @@ from ...contracts.graph import (
 )
 from ...contracts.identity import IdentityDecisionRecord, IdentityDecisionRecordV2
 from ...contracts.mind_turn import MindTurnRequest, MindTurnResponse
+from ...contracts.publication_admission import (
+    CONTEXT_BYTES,
+    GRAPH_BYTES,
+    PublicationAdmissionPolicyV1,
+    bounded_canonical,
+    bounded_sha256,
+)
 from ...contracts.retrieval import GraphRetrievalSession
 from ...contracts.review_publication import (
     FinalizedReviewPublication,
     FinalizedReviewPublicationCommand,
+    FinalizedReviewPublicationV2,
+    decode_finalized_review_publication,
+    publication_record_payload,
 )
 from ...contracts.reviewed_world_initialization import (
     ReviewedWorldInitializationCommandV1,
@@ -120,6 +142,7 @@ from ...contracts.semantic import (
     SemanticDocument,
     SemanticQuery,
 )
+from ...contracts.semantic_profile import SemanticProfileRef
 from ...contracts.source_admission import (
     SourceAdmissionReceiptV1,
 )
@@ -189,7 +212,8 @@ def _copy(model: T) -> T:
 class InMemoryWorldGraphRepository:
     """Immutable revisions + one head per world, published by atomic CAS."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, admission: InMemoryPublicationAdmissionRepository | None = None) -> None:
+        self._admission = admission or InMemoryPublicationAdmissionRepository()
         self._revisions: dict[tuple[str, str], StoredGraphRevision] = {}
         self._heads: dict[str, WorldGraphHead] = {}
         self._locks: dict[str, threading.RLock] = {}
@@ -223,7 +247,10 @@ class InMemoryWorldGraphRepository:
             graph_schema=command.graph_schema,
             graph_payload_sha256=payload_hash,
         )
-        with self._lock_for(command.world_id):
+        with (
+            self._lock_for(command.world_id),
+            self._admission.transaction(profile_ref(command.graph_payload.get("semantic_profile"))),
+        ):
             current_head = self._heads.get(command.world_id)
             current_head_id = current_head.head_revision_id if current_head else None
             if command.expected_parent_revision_id != current_head_id:
@@ -239,6 +266,7 @@ class InMemoryWorldGraphRepository:
                     expected_parent_revision_id=command.parent_revision_id,
                     actual_head_revision_id=current_head_id,
                 )
+            self._admission.record_use(profile_ref(command.graph_payload.get("semantic_profile")))
             existing = self._revisions.get((command.world_id, revision_id))
             if existing is not None:
                 if existing.revision.graph_payload_sha256 != payload_hash:
@@ -294,7 +322,8 @@ class InMemoryWorldGraphRepository:
 
 
 class InMemoryContributionRepository:
-    def __init__(self) -> None:
+    def __init__(self, *, admission: InMemoryPublicationAdmissionRepository | None = None) -> None:
+        self._admission = admission or InMemoryPublicationAdmissionRepository()
         self._items: dict[tuple[str, str], DurableGraphContribution] = {}
         self._finalized_review_ids: set[tuple[str, str]] = set()
         self._lock = threading.RLock()
@@ -378,6 +407,7 @@ class InMemoryContributionReviewRepository:
         failure_hook: Callable[[], None] | None = None,
     ) -> None:
         self._contributions = contributions
+        self._admission = contributions._admission
         self._records: dict[
             tuple[str, str],
             ContributionReviewRecord | ContributionReviewRecordV2 | ContributionReviewRecordV3,
@@ -474,7 +504,8 @@ class InMemoryContributionReviewRepository:
                 "review state failed validation before persistence"
             ) from None
         record = validated.record
-        with self._lock:
+        with self._lock, self._admission.transaction(profile_ref(record.plan_ref.semantic_profile)):
+            self._admission.record_use(profile_ref(record.plan_ref.semantic_profile))
             existing = self._records.get((record.world_id, record.review_id))
             if existing is not None:
                 current = self._reconstruct_unlocked(existing)
@@ -573,11 +604,20 @@ class InMemoryFinalizedReviewPublicationRepository:
         world_graph_repository: InMemoryWorldGraphRepository,
         *,
         failure_hook: Callable[[], None] | None = None,
+        admission_registry: PublicationAdmissionRegistry | None = None,
         source_repository: "InMemorySourceRepository | None" = None,
         identity_repository: "InMemoryIdentityDecisionRepository | None" = None,
     ) -> None:
         self._reviews = review_repository
         self._graph = world_graph_repository
+        self._admission = self._graph._admission
+        # Historical constructor callers created the stores separately. Join
+        # their irreversible use histories before exposing the combined UoW.
+        if isinstance(review_repository, InMemoryContributionReviewRepository):
+            self._admission.join(review_repository._admission)
+            review_repository._admission = self._admission
+            review_repository._contributions._admission = self._admission
+        self._admission_registry = admission_registry or PublicationAdmissionRegistry()
         self._records_by_review: dict[tuple[str, str], FinalizedReviewPublication] = {}
         self._records_by_operation: dict[tuple[str, str], FinalizedReviewPublication] = {}
         self._records_by_revision: dict[tuple[str, str], FinalizedReviewPublication] = {}
@@ -588,6 +628,11 @@ class InMemoryFinalizedReviewPublicationRepository:
         self._identity_lock = (
             identity_repository._lock if identity_repository else threading.RLock()
         )
+
+    def get_admission_policy(
+        self, profile_ref: SemanticProfileRef | None
+    ) -> PublicationAdmissionPolicyV1 | None:
+        return self._admission.get(profile_ref)
 
     def get_provenance_snapshot(
         self,
@@ -727,6 +772,13 @@ class InMemoryFinalizedReviewPublicationRepository:
         publication: FinalizedReviewPublication,
     ) -> None:
         if (
+            getattr(command, "admission_policy_ref", None)
+            != getattr(publication, "admission_policy_ref", None)
+        ) or (
+            getattr(command, "validator_ref", None) != getattr(publication, "validator_ref", None)
+        ):
+            raise IdempotencyConflictError("publication admission replay differs")
+        if (
             publication.world_id != command.world_id
             or publication.review_id != command.review_id
             or publication.reviewed_contribution_id != command.reviewed_contribution_id
@@ -749,7 +801,7 @@ class InMemoryFinalizedReviewPublicationRepository:
         publication: FinalizedReviewPublication,
     ) -> FinalizedReviewPublication:
         try:
-            return FinalizedReviewPublication.model_validate(publication.model_dump(mode="json"))
+            return decode_finalized_review_publication(publication_record_payload(publication))
         except Exception:
             raise PersistenceIntegrityError(
                 "finalized publication record failed reconstruction"
@@ -837,6 +889,11 @@ class InMemoryFinalizedReviewPublicationRepository:
             raise PersistenceIntegrityError(
                 "finalized publication timestamp disagrees with its revision"
             )
+        profile = verified_profile(state, parent, stored.graph_payload)
+        verify_receipt(verified, state, parent, stored, self._admission.get(profile))
+        verify_retained_revisions(
+            verified, self._sources.get_revision if self._sources else lambda _: None
+        )
         return _copy(verified)
 
     def get(
@@ -941,6 +998,14 @@ class InMemoryFinalizedReviewPublicationRepository:
         from ...application.review_materialization_v4 import capture_property_literals_v4
 
         raw_literals = capture_property_literals_v4(command.graph_payload)
+        try:
+            raw_graph_bytes = bounded_canonical(command.graph_payload, max_bytes=GRAPH_BYTES)
+        except (ValueError, TypeError, RecursionError):
+            raw_graph_bytes = None
+        from ...contracts.review_publication import FinalizedReviewPublicationCommandV2
+
+        if isinstance(command, FinalizedReviewPublicationCommandV2) and raw_graph_bytes is None:
+            denied("admission_context_limit_exceeded")
         validated_command = self._reload_command(command)
         world_id = validated_command.world_id
         from contextlib import nullcontext
@@ -950,11 +1015,17 @@ class InMemoryFinalizedReviewPublicationRepository:
         guarded = isinstance(validated_command, GuardedFinalizedReviewPublicationCommand)
         source_lock = (
             self._source_lock
-            if guarded or validated_command.graph_schema == GRAPH_SCHEMA_V6
+            if guarded
+            or validated_command.graph_schema == GRAPH_SCHEMA_V6
+            or isinstance(validated_command, FinalizedReviewPublicationCommandV2)
             else nullcontext()
         )
         identity_lock = self._identity_lock if guarded else nullcontext()
-        with self._graph._lock_for(world_id), source_lock, identity_lock:
+        with (
+            self._graph._lock_for(world_id),
+            source_lock,
+            identity_lock,
+        ):
             state = self._reviews.get(world_id, validated_command.review_id)
             if state is None:
                 raise ContributionReviewNotFoundError(
@@ -983,10 +1054,20 @@ class InMemoryFinalizedReviewPublicationRepository:
                 revision_id=validated_command.expected_published_revision_id,
             )
             if existing is not None:
-                self._validate_record_review(existing, state)
+                existing = self._reconstruct_unlocked(existing)
                 self._validate_command_record(validated_command, existing)
-                return self._reconstruct_unlocked(existing)
-
+                return existing
+            profile = verified_profile(state, parent, validated_command.graph_payload)
+            policy = self._admission.get(profile)
+            require_command_policy(validated_command, policy)
+            if policy is not None:
+                admission_source_refs(state)
+            if policy is not None and (
+                raw_graph_bytes is None
+                or bounded_sha256(validated_command.graph_payload, max_bytes=GRAPH_BYTES)
+                != hashlib.sha256(raw_graph_bytes).hexdigest()
+            ):
+                denied("admission_context_limit_exceeded")
             from ...contracts.review_publication import GuardedFinalizedReviewPublicationCommand
 
             if isinstance(validated_command, GuardedFinalizedReviewPublicationCommand):
@@ -1032,17 +1113,46 @@ class InMemoryFinalizedReviewPublicationRepository:
                     review_source_refs_v4,
                     validate_reviewed_property_delta_v4,
                 )
-                artifact_ids, revision_ids = review_source_refs_v4(state)
-                property_sources = self._sources.get_provenance_snapshot(
-                    artifact_ids=artifact_ids, revision_ids=revision_ids) if self._sources else None
-                validate_reviewed_property_delta_v4(state, parent=parent,
-                    graph_payload=validated_command.graph_payload, source_snapshot=property_sources,
-                    raw_literals=raw_literals)
 
+                artifact_ids, revision_ids = review_source_refs_v4(state)
+                property_sources = (
+                    self._sources.get_provenance_snapshot(
+                        artifact_ids=artifact_ids, revision_ids=revision_ids
+                    )
+                    if self._sources
+                    else None
+                )
+                validate_reviewed_property_delta_v4(
+                    state,
+                    parent=parent,
+                    graph_payload=validated_command.graph_payload,
+                    source_snapshot=property_sources,
+                    raw_literals=raw_literals,
+                )
+
+            admission_context = None
+            if policy is not None:
+                artifact_ids, revision_ids = admission_source_refs(state)
+                sources = self.get_provenance_snapshot(
+                    artifact_ids=artifact_ids, revision_ids=revision_ids
+                )
+                admission_context, parent_bytes, child_bytes = context_for(
+                    state, parent, validated_command, policy, sources
+                )
+                self._admission_registry.validate(
+                    policy,
+                    bounded_canonical(
+                        admission_context.model_dump(mode="json"), max_bytes=CONTEXT_BYTES
+                    ),
+                    parent_bytes,
+                    child_bytes,
+                )
             existing_revision = self._graph._revisions.get(
                 (world_id, validated_command.expected_published_revision_id)
             )
             if existing_revision is not None:
+                if policy is not None:
+                    denied("admission_raw_revision_adoption_forbidden")
                 self._validate_revision(existing_revision, command=validated_command)
                 publication = self._record_from_revision(
                     validated_command,
@@ -1081,6 +1191,16 @@ class InMemoryFinalizedReviewPublicationRepository:
                 if self._failure_hook is not None:
                     self._failure_hook()
                 publication = self._record_from_revision(validated_command, revision)
+                if admission_context is not None:
+                    publication = FinalizedReviewPublicationV2(
+                        **publication.model_dump(mode="python", exclude={"schema_version"}),
+                        admission_policy_ref=policy.reference,
+                        validator_ref=policy.validator_ref,
+                        admission_context=admission_context,
+                        admission_context_sha256=bounded_sha256(
+                            admission_context.model_dump(mode="json"), max_bytes=CONTEXT_BYTES
+                        ),
+                    )
                 self._store_unlocked(publication)
                 if self._failure_hook is not None:
                     self._failure_hook()

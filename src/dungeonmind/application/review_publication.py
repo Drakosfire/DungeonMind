@@ -42,9 +42,12 @@ from ..contracts.graph import StoredGraphRevision
 from ..contracts.review_publication import (
     FinalizedReviewPublication,
     FinalizedReviewPublicationCommand,
+    decode_finalized_review_publication,
+    publication_record_payload,
 )
 from ..domain.canonical import canonical_sha256
 from ..domain.errors import (
+    CapabilityDeniedError,
     ContributionReviewNotFoundError,
     DungeonMindError,
     FinalizedReviewPublicationOutcomeUnknownError,
@@ -69,6 +72,35 @@ from .review_materialization_v4 import materialize_finalized_review_v4, review_s
 from .review_materialization_v6 import materialize_finalized_review_v6, review_source_refs_v6
 from .source_description_correction import verify_source_description_corrections
 from .source_provenance_snapshot import SourceProvenanceSnapshot
+
+_KNOWN_RECEIPT_SCHEMAS = frozenset(
+    {
+        "dm_finalized_review_publication_v1",
+        "dm_finalized_review_publication_v2",
+    }
+)
+
+
+def _transport_denied() -> NoReturn:
+    raise CapabilityDeniedError(
+        "Publication access denied.",
+        details={"reason": "publication_receipt_transport_unsupported"},
+    )
+
+
+def _validate_receipt_ceiling(allowed: frozenset[str]) -> None:
+    if (
+        type(allowed) is not frozenset
+        or not allowed
+        or any(type(schema) is not str for schema in allowed)
+        or not allowed <= _KNOWN_RECEIPT_SCHEMAS
+    ):
+        _transport_denied()
+
+
+def _require_receipt_family(schema: str, allowed: frozenset[str]) -> None:
+    if type(schema) is not str or schema not in allowed:
+        _transport_denied()
 
 
 def _integrity(reason: str) -> NoReturn:
@@ -146,9 +178,11 @@ def _reload_publication(
     *,
     world_id: str,
     review_id: str,
+    allowed_receipt_schemas: frozenset[str] = _KNOWN_RECEIPT_SCHEMAS,
 ) -> FinalizedReviewPublication:
+    _require_receipt_family(publication.schema_version, allowed_receipt_schemas)
     try:
-        reloaded = FinalizedReviewPublication.model_validate(publication.model_dump(mode="json"))
+        reloaded = decode_finalized_review_publication(publication_record_payload(publication))
     except (AttributeError, TypeError, ValidationError, ValueError):
         _integrity("publication_record_reload_validation")
     if reloaded.world_id != world_id or reloaded.review_id != review_id:
@@ -165,11 +199,18 @@ def publish_finalized_review(
     world_graph_repository: WorldGraphRepository,
     publication_repository: FinalizedReviewPublicationRepository,
     graph_reader: GraphSnapshotReader,
+    allowed_receipt_schemas: frozenset[str] = _KNOWN_RECEIPT_SCHEMAS,
 ) -> FinalizedReviewPublication:
     """Publish or exactly replay one durable finalized review."""
+    _validate_receipt_ceiling(allowed_receipt_schemas)
     existing = publication_repository.get_for_review(world_id, review_id)
     if existing is not None:
-        return _reload_publication(existing, world_id=world_id, review_id=review_id)
+        return _reload_publication(
+            existing,
+            world_id=world_id,
+            review_id=review_id,
+            allowed_receipt_schemas=allowed_receipt_schemas,
+        )
 
     stored_state = review_repository.get(world_id, review_id)
     if stored_state is None:
@@ -187,11 +228,17 @@ def publish_finalized_review(
             f"revision {expected_parent_revision_id!r} not found for world {world_id!r}"
         )
 
-    if isinstance(state, (
-        ContributionReviewStateV2, ContributionReviewStateV3, ContributionReviewStateV4,
-    )):
+    if isinstance(
+        state,
+        (
+            ContributionReviewStateV2,
+            ContributionReviewStateV3,
+            ContributionReviewStateV4,
+        ),
+    ):
         artifact_ids, revision_ids = (
-            review_source_refs_v4(state) if isinstance(state, ContributionReviewStateV4)
+            review_source_refs_v4(state)
+            if isinstance(state, ContributionReviewStateV4)
             else review_source_refs_v6(state)
         )
         source_snapshot = publication_repository.get_provenance_snapshot(
@@ -199,11 +246,17 @@ def publish_finalized_review(
             revision_ids=revision_ids,
         )
         correction_proof = verify_source_description_corrections(
-            state, parent=parent, world_graph=world_graph_repository,
-            reviews=review_repository, publications=publication_repository,
+            state,
+            parent=parent,
+            world_graph=world_graph_repository,
+            reviews=review_repository,
+            publications=publication_repository,
         )
-        materializer = (materialize_finalized_review_v4
-            if isinstance(state, ContributionReviewStateV4) else materialize_finalized_review_v6)
+        materializer = (
+            materialize_finalized_review_v4
+            if isinstance(state, ContributionReviewStateV4)
+            else materialize_finalized_review_v6
+        )
         materialization = materializer(
             state,
             parent=parent,
@@ -234,8 +287,12 @@ def publish_finalized_review(
         from ..contracts.review_publication import GuardedFinalizedReviewPublicationCommand
 
         guarded = isinstance(
-            record, (GuardedContributionReviewRecordV2, GuardedContributionReviewRecordV3,
-                     GuardedContributionReviewRecordV4)
+            record,
+            (
+                GuardedContributionReviewRecordV2,
+                GuardedContributionReviewRecordV3,
+                GuardedContributionReviewRecordV4,
+            ),
         )
         command_type: Any = (
             GuardedFinalizedReviewPublicationCommand
@@ -247,6 +304,32 @@ def publish_finalized_review(
             if guarded
             else {}
         )
+        from ..contracts.review_publication import (
+            FinalizedReviewPublicationCommandV2,
+            GuardedFinalizedReviewPublicationCommandV2,
+        )
+        from .publication_admission import verified_profile
+
+        profile = verified_profile(state, parent, payload)
+        policy_reader = getattr(publication_repository, "get_admission_policy", None)
+        # Legacy forwarding ports can still submit V1 to the owning repository;
+        # that repository independently denies V1 on a protected actual profile.
+        policy = policy_reader(profile) if policy_reader is not None else None
+        _require_receipt_family(
+            "dm_finalized_review_publication_v2"
+            if policy is not None
+            else "dm_finalized_review_publication_v1",
+            allowed_receipt_schemas,
+        )
+        if policy is not None:
+            command_type = (
+                GuardedFinalizedReviewPublicationCommandV2
+                if guarded
+                else FinalizedReviewPublicationCommandV2
+            )
+            guard_fields.update(
+                admission_policy_ref=policy.reference, validator_ref=policy.validator_ref
+            )
         command = command_type(
             **guard_fields,
             world_id=world_id,
@@ -273,6 +356,7 @@ def publish_finalized_review(
             publication,
             world_id=world_id,
             review_id=review_id,
+            allowed_receipt_schemas=allowed_receipt_schemas,
         )
     except Exception as exc:
         try:
@@ -282,6 +366,7 @@ def publish_finalized_review(
                     recovered,
                     world_id=world_id,
                     review_id=review_id,
+                    allowed_receipt_schemas=allowed_receipt_schemas,
                 )
         except Exception:
             pass
