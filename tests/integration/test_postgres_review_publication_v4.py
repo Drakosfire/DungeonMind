@@ -228,7 +228,7 @@ print('fresh-process admitted V4 property read passed')
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.parametrize("mutation", ["changed", "tuple"])
+@pytest.mark.parametrize("mutation", ["changed", "tuple", "float", "coercive_dump"])
 def test_locked_publication_rejects_changed_property_with_zero_head_revision_receipt_writes(
     pg, mutation
 ):
@@ -246,6 +246,10 @@ def test_locked_publication_rejects_changed_property_with_zero_head_revision_rec
         next(o for o in payload["objects"] if o["object_id"] == NEW_OBJECT_ID)["properties"][0][
             "value"
         ] = "tampered after review"
+    if mutation == "float":
+        next(o for o in payload["objects"] if o["object_id"] == NEW_OBJECT_ID)["properties"][0][
+            "value"
+        ]["count"] = 2.0
     digest = canonical_sha256(payload)
     record = state.record
     command = FinalizedReviewPublicationCommand(
@@ -270,7 +274,19 @@ def test_locked_publication_rejects_changed_property_with_zero_head_revision_rec
         graph_payload_sha256=digest,
         requested_published_at=f.PUBLISHED_AT,
     )
-    if mutation == "tuple":
+    if mutation in {"tuple", "coercive_dump"}:
+        if mutation == "coercive_dump":
+
+            class CoercingCommand(FinalizedReviewPublicationCommand):
+                def model_dump(self, *args, **kwargs):
+                    output = super().model_dump(*args, **kwargs)
+                    obj = next(
+                        o for o in self.graph_payload["objects"] if o["object_id"] == NEW_OBJECT_ID
+                    )
+                    obj["properties"][0]["value"]["flags"] = [True, False]
+                    return output
+
+            command = CoercingCommand.model_validate(command.model_dump(mode="python"))
         row = next(o for o in command.graph_payload["objects"] if o["object_id"] == NEW_OBJECT_ID)[
             "properties"
         ][0]
@@ -279,7 +295,9 @@ def test_locked_publication_rejects_changed_property_with_zero_head_revision_rec
     with pytest.raises(ContributionMaterializationError) as caught:
         pg.finalized_review_publications.publish(command)
     assert caught.value.details["reason"] == (
-        "property_literal_validation" if mutation == "tuple" else "reviewed_property_delta_mismatch"
+        "property_literal_validation"
+        if mutation in {"tuple", "coercive_dump"}
+        else "reviewed_property_delta_mismatch"
     )
     assert f._table_counts(pg) == before
     assert pg.world_graph.get_head(f.WORLD_ID).head_revision_id == parent.revision.revision_id

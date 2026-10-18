@@ -141,18 +141,70 @@ def _property(
     return row, evidence
 
 
+def capture_property_literals_v4(payload: dict[str, Any]) -> dict[str, dict[str, Any] | None]:
+    """Capture raw literal types BEFORE command serialization, without old-family enforcement.
+
+    Only strict JSON is serialized into the snapshot. Invalid raw values retain an
+    explicit failure marker; custom objects never get a chance to coerce themselves.
+    The publication UoW checks this snapshot only after resolving a durable V4 review.
+    """
+    captured: dict[str, dict[str, Any] | None] = {}
+    if type(payload) is not dict or type(payload.get("objects")) is not list:
+        return captured
+    try:
+        for obj in payload["objects"]:
+            if type(obj) is not dict or type(obj.get("properties", [])) is not list:
+                return {}
+            for row in obj.get("properties", []):
+                if type(row) is not dict or type(row.get("assertion_metadata")) is not dict:
+                    return {}
+                assertion_id = row["assertion_metadata"]["assertion_id"]
+                if type(assertion_id) is not str:
+                    continue
+                if assertion_id in captured:
+                    captured[assertion_id] = None
+                    continue
+                try:
+                    literal = ReviewedPropertyLiteralV1.model_validate(
+                        {
+                            "schema_version": "dm_reviewed_property_literal_v1",
+                            "property_term": row["property_term"],
+                            "value": row["value"],
+                        }
+                    )
+                    captured[assertion_id] = literal.model_dump(mode="json")
+                except (TypeError, ValueError, KeyError):
+                    captured[assertion_id] = None
+    except (TypeError, ValueError, KeyError, AttributeError):
+        return {}
+    return captured
+
+
 def validate_reviewed_property_delta_v4(
     state: ContributionReviewStateV4,
     *,
     parent: StoredGraphRevision,
     graph_payload: dict[str, Any],
     source_snapshot: SourceProvenanceSnapshot | None,
+    raw_literals: dict[str, dict[str, Any] | None] | None = None,
 ) -> None:
     """UoW re-proves exact property facts against its locked durable review/source."""
     state = reload_review_v4(state)
     _preflight(state, parent)
     _facet_ids(graph_payload)
     new_ids = {a.assertion_id for a in _accepted(state) if a.assertion_kind == "property"}
+    if raw_literals is not None:
+        for assertion in _accepted(state):
+            if assertion.assertion_kind != "property":
+                continue
+            raw = raw_literals.get(assertion.assertion_id)
+            if raw is None:
+                _fail("property_literal_validation")
+            expected_literal = parse_reviewed_property_literal(assertion.value).model_dump(
+                mode="json"
+            )
+            if canonical_sha256(raw) != canonical_sha256(expected_literal):
+                _fail("reviewed_property_delta_mismatch")
     for obj in graph_payload["objects"]:
         for row in obj.get("properties", []):
             if row["assertion_metadata"]["assertion_id"] not in new_ids:
@@ -186,7 +238,9 @@ def validate_reviewed_property_delta_v4(
         expected.setdefault(assertion.subject_object_id, []).append(row.model_dump(mode="json"))
     actual = {o["object_id"]: o.get("properties", []) for o in graph_payload["objects"]}
     for object_id in set(expected) | set(actual):
-        if actual.get(object_id, []) != expected.get(object_id, []):
+        if canonical_sha256(actual.get(object_id, [])) != canonical_sha256(
+            expected.get(object_id, [])
+        ):
             _fail("reviewed_property_delta_mismatch")
 
 

@@ -938,6 +938,9 @@ class InMemoryFinalizedReviewPublicationRepository:
         self,
         command: FinalizedReviewPublicationCommand,
     ) -> FinalizedReviewPublication:
+        from ...application.review_materialization_v4 import capture_property_literals_v4
+
+        raw_literals = capture_property_literals_v4(command.graph_payload)
         validated_command = self._reload_command(command)
         world_id = validated_command.world_id
         from contextlib import nullcontext
@@ -1032,12 +1035,9 @@ class InMemoryFinalizedReviewPublicationRepository:
                 artifact_ids, revision_ids = review_source_refs_v4(state)
                 property_sources = self._sources.get_provenance_snapshot(
                     artifact_ids=artifact_ids, revision_ids=revision_ids) if self._sources else None
-                # Check the caller's raw literals before generic command serialization
-                # can normalize tuples/other mutated Python values into JSON.
                 validate_reviewed_property_delta_v4(state, parent=parent,
-                    graph_payload=command.graph_payload, source_snapshot=property_sources)
-                validate_reviewed_property_delta_v4(state, parent=parent,
-                    graph_payload=validated_command.graph_payload, source_snapshot=property_sources)
+                    graph_payload=validated_command.graph_payload, source_snapshot=property_sources,
+                    raw_literals=raw_literals)
 
             existing_revision = self._graph._revisions.get(
                 (world_id, validated_command.expected_published_revision_id)

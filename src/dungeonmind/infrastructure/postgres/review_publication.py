@@ -698,6 +698,9 @@ class PostgresFinalizedReviewPublicationRepository:
         self,
         command: FinalizedReviewPublicationCommand,
     ) -> FinalizedReviewPublication:
+        from ...application.review_materialization_v4 import capture_property_literals_v4
+
+        raw_literals = capture_property_literals_v4(command.graph_payload)
         validated_command = self._reload_command(command)
         with self._database.transaction() as conn:
             from ...contracts.review_publication import GuardedFinalizedReviewPublicationCommand
@@ -762,12 +765,9 @@ class PostgresFinalizedReviewPublicationRepository:
                 artifact_ids, revision_ids = review_source_refs_v4(state)
                 property_sources = self._locked_source_snapshot(conn,
                     artifact_ids=artifact_ids, revision_ids=revision_ids)
-                # Check the caller's raw literals before generic command serialization
-                # can normalize tuples/other mutated Python values into JSON.
                 validate_reviewed_property_delta_v4(state, parent=parent,
-                    graph_payload=command.graph_payload, source_snapshot=property_sources)
-                validate_reviewed_property_delta_v4(state, parent=parent,
-                    graph_payload=validated_command.graph_payload, source_snapshot=property_sources)
+                    graph_payload=validated_command.graph_payload, source_snapshot=property_sources,
+                    raw_literals=raw_literals)
 
             existing_revision_row = _revision_row(
                 conn,
