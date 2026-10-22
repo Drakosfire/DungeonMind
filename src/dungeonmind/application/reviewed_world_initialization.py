@@ -529,30 +529,13 @@ def validate_initialization_payload_evidence(
     graph_payload: dict[str, Any],
     accepted_assertion_ids: Any,
 ) -> None:
-    expected_assertions = {
-        a.assertion_id
-        for a in command.reviewed_contribution.assertions
-        if a.acceptance_state is AcceptanceState.ACCEPTED
-    }
-    if (
-        len(accepted_assertion_ids) != len(expected_assertions)
-        or set(accepted_assertion_ids) != expected_assertions
-    ):
+    # Use the same deterministic builder as normal application materialization.
+    # Global row equality alone cannot bind a passage to its reviewed assertion.
+    _workspace, expected_payload, expected_ids = _materialize_workspace(command)
+    if tuple(accepted_assertion_ids) != expected_ids:
         _integrity("initialization_payload_assertion_mismatch")
-    expected = {
-        ref.evidence_ref_id: ref.model_dump(mode="json")
-        for a in command.reviewed_contribution.assertions
-        if a.acceptance_state is AcceptanceState.ACCEPTED
-        for ref in a.evidence_refs
-    }
-    rows = graph_payload.get("evidence_refs", [])
-    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
-        _integrity("initialization_payload_evidence_mismatch")
-    if any(not isinstance(row.get("evidence_ref_id"), str) for row in rows):
-        _integrity("initialization_payload_evidence_mismatch")
-    actual = {row["evidence_ref_id"]: row for row in rows}
-    if len(actual) != len(rows) or actual != expected:
-        _integrity("initialization_payload_evidence_mismatch")
+    if canonical_json(graph_payload) != canonical_json(expected_payload):
+        _integrity("initialization_payload_materialization_mismatch")
 
 
 def _parse_value(assertion: GraphContributionAssertionV3) -> dict[str, Any]:
@@ -896,14 +879,9 @@ class _FirstWorldWorkspace:
         return payload.model_dump(mode="json")
 
 
-def materialize_reviewed_world_initialization_v6(
-    command: ReviewedWorldInitializationCommandV2,
-    *,
-    graph_reader: GraphSnapshotReader,
-) -> FirstWorldMaterialization:
-    """Materialize one reviewed first-world command into a validated v6 payload."""
-    validated = bind_reviewed_world_initialization_command(command)
-    validate_reviewed_world_initialization_command(validated)
+def _materialize_workspace(
+    validated: ReviewedWorldInitializationCommandV2,
+) -> tuple[_FirstWorldWorkspace, dict[str, Any], tuple[str, ...]]:
     contribution = validated.reviewed_contribution
     try:
         empty = UnionGraphV6Payload(
@@ -941,6 +919,18 @@ def materialize_reviewed_world_initialization_v6(
         else:
             workspace.apply_edge(assertion)
     payload = workspace.result_payload(empty)
+    return workspace, payload, accepted_ids
+
+
+def materialize_reviewed_world_initialization_v6(
+    command: ReviewedWorldInitializationCommandV2,
+    *,
+    graph_reader: GraphSnapshotReader,
+) -> FirstWorldMaterialization:
+    """Materialize one reviewed first-world command into a validated v6 payload."""
+    validated = bind_reviewed_world_initialization_command(command)
+    contribution = validated.reviewed_contribution
+    workspace, payload, accepted_ids = _materialize_workspace(validated)
     try:
         output_snapshot = graph_reader.parse(
             graph_schema=GRAPH_SCHEMA_V6,

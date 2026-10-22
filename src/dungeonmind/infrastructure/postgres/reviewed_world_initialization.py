@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -314,6 +315,8 @@ class PostgresReviewedWorldInitializationRepository:
         graph_payload_sha256: str,
         accepted_assertion_ids: Sequence[str],
     ) -> ReviewedWorldInitializationReceiptV1:
+        graph_payload = copy.deepcopy(graph_payload)
+        accepted_assertion_ids = tuple(accepted_assertion_ids)
         validated = bind_reviewed_world_initialization_command(command)
         validate_initialization_payload_evidence(validated, graph_payload, accepted_assertion_ids)
         identity = reviewed_world_initialization_replay_identity(validated)

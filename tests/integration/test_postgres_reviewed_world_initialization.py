@@ -627,3 +627,61 @@ def test_postgres_raw_writer_rejects_forged_span_before_rows(pg):
             accepted_assertion_ids=materialization.accepted_assertion_ids,
         )
     assert _counts(pg) == _EMPTY_COUNTS
+
+
+@pytest.mark.parametrize("target", ["node", "alias", "edge", "endpoint"])
+def test_postgres_raw_repository_cannot_rebind_reviewed_passages(pg, target):
+    command = make_command()
+    materialized = materialize_reviewed_world_initialization_v6(
+        command, graph_reader=graph_reader()
+    )
+    payload = materialized.graph_payload
+    if target == "node":
+        payload["objects"][0]["assertion_metadata"]["evidence_ref_ids"] = ["ev:asrt:headmaster"]
+    elif target == "alias":
+        payload["objects"][0]["aliases"][0]["assertion_metadata"]["evidence_ref_ids"] = [
+            "ev:asrt:headmaster"
+        ]
+    elif target == "edge":
+        payload["relationships"][0]["assertion_metadata"]["evidence_ref_ids"] = [
+            "ev:asrt:headmaster"
+        ]
+    else:
+        payload["relationships"][0]["target_object_id"] = "obj:headmaster"
+    with pytest.raises(PersistenceIntegrityError):
+        pg.reviewed_world_initializations.initialize(
+            command,
+            graph_payload=payload,
+            graph_payload_sha256=canonical_sha256(payload),
+            accepted_assertion_ids=materialized.accepted_assertion_ids,
+        )
+    assert _counts(pg) == _EMPTY_COUNTS
+
+
+def test_postgres_raw_writer_freezes_caller_payload_before_source_writes(pg):
+    command = make_command()
+    materialized = materialize_reviewed_world_initialization_v6(
+        command, graph_reader=graph_reader()
+    )
+    payload = materialized.graph_payload
+    expected = copy.deepcopy(payload)
+    accepted = list(materialized.accepted_assertion_ids)
+
+    def mutate_caller(stage):
+        if stage == "source_records":
+            payload["objects"][0]["assertion_metadata"]["evidence_ref_ids"] = ["ev:asrt:headmaster"]
+            accepted.clear()
+
+    writer = PostgresReviewedWorldInitializationRepository(pg.database, failure_hook=mutate_caller)
+    receipt = writer.initialize(
+        command,
+        graph_payload=payload,
+        graph_payload_sha256=canonical_sha256(expected),
+        accepted_assertion_ids=accepted,
+    )
+    assert payload != expected and not accepted
+    assert (
+        pg.world_graph.get_revision(WORLD_ID, receipt.published_revision_id).graph_payload
+        == expected
+    )
+    assert tuple(receipt.accepted_assertion_ids) == materialized.accepted_assertion_ids

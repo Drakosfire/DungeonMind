@@ -422,3 +422,62 @@ def test_duplicate_or_conflicting_evidence_ids_are_rejected(conflicting):
     with pytest.raises(PersistenceIntegrityError):
         _initialize(inits, invalid)
     assert inits.get_for_world(WORLD_ID) is None
+
+
+@pytest.mark.parametrize("target", ["node", "alias", "edge", "endpoint"])
+def test_raw_repository_cannot_rebind_a_reviewed_passage(target):
+    graph, sources, contributions, _identity, inits, _adoptions = make_stores()
+    command = make_command()
+    materialized = materialize_reviewed_world_initialization_v6(
+        command, graph_reader=graph_reader()
+    )
+    payload = materialized.graph_payload
+    if target == "node":
+        payload["objects"][0]["assertion_metadata"]["evidence_ref_ids"] = ["ev:asrt:headmaster"]
+    elif target == "alias":
+        payload["objects"][0]["aliases"][0]["assertion_metadata"]["evidence_ref_ids"] = [
+            "ev:asrt:headmaster"
+        ]
+    elif target == "edge":
+        payload["relationships"][0]["assertion_metadata"]["evidence_ref_ids"] = [
+            "ev:asrt:headmaster"
+        ]
+    else:
+        payload["relationships"][0]["source_object_id"] = "obj:college"
+    with pytest.raises(PersistenceIntegrityError):
+        inits.initialize(
+            command,
+            graph_payload=payload,
+            graph_payload_sha256=canonical_sha256(payload),
+            accepted_assertion_ids=materialized.accepted_assertion_ids,
+        )
+    assert graph.get_head(WORLD_ID) is None
+    assert not sources._artifacts and not contributions._items
+
+
+def test_raw_repository_freezes_caller_payload_before_source_writes():
+    command = make_command()
+    materialized = materialize_reviewed_world_initialization_v6(
+        command, graph_reader=graph_reader()
+    )
+    payload = materialized.graph_payload
+    expected = copy.deepcopy(payload)
+    accepted = list(materialized.accepted_assertion_ids)
+
+    def mutate_caller(stage):
+        if stage == "source_records":
+            payload["objects"][0]["assertion_metadata"]["evidence_ref_ids"] = ["ev:asrt:headmaster"]
+            accepted.clear()
+
+    graph, _sources, _contributions, _identity, inits, _adoptions = make_stores(
+        failure_hook=mutate_caller
+    )
+    receipt = inits.initialize(
+        command,
+        graph_payload=payload,
+        graph_payload_sha256=canonical_sha256(expected),
+        accepted_assertion_ids=accepted,
+    )
+    assert payload != expected and not accepted
+    assert graph.get_revision(WORLD_ID, receipt.published_revision_id).graph_payload == expected
+    assert tuple(receipt.accepted_assertion_ids) == materialized.accepted_assertion_ids
