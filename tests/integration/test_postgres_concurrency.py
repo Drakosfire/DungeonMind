@@ -557,7 +557,7 @@ def test_concurrent_conflicting_semantic_document_across_runs(
 
 
 @pytest.mark.integration
-def test_concurrent_family_corrected_retry_converges(
+def test_concurrent_typed_exact_retry_converges(
     migrated_database: str, pg
 ) -> None:
     from dungeonmind.application.reviewed_world_initialization import (
@@ -575,23 +575,23 @@ def test_concurrent_family_corrected_retry_converges(
     )
 
     del pg  # truncate only
-    historical = make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
-    corrected = make_first_world_family_command(
+    first_writer = make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING)
+    retry = make_first_world_family_command(
         evidence_domain=SourceDomain.WORLDBUILDING
     )
-    hold_historical = threading.Event()
-    historical_locked = threading.Event()
+    hold_first_writer = threading.Event()
+    first_writer_locked = threading.Event()
 
     def hook(stage: str) -> None:
         if stage == "source_records":
-            historical_locked.set()
-            assert hold_historical.wait(timeout=5)
+            first_writer_locked.set()
+            assert hold_first_writer.wait(timeout=5)
 
-    historical_repo = PostgresReviewedWorldInitializationRepository(
+    first_writer_repo = PostgresReviewedWorldInitializationRepository(
         PostgresDatabase(migrated_database),
         failure_hook=hook,
     )
-    corrected_inner = PostgresReviewedWorldInitializationRepository(
+    retry_inner = PostgresReviewedWorldInitializationRepository(
         PostgresDatabase(migrated_database)
     )
 
@@ -600,62 +600,62 @@ def test_concurrent_family_corrected_retry_converges(
             self.initialize_calls = 0
 
         def get(self, world_id: str, initialization_id: str):
-            return corrected_inner.get(world_id, initialization_id)
+            return retry_inner.get(world_id, initialization_id)
 
         def get_for_world(self, world_id: str):
-            return corrected_inner.get_for_world(world_id)
+            return retry_inner.get_for_world(world_id)
 
         def initialize(self, command, **kwargs):
             self.initialize_calls += 1
-            return corrected_inner.initialize(command, **kwargs)
+            return retry_inner.initialize(command, **kwargs)
 
-    corrected_repo = _CountInitialize()
+    retry_repo = _CountInitialize()
     stored_box: list[object] = []
     results: list[object] = []
     errors: list[BaseException] = []
 
-    def write_historical() -> None:
+    def write_first_writer() -> None:
         try:
             stored_box.append(
                 initialize_reviewed_world(
-                    historical,
-                    initialization_repository=historical_repo,
+                    first_writer,
+                    initialization_repository=first_writer_repo,
                     graph_reader=graph_reader(),
                 )
             )
         except BaseException as exc:
             errors.append(exc)
 
-    def retry_corrected() -> None:
+    def retry_retry() -> None:
         try:
             results.append(
                 initialize_reviewed_world(
-                    corrected,
-                    initialization_repository=corrected_repo,  # type: ignore[arg-type]
+                    retry,
+                    initialization_repository=retry_repo,  # type: ignore[arg-type]
                     graph_reader=graph_reader(),
                 )
             )
         except BaseException as exc:
             errors.append(exc)
 
-    t_hist = threading.Thread(target=write_historical)
+    t_hist = threading.Thread(target=write_first_writer)
     t_hist.start()
-    assert historical_locked.wait(timeout=5)
-    t_corr = threading.Thread(target=retry_corrected)
+    assert first_writer_locked.wait(timeout=5)
+    t_corr = threading.Thread(target=retry_retry)
     t_corr.start()
     _wait_for_postgres_lock_wait(migrated_database)
-    hold_historical.set()
+    hold_first_writer.set()
     t_hist.join(timeout=15)
     t_corr.join(timeout=15)
     assert not t_hist.is_alive() and not t_corr.is_alive()
     assert errors == []
     assert len(stored_box) == 1
     assert results == stored_box
-    assert corrected_repo.initialize_calls == 1
+    assert retry_repo.initialize_calls == 1
     stored = stored_box[0]
-    reloaded = corrected_inner.get_for_world(historical.world_id)
+    reloaded = retry_inner.get_for_world(first_writer.world_id)
     assert reloaded == stored
     assert reloaded is not None
     assert reloaded.command_sha256 == reviewed_world_initialization_command_sha256(
-        historical
+        first_writer
     )

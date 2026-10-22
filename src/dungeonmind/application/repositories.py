@@ -66,7 +66,7 @@ from ..contracts.review_publication import (
     FinalizedReviewPublicationCommand,
 )
 from ..contracts.reviewed_world_initialization import (
-    ReviewedWorldInitializationCommandV1,
+    ReviewedWorldInitializationCommandV2,
     ReviewedWorldInitializationReceiptV1,
 )
 from ..contracts.semantic import (
@@ -101,7 +101,7 @@ DurableExistingWorldAdoptionReceipt: TypeAlias = (
     | ExistingWorldAdoptionReceiptV3
     | ExistingWorldAdoptionReceiptV4
 )
-DurableReviewedWorldInitializationCommand: TypeAlias = ReviewedWorldInitializationCommandV1
+DurableReviewedWorldInitializationCommand: TypeAlias = ReviewedWorldInitializationCommandV2
 DurableReviewedWorldInitializationReceipt: TypeAlias = ReviewedWorldInitializationReceiptV1
 
 
@@ -442,7 +442,7 @@ class ReviewedWorldInitializationRepository(Protocol):
 
     def initialize(
         self,
-        command: ReviewedWorldInitializationCommandV1,
+        command: ReviewedWorldInitializationCommandV2,
         *,
         graph_payload: dict[str, Any],
         graph_payload_sha256: str,

@@ -277,8 +277,9 @@ from .review_publication_transport import (
 from .reviewed_world_initialization import (
     REVIEWED_WORLD_INITIALIZATION_COMMAND_SCHEMA,
     REVIEWED_WORLD_INITIALIZATION_RECEIPT_SCHEMA,
-    ReviewedWorldInitializationCommandV1,
+    ReviewedWorldInitializationCommandV2,
     ReviewedWorldInitializationReceiptV1,
+    ReviewedWorldInitializationReceiptV2,
 )
 from .semantic import (
     EMBEDDING_RUN_SCHEMA,
@@ -493,8 +494,9 @@ __all__ = [
     "ResolvedReferent",
     "RetrievalOperation",
     "RetrievalOperationKind",
-    "ReviewedWorldInitializationCommandV1",
+    "ReviewedWorldInitializationCommandV2",
     "ReviewedWorldInitializationReceiptV1",
+    "ReviewedWorldInitializationReceiptV2",
     "ScopeMode",
     "ScopeModeV2",
     "SemanticCandidate",

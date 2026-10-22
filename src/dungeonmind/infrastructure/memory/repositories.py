@@ -58,6 +58,7 @@ from ...application.reviewed_world_initialization import (
     replay_conflict_if_present,
     reviewed_world_initialization_replay_identity,
     terminal_reviewed_world_initialization_receipt,
+    validate_initialization_payload_evidence,
 )
 from ...application.source_admission import source_admission_command_sha256
 from ...application.source_provenance_snapshot import SourceProvenanceSnapshot
@@ -131,8 +132,9 @@ from ...contracts.review_publication import (
     publication_record_payload,
 )
 from ...contracts.reviewed_world_initialization import (
-    ReviewedWorldInitializationCommandV1,
+    ReviewedWorldInitializationCommandV2,
     ReviewedWorldInitializationReceiptV1,
+    ReviewedWorldInitializationReceiptV2,
 )
 from ...contracts.semantic import (
     CandidateChannel,
@@ -2989,7 +2991,11 @@ class InMemoryReviewedWorldInitializationRepository:
         self, receipt: ReviewedWorldInitializationReceiptV1
     ) -> ReviewedWorldInitializationReceiptV1:
         try:
-            verified = ReviewedWorldInitializationReceiptV1.model_validate(
+            verified = (
+                ReviewedWorldInitializationReceiptV2
+                if receipt.schema_version == "dm_reviewed_world_initialization_receipt_v2"
+                else ReviewedWorldInitializationReceiptV1
+            ).model_validate(
                 receipt.model_dump(mode="json")
             )
         except Exception:
@@ -3033,13 +3039,16 @@ class InMemoryReviewedWorldInitializationRepository:
 
     def initialize(
         self,
-        command: ReviewedWorldInitializationCommandV1,
+        command: ReviewedWorldInitializationCommandV2,
         *,
         graph_payload: dict[str, Any],
         graph_payload_sha256: str,
         accepted_assertion_ids: Sequence[str],
     ) -> ReviewedWorldInitializationReceiptV1:
+        graph_payload = copy.deepcopy(graph_payload)
+        accepted_assertion_ids = tuple(accepted_assertion_ids)
         validated = bind_reviewed_world_initialization_command(command)
+        validate_initialization_payload_evidence(validated, graph_payload, accepted_assertion_ids)
         identity = reviewed_world_initialization_replay_identity(validated)
         command_sha256 = identity.current_command_sha256
         world_id = validated.world_id

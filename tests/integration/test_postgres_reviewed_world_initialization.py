@@ -360,21 +360,21 @@ def test_postgres_non_create_new_node_identity_zero_mutation(pg) -> None:
 
 def test_postgres_unsupported_edge_identity_zero_mutation(pg) -> None:
     with pytest.raises(PersistenceIntegrityError) as exc:
-        _initialize(
-            pg, make_accepted_edge_identity_command(IdentityOutcome.AMBIGUOUS)
-        )
+        _initialize(pg, make_accepted_edge_identity_command(IdentityOutcome.AMBIGUOUS))
     assert exc.value.details["reason"] == "accepted_edge_identity_unsupported"
     assert _counts(pg) == _EMPTY_COUNTS
 
 
-def test_postgres_artifact_only_provenance_persists_current_revision(pg) -> None:
-    receipt = _initialize(pg, make_artifact_only_command())
-    _assert_initialized_edge(pg, receipt)
+def test_postgres_artifact_only_provenance_is_rejected(pg) -> None:
+    with pytest.raises(PersistenceIntegrityError):
+        _initialize(pg, make_artifact_only_command())
+    assert _counts(pg) == _EMPTY_COUNTS
 
 
-def test_postgres_revision_only_assertion_persists(pg) -> None:
-    receipt = _initialize(pg, make_revision_only_assertion_command())
-    _assert_initialized_edge(pg, receipt)
+def test_postgres_revision_only_assertion_is_rejected(pg) -> None:
+    with pytest.raises(PersistenceIntegrityError):
+        _initialize(pg, make_revision_only_assertion_command())
+    assert _counts(pg) == _EMPTY_COUNTS
 
 
 def test_postgres_unreferenced_extra_artifact_zero_mutation(pg) -> None:
@@ -391,9 +391,9 @@ def test_postgres_unreferenced_extra_revision_zero_mutation(pg) -> None:
     assert _counts(pg) == _EMPTY_COUNTS
 
 
-def test_postgres_family_corrected_retry_returns_stored_receipt(pg) -> None:
+def test_postgres_typed_exact_retry_returns_stored_receipt(pg) -> None:
     first = _initialize(
-        pg, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+        pg, make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING)
     )
     stored_hash = first.command_sha256
     before = _counts(pg)
@@ -425,14 +425,12 @@ def test_postgres_family_corrected_retry_returns_stored_receipt(pg) -> None:
     assert _counts(pg) == before
 
 
-def test_postgres_family_corrected_under_lock_returns_stored_receipt(pg) -> None:
+def test_postgres_typed_exact_under_lock_returns_stored_receipt(pg) -> None:
     stored = _initialize(
-        pg, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+        pg, make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING)
     )
     before = _counts(pg)
-    corrected = make_first_world_family_command(
-        evidence_domain=SourceDomain.WORLDBUILDING
-    )
+    corrected = make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING)
     materialization = materialize_reviewed_world_initialization_v6(
         corrected, graph_reader=graph_reader()
     )
@@ -446,9 +444,9 @@ def test_postgres_family_corrected_under_lock_returns_stored_receipt(pg) -> None
     assert _counts(pg) == before
 
 
-def test_postgres_family_corrected_lost_response_returns_stored_receipt(pg) -> None:
+def test_postgres_typed_exact_lost_response_returns_stored_receipt(pg) -> None:
     stored = _initialize(
-        pg, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+        pg, make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING)
     )
     inner = pg.reviewed_world_initializations
 
@@ -485,16 +483,205 @@ def test_postgres_family_corrected_lost_response_returns_stored_receipt(pg) -> N
 
 def test_postgres_family_other_delta_still_conflicts(pg) -> None:
     stored = _initialize(
-        pg, make_first_world_family_command(evidence_domain=SourceDomain.OTHER)
+        pg, make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING)
     )
     before = _counts(pg)
     with pytest.raises(IdempotencyConflictError):
         _initialize(
             pg,
-            make_first_world_family_command(
-                evidence_domain=SourceDomain.OTHER
-            ).model_copy(update={"source_plan_id": "plan:different"}),
+            make_first_world_family_command(evidence_domain=SourceDomain.WORLDBUILDING).model_copy(
+                update={"source_plan_id": "plan:different"}
+            ),
         )
     assert pg.reviewed_world_initializations.get_for_world(WORLD_ID) == stored
     assert _counts(pg) == before
 
+
+def test_postgres_typed_spans_survive_repository_reopen_and_native_index(pg):
+    from dungeonmind.application.world_graph_projection import WorldGraphProjectionService
+    from dungeonmind.application.world_graph_retrieval import (
+        EvidenceTarget,
+        SelectedSourceAnchorIndexRequest,
+        WorldGraphRetrievalService,
+    )
+    from dungeonmind.contracts.projection_v2 import WorldGraphProjectionRequestV2
+    from dungeonmind.infrastructure.postgres import PostgresRepositoryBundle
+
+    command = make_command()
+    # Two distinct reviewed passages on one node, plus independent node/edge support.
+    payload = command.model_dump(mode="json")
+    first = payload["reviewed_contribution"]["assertions"][0]["evidence_refs"][0]
+    payload["reviewed_contribution"]["assertions"][0]["evidence_refs"].append(
+        {
+            **first,
+            "evidence_ref_id": "ev:second-passage",
+            "source_span_ref_id": "span:second-passage",
+        }
+    )
+    command = type(command).model_validate(payload)
+    receipt = _initialize(pg, command)
+    # Reopen every repository/connection instead of using the producer's result.
+    reopened = PostgresRepositoryBundle(pg.database)
+    stored = reopened.world_graph.get_revision(WORLD_ID, receipt.published_revision_id)
+    expected = {
+        ref.evidence_ref_id: ref.model_dump(mode="json")
+        for assertion in command.reviewed_contribution.assertions
+        for ref in assertion.evidence_refs
+    }
+    assert {
+        row["evidence_ref_id"]: row for row in stored.graph_payload["evidence_refs"]
+    } == expected
+    assert reopened.reviewed_world_initializations.get_for_world(WORLD_ID) == receipt
+    assert _initialize(reopened, command) == receipt
+    # A fresh Python process reopens persisted receipts/evidence with no producer objects.
+    import os
+    import subprocess
+    import sys
+
+    code = """
+import os
+from dungeonmind.infrastructure.postgres import PostgresDatabase, PostgresRepositoryBundle
+bundle = PostgresRepositoryBundle(PostgresDatabase(os.environ['DUNGEONMIND_DATABASE_URL']))
+receipt = bundle.reviewed_world_initializations.get_for_world('world:reviewed-init-fixture')
+assert receipt.schema_version == 'dm_reviewed_world_initialization_receipt_v2'
+stored = bundle.world_graph.get_revision(receipt.world_id, receipt.published_revision_id)
+assert any(
+    row['source_span_ref_id'] == 'span:second-passage'
+    for row in stored.graph_payload['evidence_refs']
+)
+contribution = bundle.contributions.get(receipt.world_id, receipt.reviewed_contribution_id)
+assert contribution.schema_version == 'dm_graph_contribution_v3'
+"""
+    child = subprocess.run(
+        [sys.executable, "-c", code], env=os.environ.copy(), capture_output=True, text=True
+    )
+    assert child.returncode == 0, child.stderr
+    projection = WorldGraphProjectionService(
+        world_graph=reopened.world_graph,
+        sources=reopened.sources,
+        graph_reader=graph_reader(),
+        reviewed_world_initializations=reopened.reviewed_world_initializations,
+    )
+    retrieval = WorldGraphRetrievalService(projection=projection, sources=reopened.sources)
+    request = WorldGraphProjectionRequestV2(
+        world_id=WORLD_ID,
+        campaign_id=command.campaign_id,
+        scope_mode="campaign",
+        admissibility="gm",
+        revision_pin=receipt.published_revision_id,
+    )
+    result = retrieval.get_object(request, object_id="obj:college")
+    assert result.found
+    assert {a.source_span_ref_id for a in result.anchors} >= {"span:fixture", "span:second-passage"}
+    assert all(a.can_open_source and a.can_highlight_span for a in result.anchors)
+    index = retrieval.list_selected_source_anchor_index(
+        SelectedSourceAnchorIndexRequest(
+            projection=request,
+            targets=(EvidenceTarget("object", "obj:college"),),
+        )
+    )
+    assert index.status == "complete"
+    assert index.eligible_count >= 2
+    assert index.unavailable_binding_count == 0
+    assert _counts(reopened)["init_receipts"] == _counts(reopened)["revisions"] == 1
+
+
+def test_postgres_party_registry_keeps_unreadable_typed_provenance(pg):
+    from tests.unit.test_reviewed_world_initialization_materialization_v6 import (
+        _party_registry_six_pc_command,
+    )
+
+    command = _party_registry_six_pc_command()
+    from dungeonmind.application.graph_snapshot import VersionedUnionGraphSnapshotReader
+    from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
+    from dungeonmind_dnd.application.world_object_vocabulary import load_builtin_v3_descriptor
+
+    reader = VersionedUnionGraphSnapshotReader(
+        profile_registry=StaticSemanticProfileRegistry([load_builtin_v3_descriptor()])
+    )
+    receipt = initialize_reviewed_world(
+        command, initialization_repository=pg.reviewed_world_initializations, graph_reader=reader
+    )
+    stored = pg.world_graph.get_revision(WORLD_ID, receipt.published_revision_id)
+    assert len(stored.graph_payload["objects"]) == 6
+    for row in stored.graph_payload["evidence_refs"]:
+        assert row["schema_version"] == "dm_evidence_ref_v2"
+        assert row["source_domain_key"] == "party_registry"
+        assert row["source_span_ref_id"] is None
+        assert not row["can_open_source"] and not row["can_highlight_span"]
+    assert pg.reviewed_world_initializations.get_for_world(WORLD_ID) == receipt
+
+
+def test_postgres_raw_writer_rejects_forged_span_before_rows(pg):
+    command = make_command()
+    materialization = materialize_reviewed_world_initialization_v6(
+        command, graph_reader=graph_reader()
+    )
+    payload = materialization.graph_payload
+    payload["evidence_refs"][0]["source_span_ref_id"] = "span:forged"
+    with pytest.raises(PersistenceIntegrityError):
+        pg.reviewed_world_initializations.initialize(
+            command,
+            graph_payload=payload,
+            graph_payload_sha256=canonical_sha256(payload),
+            accepted_assertion_ids=materialization.accepted_assertion_ids,
+        )
+    assert _counts(pg) == _EMPTY_COUNTS
+
+
+@pytest.mark.parametrize("target", ["node", "alias", "edge", "endpoint"])
+def test_postgres_raw_repository_cannot_rebind_reviewed_passages(pg, target):
+    command = make_command()
+    materialized = materialize_reviewed_world_initialization_v6(
+        command, graph_reader=graph_reader()
+    )
+    payload = materialized.graph_payload
+    if target == "node":
+        payload["objects"][0]["assertion_metadata"]["evidence_ref_ids"] = ["ev:asrt:headmaster"]
+    elif target == "alias":
+        payload["objects"][0]["aliases"][0]["assertion_metadata"]["evidence_ref_ids"] = [
+            "ev:asrt:headmaster"
+        ]
+    elif target == "edge":
+        payload["relationships"][0]["assertion_metadata"]["evidence_ref_ids"] = [
+            "ev:asrt:headmaster"
+        ]
+    else:
+        payload["relationships"][0]["target_object_id"] = "obj:headmaster"
+    with pytest.raises(PersistenceIntegrityError):
+        pg.reviewed_world_initializations.initialize(
+            command,
+            graph_payload=payload,
+            graph_payload_sha256=canonical_sha256(payload),
+            accepted_assertion_ids=materialized.accepted_assertion_ids,
+        )
+    assert _counts(pg) == _EMPTY_COUNTS
+
+
+def test_postgres_raw_writer_freezes_caller_payload_before_source_writes(pg):
+    command = make_command()
+    materialized = materialize_reviewed_world_initialization_v6(
+        command, graph_reader=graph_reader()
+    )
+    payload = materialized.graph_payload
+    expected = copy.deepcopy(payload)
+    accepted = list(materialized.accepted_assertion_ids)
+
+    def mutate_caller(stage):
+        if stage == "source_records":
+            payload["objects"][0]["assertion_metadata"]["evidence_ref_ids"] = ["ev:asrt:headmaster"]
+            accepted.clear()
+
+    writer = PostgresReviewedWorldInitializationRepository(pg.database, failure_hook=mutate_caller)
+    receipt = writer.initialize(
+        command,
+        graph_payload=payload,
+        graph_payload_sha256=canonical_sha256(expected),
+        accepted_assertion_ids=accepted,
+    )
+    assert payload != expected and not accepted
+    assert (
+        pg.world_graph.get_revision(WORLD_ID, receipt.published_revision_id).graph_payload
+        == expected
+    )
+    assert tuple(receipt.accepted_assertion_ids) == materialized.accepted_assertion_ids
