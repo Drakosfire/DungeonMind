@@ -15,16 +15,12 @@ from typing import Literal
 from pydantic import ConfigDict, field_validator
 
 from .base import DungeonMindModel
-from .contribution import GraphContributionV2
+from .contribution import GraphContributionV3
 from .evidence import SourceArtifactV2, SourceRevision
 from .semantic_profile import SemanticProfileRef
 
-REVIEWED_WORLD_INITIALIZATION_COMMAND_SCHEMA = (
-    "dm_reviewed_world_initialization_command_v1"
-)
-REVIEWED_WORLD_INITIALIZATION_RECEIPT_SCHEMA = (
-    "dm_reviewed_world_initialization_receipt_v1"
-)
+REVIEWED_WORLD_INITIALIZATION_COMMAND_SCHEMA = "dm_reviewed_world_initialization_command_v2"
+REVIEWED_WORLD_INITIALIZATION_RECEIPT_SCHEMA = "dm_reviewed_world_initialization_receipt_v1"
 
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 _MAX_ID_LEN = 256
@@ -50,12 +46,12 @@ def _require_timezone_aware(value: datetime, *, field_name: str) -> datetime:
     return value
 
 
-class ReviewedWorldInitializationCommandV1(DungeonMindModel):
+class ReviewedWorldInitializationCommandV2(DungeonMindModel):
     """Internal repository command. Application-owned; not a transport request."""
 
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
-    schema_version: Literal["dm_reviewed_world_initialization_command_v1"] = (
+    schema_version: Literal["dm_reviewed_world_initialization_command_v2"] = (
         REVIEWED_WORLD_INITIALIZATION_COMMAND_SCHEMA
     )
     initialization_id: str
@@ -67,7 +63,8 @@ class ReviewedWorldInitializationCommandV1(DungeonMindModel):
     semantic_profile: SemanticProfileRef
     source_artifacts: list[SourceArtifactV2]
     source_revisions: list[SourceRevision]
-    reviewed_contribution: GraphContributionV2
+    producer_profile: Literal["worldbuilding_extraction", "party_registry"]
+    reviewed_contribution: GraphContributionV3
     actor: str
     requested_initialized_at: datetime
 
@@ -167,3 +164,11 @@ class ReviewedWorldInitializationReceiptV1(DungeonMindModel):
     @classmethod
     def _aware(cls, value: datetime) -> datetime:
         return _require_timezone_aware(value, field_name="initialized_at")
+
+
+class ReviewedWorldInitializationReceiptV2(ReviewedWorldInitializationReceiptV1):
+    """Receipt for the single current typed initializer command."""
+
+    schema_version: Literal["dm_reviewed_world_initialization_receipt_v2"] = (
+        "dm_reviewed_world_initialization_receipt_v2"
+    )

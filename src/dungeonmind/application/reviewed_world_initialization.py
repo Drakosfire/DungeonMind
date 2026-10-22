@@ -20,15 +20,14 @@ from pydantic import ValidationError
 from ..contracts.contribution import (
     AcceptanceState,
     ContributionStatus,
-    GraphContributionAssertionV2,
-    GraphContributionV2,
+    GraphContributionAssertionV3,
+    GraphContributionV3,
 )
-from ..contracts.contribution_review_v2 import (
-    contribution_v2_payload_sha256,
+from ..contracts.contribution_review_v3 import (
+    contribution_v3_payload_sha256,
 )
 from ..contracts.evidence import (
     EvidenceRefV2,
-    EvidenceRole,
     SourceArtifactV2,
     SourceDomain,
     SourceRevision,
@@ -43,8 +42,9 @@ from ..contracts.knowledge_assertion import (
 from ..contracts.reviewed_world_initialization import (
     REVIEWED_WORLD_INITIALIZATION_COMMAND_SCHEMA,
     REVIEWED_WORLD_INITIALIZATION_RECEIPT_SCHEMA,
-    ReviewedWorldInitializationCommandV1,
+    ReviewedWorldInitializationCommandV2,
     ReviewedWorldInitializationReceiptV1,
+    ReviewedWorldInitializationReceiptV2,
 )
 from ..contracts.vocabulary import CanonState
 from ..domain.canonical import canonical_json, canonical_sha256
@@ -126,9 +126,7 @@ class FirstWorldMaterialization:
         object.__setattr__(self, "world_id", world_id)
         object.__setattr__(self, "initialization_id", initialization_id)
         object.__setattr__(self, "reviewed_contribution_id", reviewed_contribution_id)
-        object.__setattr__(
-            self, "reviewed_contribution_sha256", reviewed_contribution_sha256
-        )
+        object.__setattr__(self, "reviewed_contribution_sha256", reviewed_contribution_sha256)
         object.__setattr__(self, "graph_schema", graph_schema)
         object.__setattr__(self, "graph_payload_sha256", graph_payload_sha256)
         object.__setattr__(self, "accepted_assertion_ids", accepted_assertion_ids)
@@ -141,7 +139,7 @@ class FirstWorldMaterialization:
 
 
 def reviewed_world_initialization_command_sha256(
-    command: ReviewedWorldInitializationCommandV1,
+    command: ReviewedWorldInitializationCommandV2,
 ) -> str:
     """Digest every semantic command field. The command model has no digest field."""
     return canonical_sha256(command.model_dump(mode="json"))
@@ -160,107 +158,33 @@ def _is_first_world_producer_family(
     )
 
 
-def is_first_world_producer_family_command(
-    command: ReviewedWorldInitializationCommandV1,
-) -> bool:
-    """True when the command matches the historical #645 producer family."""
-    return _is_first_world_producer_family(
-        source_plan_schema=command.source_plan_schema,
-        initialization_id=command.initialization_id,
-        actor=command.actor,
-    )
-
-
 def is_first_world_producer_family_receipt(
     receipt: ReviewedWorldInitializationReceiptV1,
 ) -> bool:
     """True when the receipt matches the historical #645 producer family."""
-    return _is_first_world_producer_family(
-        source_plan_schema=receipt.source_plan_schema,
-        initialization_id=receipt.initialization_id,
-        actor=receipt.actor,
+    return (
+        receipt.schema_version == "dm_reviewed_world_initialization_receipt_v1"
+        and _is_first_world_producer_family(
+            source_plan_schema=receipt.source_plan_schema,
+            initialization_id=receipt.initialization_id,
+            actor=receipt.actor,
+        )
     )
 
 
 @dataclass(frozen=True)
 class ReviewedWorldInitializationReplayIdentity:
-    """Current command digest plus optional historical OTHER-normalized digest.
-
-    The historical digest is never persisted. First insert stores
-    ``current_command_sha256`` only. Replay may match a stored #645-family
-    receipt whose digest equals the historical value.
-    """
+    """Only the exact current typed command may be replayed."""
 
     current_command_sha256: str
-    historical_other_normalized_sha256: str | None
-
-
-def _historical_other_normalized_sha256(
-    command: ReviewedWorldInitializationCommandV1,
-) -> str | None:
-    """Return the OTHER-normalized digest of a corrected #645-family command.
-
-    Reverse-normalization rewrites eligible v1 ``EvidenceRef.source_domain``
-    values from the artifact's non-OTHER domain back to ``OTHER``. Ambiguous
-    or ineligible commands produce no historical digest.
-    """
-    if not is_first_world_producer_family_command(command):
-        return None
-    artifacts_by_id: dict[str, SourceArtifactV2] = {}
-    for artifact in command.source_artifacts:
-        if artifact.source_artifact_id in artifacts_by_id:
-            return None
-        artifacts_by_id[artifact.source_artifact_id] = artifact
-    revisions_by_id = {
-        revision.source_revision_id: revision for revision in command.source_revisions
-    }
-    if len(revisions_by_id) != len(command.source_revisions):
-        return None
-    payload = command.model_dump(mode="json")
-    changed = False
-    for assertion in payload["reviewed_contribution"]["assertions"]:
-        for ref in assertion.get("evidence_refs") or []:
-            artifact = artifacts_by_id.get(ref["source_artifact_id"])
-            if artifact is None:
-                return None
-            if (
-                artifact.source_domain is not SourceDomain.WORLDBUILDING
-                or artifact.source_domain_key != _WORLDBUILDING_DOMAIN_KEY
-            ):
-                return None
-            revision_id = ref.get("source_revision_id")
-            if revision_id is not None:
-                revision = revisions_by_id.get(revision_id)
-                if (
-                    revision is None
-                    or revision.source_artifact_id != artifact.source_artifact_id
-                ):
-                    return None
-            domain = ref.get("source_domain")
-            if domain != artifact.source_domain.value:
-                return None
-            ref["source_domain"] = SourceDomain.OTHER.value
-            changed = True
-    if not changed:
-        return None
-    try:
-        reversed_command = ReviewedWorldInitializationCommandV1.model_validate(payload)
-    except (TypeError, ValidationError, ValueError):
-        return None
-    historical = reviewed_world_initialization_command_sha256(reversed_command)
-    current = reviewed_world_initialization_command_sha256(command)
-    if historical == current:
-        return None
-    return historical
 
 
 def reviewed_world_initialization_replay_identity(
-    command: ReviewedWorldInitializationCommandV1,
+    command: ReviewedWorldInitializationCommandV2,
 ) -> ReviewedWorldInitializationReplayIdentity:
-    """Build the shared replay identity used by every reviewed-init seam."""
+    validated = bind_reviewed_world_initialization_command(command)
     return ReviewedWorldInitializationReplayIdentity(
-        current_command_sha256=reviewed_world_initialization_command_sha256(command),
-        historical_other_normalized_sha256=_historical_other_normalized_sha256(command),
+        current_command_sha256=reviewed_world_initialization_command_sha256(validated)
     )
 
 
@@ -270,42 +194,44 @@ def _receipt_matches_replay_identity(
     initialization_id: str,
     identity: ReviewedWorldInitializationReplayIdentity,
 ) -> bool:
-    if receipt.initialization_id != initialization_id:
-        return False
-    if receipt.command_sha256 == identity.current_command_sha256:
-        return True
     return (
-        identity.historical_other_normalized_sha256 is not None
-        and receipt.command_sha256 == identity.historical_other_normalized_sha256
-        and is_first_world_producer_family_receipt(receipt)
+        receipt.schema_version == "dm_reviewed_world_initialization_receipt_v2"
+        and receipt.initialization_id == initialization_id
+        and receipt.command_sha256 == identity.current_command_sha256
     )
 
 
 def bind_reviewed_world_initialization_command(
-    command: ReviewedWorldInitializationCommandV1,
-) -> ReviewedWorldInitializationCommandV1:
+    command: ReviewedWorldInitializationCommandV2,
+) -> ReviewedWorldInitializationCommandV2:
     """Reload one command before replay, pristine-target, or mutation."""
     schema = getattr(command, "schema_version", None)
     if schema != REVIEWED_WORLD_INITIALIZATION_COMMAND_SCHEMA:
         _integrity("unsupported_initialization_command_schema")
     try:
-        return ReviewedWorldInitializationCommandV1.model_validate(
+        validated = ReviewedWorldInitializationCommandV2.model_validate(
             command.model_dump(mode="json")
         )
     except (AttributeError, TypeError, ValidationError, ValueError):
         _integrity("initialization_command_validation")
+    validate_reviewed_world_initialization_command(validated)
+    return validated
 
 
 def _reload_receipt(
     receipt: ReviewedWorldInitializationReceiptV1, *, world_id: str
 ) -> ReviewedWorldInitializationReceiptV1:
     schema = getattr(receipt, "schema_version", None)
-    if schema != REVIEWED_WORLD_INITIALIZATION_RECEIPT_SCHEMA:
+    if not isinstance(schema, str):
+        _integrity("unsupported_initialization_receipt_schema")
+    receipt_type = {
+        REVIEWED_WORLD_INITIALIZATION_RECEIPT_SCHEMA: ReviewedWorldInitializationReceiptV1,
+        "dm_reviewed_world_initialization_receipt_v2": ReviewedWorldInitializationReceiptV2,
+    }.get(schema)
+    if receipt_type is None:
         _integrity("unsupported_initialization_receipt_schema")
     try:
-        reloaded = ReviewedWorldInitializationReceiptV1.model_validate(
-            receipt.model_dump(mode="json")
-        )
+        reloaded = receipt_type.model_validate(receipt.model_dump(mode="json"))
     except (AttributeError, TypeError, ValidationError, ValueError):
         _integrity("initialization_receipt_reload_validation")
     if reloaded.world_id != world_id:
@@ -363,7 +289,7 @@ def _is_existing_identity(outcome: IdentityOutcome | str | None) -> bool:
     return outcome is not None and getattr(outcome, "value", outcome) == "confirm_existing"
 
 
-def _is_materializable(assertion: GraphContributionAssertionV2) -> bool:
+def _is_materializable(assertion: GraphContributionAssertionV3) -> bool:
     if assertion.acceptance_state is not AcceptanceState.ACCEPTED:
         return False
     if assertion.assertion_kind == "node":
@@ -373,8 +299,79 @@ def _is_materializable(assertion: GraphContributionAssertionV2) -> bool:
     return False
 
 
+def _validate_producer_evidence(command: ReviewedWorldInitializationCommandV2) -> None:
+    contribution = command.reviewed_contribution
+    artifacts = {a.source_artifact_id: a for a in command.source_artifacts}
+    revisions = {r.source_revision_id: r for r in command.source_revisions}
+    party = command.producer_profile == "party_registry"
+    expected_kind = "standing_context" if party else "extraction"
+    if contribution.source_kind.value != expected_kind:
+        _integrity("initialization_producer_source_kind")
+    if contribution.campaign_scope != command.campaign_id:
+        _integrity("initialization_campaign_mismatch")
+    evidence: dict[str, EvidenceRefV2] = {}
+    for assertion in contribution.assertions:
+        if assertion.campaign_scope != command.campaign_id:
+            _integrity("initialization_campaign_mismatch")
+        if party and (
+            assertion.acceptance_state is not AcceptanceState.ACCEPTED
+            or assertion.assertion_kind != "node"
+        ):
+            _integrity("party_registry_assertions_invalid")
+        if assertion.acceptance_state is AcceptanceState.ACCEPTED and not assertion.evidence_refs:
+            _integrity(
+                "accepted_assertion_missing_graph_evidence", assertion_id=assertion.assertion_id
+            )
+        ids = [ref.evidence_ref_id for ref in assertion.evidence_refs]
+        if len(set(ids)) != len(ids):
+            _integrity("duplicate_assertion_evidence_ref")
+        for ref in assertion.evidence_refs:
+            previous = evidence.setdefault(ref.evidence_ref_id, ref)
+            if previous != ref:
+                _integrity("accepted_evidence_conflict", evidence_ref_id=ref.evidence_ref_id)
+            artifact = artifacts.get(ref.source_artifact_id)
+            if ref.source_revision_id is None:
+                _integrity("initialization_evidence_source_mismatch")
+            revision = revisions.get(ref.source_revision_id)
+            if (
+                artifact is None
+                or revision is None
+                or revision.source_artifact_id != artifact.source_artifact_id
+                or artifact.world_id != command.world_id
+                or artifact.campaign_id not in {None, command.campaign_id}
+                or ref.source_domain != artifact.source_domain
+                or ref.source_domain_key != artifact.source_domain_key
+                or ref.session_id != artifact.session_id
+                or ref.source_artifact_id != assertion.source_artifact_id
+                or ref.source_revision_id != assertion.source_revision_id
+            ):
+                _integrity("initialization_evidence_source_mismatch")
+            if party:
+                if (
+                    artifact.source_domain_key != "party_registry"
+                    or artifact.source_domain is not SourceDomain.OTHER
+                    or artifact.document_class != "standing_context"
+                    or artifact.campaign_id != command.campaign_id
+                    or artifact.session_id is not None
+                    or ref.can_open_source
+                    or ref.can_highlight_span
+                    or ref.source_span_ref_id is not None
+                    or any((ref.locator, ref.uri, ref.source_locator, ref.line_ref))
+                ):
+                    _integrity("party_registry_evidence_invalid")
+            elif (
+                artifact.source_domain is not SourceDomain.WORLDBUILDING
+                or artifact.source_domain_key != "worldbuilding"
+                or artifact.session_id is not None
+                or not ref.source_span_ref_id
+                or not ref.can_open_source
+                or not ref.can_highlight_span
+            ):
+                _integrity("worldbuilding_evidence_span_required")
+
+
 def validate_reviewed_world_initialization_command(
-    command: ReviewedWorldInitializationCommandV1,
+    command: ReviewedWorldInitializationCommandV2,
 ) -> None:
     """Fail closed on first-world identity, source closure, and contribution rules."""
     contribution = command.reviewed_contribution
@@ -432,7 +429,7 @@ def validate_reviewed_world_initialization_command(
         )
     )
     created_object_ids: set[str] = set()
-    materializable: list[GraphContributionAssertionV2] = []
+    materializable: list[GraphContributionAssertionV3] = []
     for assertion in contribution.assertions:
         _note_source(
             *_resolve_command_source(
@@ -466,9 +463,7 @@ def validate_reviewed_world_initialization_command(
                 _integrity(
                     "accepted_identity_not_create_new",
                     assertion_id=assertion.assertion_id,
-                    identity_resolution_outcome=(
-                        outcome.value if outcome is not None else None
-                    ),
+                    identity_resolution_outcome=(outcome.value if outcome is not None else None),
                 )
         elif assertion.assertion_kind == "edge":
             if _is_existing_identity(outcome):
@@ -480,9 +475,7 @@ def validate_reviewed_world_initialization_command(
                 _integrity(
                     "accepted_edge_identity_unsupported",
                     assertion_id=assertion.assertion_id,
-                    identity_resolution_outcome=(
-                        outcome.value if outcome is not None else None
-                    ),
+                    identity_resolution_outcome=(outcome.value if outcome is not None else None),
                 )
         if assertion.assertion_kind not in _MATERIALIZABLE_KINDS:
             _integrity(
@@ -528,8 +521,41 @@ def validate_reviewed_world_initialization_command(
                 source_revision_id=revision.source_revision_id,
             )
 
+    _validate_producer_evidence(command)
 
-def _parse_value(assertion: GraphContributionAssertionV2) -> dict[str, Any]:
+
+def validate_initialization_payload_evidence(
+    command: ReviewedWorldInitializationCommandV2,
+    graph_payload: dict[str, Any],
+    accepted_assertion_ids: Any,
+) -> None:
+    expected_assertions = {
+        a.assertion_id
+        for a in command.reviewed_contribution.assertions
+        if a.acceptance_state is AcceptanceState.ACCEPTED
+    }
+    if (
+        len(accepted_assertion_ids) != len(expected_assertions)
+        or set(accepted_assertion_ids) != expected_assertions
+    ):
+        _integrity("initialization_payload_assertion_mismatch")
+    expected = {
+        ref.evidence_ref_id: ref.model_dump(mode="json")
+        for a in command.reviewed_contribution.assertions
+        if a.acceptance_state is AcceptanceState.ACCEPTED
+        for ref in a.evidence_refs
+    }
+    rows = graph_payload.get("evidence_refs", [])
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        _integrity("initialization_payload_evidence_mismatch")
+    if any(not isinstance(row.get("evidence_ref_id"), str) for row in rows):
+        _integrity("initialization_payload_evidence_mismatch")
+    actual = {row["evidence_ref_id"]: row for row in rows}
+    if len(actual) != len(rows) or actual != expected:
+        _integrity("initialization_payload_evidence_mismatch")
+
+
+def _parse_value(assertion: GraphContributionAssertionV3) -> dict[str, Any]:
     if assertion.value is None:
         return {}
     try:
@@ -549,7 +575,7 @@ def _parse_value(assertion: GraphContributionAssertionV2) -> dict[str, Any]:
     return parsed
 
 
-def _session_refs(assertion: GraphContributionAssertionV2, value: dict[str, Any]) -> list[str]:
+def _session_refs(assertion: GraphContributionAssertionV3, value: dict[str, Any]) -> list[str]:
     raw = value.get("session_ids")
     if raw is None:
         return []
@@ -562,7 +588,7 @@ def _session_refs(assertion: GraphContributionAssertionV2, value: dict[str, Any]
     return list(raw)
 
 
-def _reject_mechanics_binding(assertion: GraphContributionAssertionV2) -> None:
+def _reject_mechanics_binding(assertion: GraphContributionAssertionV3) -> None:
     value = _parse_value(assertion)
     predicates = [assertion.predicate]
     qualified = value.get("dm_predicate")
@@ -586,7 +612,7 @@ def _reject_mechanics_binding(assertion: GraphContributionAssertionV2) -> None:
             )
 
 
-def _temporal_scope(assertion: GraphContributionAssertionV2) -> TemporalScopeRefV1:
+def _temporal_scope(assertion: GraphContributionAssertionV3) -> TemporalScopeRefV1:
     raw = assertion.temporal_scope
     if raw is None:
         return TemporalScopeRefV1(kind=TemporalScopeKind.UNKNOWN)
@@ -597,7 +623,7 @@ def _temporal_scope(assertion: GraphContributionAssertionV2) -> TemporalScopeRef
 
 
 def _metadata(
-    assertion: GraphContributionAssertionV2,
+    assertion: GraphContributionAssertionV3,
     *,
     assertion_id: str,
     evidence_ref_ids: list[str],
@@ -622,118 +648,16 @@ def _metadata(
         )
 
 
-def _lift_evidence(assertion: GraphContributionAssertionV2) -> dict[str, EvidenceRefV2]:
-    lifted: dict[str, EvidenceRefV2] = {}
+def _lift_evidence(assertion: GraphContributionAssertionV3) -> dict[str, EvidenceRefV2]:
+    """Preserve reviewed typed pointers without guessing or source normalization."""
+    records: dict[str, EvidenceRefV2] = {}
     for ref in assertion.evidence_refs:
-        record = EvidenceRefV2(
-            evidence_ref_id=ref.evidence_ref_id,
-            source_artifact_id=ref.source_artifact_id,
-            source_revision_id=ref.source_revision_id,
-            source_domain_key=ref.source_domain.value,
-            source_domain=ref.source_domain,
-            evidence_role=ref.evidence_role,
-            can_open_source=ref.can_open_source,
-            can_highlight_span=ref.can_highlight_span,
-            session_id=None,
-            source_span_ref_id=None,
-            locator=ref.locator,
-            uri=ref.uri,
-            source_locator=None,
-            line_ref=None,
-        )
-        prior = lifted.get(ref.evidence_ref_id)
+        record = EvidenceRefV2.model_validate(ref.model_dump(mode="json"))
+        prior = records.get(record.evidence_ref_id)
         if prior is not None and prior != record:
-            _fail("accepted_evidence_conflict", evidence_ref_id=ref.evidence_ref_id)
-        lifted[ref.evidence_ref_id] = record
-    return lifted
-
-
-def _fallback_source_identity(
-    assertion: GraphContributionAssertionV2,
-    *,
-    contribution: GraphContributionV2,
-    artifacts: dict[str, SourceArtifactV2],
-    revisions: dict[str, SourceRevision],
-) -> tuple[str, str]:
-    """Derive fallback evidence source from the proven revision owner, or fail closed."""
-    revision_id = assertion.source_revision_id or contribution.source_revision_id
-    named_artifact_id = assertion.source_artifact_id or contribution.source_artifact_id
-    if revision_id is not None:
-        revision = revisions.get(revision_id)
-        if revision is None:
-            _fail(
-                "source_revision_not_in_command",
-                assertion_id=assertion.assertion_id,
-            )
-        proven_artifact_id = revision.source_artifact_id
-        if named_artifact_id is not None and named_artifact_id != proven_artifact_id:
-            _fail(
-                "source_revision_artifact_mismatch",
-                assertion_id=assertion.assertion_id,
-            )
-        if proven_artifact_id not in artifacts:
-            _fail(
-                "source_revision_artifact_not_in_command",
-                assertion_id=assertion.assertion_id,
-            )
-        return proven_artifact_id, revision_id
-    if named_artifact_id is None:
-        _fail(
-            "accepted_assertion_missing_source_identity",
-            assertion_id=assertion.assertion_id,
-        )
-    artifact = artifacts.get(named_artifact_id)
-    if artifact is None:
-        _fail(
-            "source_artifact_not_in_command",
-            assertion_id=assertion.assertion_id,
-        )
-    current = artifact.current_revision_id
-    if current is None or current not in revisions:
-        _fail(
-            "accepted_assertion_missing_source_revision",
-            assertion_id=assertion.assertion_id,
-        )
-    if revisions[current].source_artifact_id != named_artifact_id:
-        _fail(
-            "source_revision_artifact_mismatch",
-            assertion_id=assertion.assertion_id,
-        )
-    return named_artifact_id, current
-
-
-def _fallback_evidence(
-    assertion: GraphContributionAssertionV2,
-    *,
-    contribution: GraphContributionV2,
-    artifacts: dict[str, SourceArtifactV2],
-    revisions: dict[str, SourceRevision],
-    graph_object_id: str,
-) -> EvidenceRefV2:
-    artifact_id, revision_id = _fallback_source_identity(
-        assertion,
-        contribution=contribution,
-        artifacts=artifacts,
-        revisions=revisions,
-    )
-    artifact = artifacts[artifact_id]
-    domain = artifact.source_domain
-    return EvidenceRefV2(
-        evidence_ref_id=f"evidence:{contribution.contribution_id}:{graph_object_id}",
-        source_artifact_id=artifact_id,
-        source_revision_id=revision_id,
-        source_domain_key=artifact.source_domain_key,
-        source_domain=domain,
-        evidence_role=EvidenceRole.SUPPORT,
-        can_open_source=False,
-        can_highlight_span=False,
-        session_id=None,
-        source_span_ref_id=None,
-        locator=f"contribution/{contribution.contribution_id}/{graph_object_id}",
-        uri=None,
-        source_locator=None,
-        line_ref=None,
-    )
+            _fail("accepted_evidence_conflict", evidence_ref_id=record.evidence_ref_id)
+        records[record.evidence_ref_id] = record
+    return records
 
 
 def _require_emitted_evidence_in_command(
@@ -766,49 +690,24 @@ def _require_emitted_evidence_in_command(
 
 
 def _assertion_evidence(
-    assertion: GraphContributionAssertionV2,
+    assertion: GraphContributionAssertionV3,
     *,
     kind: str,
-    contribution: GraphContributionV2,
+    contribution: GraphContributionV3,
     artifacts: dict[str, SourceArtifactV2],
     revisions: dict[str, SourceRevision],
     graph_object_id: str,
 ) -> tuple[list[str], dict[str, EvidenceRefV2]]:
-    lifted = _lift_evidence(assertion)
-    if lifted:
-        for evidence_ref_id, record in lifted.items():
-            _require_emitted_evidence_in_command(
-                record, artifacts=artifacts, revisions=revisions
-            )
-            artifact = artifacts[record.source_artifact_id]
-            # V1 refs carry only the generic family, not the producer's opaque
-            # key. Recover that key from the exact bound typed artifact only
-            # when the family agrees; mismatches keep their strict read failure.
-            if artifact.source_domain is record.source_domain:
-                lifted[evidence_ref_id] = record.model_copy(
-                    update={"source_domain_key": artifact.source_domain_key}
-                )
-        return sorted(lifted), lifted
-    if kind not in _MATERIALIZABLE_KINDS:
-        _fail(
-            "accepted_assertion_missing_graph_evidence",
-            assertion_id=assertion.assertion_id,
-        )
-    fallback = _fallback_evidence(
-        assertion,
-        contribution=contribution,
-        artifacts=artifacts,
-        revisions=revisions,
-        graph_object_id=graph_object_id,
-    )
-    _require_emitted_evidence_in_command(
-        fallback, artifacts=artifacts, revisions=revisions
-    )
-    return [fallback.evidence_ref_id], {fallback.evidence_ref_id: fallback}
+    records = _lift_evidence(assertion)
+    if not records:
+        _fail("accepted_assertion_missing_graph_evidence", assertion_id=assertion.assertion_id)
+    for record in records.values():
+        _require_emitted_evidence_in_command(record, artifacts=artifacts, revisions=revisions)
+    return sorted(records), records
 
 
 def _alias_record(
-    assertion: GraphContributionAssertionV2,
+    assertion: GraphContributionAssertionV3,
     *,
     alias: str,
     assertion_id: str,
@@ -832,7 +731,7 @@ class _FirstWorldWorkspace:
     def __init__(
         self,
         *,
-        contribution: GraphContributionV2,
+        contribution: GraphContributionV3,
         artifacts: dict[str, SourceArtifactV2],
         revisions: dict[str, SourceRevision],
     ) -> None:
@@ -860,7 +759,7 @@ class _FirstWorldWorkspace:
             self.evidence_order.append(evidence_ref_id)
         self.expected_evidence_ids.update(records)
 
-    def apply_node(self, assertion: GraphContributionAssertionV2) -> None:
+    def apply_node(self, assertion: GraphContributionAssertionV3) -> None:
         object_id = assertion.subject_object_id
         if object_id is None:
             _fail("orphan_accepted_assertion", assertion_id=assertion.assertion_id)
@@ -922,7 +821,7 @@ class _FirstWorldWorkspace:
         self.objects[object_id] = node
         self.object_order.append(object_id)
 
-    def apply_edge(self, assertion: GraphContributionAssertionV2) -> None:
+    def apply_edge(self, assertion: GraphContributionAssertionV3) -> None:
         subject = assertion.subject_object_id
         target = assertion.object_object_id
         predicate = assertion.predicate
@@ -998,7 +897,7 @@ class _FirstWorldWorkspace:
 
 
 def materialize_reviewed_world_initialization_v6(
-    command: ReviewedWorldInitializationCommandV1,
+    command: ReviewedWorldInitializationCommandV2,
     *,
     graph_reader: GraphSnapshotReader,
 ) -> FirstWorldMaterialization:
@@ -1072,7 +971,7 @@ def materialize_reviewed_world_initialization_v6(
             world_id=validated.world_id,
             initialization_id=validated.initialization_id,
             reviewed_contribution_id=contribution.contribution_id,
-            reviewed_contribution_sha256=contribution_v2_payload_sha256(contribution),
+            reviewed_contribution_sha256=contribution_v3_payload_sha256(contribution),
             graph_schema=GRAPH_SCHEMA_V6,
             graph_payload=payload,
             graph_payload_sha256=result_digest,
@@ -1083,7 +982,7 @@ def materialize_reviewed_world_initialization_v6(
 
 
 def terminal_reviewed_world_initialization_receipt(
-    command: ReviewedWorldInitializationCommandV1,
+    command: ReviewedWorldInitializationCommandV2,
     *,
     command_sha256: str,
     materialization: FirstWorldMaterialization,
@@ -1091,7 +990,7 @@ def terminal_reviewed_world_initialization_receipt(
 ) -> ReviewedWorldInitializationReceiptV1:
     """Build the terminal receipt for one bound initialization command."""
     try:
-        return ReviewedWorldInitializationReceiptV1(
+        return ReviewedWorldInitializationReceiptV2(
             initialization_id=command.initialization_id,
             world_id=command.world_id,
             campaign_id=command.campaign_id,
@@ -1113,7 +1012,7 @@ def terminal_reviewed_world_initialization_receipt(
 
 
 def initialize_reviewed_world(
-    command: ReviewedWorldInitializationCommandV1,
+    command: ReviewedWorldInitializationCommandV2,
     *,
     initialization_repository: ReviewedWorldInitializationRepository,
     graph_reader: GraphSnapshotReader,
@@ -1171,9 +1070,7 @@ def initialize_reviewed_world(
                 return _reload_receipt(recovered, world_id=world_id)
         except Exception:
             pass
-        if isinstance(exc, DungeonMindError) and not isinstance(
-            exc, PersistenceUnavailableError
-        ):
+        if isinstance(exc, DungeonMindError) and not isinstance(exc, PersistenceUnavailableError):
             raise
         raise ReviewedWorldInitializationOutcomeUnknownError(
             world_id=world_id,
@@ -1214,4 +1111,3 @@ def replay_conflict_if_present(
                 f"initialization {initialization_id!r} already exists for another world"
             )
     return None
-

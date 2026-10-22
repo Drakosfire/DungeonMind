@@ -15,12 +15,14 @@ from ...application.reviewed_world_initialization import (
     replay_conflict_if_present,
     reviewed_world_initialization_replay_identity,
     terminal_reviewed_world_initialization_receipt,
+    validate_initialization_payload_evidence,
 )
-from ...contracts.contribution_review_v2 import contribution_v2_payload_sha256
+from ...contracts.contribution_review_v3 import contribution_v3_payload_sha256
 from ...contracts.graph import PublishRevisionCommand
 from ...contracts.reviewed_world_initialization import (
-    ReviewedWorldInitializationCommandV1,
+    ReviewedWorldInitializationCommandV2,
     ReviewedWorldInitializationReceiptV1,
+    ReviewedWorldInitializationReceiptV2,
 )
 from ...domain.canonical import canonical_sha256
 from ...domain.errors import IdempotencyConflictError, PersistenceIntegrityError
@@ -139,7 +141,11 @@ class PostgresReviewedWorldInitializationRepository:
         identity = _init_identity(row)
         try:
             receipt = reconstruct(
-                ReviewedWorldInitializationReceiptV1,
+                (
+                    ReviewedWorldInitializationReceiptV2
+                    if row["schema_version"] == "dm_reviewed_world_initialization_receipt_v2"
+                    else ReviewedWorldInitializationReceiptV1
+                ),
                 dict(row["payload"]),
                 expected_fingerprint=row["record_fingerprint"],
                 identity=identity,
@@ -302,13 +308,14 @@ class PostgresReviewedWorldInitializationRepository:
 
     def initialize(
         self,
-        command: ReviewedWorldInitializationCommandV1,
+        command: ReviewedWorldInitializationCommandV2,
         *,
         graph_payload: dict[str, Any],
         graph_payload_sha256: str,
         accepted_assertion_ids: Sequence[str],
     ) -> ReviewedWorldInitializationReceiptV1:
         validated = bind_reviewed_world_initialization_command(command)
+        validate_initialization_payload_evidence(validated, graph_payload, accepted_assertion_ids)
         identity = reviewed_world_initialization_replay_identity(validated)
         command_sha256 = identity.current_command_sha256
         world_id = validated.world_id
@@ -329,8 +336,7 @@ class PostgresReviewedWorldInitializationRepository:
                 world_id=world_id,
                 other_world_receipt=lambda: (
                     self._load_verified(conn, other)
-                    if (other := _init_row_for_id(conn, validated.initialization_id))
-                    is not None
+                    if (other := _init_row_for_id(conn, validated.initialization_id)) is not None
                     else None
                 ),
             )
@@ -375,7 +381,7 @@ class PostgresReviewedWorldInitializationRepository:
                     world_id=validated.world_id,
                     initialization_id=validated.initialization_id,
                     reviewed_contribution_id=validated.reviewed_contribution.contribution_id,
-                    reviewed_contribution_sha256=contribution_v2_payload_sha256(
+                    reviewed_contribution_sha256=contribution_v3_payload_sha256(
                         validated.reviewed_contribution
                     ),
                     graph_schema=GRAPH_SCHEMA_V6,

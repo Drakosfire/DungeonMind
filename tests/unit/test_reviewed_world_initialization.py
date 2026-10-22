@@ -346,20 +346,18 @@ def test_initialize_rejects_unsupported_edge_identity_with_zero_mutation() -> No
     _assert_zero_mutation(graph, sources, contributions, inits)
 
 
-def test_initialize_artifact_only_provenance_persists_current_revision_evidence() -> None:
+def test_initialize_artifact_only_provenance_is_rejected() -> None:
     graph, sources, contributions, _identity, inits, _adoptions = make_stores()
-    receipt = _initialize(inits, make_artifact_only_command())
-    _assert_initialized_edge(graph, receipt)
-    assert len(sources._artifacts) == 1
-    assert len(sources._revisions) == 1
-    assert len(contributions._items) == 1
-    assert len(inits._receipts_by_world) == 1
+    with pytest.raises(PersistenceIntegrityError):
+        _initialize(inits, make_artifact_only_command())
+    _assert_zero_mutation(graph, sources, contributions, inits)
 
 
-def test_initialize_revision_only_assertion_persists() -> None:
-    graph, _sources, _contributions, _identity, inits, _adoptions = make_stores()
-    receipt = _initialize(inits, make_revision_only_assertion_command())
-    _assert_initialized_edge(graph, receipt)
+def test_initialize_revision_only_assertion_is_rejected() -> None:
+    graph, sources, contributions, _identity, inits, _adoptions = make_stores()
+    with pytest.raises(PersistenceIntegrityError):
+        _initialize(inits, make_revision_only_assertion_command())
+    _assert_zero_mutation(graph, sources, contributions, inits)
 
 
 def test_initialize_unreferenced_extra_artifact_zero_mutation() -> None:
