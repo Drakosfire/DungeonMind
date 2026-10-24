@@ -2764,3 +2764,185 @@ def test_selected_index_wrong_world_does_not_reuse_another_world_revision():
     )
     with pytest.raises(HeadNotFoundError):
         _selected(service, request, ("object", "obj:world-tavern"))
+
+
+# One pinned context, two independently useful owning views.
+@pytest.mark.parametrize(
+    "object_id,scope,admissibility",
+    [
+        ("obj:world-tavern", ScopeModeV2.WORLD, Admissibility.GM),
+        ("obj:absent", ScopeModeV2.WORLD, Admissibility.GM),
+        ("obj:beta-crypt", ScopeModeV2.CAMPAIGN, Admissibility.GM),
+        ("obj:alpha-secret", ScopeModeV2.CAMPAIGN, Admissibility.PLAYER),
+        ("obj:broken-lore", ScopeModeV2.WORLD, Admissibility.GM),
+        ("obj:alpha-keep", ScopeModeV2.WORLD_CROSS_CAMPAIGN, Admissibility.GM),
+    ],
+)
+def test_object_views_equal_independent_reads(object_id, scope, admissibility):
+    graph = InMemoryWorldGraphRepository()
+    revision = _publish(graph)
+    service, projection = _services(graph)
+    request = _request(
+        scope_mode=scope, revision_pin=revision.revision_id,
+        campaign_id=CAMPAIGN_A if scope == ScopeModeV2.CAMPAIGN else None,
+        admissibility=admissibility,
+    )
+    bounds = RetrievalBounds(max_objects=1, max_relationships=1, max_assertions=1, max_anchors=1)
+    pair = service.get_object_views(request, object_id=object_id, bounds=bounds)
+    assert projection.project_calls == 1
+    assert pair.bounded == service.get_object(request, object_id=object_id, bounds=bounds)
+    assert pair.complete == service.get_complete_object(request, object_id=object_id)
+    assert pair.bounded.snapshot == pair.complete.snapshot
+    assert pair.bounded.found == pair.complete.found
+    assert pair.bounded.object == pair.complete.object
+    assert projection.project_calls == 3
+    assert service.get_object_views(request, object_id=object_id, bounds=bounds) == pair
+    assert projection.project_calls == 4  # no cross-call cache
+
+
+def test_object_views_keep_complete_high_degree_ledger_beyond_bounded_view():
+    graph = InMemoryWorldGraphRepository()
+    revision = _publish(graph, _complete_object_payload())
+    service, projection = _complete_object_services(graph)
+    request = _world().model_copy(update={"revision_pin": revision.revision_id})
+    bounds = RetrievalBounds(max_objects=1, max_relationships=1, max_assertions=1, max_anchors=1)
+    pair = service.get_object_views(request, object_id=HUB_OBJECT_ID, bounds=bounds)
+    assert projection.project_calls == 1
+    assert len(pair.bounded.relationships) == len(pair.bounded.property_assertions) == 1
+    assert pair.bounded.coverage.truncated_fields
+    assert len(pair.complete.relationships) == HUB_DEGREE
+    assert len(pair.complete.anchors) > 1
+    assert pair.complete.completeness.status == "complete"
+    assert pair.bounded == service.get_object(
+        request, object_id=HUB_OBJECT_ID, bounds=bounds,
+    )
+    assert pair.complete == service.get_complete_object(request, object_id=HUB_OBJECT_ID)
+
+
+@pytest.mark.parametrize(
+    "pin,object_id",
+    [(None, "obj:x"), ("", "obj:x"), ("  ", "obj:x"), ("revision:x", " ")],
+)
+def test_object_views_reject_invalid_identity_before_projection(pin, object_id):
+    service, projection = _services(InMemoryWorldGraphRepository())
+    request = _world().model_copy(update={"revision_pin": pin})
+    with pytest.raises(ValueError, match="non-blank"):
+        service.get_object_views(request, object_id=object_id)
+    assert projection.project_calls == 0
+
+
+def test_object_views_capture_request_and_snapshot_before_observer_moves_head():
+    graph = InMemoryWorldGraphRepository()
+    original = _publish(graph)
+    service, projection = _services(graph)
+    request = _world().model_copy(update={"revision_pin": original.revision_id})
+    expected = service.get_complete_object(request, object_id="obj:world-tavern")
+    events = []
+
+    class MovingObserver:
+        def observe(self, event):
+            events.append(event)
+            if event.operation == "get_object":
+                newer = _publish(
+                    graph, parent_revision_id=original.revision_id, operation_id="op:new-head",
+                )
+                request.revision_pin = newer.revision_id
+                request.world_id = "world:foreign"
+                request.admissibility = Admissibility.PLAYER
+
+    service._read_observer = MovingObserver()
+    pair = service.get_object_views(request, object_id="obj:world-tavern")
+    assert projection.project_calls == 2  # independent expected read + one pair
+    assert pair.complete == expected
+    assert pair.bounded.snapshot == expected.snapshot
+    assert [event.operation for event in events] == ["get_object", "get_complete_object"]
+    assert all(event.outcome == "success" for event in events)
+    assert request.revision_pin != original.revision_id
+
+
+def test_object_views_propagate_projection_failure_with_owning_error_observation():
+    from dungeonmind.domain.errors import RevisionNotFoundError
+
+    graph = InMemoryWorldGraphRepository()
+    _publish(graph)
+    service, projection = _services(graph)
+    events = []
+
+    class Observer:
+        def observe(self, event):
+            events.append(event)
+
+    service._read_observer = Observer()
+    with pytest.raises(RevisionNotFoundError):
+        service.get_object_views(
+            _world().model_copy(update={"revision_pin": "revision:missing"}),
+            object_id="obj:world-tavern",
+        )
+    assert projection.project_calls == 1
+    assert [(event.operation, event.outcome) for event in events] == [("get_object", "error")]
+
+
+def test_object_views_complete_failure_cannot_return_partial_pair(monkeypatch):
+    graph = InMemoryWorldGraphRepository()
+    revision = _publish(graph)
+    service, projection = _services(graph)
+    events = []
+
+    class Observer:
+        def observe(self, event):
+            events.append(event)
+
+    service._read_observer = Observer()
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("review authority unavailable")
+
+    monkeypatch.setattr(service, "_reviewed_source_observations", fail)
+    with pytest.raises(RuntimeError, match="review authority unavailable"):
+        service.get_object_views(
+            _world().model_copy(update={"revision_pin": revision.revision_id}),
+            object_id="obj:world-tavern",
+        )
+    assert projection.project_calls == 1
+    assert [(event.operation, event.outcome) for event in events] == [
+        ("get_object", "success"), ("get_complete_object", "error"),
+    ]
+
+
+def test_object_views_account_for_establishment_in_first_view(monkeypatch):
+    graph = InMemoryWorldGraphRepository()
+    revision = _publish(graph)
+    service, projection = _services(graph)
+    events = []
+
+    class Clock:
+        now = 0
+
+        def now_ns(self):
+            return self.now
+
+    class Observer:
+        def observe(self, event):
+            events.append(event)
+
+    clock = Clock()
+    establish = projection.open_read_context
+
+    def delayed(request):
+        clock.now += 2_000_000_000
+        return establish(request)
+
+    monkeypatch.setattr(projection, "open_read_context", delayed)
+    service._read_clock = clock
+    service._read_observer = Observer()
+    service.get_object_views(
+        _world().model_copy(update={"revision_pin": revision.revision_id}),
+        object_id="obj:world-tavern",
+    )
+    assert projection.project_calls == 1
+    assert [event.duration_seconds for event in events] == [2.0, 0.0]
+    projection_durations = [
+        next(p.duration_seconds for p in event.phase_durations if p.phase == "projection")
+        for event in events
+    ]
+    assert projection_durations == [2.0, 0.0]
