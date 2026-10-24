@@ -1,6 +1,11 @@
 # CORE — current typed first-World initialization
 
-ACTIVE serial PRIME implementation lease from origin/main
+SETTLED: Core PR #139 merged at 617635c5da2eb66d3302998ca243f1111216a297.
+The owning implementation is complete; this lease does not authorize further
+writes or revival of disposable fixtures. Current retrieval work is separately
+leased in HANDOFF-CORE-pinned-object-views.md.
+
+Historical serial PRIME implementation lease from origin/main
 1211af4a95845078c3b2ee7c726f2a1c04cd7020, branch
 codex/first-world-typed-source-spans. Authority: OverMind #52 merge
 ddd5631fed63f2c5d60007b7fee640fc3d027a87,

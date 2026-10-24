@@ -42,7 +42,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, replace
@@ -422,6 +422,14 @@ class CompleteObjectLookupResult:
         default_factory=lambda: SelectedObjectCompleteness(status="complete")
     )
     coverage: RetrievalCoverage = field(default_factory=RetrievalCoverage)
+
+
+@dataclass(frozen=True)
+class ObjectReadViews:
+    """Bounded and complete selected-object views of one exact pinned snapshot."""
+
+    bounded: ObjectLookupResult
+    complete: CompleteObjectLookupResult
 
 
 @dataclass(frozen=True)
@@ -1962,6 +1970,40 @@ class WorldGraphRetrievalService:
             **fields,
         )
 
+    def get_object_views(
+        self,
+        request: WorldGraphProjectionRequestV2,
+        *,
+        object_id: str,
+        bounds: RetrievalBounds = _DEFAULT_BOUNDS,
+    ) -> ObjectReadViews:
+        """Read both owning views with one operation-local pinned context.
+
+        The first logical view accounts for physical projection establishment;
+        the second reuses it. Nothing is retained between calls.
+        """
+        captured = deepcopy(request)
+        captured_bounds = deepcopy(bounds)
+        if not captured.revision_pin or not captured.revision_pin.strip():
+            raise ValueError("object views require a non-blank revision_pin")
+        if not object_id.strip():
+            raise ValueError("object_id must be non-blank")
+        established: tuple[WorldGraphProjectionResult, WorldGraphReadContext] | None = None
+
+        def read_once() -> tuple[WorldGraphProjectionResult, WorldGraphReadContext]:
+            nonlocal established
+            if established is None:
+                established = self._establish(captured)
+            return established
+
+        bounded = self._get_object(
+            captured, object_id=object_id, bounds=captured_bounds, establish=read_once,
+        )
+        complete = self._get_complete_object(
+            captured, object_id=object_id, establish=read_once,
+        )
+        return ObjectReadViews(bounded=bounded, complete=complete)
+
     def get_object(
         self,
         request: WorldGraphProjectionRequestV2,
@@ -1970,13 +2012,26 @@ class WorldGraphRetrievalService:
         bounds: RetrievalBounds = _DEFAULT_BOUNDS,
     ) -> ObjectLookupResult:
         """Exact stable-ID object lookup. A miss is explicit; never a search."""
+        return self._get_object(
+            request, object_id=object_id, bounds=bounds,
+            establish=lambda: self._establish(request),
+        )
+
+    def _get_object(
+        self,
+        request: WorldGraphProjectionRequestV2,
+        *,
+        object_id: str,
+        bounds: RetrievalBounds,
+        establish: Callable[[], tuple[WorldGraphProjectionResult, WorldGraphReadContext]],
+    ) -> ObjectLookupResult:
         recorder = PhaseRecorder(self._read_clock)
         projected: WorldGraphProjectionResult | None = None
         try:
             if not object_id.strip():
                 raise ValueError("object_id must be non-blank")
             with recorder.phase("projection"):
-                result, context = self._establish(request)
+                result, context = establish()
             projected = result
             obj = result.graph.objects.get(object_id)
             if obj is None:
@@ -2051,13 +2106,24 @@ class WorldGraphRetrievalService:
         never reported as partial. Provenance rejections stay fail-closed
         coverage gaps rather than manufactured anchors.
         """
+        return self._get_complete_object(
+            request, object_id=object_id, establish=lambda: self._establish(request),
+        )
+
+    def _get_complete_object(
+        self,
+        request: WorldGraphProjectionRequestV2,
+        *,
+        object_id: str,
+        establish: Callable[[], tuple[WorldGraphProjectionResult, WorldGraphReadContext]],
+    ) -> CompleteObjectLookupResult:
         recorder = PhaseRecorder(self._read_clock)
         projected: WorldGraphProjectionResult | None = None
         try:
             if not object_id.strip():
                 raise ValueError("object_id must be non-blank")
             with recorder.phase("projection"):
-                result, context = self._establish(request)
+                result, context = establish()
             projected = result
             obj = result.graph.objects.get(object_id)
             if obj is None:

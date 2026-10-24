@@ -105,3 +105,30 @@ def test_unknown_observation_discriminator_is_not_admitted():
         ).reviewed_source_observations
         == ()
     )
+
+
+@pytest.mark.parametrize("missing_revision", [False, True])
+def test_pinned_object_views_preserve_reviewed_observations_and_source_gaps(
+    missing_revision, monkeypatch,
+):
+    from dungeonmind.application.world_graph_retrieval import RetrievalBounds
+    from tests.unit.test_world_graph_retrieval_service import _FixedClock
+
+    service, _, sources, _, child = _fixture(observation_values=VALUES)
+    monkeypatch.setattr(service._projection, "_clock", _FixedClock())
+    if missing_revision:
+        sources._revisions.pop(SOURCE_REVISION_ID)
+    request = _request(child)
+    bounds = RetrievalBounds(max_objects=1, max_relationships=1, max_assertions=1, max_anchors=1)
+    pair = service.get_object_views(request, object_id=EXISTING_OBJECT_ID, bounds=bounds)
+    assert pair.bounded == service.get_object(request, object_id=EXISTING_OBJECT_ID, bounds=bounds)
+    assert pair.complete == service.get_complete_object(request, object_id=EXISTING_OBJECT_ID)
+    if missing_revision:
+        assert pair.complete.reviewed_source_observations == ()
+        assert "evidence_source_revision_missing" in pair.complete.coverage.gap_codes
+    else:
+        assert len(pair.complete.reviewed_source_observations) == len(VALUES)
+        assert all(
+            row.source_revision_id == SOURCE_REVISION_ID
+            for row in pair.complete.reviewed_source_observations
+        )
