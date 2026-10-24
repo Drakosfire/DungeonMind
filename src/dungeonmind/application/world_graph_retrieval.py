@@ -109,6 +109,7 @@ from .repositories import (
     ContributionReviewRepository,
     FinalizedReviewPublicationRepository,
     SourceRepository,
+    VerifiedPublicationHistoryEntry,
     WorldGraphRepository,
 )
 from .world_graph_observability import (
@@ -1653,6 +1654,7 @@ class WorldGraphRetrievalService:
         context: WorldGraphReadContext,
         *,
         selected_object_id: str | None,
+        history_loader: Callable[[], tuple[VerifiedPublicationHistoryEntry, ...]] | None = None,
     ) -> tuple[tuple[ReviewedSourceObservation, ...], tuple[str, ...], tuple[str, ...]]:
         """Read only finalized publications on this revision's parent chain.
 
@@ -1677,7 +1679,10 @@ class WorldGraphRetrievalService:
         blocked_ids: set[str] = set()
         gap_codes: set[str] = set()
         missing_ids: set[str] = set()
-        history = self._finalized_review_publications.read_verified_ancestry(world_id, revision_id)
+        history = (
+            history_loader() if history_loader is not None
+            else self._finalized_review_publications.read_verified_ancestry(world_id, revision_id)
+        )
         for entry in history:
             if revision_id is None or entry.revision.revision_id != revision_id:
                 raise PersistenceIntegrityError("graph revision ancestry order differs")
@@ -1970,6 +1975,29 @@ class WorldGraphRetrievalService:
             **fields,
         )
 
+    @contextmanager
+    def object_read_session(
+        self,
+        request: WorldGraphProjectionRequestV2,
+        *,
+        object_ids: tuple[str, ...],
+    ) -> Iterator[_ObjectReadSession]:
+        """Own one lazy selected-object acquisition; close before inference."""
+        captured = deepcopy(request)
+        if not captured.revision_pin or not captured.revision_pin.strip():
+            raise ValueError("object session requires a non-blank revision_pin")
+        if (
+            not isinstance(object_ids, tuple) or not object_ids
+            or any(not isinstance(key, str) or not key.strip() for key in object_ids)
+            or len(set(object_ids)) != len(object_ids)
+        ):
+            raise ValueError("object_ids must be a nonempty distinct non-blank tuple")
+        session = _ObjectReadSession(self, captured, object_ids)
+        try:
+            yield session
+        finally:
+            session.close()
+
     def get_object_views(
         self,
         request: WorldGraphProjectionRequestV2,
@@ -1977,32 +2005,9 @@ class WorldGraphRetrievalService:
         object_id: str,
         bounds: RetrievalBounds = _DEFAULT_BOUNDS,
     ) -> ObjectReadViews:
-        """Read both owning views with one operation-local pinned context.
-
-        The first logical view accounts for physical projection establishment;
-        the second reuses it. Nothing is retained between calls.
-        """
-        captured = deepcopy(request)
-        captured_bounds = deepcopy(bounds)
-        if not captured.revision_pin or not captured.revision_pin.strip():
-            raise ValueError("object views require a non-blank revision_pin")
-        if not object_id.strip():
-            raise ValueError("object_id must be non-blank")
-        established: tuple[WorldGraphProjectionResult, WorldGraphReadContext] | None = None
-
-        def read_once() -> tuple[WorldGraphProjectionResult, WorldGraphReadContext]:
-            nonlocal established
-            if established is None:
-                established = self._establish(captured)
-            return established
-
-        bounded = self._get_object(
-            captured, object_id=object_id, bounds=captured_bounds, establish=read_once,
-        )
-        complete = self._get_complete_object(
-            captured, object_id=object_id, establish=read_once,
-        )
-        return ObjectReadViews(bounded=bounded, complete=complete)
+        """Read both owning views with one operation-local pinned context."""
+        with self.object_read_session(request, object_ids=(object_id,)) as session:
+            return session.get_object_views(object_id=object_id, bounds=bounds)
 
     def get_object(
         self,
@@ -2024,6 +2029,7 @@ class WorldGraphRetrievalService:
         object_id: str,
         bounds: RetrievalBounds,
         establish: Callable[[], tuple[WorldGraphProjectionResult, WorldGraphReadContext]],
+        isolate_result: bool = False,
     ) -> ObjectLookupResult:
         recorder = PhaseRecorder(self._read_clock)
         projected: WorldGraphProjectionResult | None = None
@@ -2051,6 +2057,8 @@ class WorldGraphRetrievalService:
                         missing_ids=missing_ids,
                     ),
                 )
+                if isolate_result:
+                    op_result = deepcopy(op_result)
                 self._emit(self._object_observation(recorder, request, result, op_result))
                 return op_result
             with recorder.phase("object_selection"):
@@ -2088,6 +2096,8 @@ class WorldGraphRetrievalService:
                     missing_ids=anchor_gaps[1],
                 ),
             )
+            if isolate_result:
+                op_result = deepcopy(op_result)
         except Exception as exc:
             self._emit(self._error_observation(recorder, request, "get_object", exc, projected))
             raise
@@ -2116,6 +2126,8 @@ class WorldGraphRetrievalService:
         *,
         object_id: str,
         establish: Callable[[], tuple[WorldGraphProjectionResult, WorldGraphReadContext]],
+        history_loader: Callable[[], tuple[VerifiedPublicationHistoryEntry, ...]] | None = None,
+        isolate_result: bool = False,
     ) -> CompleteObjectLookupResult:
         recorder = PhaseRecorder(self._read_clock)
         projected: WorldGraphProjectionResult | None = None
@@ -2143,6 +2155,8 @@ class WorldGraphRetrievalService:
                         missing_ids=missing_ids,
                     ),
                 )
+                if isolate_result:
+                    op_result = deepcopy(op_result)
                 self._emit(
                     self._complete_object_observation(
                         recorder, request, result, op_result, context=context
@@ -2159,7 +2173,8 @@ class WorldGraphRetrievalService:
                 )
                 observations, observation_gaps, observation_missing = (
                     self._reviewed_source_observations(
-                        result, context, selected_object_id=object_id
+                        result, context, selected_object_id=object_id,
+                        history_loader=history_loader,
                     )
                 )
             with recorder.phase("anchor_derivation"):
@@ -2192,6 +2207,8 @@ class WorldGraphRetrievalService:
                     missing_ids=tuple(sorted(set(anchor_gaps[1]) | set(observation_missing))),
                 ),
             )
+            if isolate_result:
+                op_result = deepcopy(op_result)
         except Exception as exc:
             self._emit(
                 self._error_observation(
@@ -3761,3 +3778,84 @@ __all__ = [
     "WorldGraphRetrievalService",
     "derive_source_anchor_id",
 ]
+
+
+class _ObjectReadSession:
+    """Core-owned lazy computation, never a durable or cross-provider cache."""
+
+    def __init__(
+        self,
+        service: WorldGraphRetrievalService,
+        request: WorldGraphProjectionRequestV2,
+        object_ids: tuple[str, ...],
+    ) -> None:
+        self.__service: WorldGraphRetrievalService | None = service
+        self.__request: WorldGraphProjectionRequestV2 | None = request
+        self.__objects = frozenset(object_ids)
+        self.__established: tuple[WorldGraphProjectionResult, WorldGraphReadContext] | None = None
+        self.__history: tuple[VerifiedPublicationHistoryEntry, ...] | None = None
+        self.__failed = False
+        self.__lock = RLock()
+
+    def close(self) -> None:
+        with self.__lock:
+            self.__service = None
+            self.__request = None
+            self.__objects = frozenset()
+            self.__established = None
+            self.__history = None
+
+    def get_object_views(
+        self, *, object_id: str, bounds: RetrievalBounds = _DEFAULT_BOUNDS,
+    ) -> ObjectReadViews:
+        with self.__lock:
+            service, request = self.__service, self.__request
+            if service is None or request is None:
+                raise RuntimeError("object read session is closed")
+            if self.__failed:
+                raise RuntimeError("object read session failed; open a fresh acquisition")
+            try:
+                if object_id not in self.__objects:
+                    raise ValueError("object is outside the selected acquisition")
+                captured_bounds = deepcopy(bounds)
+
+                def require_open() -> None:
+                    if self.__service is not service or self.__request is not request:
+                        raise RuntimeError("object read session is closed")
+
+                def establish() -> tuple[WorldGraphProjectionResult, WorldGraphReadContext]:
+                    require_open()
+                    if self.__established is None:
+                        captured = service._establish(request)
+                        require_open()
+                        self.__established = captured
+                    return self.__established
+
+                def history() -> tuple[VerifiedPublicationHistoryEntry, ...]:
+                    require_open()
+                    if self.__history is None:
+                        repository = service._finalized_review_publications
+                        if repository is None:
+                            raise ValueError("review authority is unavailable")
+                        assert request.revision_pin is not None
+                        captured_history = repository.read_verified_ancestry(
+                            request.world_id, request.revision_pin,
+                        )
+                        require_open()
+                        self.__history = captured_history
+                    return self.__history
+
+                bounded = service._get_object(
+                    request, object_id=object_id, bounds=captured_bounds,
+                    establish=establish, isolate_result=True,
+                )
+                require_open()
+                complete = service._get_complete_object(
+                    request, object_id=object_id, establish=establish,
+                    history_loader=history, isolate_result=True,
+                )
+                require_open()
+                return ObjectReadViews(bounded=bounded, complete=complete)
+            except Exception:
+                self.__failed = True
+                raise

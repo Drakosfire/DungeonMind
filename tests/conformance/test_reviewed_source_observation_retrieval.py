@@ -426,6 +426,12 @@ def test_later_published_correction_marks_observation_unresolved(
     )
     assert corrected.reviewed_source_observations == ()
     assert "reviewed_source_observation_correction_unresolved" in corrected.coverage.gap_codes
+    with service.object_read_session(
+        _request(descendant.revision_id), object_ids=(EXISTING_OBJECT_ID,),
+    ) as session:
+        pair = session.get_object_views(object_id=EXISTING_OBJECT_ID)
+        assert pair.complete.reviewed_source_observations == ()
+        assert pair.complete.coverage == corrected.coverage
     prior = service.get_complete_object(_request(child_id), object_id=EXISTING_OBJECT_ID)
     assert len(prior.reviewed_source_observations) == 1
 

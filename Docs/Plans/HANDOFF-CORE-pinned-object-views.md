@@ -1,6 +1,12 @@
 # CORE — pinned object read views
 
-ACTIVE PRIME implementation lease from origin/main
+SETTLED: Core140 merged95f4498255ddc27afb23a748b32967807065b148 after
+independent Bugbot. Buddy1701 adopted that exact pin and protected delivery
+preserved retained state. Native strategy measurements and remaining acceptance
+are recorded in OverMind54. Further native reuse is separately leased in
+HANDOFF-CORE-object-read-session.md.
+
+Historical PRIME implementation lease from origin/main
 617635c5da2eb66d3302998ca243f1111216a297 on codex/pinned-object-views.
 Authority: OverMind #53 merge 5ffb18d2ce5c662f1c1b4c7b9e17ac3e7f2f181a,
 Docs/Plans/HANDOFF-MIND-pinned-object-views.md. Independent Bugbot approved

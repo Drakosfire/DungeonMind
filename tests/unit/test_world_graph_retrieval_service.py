@@ -2946,3 +2946,134 @@ def test_object_views_account_for_establishment_in_first_view(monkeypatch):
         for event in events
     ]
     assert projection_durations == [2.0, 0.0]
+
+
+@pytest.mark.parametrize("ids", [(), ("",), (" ",), ("obj:x", "obj:x"), "obj:x"])
+def test_object_session_rejects_invalid_catalog_without_io(ids):
+    service, projection = _services(InMemoryWorldGraphRepository())
+    request = _world().model_copy(update={"revision_pin": "rev:pin"})
+    with pytest.raises(ValueError, match="object_ids"), service.object_read_session(
+        request, object_ids=ids,
+    ):
+        pytest.fail("invalid session entered")
+    assert projection.project_calls == 0
+
+
+def test_object_session_is_lazy_fresh_and_closed():
+    graph = InMemoryWorldGraphRepository()
+    revision = _publish(graph)
+    service, projection = _services(graph)
+    request = _cross(revision_pin=revision.revision_id)
+    ids = ("obj:world-tavern", "obj:alpha-keep")
+    with service.object_read_session(request, object_ids=ids) as session:
+        assert projection.project_calls == 0
+    assert projection.project_calls == 0
+    with pytest.raises(RuntimeError, match="closed"):
+        session.get_object_views(object_id=ids[0])
+    with service.object_read_session(request, object_ids=ids) as session:
+        first = session.get_object_views(object_id=ids[0])
+        second = session.get_object_views(object_id=ids[1])
+        assert first.complete.found and second.complete.found
+        assert first.bounded.snapshot == second.complete.snapshot
+        assert projection.project_calls == 1
+    with service.object_read_session(request, object_ids=ids) as fresh:
+        fresh.get_object_views(object_id=ids[1])
+    assert projection.project_calls == 2
+
+
+def test_object_session_isolates_nested_results_and_captured_request():
+    graph = InMemoryWorldGraphRepository()
+    revision = _publish(graph)
+    service, projection = _services(graph)
+    request = _cross(revision_pin=revision.revision_id)
+    ids = ("obj:world-tavern", "obj:alpha-keep")
+    expected = service.get_object_views(request, object_id=ids[0])
+    with service.object_read_session(request, object_ids=ids) as session:
+        request.world_id = "world:foreign"
+        request.revision_pin = "rev:foreign"
+        first = session.get_object_views(object_id=ids[0])
+        first.bounded.snapshot.world_id = "world:mutated"
+        first.bounded.object.label = "Mutated label"
+        first.complete.object.aliases.append("Mutated alias")
+        for obj in first.complete.related_objects:
+            obj.label = "Mutated related label"
+        repeated = session.get_object_views(object_id=ids[0])
+        related = session.get_object_views(object_id=ids[1])
+        assert repeated == expected
+        assert related.complete.object.label != "Mutated related label"
+        assert related.complete.snapshot.world_id == WORLD_ID
+    assert projection.project_calls == 2
+
+
+def test_object_session_foreign_request_poisons_before_io():
+    service, projection = _services(InMemoryWorldGraphRepository())
+    request = _world().model_copy(update={"revision_pin": "rev:pin"})
+    with service.object_read_session(request, object_ids=("obj:allowed",)) as session:
+        with pytest.raises(ValueError, match="outside"):
+            session.get_object_views(object_id="obj:foreign")
+        with pytest.raises(RuntimeError, match="failed"):
+            session.get_object_views(object_id="obj:allowed")
+    assert projection.project_calls == 0
+
+
+def test_object_session_failed_read_cannot_repeat_io(monkeypatch):
+    graph = InMemoryWorldGraphRepository()
+    revision = _publish(graph)
+    service, projection = _services(graph)
+    request = _world().model_copy(update={"revision_pin": revision.revision_id})
+    def fail(*args, **kwargs):
+        raise RuntimeError("synthetic authority failure")
+    monkeypatch.setattr(service, "_reviewed_source_observations", fail)
+    with service.object_read_session(request, object_ids=("obj:world-tavern",)) as session:
+        with pytest.raises(RuntimeError, match="synthetic authority"):
+            session.get_object_views(object_id="obj:world-tavern")
+        with pytest.raises(RuntimeError, match="session failed"):
+            session.get_object_views(object_id="obj:world-tavern")
+    assert projection.project_calls == 1
+
+
+def test_object_session_result_copy_time_is_in_logical_operation_total(monkeypatch):
+    graph = InMemoryWorldGraphRepository()
+    revision = _publish(graph)
+    service, _ = _services(graph)
+    events = []
+    class Clock:
+        ticks = 0
+        def now_ns(self):
+            return self.ticks
+    class Observer:
+        def observe(self, event):
+            events.append(event)
+    clock = Clock()
+    original = retrieval_module.deepcopy
+    def copied(value):
+        if isinstance(value, retrieval_module.ObjectLookupResult):
+            clock.ticks += 200_000_000
+        elif isinstance(value, retrieval_module.CompleteObjectLookupResult):
+            clock.ticks += 300_000_000
+        return original(value)
+    monkeypatch.setattr(retrieval_module, "deepcopy", copied)
+    service._read_clock = clock
+    service._read_observer = Observer()
+    service.get_object_views(
+        _world().model_copy(update={"revision_pin": revision.revision_id}),
+        object_id="obj:world-tavern",
+    )
+    assert [event.duration_seconds for event in events] == [0.2, 0.3]
+
+
+def test_object_session_closed_by_observer_cannot_reopen_for_complete_view():
+    graph = InMemoryWorldGraphRepository()
+    revision = _publish(graph)
+    service, projection = _services(graph)
+    with service.object_read_session(
+        _world().model_copy(update={"revision_pin": revision.revision_id}),
+        object_ids=("obj:world-tavern",),
+    ) as session:
+        class Observer:
+            def observe(self, event):
+                session.close()
+        service._read_observer = Observer()
+        with pytest.raises(RuntimeError, match="closed"):
+            session.get_object_views(object_id="obj:world-tavern")
+    assert projection.project_calls == 1
