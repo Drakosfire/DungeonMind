@@ -132,3 +132,54 @@ def test_pinned_object_views_preserve_reviewed_observations_and_source_gaps(
             row.source_revision_id == SOURCE_REVISION_ID
             for row in pair.complete.reviewed_source_observations
         )
+
+
+@pytest.mark.parametrize("missing_revision", [False, True])
+def test_object_session_reuses_ancestry_but_preserves_object_local_gaps(
+    missing_revision, monkeypatch,
+):
+    from tests.unit.test_contribution_review_v2 import SECOND_OBJECT_ID
+    from tests.unit.test_world_graph_retrieval_service import _FixedClock
+
+    service, _, sources, _, child = _fixture(observation_values=VALUES)
+    monkeypatch.setattr(service._projection, "_clock", _FixedClock())
+    if missing_revision:
+        sources._revisions.pop(SOURCE_REVISION_ID)
+    request = _request(child)
+    ids = (EXISTING_OBJECT_ID, SECOND_OBJECT_ID)
+    expected = {key: service.get_object_views(request, object_id=key) for key in ids}
+    calls = []
+    original = service._finalized_review_publications.read_verified_ancestry
+    def history(*args):
+        calls.append(args)
+        return original(*args)
+    monkeypatch.setattr(service._finalized_review_publications, "read_verified_ancestry", history)
+    with service.object_read_session(request, object_ids=ids) as session:
+        for key in ids:
+            assert session.get_object_views(object_id=key) == expected[key]
+        assert session.get_object_views(object_id=ids[0]) == expected[ids[0]]
+    assert len(calls) == 1
+    assert expected[SECOND_OBJECT_ID].complete.reviewed_source_observations == ()
+    assert "evidence_source_revision_missing" not in (
+        expected[SECOND_OBJECT_ID].complete.coverage.gap_codes
+    )
+    if missing_revision:
+        assert "evidence_source_revision_missing" in (
+            expected[EXISTING_OBJECT_ID].complete.coverage.gap_codes
+        )
+
+
+def test_object_session_captures_source_authority_until_next_wave(monkeypatch):
+    from tests.unit.test_world_graph_retrieval_service import _FixedClock
+
+    service, _, sources, _, child = _fixture(observation_values=VALUES)
+    monkeypatch.setattr(service._projection, "_clock", _FixedClock())
+    request = _request(child)
+    with service.object_read_session(request, object_ids=(EXISTING_OBJECT_ID,)) as session:
+        first = session.get_object_views(object_id=EXISTING_OBJECT_ID)
+        assert first.complete.reviewed_source_observations
+        sources._revisions.pop(SOURCE_REVISION_ID)
+        assert session.get_object_views(object_id=EXISTING_OBJECT_ID) == first
+    fresh = service.get_object_views(request, object_id=EXISTING_OBJECT_ID)
+    assert fresh.complete.reviewed_source_observations == ()
+    assert "evidence_source_revision_missing" in fresh.complete.coverage.gap_codes
