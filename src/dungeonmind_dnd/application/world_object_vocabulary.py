@@ -27,6 +27,7 @@ _WORLD_OBJECT_V3_VOCABULARY_RESOURCE = "world-object-v3.json"
 _WORLD_OBJECT_V4_VOCABULARY_RESOURCE = "world-object-v4.json"
 _WORLD_OBJECT_V5_VOCABULARY_RESOURCE = "world-object-v5.json"
 _WORLD_OBJECT_V6_VOCABULARY_RESOURCE = "world-object-v6.json"
+_WORLD_OBJECT_V7_VOCABULARY_RESOURCE = "world-object-v7.json"
 
 WORLD_OBJECT_VOCABULARY_ID = "dungeonmind.dnd5e.world_object"
 WORLD_OBJECT_VOCABULARY_REVISION = "world-object-v1"
@@ -35,6 +36,7 @@ WORLD_OBJECT_V3_VOCABULARY_REVISION = "world-object-v3"
 WORLD_OBJECT_V4_VOCABULARY_REVISION = "world-object-v4"
 WORLD_OBJECT_V5_VOCABULARY_REVISION = "world-object-v5"
 WORLD_OBJECT_V6_VOCABULARY_REVISION = "world-object-v6"
+WORLD_OBJECT_V7_VOCABULARY_REVISION = "world-object-v7"
 
 
 def _validation_messages(exc: ValidationError) -> list[str]:
@@ -264,6 +266,25 @@ def builtin_world_object_v5_vocabulary_ref() -> DndVocabularyRef:
 def builtin_world_object_v6_vocabulary_ref() -> DndVocabularyRef:
     """Exact world-object-v6 pin. Callers must request this revision explicitly."""
     catalog = load_builtin_world_object_v6_vocabulary()
+    return DndVocabularyRef(
+        vocabulary_id=catalog.vocabulary_id,
+        vocabulary_revision=catalog.vocabulary_revision,
+        catalog_sha256=vocabulary_sha256(catalog),
+    )
+
+
+def load_builtin_world_object_v7_vocabulary() -> DndSemanticVocabulary:
+    """Immutable world-object-v7 catalog. Explicit pin only — never 'latest'."""
+    return _load_world_object_vocabulary(
+        resource_name=_WORLD_OBJECT_V7_VOCABULARY_RESOURCE,
+        expected_revision=WORLD_OBJECT_V7_VOCABULARY_REVISION,
+        description="bundled world-object-v7 vocabulary catalog",
+    )
+
+
+def builtin_world_object_v7_vocabulary_ref() -> DndVocabularyRef:
+    """Exact world-object-v7 pin. Callers must request it explicitly."""
+    catalog = load_builtin_world_object_v7_vocabulary()
     return DndVocabularyRef(
         vocabulary_id=catalog.vocabulary_id,
         vocabulary_revision=catalog.vocabulary_revision,

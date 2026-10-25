@@ -33,6 +33,7 @@ from .world_object_vocabulary import (
     builtin_world_object_v4_vocabulary_ref,
     builtin_world_object_v5_vocabulary_ref,
     builtin_world_object_v6_vocabulary_ref,
+    builtin_world_object_v7_vocabulary_ref,
     builtin_world_object_vocabulary_ref,
     load_builtin_v3_descriptor,
     load_builtin_world_object_v2_vocabulary,
@@ -40,6 +41,7 @@ from .world_object_vocabulary import (
     load_builtin_world_object_v4_vocabulary,
     load_builtin_world_object_v5_vocabulary,
     load_builtin_world_object_v6_vocabulary,
+    load_builtin_world_object_v7_vocabulary,
     load_builtin_world_object_vocabulary,
 )
 from .world_property_vocabulary import (
@@ -66,6 +68,7 @@ __all__ = [
     "builtin_world_object_v4_vocabulary_ref",
     "builtin_world_object_v5_vocabulary_ref",
     "builtin_world_object_v6_vocabulary_ref",
+    "builtin_world_object_v7_vocabulary_ref",
     "builtin_world_object_vocabulary_ref",
     "builtin_world_property_v2_vocabulary_ref",
     "builtin_world_property_v3_vocabulary_ref",
@@ -85,6 +88,7 @@ __all__ = [
     "load_builtin_world_object_v4_vocabulary",
     "load_builtin_world_object_v5_vocabulary",
     "load_builtin_world_object_v6_vocabulary",
+    "load_builtin_world_object_v7_vocabulary",
     "load_builtin_world_object_vocabulary",
     "load_builtin_world_property_v2_vocabulary",
     "load_builtin_world_property_v3_vocabulary",
