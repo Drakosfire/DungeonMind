@@ -105,6 +105,7 @@ from .graph_snapshot import (
     contains_exact_phrase,
     resolve_mentions_from_snapshot,
 )
+from .graph_snapshot_v7 import GraphObjectV7View
 from .repositories import (
     ContributionReviewRepository,
     FinalizedReviewPublicationRepository,
@@ -262,6 +263,8 @@ class AdmittedAssertionValue:
     summary: str | None = None
     aspect_key: str | None = None
     aspect_kind: str | None = None
+    existence_label: str | None = None
+    existence_kind: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1442,8 +1445,22 @@ def _selected_object_assertion_rows(obj: GraphObjectView) -> list[AdmittedAssert
                 assertion_kind="existence",
                 evidence_ref_ids=tuple(existence.evidence_ref_ids),
                 assertion_metadata=existence,
+                existence_label=obj.label if isinstance(obj, GraphObjectV7View) else None,
+                existence_kind=obj.kind if isinstance(obj, GraphObjectV7View) else None,
             )
         )
+    independent = obj.independent_existence_assertions if isinstance(obj, GraphObjectV7View) else []
+    for proof in independent:
+        metadata = proof.assertion_metadata
+        rows.append(AdmittedAssertionValue(
+            assertion_id=metadata.assertion_id,
+            subject_object_id=obj.object_id,
+            assertion_kind="existence",
+            evidence_ref_ids=tuple(metadata.evidence_ref_ids),
+            assertion_metadata=metadata,
+            existence_label=proof.label,
+            existence_kind=proof.kind,
+        ))
     for alias in obj.admitted_alias_assertions:
         rows.append(
             AdmittedAssertionValue(
