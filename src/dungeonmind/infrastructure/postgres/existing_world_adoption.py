@@ -12,6 +12,7 @@ from ...application.adopted_assertion_withdrawal import (
     materialize_withdrawal_payload,
     withdrawal_request_sha256,
 )
+from ...application.adopted_relationship_correction import RelationshipCorrectionRuleRegistry
 from ...application.existing_world_adoption import (
     bind_existing_world_adoption_command,
     terminal_existing_world_adoption_receipt,
@@ -37,6 +38,10 @@ from ...contracts.adopted_assertion_withdrawal import (
     AdoptedAssertionWithdrawalReceiptV3,
     AdoptedAssertionWithdrawalReceiptV4,
     withdrawal_evidence_bindings,
+)
+from ...contracts.adopted_relationship_correction import (
+    AdoptedRelationshipCorrectionCommandV1,
+    AdoptedRelationshipCorrectionReceiptV1,
 )
 from ...contracts.evidence import SourceArtifactV2
 from ...contracts.existing_world_adoption import (
@@ -283,7 +288,11 @@ class PostgresExistingWorldAdoptionRepository:
         database: PostgresDatabase,
         *,
         failure_hook: Callable[[str], None] | None = None,
+        correction_rule_registry: RelationshipCorrectionRuleRegistry | None = None,
     ) -> None:
+        self._relationship_correction_rules = (
+            correction_rule_registry or RelationshipCorrectionRuleRegistry()
+        )
         self._database = database
         self._graph = PostgresWorldGraphRepository(database)
         self._failure_hook = failure_hook
@@ -492,6 +501,12 @@ class PostgresExistingWorldAdoptionRepository:
         if child.graph_payload != expected_child:
             raise PersistenceIntegrityError("withdrawal child does not match its receipt")
         return receipt
+
+    def correct_adopted_relationship(
+        self, command: AdoptedRelationshipCorrectionCommandV1
+    ) -> AdoptedRelationshipCorrectionReceiptV1:
+        from .adopted_relationship_correction import correct_relationship
+        return correct_relationship(self, command)
 
     def withdraw_adopted_assertion(
         self, command: AdoptedAssertionWithdrawalCommand

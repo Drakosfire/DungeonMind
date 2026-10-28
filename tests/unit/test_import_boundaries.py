@@ -334,6 +334,11 @@ def _dnd_module_name(path: Path) -> tuple[str, bool]:
 
 
 def _dnd_allowed_for(module_name: str) -> set[str]:
+    if module_name == "dungeonmind_dnd.application.relationship_correction_rules":
+        # Pure catalog projection: one generic data contract, no application/runtime access.
+        return DND_ALLOWED_KERNEL_MODULES | {
+            "dungeonmind.contracts.adopted_relationship_correction"
+        }
     if module_name in DND_TRANSPORT_MODULES:
         return DND_TRANSPORT_ALLOWED_KERNEL_MODULES
     if module_name in DND_REVIEW_MODULES:

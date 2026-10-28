@@ -20,6 +20,7 @@ from ...application.adopted_assertion_withdrawal import (
     materialize_withdrawal_payload,
     withdrawal_request_sha256,
 )
+from ...application.adopted_relationship_correction import RelationshipCorrectionRuleRegistry
 from ...application.existing_world_adoption import (
     bind_existing_world_adoption_command,
     require_v2_contribution_correction_closure,
@@ -74,6 +75,10 @@ from ...contracts.adopted_assertion_withdrawal import (
     AdoptedAssertionWithdrawalReceiptV3,
     AdoptedAssertionWithdrawalReceiptV4,
     withdrawal_evidence_bindings,
+)
+from ...contracts.adopted_relationship_correction import (
+    AdoptedRelationshipCorrectionCommandV1,
+    AdoptedRelationshipCorrectionReceiptV1,
 )
 from ...contracts.contribution import (
     ContributionStatus,
@@ -2083,6 +2088,7 @@ class InMemoryExistingWorldAdoptionRepository:
         identity_repository: InMemoryIdentityDecisionRepository,
         *,
         failure_hook: Callable[[str], None] | None = None,
+        correction_rule_registry: RelationshipCorrectionRuleRegistry | None = None,
         reviewed_initialization_lookup: Callable[[str], bool] | None = None,
     ) -> None:
         self._graph = world_graph_repository
@@ -2091,6 +2097,12 @@ class InMemoryExistingWorldAdoptionRepository:
         self._identity = identity_repository
         self._receipts_by_world: dict[str, DurableExistingWorldAdoptionReceipt] = {}
         self._receipts_by_adoption: dict[str, DurableExistingWorldAdoptionReceipt] = {}
+        self._relationship_correction_rules = (
+            correction_rule_registry or RelationshipCorrectionRuleRegistry()
+        )
+        self._relationship_correction_receipts: dict[
+            str, AdoptedRelationshipCorrectionReceiptV1
+        ] = {}
         self._withdrawal_receipts: dict[tuple[str, str], AdoptedAssertionWithdrawalReceipt] = {}
         self._withdrawal_operation_lock = threading.RLock()
         self._failure_hook = failure_hook
@@ -2635,6 +2647,12 @@ class InMemoryExistingWorldAdoptionRepository:
             except BaseException:
                 self._restore_world(world_id, snapshot)
                 raise
+
+    def correct_adopted_relationship(
+        self, command: AdoptedRelationshipCorrectionCommandV1
+    ) -> AdoptedRelationshipCorrectionReceiptV1:
+        from .adopted_relationship_correction import correct_relationship
+        return correct_relationship(self, command)
 
     def withdraw_adopted_assertion(
         self, command: AdoptedAssertionWithdrawalCommand
