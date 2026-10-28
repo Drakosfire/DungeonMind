@@ -121,13 +121,16 @@ def _property(
     literal = parse_reviewed_property_literal(assertion.value)
     if source_snapshot is None:
         _fail("property_provenance_unavailable")
+    subject_object_id = assertion.subject_object_id
+    if subject_object_id is None:
+        _fail("unsupported_field_shape", field="subject_object_id")
     ids, evidence = _assertion_evidence(
         assertion,
         kind="property",
         reviewed_contribution_id=state.reviewed_contribution.contribution_id,
         reviewed_source_artifact_id=state.reviewed_contribution.source_artifact_id,
         reviewed_source_revision_id=state.reviewed_contribution.source_revision_id,
-        graph_object_id=assertion.subject_object_id,
+        graph_object_id=subject_object_id,
         world_id=state.record.world_id,
         sources=source_snapshot,
     )

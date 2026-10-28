@@ -412,14 +412,22 @@ class InMemoryContributionReviewRepository:
         self._admission = contributions._admission
         self._records: dict[
             tuple[str, str],
-            ContributionReviewRecord | ContributionReviewRecordV2 | ContributionReviewRecordV3,
+            ContributionReviewRecord
+            | ContributionReviewRecordV2
+            | ContributionReviewRecordV3
+            | ContributionReviewRecordV4,
         ] = {}
         self._lock = contributions._lock
         self._failure_hook = failure_hook
 
     def _reconstruct_unlocked(
         self,
-        record: ContributionReviewRecord | ContributionReviewRecordV2 | ContributionReviewRecordV3,
+        record: (
+            ContributionReviewRecord
+            | ContributionReviewRecordV2
+            | ContributionReviewRecordV3
+            | ContributionReviewRecordV4
+        ),
     ) -> DurableContributionReviewState:
         candidate = self._contributions._items.get(
             (record.world_id, record.stored_candidate_contribution_id)
@@ -1194,6 +1202,8 @@ class InMemoryFinalizedReviewPublicationRepository:
                     self._failure_hook()
                 publication = self._record_from_revision(validated_command, revision)
                 if admission_context is not None:
+                    if policy is None:
+                        denied("admission_policy_unavailable")
                     publication = FinalizedReviewPublicationV2(
                         **publication.model_dump(mode="python", exclude={"schema_version"}),
                         admission_policy_ref=policy.reference,

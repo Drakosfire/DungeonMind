@@ -124,6 +124,8 @@ class InMemoryPublicationAdmissionRepository:
         if ref is None:
             return None
         ref = profile_ref(ref)
+        if ref is None:
+            denied("admission_profile_invalid")
         with self._lock:
             key = (ref.profile_id, ref.profile_revision)
             raw = self._policies.get(key)
@@ -149,7 +151,10 @@ class InMemoryPublicationAdmissionRepository:
             if key in self._uses:
                 denied("admission_profile_already_used")
             self._policies[key] = policy.model_dump(mode="json")
-            return self.get(policy.profile_ref)
+            stored = self.get(policy.profile_ref)
+            if stored is None:
+                denied("admission_policy_unavailable")
+            return stored
 
     def join(self, other: InMemoryPublicationAdmissionRepository) -> None:
         if other is self:
