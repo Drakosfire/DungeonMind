@@ -1,0 +1,27 @@
+# Reviewed canonical location publication
+
+Status: ACTIVE. The human grants full ownership/design/implementation authority for historical graph repair and correct subsequent ingestion. This is the bounded next capability after orphan repair, adopted by this executor as steward.
+
+Lane: codex/reviewed-location-publication, isolated DungeonMind-location checkout under the historical-graph-repair task. Stacked parent Core PR145 exact 49692bf9ebc157c8c9b5b1c4427d75bd489e0b5e, itself on PR144. Merge order 144 → 145 → this successor. Buddy consumer lane codex/reviewed-location-binding is stacked on Buddy1853 exact c49287ca3dc3c9d7b2232dbc62cb703a79280b71; its publication depends on this exact Core contract. No merge/deploy authority. Primary databases read-only; experiments use existing owned disposable full clone only.
+
+Problem: after governed removal of both unsupported Grit objects, actual retained correct extraction still cannot integrate the location. Both Buddy anchor verification and Core's writer-fenced reviewed-identity precondition require NPC kind. Removing a graph defect is insufficient if later correct evidence cannot attach to the preserved location.
+
+Contract: introduce explicitly versioned reviewed identity publication preconditions V2, restricted to dnd5e:location. Retain V1's NPC-only meaning and canonical bytes. Preserve exact decision fingerprint, single subject/target, World/campaign/parent binding, source closure, target/existence-evidence fingerprints, active canonical standing, identity redirect/conflict/supersession checks, and validation inside the writer-fenced publication transaction. No generic kind override and no automatic similarity merge. Buddy supplies a separately versioned exact-candidate/node-reviewed location carrier. Existing schemas remain strict.
+
+Expected write lease: this handoff; src/dungeonmind/contracts/contribution_review_v2.py; contribution_review_v3.py; review_publication.py; src/dungeonmind/application/review_publication.py; focused unit/integration tests for guarded publication. No migration, identity registry, unrelated publication algorithm or schema changes.
+
+Verification: old V1 NPC tests unchanged; new V2 location positive plus wrong kind, stale parent, changed target/evidence/source, redirected/superseded/conflicting decision and malformed version/target rejection. Exercise owning PostgreSQL publication boundary. Retained full-World experiment must select exact supported evidence, publish onto existing loc:grit_and_grime, preserve valid identity, avoid new duplicate categories and prove ordinary subject readback. Preserve before/after full graph and history. Component checks are not full-system success; entire cohort and 15-question pipeline remain outstanding.
+
+## Verified evidence (2026-10-28)
+
+59 Core unit tests and three PostgreSQL location-publication tests pass. The PG cases prove publication/replay and atomic rejection after source mutation or decision supersession. Ruff and focused Pyright pass. Legacy publication canonical-hash tests pass unchanged.
+
+Actual repaired full-World clone: parent `rev:cbd458b2f1f74051032ba9c7bf342b20` → reviewed observation publication `rev:96a78d13f585a55c460dfc9adeb8fed4`. Evidence directory `/home/drakosfire/Projects/.codex/historical-graph-repair/cache/reviewed-location-publication-v1` includes exact candidate, explicit single-observation selection, bound package, durable receipt, ordinary subject readback, graph conservation audit and authenticated replay. Candidate/source unchanged; no provider calls. Canonical location is world-scoped (campaign_scope null); V2 permits world or same-campaign targets, rejects other-campaign targets, and still requires authoritative source campaign and exact fingerprints. V1 retains campaign-specific NPC semantics.
+
+Important representation: session_observation attributes materialize provenance, not canonical location properties. This selected observation is retained in the reviewed contribution and returned by ordinary reviewed-source subject readback. Complete canonical graph payload is unchanged; no duplicate objects or altered relationships. An initial audit that expected an added property correctly failed, prompting inspection of the owning materializer and ordinary read facet. We do not count graph mutation as the success criterion for an observation stored in the reviewed contribution.
+
+Initial experiment status files inherited parent-only runtime labels; authoritative replay/readback proof records exact modified runtime file hashes. Final implementation commits pin these files; do not cite inherited labels as exact execution heads. Independent review and CI remain outstanding. Three inherited profile-drift setup failures from parent a339 remain documented in PR145. This case does not establish full-system pass rates or complete the cohort.
+
+Stack settlement: rebased onto PR145 migration-test correction e2d6ae3. Both migration tests now pass locally; full CI pending. The original full-World experiment used equivalent runtime files before this test/document-only parent correction.
+
+Profile-test settlement inherited from updated PR145: invalid profile publication must fail admission_profile_conflict before withdrawal, with graph/head/receipt counts unchanged. Both owning PG withdrawal suites now pass locally without bypassing admission. The earlier three failures remain historical evidence, not an unresolved local result. Full CI and independent review still required.

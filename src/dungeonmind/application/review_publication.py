@@ -25,7 +25,7 @@ from ..contracts.contribution_review_v2 import (
     ContributionReviewRecordV2,
     ContributionReviewStateV2,
     GuardedContributionReviewRecordV2,
-    ReviewedIdentityPublicationPreconditionsV1,
+    ReviewedIdentityPublicationPreconditions,
 )
 from ..contracts.contribution_review_v3 import (
     CONTRIBUTION_REVIEW_STATE_V3_SCHEMA,
@@ -387,7 +387,7 @@ def publish_finalized_review(
 
 
 def validate_reviewed_identity_publication_preconditions(
-    guard: ReviewedIdentityPublicationPreconditionsV1,
+    guard: ReviewedIdentityPublicationPreconditions,
     *,
     parent: StoredGraphRevision,
     decisions: Sequence[DurableIdentityHistoryRecord],
@@ -482,9 +482,18 @@ def validate_reviewed_identity_publication_preconditions(
     obj = objects[0]
     meta = obj.get("assertion_metadata") or {}
     if (
-        obj.get("kind") != "dnd5e:npc"
+        obj.get("kind")
+        != (
+            "dnd5e:location"
+            if guard.schema_version == "dm_reviewed_identity_publication_preconditions_v2"
+            else "dnd5e:npc"
+        )
         or meta.get("canon_state") != "canonical"
-        or meta.get("campaign_scope") != guard.campaign_id
+        or (
+            meta.get("campaign_scope") not in {None, guard.campaign_id}
+            if guard.schema_version == "dm_reviewed_identity_publication_preconditions_v2"
+            else meta.get("campaign_scope") != guard.campaign_id
+        )
         or canonical_sha256(obj) != guard.target_object_sha256
     ):
         fail("target_mismatch")

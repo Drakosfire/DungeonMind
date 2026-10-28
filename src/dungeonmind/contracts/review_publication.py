@@ -16,7 +16,7 @@ from typing import Any, Literal, Self, cast
 from pydantic import ConfigDict, field_validator, model_validator
 
 from .base import DungeonMindModel
-from .contribution_review_v2 import ReviewedIdentityPublicationPreconditionsV1
+from .contribution_review_v2 import ReviewedIdentityPublicationPreconditions
 
 FINALIZED_REVIEW_PUBLICATION_COMMAND_SCHEMA = "dm_finalized_review_publication_command_v1"
 FINALIZED_REVIEW_PUBLICATION_SCHEMA = "dm_finalized_review_publication_v1"
@@ -194,7 +194,7 @@ class FinalizedReviewPublicationCommand(_PublicationContract):
 
 
 class GuardedFinalizedReviewPublicationCommand(FinalizedReviewPublicationCommand):
-    reviewed_identity_preconditions: ReviewedIdentityPublicationPreconditionsV1
+    reviewed_identity_preconditions: ReviewedIdentityPublicationPreconditions
 
     @model_validator(mode="after")
     def _guard_basis(self) -> Self:

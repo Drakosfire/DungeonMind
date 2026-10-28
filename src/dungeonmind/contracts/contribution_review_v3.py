@@ -98,11 +98,8 @@ class ReviewedIdentitySourcePreconditionV1(DungeonMindModel):
         return _require_nonblank(value, field_name="source identity")
 
 
-class ReviewedIdentityPublicationPreconditionsV1(DungeonMindModel):
+class _ReviewedIdentityPublicationPreconditions(DungeonMindModel):
     model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
-    schema_version: Literal["dm_reviewed_identity_publication_preconditions_v1"] = (
-        "dm_reviewed_identity_publication_preconditions_v1"
-    )
     world_id: str = Field(min_length=1)
     campaign_id: str = Field(min_length=1)
     expected_parent_revision_id: str = Field(min_length=1)
@@ -126,6 +123,26 @@ class ReviewedIdentityPublicationPreconditionsV1(DungeonMindModel):
         if pairs != sorted(set(pairs)):
             raise ValueError("guard sources must be sorted and unique")
         return self
+
+
+class ReviewedIdentityPublicationPreconditionsV1(_ReviewedIdentityPublicationPreconditions):
+    schema_version: Literal["dm_reviewed_identity_publication_preconditions_v1"] = (
+        "dm_reviewed_identity_publication_preconditions_v1"
+    )
+
+
+class ReviewedIdentityPublicationPreconditionsV2(_ReviewedIdentityPublicationPreconditions):
+    """Exact reviewed location authority; V1 remains NPC-only."""
+
+    schema_version: Literal["dm_reviewed_identity_publication_preconditions_v2"] = (
+        "dm_reviewed_identity_publication_preconditions_v2"
+    )
+    target_kind: Literal["dnd5e:location"]
+
+
+ReviewedIdentityPublicationPreconditions = (
+    ReviewedIdentityPublicationPreconditionsV1 | ReviewedIdentityPublicationPreconditionsV2
+)
 
 
 def _validate_guard_basis(value: Any) -> None:
@@ -155,7 +172,7 @@ def derive_review_intent_sha256_v3(
     assertion_verdicts: list[ContributionAssertionVerdict],
     reviewer_id: str,
     reviewed_at: datetime,
-    reviewed_identity_preconditions: ReviewedIdentityPublicationPreconditionsV1 | None = None,
+    reviewed_identity_preconditions: ReviewedIdentityPublicationPreconditions | None = None,
 ) -> str:
     """Derive the v3 intent digest from every field except the digest itself."""
     material = {
@@ -278,9 +295,8 @@ class ContributionReviewIntentV3(DungeonMindModel):
         if not assertions and (
             not contribution.assertion_corrections
             or any(
-                item.correction_kind != (
-                    GraphContributionAssertionCorrectionKind.CONTRADICTS_SOURCE_DESCRIPTION
-                )
+                item.correction_kind
+                != (GraphContributionAssertionCorrectionKind.CONTRADICTS_SOURCE_DESCRIPTION)
                 for item in contribution.assertion_corrections
             )
         ):
@@ -760,7 +776,7 @@ class ContributionReviewStateV3(DungeonMindModel):
 
 
 class GuardedContributionReviewIntentV3(ContributionReviewIntentV3):
-    reviewed_identity_preconditions: ReviewedIdentityPublicationPreconditionsV1
+    reviewed_identity_preconditions: ReviewedIdentityPublicationPreconditions
 
     @model_validator(mode="after")
     def _guard_basis(self) -> Self:
@@ -769,7 +785,7 @@ class GuardedContributionReviewIntentV3(ContributionReviewIntentV3):
 
 
 class GuardedContributionReviewRecordV3(ContributionReviewRecordV3):
-    reviewed_identity_preconditions: ReviewedIdentityPublicationPreconditionsV1
+    reviewed_identity_preconditions: ReviewedIdentityPublicationPreconditions
 
     @model_validator(mode="after")
     def _guard_basis(self) -> Self:
