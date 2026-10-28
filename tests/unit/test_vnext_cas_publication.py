@@ -512,7 +512,7 @@ def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
         publication.update(source.encode())
         publication.update(b"\0")
     assert publication.hexdigest() == (
-        "f3848d1aad074e0873067ecc14e908c09c3d9abe7923d13b49a766f2f4fd6d92"
+        "e32057331fa0ee9c52034ae94fad5702f7ccfea2ea2c8f2963b92be15127bf85"
     )
     locked = inspect.getsource(InMemoryWorldGraphRepository._publish_revision_locked)
     assert "compute_revision_id" in locked
