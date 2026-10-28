@@ -36,10 +36,14 @@ from tests.unit.test_contribution_review_v4 import VALUE, upgrade_intent
 from tests.unit.test_contribution_review_v4 import policy as old_policy
 
 
-def setup_case(schema="dm_union_graph_v7", *, failure_hook=None, admission=None):
+def setup_case(
+    schema="dm_union_graph_v7", *, failure_hook=None, admission=None, semantic_profile=None
+):
     template = _stored_parent()
     graph = InMemoryWorldGraphRepository(admission=admission)
     payload = copy.deepcopy(template.graph_payload)
+    if semantic_profile is not None:
+        payload["semantic_profile"] = semantic_profile.model_dump(mode="json")
     if schema == "dm_union_graph_v7":
         payload["object_existence_support_schema"] = "dm_independent_object_existence_support_v1"
     revision = graph.publish_revision(
@@ -62,6 +66,7 @@ def setup_case(schema="dm_union_graph_v7", *, failure_hook=None, admission=None)
     }
     fields["plan_ref"] = old.plan_ref.model_copy(
         update={
+            "semantic_profile": semantic_profile or old.plan_ref.semantic_profile,
             "base_graph_schema": schema,
             "expected_parent_revision_id": revision.revision_id,
             "base_graph_payload_sha256": revision.graph_payload_sha256,

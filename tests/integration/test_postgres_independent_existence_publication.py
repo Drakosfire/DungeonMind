@@ -17,8 +17,30 @@ from tests.unit.test_contribution_review_v5 import setup_case
 pytestmark = pytest.mark.integration
 
 
-def setup_sql(pg, schema):
-    case = setup_case(schema)
+def setup_sql(pg, schema, *, protected=False):
+    reader = prepared()[3]
+    profile = None
+    if protected:
+        from uuid import uuid4
+
+        from dungeonmind.application.graph_snapshot_v7 import VersionedUnionGraphSnapshotReaderV7
+        from dungeonmind.contracts.semantic_profile import SemanticProfileRef
+        from dungeonmind.domain.canonical import canonical_sha256
+        from dungeonmind.infrastructure.semantic_profiles import StaticSemanticProfileRegistry
+        from dungeonmind_dnd.application.world_object_vocabulary import load_builtin_v3_descriptor
+        from tests.unit.test_publication_admission import admission_policy
+
+        descriptor = load_builtin_v3_descriptor().model_copy(
+            update={"profile_revision": "v7-protected-" + uuid4().hex}
+        )
+        profile = SemanticProfileRef(
+            profile_id=descriptor.profile_id,
+            profile_revision=descriptor.profile_revision,
+            descriptor_sha256=canonical_sha256(descriptor.model_dump(mode="json")),
+        )
+        reader = VersionedUnionGraphSnapshotReaderV7(StaticSemanticProfileRegistry([descriptor]))
+        pg.publication_admission.register(admission_policy(profile))
+    case = setup_case(schema, semantic_profile=profile)
     parent = case[1]
     pg.world_graph.publish_revision(
         PublishRevisionCommand(
@@ -42,7 +64,6 @@ def setup_sql(pg, schema):
         world_graph_repository=pg.world_graph,
         review_repository=pg.contribution_reviews,
     )
-    reader = prepared()[3]
     return case, state, reader
 
 
@@ -488,3 +509,40 @@ def test_sql_two_distinct_confirmed_reviews_have_one_parent_cas_winner(pg):
             ).fetchone()["n"]
             == 2
         )
+
+
+@pytest.mark.parametrize("validator_available", [False, True])
+def test_sql_v7_protected_profile_requires_the_current_validator(pg, validator_available):
+    from dungeonmind.application.publication_admission import PublicationAdmissionRegistry
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+    from tests.unit.test_publication_admission import SyntheticValidator
+
+    case, state, reader = setup_sql(pg, "dm_union_graph_v6", protected=True)
+    validator = SyntheticValidator()
+    registry = PublicationAdmissionRegistry((("synthetic.complete-set", "v1", validator),))
+    enabled = PostgresRepositoryBundle(
+        pg.database,
+        v7_graph_reader=reader,
+        admission_registry=registry if validator_available else None,
+    )
+    if validator_available:
+        receipt = publish(enabled, state, reader)
+        assert receipt.admission_context is not None
+        assert receipt.admission_policy_ref is not None
+        assert len(validator.calls) == 1
+        assert publish(enabled, state, reader) == receipt
+    else:
+        with pytest.raises(PersistenceIntegrityError) as failure:
+            publish(enabled, state, reader)
+        assert failure.value.details["reason"] == "validator_unavailable"
+        assert (
+            enabled.world_graph.get_head(state.record.world_id).head_revision_id
+            == case[1].revision.revision_id
+        )
+        with pg.database.connect() as conn:
+            assert (
+                conn.execute(
+                    "SELECT count(*) AS n FROM dungeonmind.finalized_review_publications"
+                ).fetchone()["n"]
+                == 0
+            )
