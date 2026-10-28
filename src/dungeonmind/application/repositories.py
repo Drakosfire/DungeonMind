@@ -20,6 +20,10 @@ from ..contracts.adopted_assertion_withdrawal import (
     AdoptedAssertionWithdrawalCommand,
     AdoptedAssertionWithdrawalReceipt,
 )
+from ..contracts.adopted_relationship_correction import (
+    AdoptedRelationshipCorrectionCommandV1,
+    AdoptedRelationshipCorrectionReceiptV1,
+)
 from ..contracts.contribution import (
     ContributionStatus,
     GraphContribution,
@@ -303,6 +307,10 @@ class ExistingWorldAdoptionRepository(Protocol):
     def adopt(
         self, command: DurableExistingWorldAdoptionCommand
     ) -> DurableExistingWorldAdoptionReceipt: ...
+
+    def correct_adopted_relationship(
+        self, command: AdoptedRelationshipCorrectionCommandV1
+    ) -> AdoptedRelationshipCorrectionReceiptV1: ...
 
     def withdraw_adopted_assertion(
         self, command: AdoptedAssertionWithdrawalCommand

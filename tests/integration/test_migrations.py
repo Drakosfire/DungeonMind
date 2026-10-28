@@ -48,6 +48,7 @@ EXPECTED_TABLES = {
     "knowledge_operator_source_attestations",
     "knowledge_space_provisioning_receipts",
     "adopted_assertion_withdrawals",
+    "adopted_relationship_corrections",
 }
 
 
@@ -80,7 +81,7 @@ def test_vector_extension_and_schema_tables(db) -> None:
 
         version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
         assert version is not None
-        assert version["version_num"] == "0019_complete_object_evidence"
+        assert version["version_num"] == "0020_adopted_relation_correction"
 
         constraints = conn.execute(
             """
@@ -147,7 +148,7 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
         database = PostgresDatabase(target)
         with database.connect() as conn:
             version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
-            assert version["version_num"] == "0019_complete_object_evidence"
+            assert version["version_num"] == "0020_adopted_relation_correction"
             tables = conn.execute(
                 """
                 SELECT COUNT(*) AS n
