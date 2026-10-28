@@ -39,8 +39,8 @@ from .graph_scope import (
     GenesisEvidenceCompatibility,
     ScopedGraphProjection,
     genesis_evidence_compatibility_from_d0,
-    project_scoped_snapshot,
 )
+from .graph_scope_v7 import project_scoped_snapshot_v7
 from .graph_snapshot import GraphSnapshotReader, ParsedGraphSnapshot
 from .parsed_revision_cache import (
     DEFAULT_PARSED_REVISION_CACHE_MAX_ENTRIES,
@@ -391,7 +391,7 @@ class WorldGraphProjectionService:
 
         evidence_memo: dict[str, EvidenceResolution] = {}
         with recorder.phase("scope_projection"):
-            scoped = project_scoped_snapshot(
+            scoped = project_scoped_snapshot_v7(
                 parsed,
                 sources=source_snapshot,
                 world_id=request.world_id,

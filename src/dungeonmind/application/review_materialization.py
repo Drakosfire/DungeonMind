@@ -36,7 +36,7 @@ RELATIONSHIP_ID_SCHEMA = "dm_review_relationship_id_v1"
 # Schemas a finalized-review materialization result may carry.  v3 results come
 # from ``materialize_finalized_review``; v6 results from
 # ``review_materialization_v6.materialize_finalized_review_v6``.
-_MATERIALIZATION_RESULT_SCHEMAS = frozenset({GRAPH_SCHEMA_V3, GRAPH_SCHEMA_V6})
+_MATERIALIZATION_RESULT_SCHEMAS = frozenset({GRAPH_SCHEMA_V3, GRAPH_SCHEMA_V6, "dm_union_graph_v7"})
 
 
 @dataclass(frozen=True, init=False)

@@ -9,7 +9,7 @@ from typing import Any
 from psycopg import Connection, sql
 from pydantic import ValidationError
 
-from ...application.graph_snapshot import GRAPH_SCHEMA_V6
+from ...application.graph_snapshot import GRAPH_SCHEMA_V6, GraphSnapshotReader
 from ...application.publication_admission import (
     PublicationAdmissionRegistry,
     admission_source_refs,
@@ -44,7 +44,9 @@ from ...contracts.publication_admission import (
 from ...contracts.review_publication import (
     FinalizedReviewPublication,
     FinalizedReviewPublicationCommand,
+    FinalizedReviewPublicationCommandV3,
     FinalizedReviewPublicationV2,
+    FinalizedReviewPublicationV3,
     decode_finalized_review_publication_command,
 )
 from ...contracts.semantic_profile import SemanticProfileRef
@@ -197,14 +199,17 @@ def _return_publication(row: dict[str, Any]) -> FinalizedReviewPublication:
             "schema_version",
         )
     }
-    if row["schema_version"] == "dm_finalized_review_publication_v2" and (
-        row["payload"].get("schema_version") != row["schema_version"]
-    ):
+    if row["schema_version"] in {
+        "dm_finalized_review_publication_v2",
+        "dm_finalized_review_publication_v3",
+    } and (row["payload"].get("schema_version") != row["schema_version"]):
         denied("admission_receipt_family_missing")
     try:
         publication = reconstruct(
             (
-                FinalizedReviewPublicationV2
+                FinalizedReviewPublicationV3
+                if row["schema_version"] == "dm_finalized_review_publication_v3"
+                else FinalizedReviewPublicationV2
                 if row["schema_version"] == "dm_finalized_review_publication_v2"
                 else FinalizedReviewPublication
             ),
@@ -223,6 +228,13 @@ def _validate_review_binding(
     command: FinalizedReviewPublicationCommand,
     state: ContributionReviewState,
 ) -> None:
+    from ...contracts.contribution_review_v5 import ContributionReviewStateV5
+    from ...contracts.review_publication import FinalizedReviewPublicationCommandV3
+
+    if isinstance(state, ContributionReviewStateV5) and not isinstance(
+        command, FinalizedReviewPublicationCommandV3
+    ):
+        raise PersistenceIntegrityError("V5 reviews require explicit V7 publication")
     record = state.record
     expected = (
         record.world_id,
@@ -246,7 +258,9 @@ def _validate_review_binding(
         command.operation_id,
         command.expected_parent_revision_id,
         command.parent_graph_payload_sha256,
-        command.graph_schema,
+        command.parent_graph_schema
+        if isinstance(command, FinalizedReviewPublicationCommandV3)
+        else command.graph_schema,
     )
     from ...application.review_publication import validate_guarded_command_binding
 
@@ -314,7 +328,12 @@ def _validate_record_review(
         or publication.operation_id != record.operation_id
         or publication.expected_parent_revision_id != record.plan_ref.expected_parent_revision_id
         or publication.parent_graph_payload_sha256 != record.plan_ref.base_graph_payload_sha256
-        or publication.graph_schema != record.plan_ref.base_graph_schema
+        or (
+            publication.parent_graph_schema
+            if isinstance(publication, FinalizedReviewPublicationV3)
+            else publication.graph_schema
+        )
+        != record.plan_ref.base_graph_schema
     ):
         raise PersistenceIntegrityError(
             "finalized publication record disagrees with its durable review"
@@ -372,8 +391,10 @@ class PostgresFinalizedReviewPublicationRepository:
         *,
         failure_hook: Callable[[], None] | None = None,
         admission_registry: PublicationAdmissionRegistry | None = None,
+        v7_graph_reader: GraphSnapshotReader | None = None,
     ) -> None:
         self._database = database
+        self._v7_graph_reader = v7_graph_reader
         self._graph = PostgresWorldGraphRepository(database)
         self._failure_hook = failure_hook
         self._admission_registry = admission_registry or PublicationAdmissionRegistry()
@@ -401,18 +422,21 @@ class PostgresFinalizedReviewPublicationRepository:
         *,
         artifact_ids: Sequence[str],
         revision_ids: Sequence[str],
+        lock: bool = True,
     ) -> SourceProvenanceSnapshot:
         artifact_rows = conn.execute(
             sql.SQL(
                 f"SELECT {_ARTIFACT_SELECT} FROM {{}}.source_artifacts "
-                "WHERE source_artifact_id = ANY(%s) ORDER BY source_artifact_id FOR SHARE"
+                "WHERE source_artifact_id = ANY(%s) ORDER BY source_artifact_id"
+                + (" FOR SHARE" if lock else "")
             ).format(sql.Identifier(SCHEMA)),
             (list(artifact_ids),),
         ).fetchall()
         revision_rows = conn.execute(
             sql.SQL(
                 f"SELECT {_SOURCE_REVISION_SELECT} FROM {{}}.source_revisions "
-                "WHERE source_revision_id = ANY(%s) ORDER BY source_revision_id FOR SHARE"
+                "WHERE source_revision_id = ANY(%s) ORDER BY source_revision_id"
+                + (" FOR SHARE" if lock else "")
             ).format(sql.Identifier(SCHEMA)),
             (list(revision_ids),),
         ).fetchall()
@@ -466,9 +490,8 @@ class PostgresFinalizedReviewPublicationRepository:
                 "finalized publication references an invalid revision"
             ) from None
 
-    @classmethod
     def _load_verified(
-        cls,
+        self,
         conn: Connection[Any],
         row: dict[str, Any],
         *,
@@ -480,7 +503,7 @@ class PostgresFinalizedReviewPublicationRepository:
             state = (
                 review_loader(publication.review_id)
                 if review_loader is not None
-                else cls._load_review(
+                else self._load_review(
                     conn, world_id=publication.world_id, review_id=publication.review_id
                 )
             )
@@ -492,14 +515,14 @@ class PostgresFinalizedReviewPublicationRepository:
         stored = (
             revision_loader(publication.published_revision_id)
             if revision_loader is not None
-            else cls._load_revision(
+            else self._load_revision(
                 conn, world_id=publication.world_id, revision_id=publication.published_revision_id
             )
         )
         parent = (
             revision_loader(publication.expected_parent_revision_id)
             if revision_loader is not None
-            else cls._load_revision(
+            else self._load_revision(
                 conn,
                 world_id=publication.world_id,
                 revision_id=publication.expected_parent_revision_id,
@@ -509,7 +532,9 @@ class PostgresFinalizedReviewPublicationRepository:
             parent,
             world_id=publication.world_id,
             parent_revision_id=publication.expected_parent_revision_id,
-            graph_schema=publication.graph_schema,
+            graph_schema=publication.parent_graph_schema
+            if isinstance(publication, FinalizedReviewPublicationV3)
+            else publication.graph_schema,
             graph_payload_sha256=publication.parent_graph_payload_sha256,
         )
         _validate_record_revision(publication, stored)
@@ -526,7 +551,12 @@ class PostgresFinalizedReviewPublicationRepository:
             ).fetchone()
             return _return_revision(row) if row is not None else None
 
-        verify_retained_revisions(publication, immutable_source_revision)
+        if isinstance(publication, FinalizedReviewPublicationV3):
+            from .review_publication_v7 import verify_history
+
+            verify_history(self, conn, publication, state, parent, stored)
+        else:
+            verify_retained_revisions(publication, immutable_source_revision)
         return publication
 
     @classmethod
@@ -535,6 +565,14 @@ class PostgresFinalizedReviewPublicationRepository:
         command: FinalizedReviewPublicationCommand,
         publication: FinalizedReviewPublication,
     ) -> None:
+        if isinstance(command, FinalizedReviewPublicationCommandV3) != isinstance(
+            publication, FinalizedReviewPublicationV3
+        ) or (
+            isinstance(command, FinalizedReviewPublicationCommandV3)
+            and isinstance(publication, FinalizedReviewPublicationV3)
+            and command.parent_graph_schema != publication.parent_graph_schema
+        ):
+            raise IdempotencyConflictError("publication replay family or parent differs")
         if (
             getattr(command, "admission_policy_ref", None)
             != getattr(publication, "admission_policy_ref", None)
@@ -770,6 +808,12 @@ class PostgresFinalizedReviewPublicationRepository:
         self,
         command: FinalizedReviewPublicationCommand,
     ) -> FinalizedReviewPublication:
+        from ...contracts.review_publication import FinalizedReviewPublicationCommandV3
+
+        if isinstance(command, FinalizedReviewPublicationCommandV3):
+            from .review_publication_v7 import publish_v7
+
+            return publish_v7(self, command)
         from ...application.review_materialization_v4 import capture_property_literals_v4
 
         raw_literals = capture_property_literals_v4(command.graph_payload)

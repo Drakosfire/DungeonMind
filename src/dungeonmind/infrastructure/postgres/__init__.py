@@ -6,6 +6,7 @@ package.
 """
 
 from ...application.adopted_relationship_correction import RelationshipCorrectionRuleRegistry
+from ...application.graph_snapshot import GraphSnapshotReader
 from ...application.publication_admission import PublicationAdmissionRegistry
 from .database import PostgresDatabase
 from .existing_world_adoption import PostgresExistingWorldAdoptionRepository
@@ -59,6 +60,7 @@ class PostgresRepositoryBundle:
         *,
         admission_registry: PublicationAdmissionRegistry | None = None,
         correction_rule_registry: RelationshipCorrectionRuleRegistry | None = None,
+        v7_graph_reader: GraphSnapshotReader | None = None,
     ) -> None:
         self.database = database
         self.publication_admission = PostgresPublicationAdmissionRepository(database)
@@ -66,7 +68,7 @@ class PostgresRepositoryBundle:
         self.contributions = PostgresContributionRepository(database)
         self.contribution_reviews = PostgresContributionReviewRepository(database)
         self.finalized_review_publications = PostgresFinalizedReviewPublicationRepository(
-            database, admission_registry=admission_registry
+            database, admission_registry=admission_registry, v7_graph_reader=v7_graph_reader
         )
         self.existing_world_adoptions = PostgresExistingWorldAdoptionRepository(
             database, correction_rule_registry=correction_rule_registry

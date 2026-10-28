@@ -39,6 +39,7 @@ from ..contracts.contribution_review_v2 import (
 )
 from ..contracts.contribution_review_v3 import ContributionReviewStateV3
 from ..contracts.contribution_review_v4 import ContributionReviewStateV4
+from ..contracts.contribution_review_v5 import ContributionReviewStateV5
 from ..contracts.evidence import SourceArtifactRecord, SourceRevision
 from ..contracts.existing_world_adoption import (
     ExistingWorldAdoptionCommandV1,
@@ -95,6 +96,7 @@ DurableContributionReviewState: TypeAlias = (
     | ContributionReviewStateV2
     | ContributionReviewStateV3
     | ContributionReviewStateV4
+    | ContributionReviewStateV5
 )
 DurableExistingWorldAdoptionCommand: TypeAlias = (
     ExistingWorldAdoptionCommandV1 | ExistingWorldAdoptionCommandV2

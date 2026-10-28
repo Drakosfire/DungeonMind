@@ -391,13 +391,20 @@ def verify_source_closure(state: Any, context: PublicationAdmissionContextV1) ->
 
 
 def require_command_policy(command: Any, policy: PublicationAdmissionPolicyV1 | None) -> None:
-    from ..contracts.review_publication import FinalizedReviewPublicationCommandV2
+    from ..contracts.review_publication import (
+        FinalizedReviewPublicationCommandV2,
+        FinalizedReviewPublicationCommandV3,
+    )
 
+    admitted_family = isinstance(command, FinalizedReviewPublicationCommandV2) or (
+        isinstance(command, FinalizedReviewPublicationCommandV3)
+        and command.admission_policy_ref is not None
+    )
     if policy is None:
-        if isinstance(command, FinalizedReviewPublicationCommandV2):
+        if admitted_family:
             denied("admission_policy_unavailable")
     elif (
-        not isinstance(command, FinalizedReviewPublicationCommandV2)
+        not admitted_family
         or command.admission_policy_ref != policy.reference
         or command.validator_ref != policy.validator_ref
     ):
@@ -411,13 +418,21 @@ def verify_receipt(
     child: Any,
     policy: PublicationAdmissionPolicyV1 | None,
 ) -> None:
-    from ..contracts.review_publication import FinalizedReviewPublicationV2
+    from ..contracts.review_publication import (
+        FinalizedReviewPublicationV2,
+        FinalizedReviewPublicationV3,
+    )
 
     ref = verified_profile(state, parent, child.graph_payload)
-    if isinstance(publication, FinalizedReviewPublicationV2):
+    if isinstance(publication, FinalizedReviewPublicationV2) or (
+        isinstance(publication, FinalizedReviewPublicationV3)
+        and publication.admission_context is not None
+    ):
         if policy is None or policy.profile_ref != ref:
             denied("admission_policy_unavailable")
         context = publication.admission_context
+        if context is None:
+            denied("admission_context_missing")
         if (
             publication.admission_policy_ref != policy.reference
             or publication.validator_ref != policy.validator_ref
@@ -445,9 +460,14 @@ def verify_receipt(
 
 
 def verify_retained_revisions(publication: Any, revision_loader: Any) -> None:
-    from ..contracts.review_publication import FinalizedReviewPublicationV2
+    from ..contracts.review_publication import (
+        FinalizedReviewPublicationV2,
+        FinalizedReviewPublicationV3,
+    )
 
-    if not isinstance(publication, FinalizedReviewPublicationV2):
+    if not isinstance(publication, (FinalizedReviewPublicationV2, FinalizedReviewPublicationV3)):
+        return
+    if publication.admission_context is None:
         return
     for retained in publication.admission_context.source_snapshot.revisions:
         actual = revision_loader(retained.source_revision_id)
