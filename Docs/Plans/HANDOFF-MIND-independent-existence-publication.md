@@ -43,3 +43,6 @@ Publication of the assigned stacked successor is authorized; no merge/deploy aut
 
 
 Assigned successor: Core PR150, stacked on149. Additional explicit V7 protected-profile SQL controls now pass with fresh immutable profile registrations: validator required, unavailable validator refuses before graph/head/receipt mutation, installed validator receives the complete accepted context and exact replay succeeds. Focused V5/V7 PG suite20passed; these overlap the earlier101 affected checks and must not be summed as independent tests. Fresh profile IDs are necessary because first-use admission authority is intentionally retained across truncating graph fixtures; attempts to register after an earlier unprotected use were correctly refused, without weakening that gate.
+
+
+CI settlement: candidate9f91d9f passed core/benchmark-smoke and497integration tests but failed two schema-head assertions still expecting0020. Those owning migration assertions now require0021; actual empty-database upgrade→downgrade0013→upgrade→downgradebase→upgrade→smoke publication and the focused V5/V7 SQL suite pass22tests. No production or gate weakening. Independent review and new exact-head CI remain mandatory;9f91d9f is superseded for review.
