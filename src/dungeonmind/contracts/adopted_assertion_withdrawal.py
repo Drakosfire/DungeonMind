@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import ConfigDict, ValidationInfo, field_validator
+from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from .base import DungeonMindModel
 
@@ -240,13 +240,90 @@ class AdoptedAssertionWithdrawalReceiptV3(_WithdrawalReceiptCommon):
         return None if value is None else _id(value, "source_locator")
 
 
+_EVIDENCE_BINDING_FIELDS = (
+    "evidence_ref_id",
+    "source_artifact_id",
+    "source_revision_id",
+    "source_span_ref_id",
+    "source_locator",
+)
+
+
+class AdoptedObjectWithdrawalEvidenceV1(DungeonMindModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    evidence_ref_id: str
+    source_artifact_id: str
+    source_revision_id: str
+    source_span_ref_id: str
+    source_locator: str | None
+
+    @field_validator(
+        "evidence_ref_id",
+        "source_artifact_id",
+        "source_revision_id",
+        "source_span_ref_id",
+        "source_locator",
+    )
+    @classmethod
+    def _ids(cls, value: str | None, info: ValidationInfo) -> str | None:
+        return None if value is None else _id(value, info.field_name or "binding")
+
+
+class _CompleteEvidenceBindings(DungeonMindModel):
+    evidence_bindings: tuple[AdoptedObjectWithdrawalEvidenceV1, ...] = Field(min_length=2)
+
+    @model_validator(mode="after")
+    def _complete_distinct_bindings(self) -> Self:
+        identifiers = [b.evidence_ref_id for b in self.evidence_bindings]
+        if len(identifiers) != len(set(identifiers)):
+            raise ValueError("duplicate evidence binding")
+        first = self.evidence_bindings[0]
+        if any(getattr(self, key) != getattr(first, key) for key in _EVIDENCE_BINDING_FIELDS):
+            raise ValueError("indexed source binding differs from complete-set first binding")
+        return self
+
+
+class AdoptedAssertionWithdrawalCommandV4(_WithdrawalCommandCommon, _CompleteEvidenceBindings):
+    schema_version: Literal["dm_adopted_object_withdrawal_command_v4"] = (
+        "dm_adopted_object_withdrawal_command_v4"
+    )
+    relationship_id: None
+    predicate: None
+    object_object_id: None
+    source_locator: str | None
+
+
+class AdoptedAssertionWithdrawalReceiptV4(_WithdrawalReceiptCommon, _CompleteEvidenceBindings):
+    schema_version: Literal["dm_adopted_object_withdrawal_receipt_v4"] = (
+        "dm_adopted_object_withdrawal_receipt_v4"
+    )
+    relationship_id: None
+    predicate: None
+    object_object_id: None
+    source_locator: str | None
+
+
 AdoptedAssertionWithdrawalCommand = (
     AdoptedAssertionWithdrawalCommandV1
     | AdoptedAssertionWithdrawalCommandV2
     | AdoptedAssertionWithdrawalCommandV3
+    | AdoptedAssertionWithdrawalCommandV4
 )
 AdoptedAssertionWithdrawalReceipt = (
     AdoptedAssertionWithdrawalReceiptV1
     | AdoptedAssertionWithdrawalReceiptV2
     | AdoptedAssertionWithdrawalReceiptV3
+    | AdoptedAssertionWithdrawalReceiptV4
 )
+
+
+def withdrawal_evidence_bindings(
+    record: AdoptedAssertionWithdrawalCommand,
+) -> tuple[AdoptedObjectWithdrawalEvidenceV1, ...]:
+    if isinstance(record, AdoptedAssertionWithdrawalCommandV4):
+        return record.evidence_bindings
+    return (
+        AdoptedObjectWithdrawalEvidenceV1.model_validate(
+            {key: getattr(record, key) for key in _EVIDENCE_BINDING_FIELDS}
+        ),
+    )
