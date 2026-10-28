@@ -29,9 +29,11 @@ from ...contracts.adopted_assertion_withdrawal import (
     AdoptedAssertionWithdrawalCommand,
     AdoptedAssertionWithdrawalCommandV1,
     AdoptedAssertionWithdrawalCommandV2,
+    AdoptedAssertionWithdrawalCommandV3,
     AdoptedAssertionWithdrawalReceipt,
     AdoptedAssertionWithdrawalReceiptV1,
     AdoptedAssertionWithdrawalReceiptV2,
+    AdoptedAssertionWithdrawalReceiptV3,
 )
 from ...contracts.evidence import SourceArtifactV2
 from ...contracts.existing_world_adoption import (
@@ -364,6 +366,8 @@ class PostgresExistingWorldAdoptionRepository:
                 AdoptedAssertionWithdrawalReceiptV1,
             AdoptedAssertionWithdrawalReceiptV2.model_fields["schema_version"].default:
                 AdoptedAssertionWithdrawalReceiptV2,
+            AdoptedAssertionWithdrawalReceiptV3.model_fields["schema_version"].default:
+                AdoptedAssertionWithdrawalReceiptV3,
         }.get(row["schema_version"])
         if receipt_type is None:
             raise PersistenceIntegrityError("unsupported assertion withdrawal receipt schema")
@@ -420,7 +424,9 @@ class PostgresExistingWorldAdoptionRepository:
         ):
             raise PersistenceIntegrityError("withdrawal receipt disagrees with graph lineage")
         command_type = (
-            AdoptedAssertionWithdrawalCommandV2
+            AdoptedAssertionWithdrawalCommandV3
+            if isinstance(receipt, AdoptedAssertionWithdrawalReceiptV3)
+            else AdoptedAssertionWithdrawalCommandV2
             if isinstance(receipt, AdoptedAssertionWithdrawalReceiptV2)
             else AdoptedAssertionWithdrawalCommandV1
         )
@@ -586,7 +592,9 @@ class PostgresExistingWorldAdoptionRepository:
             if self._failure_hook is not None:
                 self._failure_hook("withdrawal_graph")
             receipt_type = (
-                AdoptedAssertionWithdrawalReceiptV2
+                AdoptedAssertionWithdrawalReceiptV3
+                if isinstance(command, AdoptedAssertionWithdrawalCommandV3)
+                else AdoptedAssertionWithdrawalReceiptV2
                 if isinstance(command, AdoptedAssertionWithdrawalCommandV2)
                 else AdoptedAssertionWithdrawalReceiptV1
             )
