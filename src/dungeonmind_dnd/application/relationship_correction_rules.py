@@ -1,11 +1,11 @@
 """Trusted v3 relationship-rule projection; immutable catalogs are unchanged."""
 
-from dungeonmind.application.semantic_profiles import descriptor_sha256
 from dungeonmind.contracts.adopted_relationship_correction import (
     PredicateEndpointRuleV1,
     RelationshipCorrectionRulesV1,
 )
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
+from dungeonmind.domain.canonical import canonical_sha256
 
 from .world_object_vocabulary import (
     load_builtin_v3_descriptor,
@@ -21,7 +21,7 @@ def builtin_v3_relationship_correction_rules() -> RelationshipCorrectionRulesV1:
         profile_ref=SemanticProfileRef(
             profile_id=descriptor.profile_id,
             profile_revision=descriptor.profile_revision,
-            descriptor_sha256=descriptor_sha256(descriptor),
+            descriptor_sha256=canonical_sha256(descriptor.model_dump(mode="json")),
         ),
         catalog_id=catalog.vocabulary_id,
         catalog_version=catalog.vocabulary_revision,
