@@ -11,7 +11,9 @@ from ..contracts.adopted_assertion_withdrawal import (
     AdoptedAssertionWithdrawalCommand,
     AdoptedAssertionWithdrawalCommandV1,
     AdoptedAssertionWithdrawalCommandV3,
+    AdoptedAssertionWithdrawalCommandV4,
     AdoptedAssertionWithdrawalReceipt,
+    withdrawal_evidence_bindings,
 )
 from ..contracts.capability import CapabilityEffect, CapabilityPolicy
 from ..contracts.existing_world_adoption import ExistingWorldAdoptionReceiptV4
@@ -77,7 +79,9 @@ def materialize_withdrawal_payload(
     if adopted.semantic_profile != parent.semantic_profile:
         raise PersistenceIntegrityError("withdrawal cannot change the semantic profile")
 
-    object_withdrawal = isinstance(command, AdoptedAssertionWithdrawalCommandV3)
+    object_withdrawal = isinstance(
+        command, (AdoptedAssertionWithdrawalCommandV3, AdoptedAssertionWithdrawalCommandV4)
+    )
     original: list[GraphObjectV6Record | GraphRelationshipV6Record]
     current: list[GraphObjectV6Record | GraphRelationshipV6Record]
     if object_withdrawal:
@@ -126,40 +130,47 @@ def materialize_withdrawal_payload(
         or current_matching_assertions[0] != current[0].assertion_metadata
     ):
         raise PersistenceIntegrityError("withdrawal assertion identity is ambiguous in parent")
-    if target.assertion_metadata.evidence_ref_ids != [command.evidence_ref_id]:
+    bindings = withdrawal_evidence_bindings(command)
+    if target.assertion_metadata.evidence_ref_ids != [b.evidence_ref_id for b in bindings]:
         raise PersistenceIntegrityError(
-            "withdrawal requires the complete, single-reference target evidence binding"
+            "withdrawal requires the complete ordered target evidence binding"
         )
-
-    evidence = [e for e in adopted.evidence_refs if e.evidence_ref_id == command.evidence_ref_id]
-    if len(evidence) != 1:
-        raise PersistenceIntegrityError("withdrawal evidence reference is not unique")
-    parent_evidence = [
-        e for e in parent.evidence_refs if e.evidence_ref_id == command.evidence_ref_id
-    ]
-    if len(parent_evidence) != 1 or parent_evidence[0] != evidence[0]:
-        raise PersistenceIntegrityError("withdrawal evidence changed since adoption")
-    bound = evidence[0]
-    if (
-        bound.source_revision_id is None
-        or bound.source_span_ref_id is None
-        or (
-            isinstance(command, AdoptedAssertionWithdrawalCommandV1)
-            and bound.source_locator is None
-        )
-    ):
-        raise PersistenceIntegrityError("withdrawal requires exact source revision and span")
-    if (
-        bound.source_revision_id != command.source_revision_id
-        or bound.source_artifact_id != command.source_artifact_id
-        or bound.source_span_ref_id != command.source_span_ref_id
-        or bound.source_locator != command.source_locator
-    ):
-        raise PersistenceIntegrityError("withdrawal source binding differs from the request")
-    if bound.source_revision_id not in evidence_revision_ids:
-        raise PersistenceIntegrityError("withdrawal source revision is outside adoption membership")
-    if bound.source_artifact_id not in evidence_artifact_ids:
-        raise PersistenceIntegrityError("withdrawal source artifact is outside adoption membership")
+    for binding in bindings:
+        evidence = [
+            e for e in adopted.evidence_refs if e.evidence_ref_id == binding.evidence_ref_id
+        ]
+        if len(evidence) != 1:
+            raise PersistenceIntegrityError("withdrawal evidence reference is not unique")
+        parent_evidence = [
+            e for e in parent.evidence_refs if e.evidence_ref_id == binding.evidence_ref_id
+        ]
+        if len(parent_evidence) != 1 or parent_evidence[0] != evidence[0]:
+            raise PersistenceIntegrityError("withdrawal evidence changed since adoption")
+        bound = evidence[0]
+        if (
+            bound.source_revision_id is None
+            or bound.source_span_ref_id is None
+            or (
+                isinstance(command, AdoptedAssertionWithdrawalCommandV1)
+                and bound.source_locator is None
+            )
+        ):
+            raise PersistenceIntegrityError("withdrawal requires exact source revision and span")
+        if (
+            bound.source_revision_id != binding.source_revision_id
+            or bound.source_artifact_id != binding.source_artifact_id
+            or bound.source_span_ref_id != binding.source_span_ref_id
+            or bound.source_locator != binding.source_locator
+        ):
+            raise PersistenceIntegrityError("withdrawal source binding differs from the request")
+        if bound.source_revision_id not in evidence_revision_ids:
+            raise PersistenceIntegrityError(
+                "withdrawal source revision is outside adoption membership"
+            )
+        if bound.source_artifact_id not in evidence_artifact_ids:
+            raise PersistenceIntegrityError(
+                "withdrawal source artifact is outside adoption membership"
+            )
     if canonical_sha256(parent_payload) != command.parent_payload_sha256:
         raise PersistenceIntegrityError("withdrawal parent payload digest mismatch")
 

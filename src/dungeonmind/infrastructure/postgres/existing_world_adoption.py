@@ -30,10 +30,13 @@ from ...contracts.adopted_assertion_withdrawal import (
     AdoptedAssertionWithdrawalCommandV1,
     AdoptedAssertionWithdrawalCommandV2,
     AdoptedAssertionWithdrawalCommandV3,
+    AdoptedAssertionWithdrawalCommandV4,
     AdoptedAssertionWithdrawalReceipt,
     AdoptedAssertionWithdrawalReceiptV1,
     AdoptedAssertionWithdrawalReceiptV2,
     AdoptedAssertionWithdrawalReceiptV3,
+    AdoptedAssertionWithdrawalReceiptV4,
+    withdrawal_evidence_bindings,
 )
 from ...contracts.evidence import SourceArtifactV2
 from ...contracts.existing_world_adoption import (
@@ -346,28 +349,47 @@ class PostgresExistingWorldAdoptionRepository:
             )
         return receipt
 
-    def _return_withdrawal_receipt(
-        self, row: dict[str, Any]
-    ) -> AdoptedAssertionWithdrawalReceipt:
+    def _return_withdrawal_receipt(self, row: dict[str, Any]) -> AdoptedAssertionWithdrawalReceipt:
         identity = {
             key: row[key]
             for key in (
-                "operation_id", "world_id", "adoption_id", "request_sha256",
-                "adoption_receipt_fingerprint", "parent_revision_id",
-                "parent_payload_sha256", "published_revision_id", "relationship_id",
-                "assertion_id", "subject_object_id", "predicate", "object_object_id",
-                "evidence_ref_id", "source_artifact_id",
-                "source_revision_id", "source_span_ref_id", "source_locator",
-                "disposition", "actor", "completed_at", "schema_version",
+                "operation_id",
+                "world_id",
+                "adoption_id",
+                "request_sha256",
+                "adoption_receipt_fingerprint",
+                "parent_revision_id",
+                "parent_payload_sha256",
+                "published_revision_id",
+                "relationship_id",
+                "assertion_id",
+                "subject_object_id",
+                "predicate",
+                "object_object_id",
+                "evidence_ref_id",
+                "source_artifact_id",
+                "source_revision_id",
+                "source_span_ref_id",
+                "source_locator",
+                "disposition",
+                "actor",
+                "completed_at",
+                "schema_version",
             )
         }
         receipt_type = {
-            AdoptedAssertionWithdrawalReceiptV1.model_fields["schema_version"].default:
-                AdoptedAssertionWithdrawalReceiptV1,
-            AdoptedAssertionWithdrawalReceiptV2.model_fields["schema_version"].default:
-                AdoptedAssertionWithdrawalReceiptV2,
-            AdoptedAssertionWithdrawalReceiptV3.model_fields["schema_version"].default:
-                AdoptedAssertionWithdrawalReceiptV3,
+            AdoptedAssertionWithdrawalReceiptV1.model_fields[
+                "schema_version"
+            ].default: AdoptedAssertionWithdrawalReceiptV1,
+            AdoptedAssertionWithdrawalReceiptV2.model_fields[
+                "schema_version"
+            ].default: AdoptedAssertionWithdrawalReceiptV2,
+            AdoptedAssertionWithdrawalReceiptV3.model_fields[
+                "schema_version"
+            ].default: AdoptedAssertionWithdrawalReceiptV3,
+            AdoptedAssertionWithdrawalReceiptV4.model_fields[
+                "schema_version"
+            ].default: AdoptedAssertionWithdrawalReceiptV4,
         }.get(row["schema_version"])
         if receipt_type is None:
             raise PersistenceIntegrityError("unsupported assertion withdrawal receipt schema")
@@ -424,32 +446,41 @@ class PostgresExistingWorldAdoptionRepository:
         ):
             raise PersistenceIntegrityError("withdrawal receipt disagrees with graph lineage")
         command_type = (
-            AdoptedAssertionWithdrawalCommandV3
+            AdoptedAssertionWithdrawalCommandV4
+            if isinstance(receipt, AdoptedAssertionWithdrawalReceiptV4)
+            else AdoptedAssertionWithdrawalCommandV3
             if isinstance(receipt, AdoptedAssertionWithdrawalReceiptV3)
             else AdoptedAssertionWithdrawalCommandV2
             if isinstance(receipt, AdoptedAssertionWithdrawalReceiptV2)
             else AdoptedAssertionWithdrawalCommandV1
         )
-        command = command_type.model_validate(dict(
-            operation_id=receipt.operation_id,
-            world_id=receipt.world_id,
-            adoption_id=receipt.adoption_id,
-            expected_parent_revision_id=receipt.parent_revision_id,
-            relationship_id=receipt.relationship_id,
-            assertion_id=receipt.assertion_id,
-            subject_object_id=receipt.subject_object_id,
-            predicate=receipt.predicate,
-            object_object_id=receipt.object_object_id,
-            evidence_ref_id=receipt.evidence_ref_id,
-            source_artifact_id=receipt.source_artifact_id,
-            source_revision_id=receipt.source_revision_id,
-            source_span_ref_id=receipt.source_span_ref_id,
-            source_locator=receipt.source_locator,
-            parent_payload_sha256=receipt.parent_payload_sha256,
-            disposition=receipt.disposition,
-            actor=receipt.actor,
-            requested_at=receipt.completed_at,
-        ))
+        command = command_type.model_validate(
+            dict(
+                operation_id=receipt.operation_id,
+                world_id=receipt.world_id,
+                adoption_id=receipt.adoption_id,
+                expected_parent_revision_id=receipt.parent_revision_id,
+                relationship_id=receipt.relationship_id,
+                assertion_id=receipt.assertion_id,
+                subject_object_id=receipt.subject_object_id,
+                predicate=receipt.predicate,
+                object_object_id=receipt.object_object_id,
+                evidence_ref_id=receipt.evidence_ref_id,
+                source_artifact_id=receipt.source_artifact_id,
+                source_revision_id=receipt.source_revision_id,
+                source_span_ref_id=receipt.source_span_ref_id,
+                source_locator=receipt.source_locator,
+                parent_payload_sha256=receipt.parent_payload_sha256,
+                disposition=receipt.disposition,
+                actor=receipt.actor,
+                requested_at=receipt.completed_at,
+                **(
+                    {"evidence_bindings": receipt.evidence_bindings}
+                    if isinstance(receipt, AdoptedAssertionWithdrawalReceiptV4)
+                    else {}
+                ),
+            )
+        )
         if withdrawal_request_sha256(command) != receipt.request_sha256:
             raise PersistenceIntegrityError("withdrawal receipt request hash drift")
         expected_child = materialize_withdrawal_payload(
@@ -465,9 +496,7 @@ class PostgresExistingWorldAdoptionRepository:
     def withdraw_adopted_assertion(
         self, command: AdoptedAssertionWithdrawalCommand
     ) -> AdoptedAssertionWithdrawalReceipt:
-        command = type(command).model_validate(
-            command.model_dump(mode="json")
-        )
+        command = type(command).model_validate(command.model_dump(mode="json"))
         request_sha = withdrawal_request_sha256(command)
         world_id = command.world_id
         with self._database.transaction() as conn:
@@ -483,9 +512,7 @@ class PostgresExistingWorldAdoptionRepository:
                     "adopted assertion withdrawal identity conflicts with the request"
                 )
 
-            adoption_row = _adoption_row(
-                conn, world_id=world_id, adoption_id=command.adoption_id
-            )
+            adoption_row = _adoption_row(conn, world_id=world_id, adoption_id=command.adoption_id)
             if adoption_row is None:
                 raise PersistenceIntegrityError("withdrawal adoption receipt is missing")
             adoption = self._load_verified(conn, adoption_row)
@@ -539,36 +566,37 @@ class PostgresExistingWorldAdoptionRepository:
             if parent.revision.graph_payload_sha256 != command.parent_payload_sha256:
                 raise PersistenceIntegrityError("withdrawal parent payload digest mismatch")
 
-            artifact_row = conn.execute(
-                sql.SQL(
-                    f"""
-                    SELECT {_SOURCE_ARTIFACT_SELECT}
-                    FROM {{}}.source_artifacts
-                    WHERE source_artifact_id = %s
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (command.source_artifact_id,),
-            ).fetchone()
-            source_revision_row = conn.execute(
-                sql.SQL(
-                    f"""
-                    SELECT {_SOURCE_REVISION_SELECT}
-                    FROM {{}}.source_revisions
-                    WHERE source_revision_id = %s
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (command.source_revision_id,),
-            ).fetchone()
-            if artifact_row is None or source_revision_row is None:
-                raise PersistenceIntegrityError("withdrawal source lineage is missing")
-            artifact = _return_artifact(artifact_row)
-            source_revision = _return_revision(source_revision_row)
-            if (
-                not isinstance(artifact, SourceArtifactV2)
-                or artifact.world_id != world_id
-                or source_revision.source_artifact_id != command.source_artifact_id
-            ):
-                raise PersistenceIntegrityError("withdrawal source lineage identity mismatch")
+            for binding in withdrawal_evidence_bindings(command):
+                artifact_row = conn.execute(
+                    sql.SQL(
+                        f"""
+                        SELECT {_SOURCE_ARTIFACT_SELECT}
+                        FROM {{}}.source_artifacts
+                        WHERE source_artifact_id = %s
+                        """
+                    ).format(sql.Identifier(SCHEMA)),
+                    (binding.source_artifact_id,),
+                ).fetchone()
+                source_revision_row = conn.execute(
+                    sql.SQL(
+                        f"""
+                        SELECT {_SOURCE_REVISION_SELECT}
+                        FROM {{}}.source_revisions
+                        WHERE source_revision_id = %s
+                        """
+                    ).format(sql.Identifier(SCHEMA)),
+                    (binding.source_revision_id,),
+                ).fetchone()
+                if artifact_row is None or source_revision_row is None:
+                    raise PersistenceIntegrityError("withdrawal source lineage is missing")
+                artifact = _return_artifact(artifact_row)
+                source_revision = _return_revision(source_revision_row)
+                if (
+                    not isinstance(artifact, SourceArtifactV2)
+                    or artifact.world_id != world_id
+                    or source_revision.source_artifact_id != binding.source_artifact_id
+                ):
+                    raise PersistenceIntegrityError("withdrawal source lineage identity mismatch")
 
             child_payload = materialize_withdrawal_payload(
                 command,
@@ -592,35 +620,44 @@ class PostgresExistingWorldAdoptionRepository:
             if self._failure_hook is not None:
                 self._failure_hook("withdrawal_graph")
             receipt_type = (
-                AdoptedAssertionWithdrawalReceiptV3
+                AdoptedAssertionWithdrawalReceiptV4
+                if isinstance(command, AdoptedAssertionWithdrawalCommandV4)
+                else AdoptedAssertionWithdrawalReceiptV3
                 if isinstance(command, AdoptedAssertionWithdrawalCommandV3)
                 else AdoptedAssertionWithdrawalReceiptV2
                 if isinstance(command, AdoptedAssertionWithdrawalCommandV2)
                 else AdoptedAssertionWithdrawalReceiptV1
             )
-            receipt = receipt_type.model_validate(dict(
-                operation_id=command.operation_id,
-                world_id=world_id,
-                adoption_id=command.adoption_id,
-                request_sha256=request_sha,
-                adoption_receipt_fingerprint=adoption_row["record_fingerprint"],
-                parent_revision_id=command.expected_parent_revision_id,
-                parent_payload_sha256=command.parent_payload_sha256,
-                published_revision_id=revision.revision_id,
-                relationship_id=command.relationship_id,
-                assertion_id=command.assertion_id,
-                subject_object_id=command.subject_object_id,
-                predicate=command.predicate,
-                object_object_id=command.object_object_id,
-                evidence_ref_id=command.evidence_ref_id,
-                source_artifact_id=command.source_artifact_id,
-                source_revision_id=command.source_revision_id,
-                source_span_ref_id=command.source_span_ref_id,
-                source_locator=command.source_locator,
-                disposition=command.disposition,
-                actor=command.actor,
-                completed_at=command.requested_at,
-            ))
+            receipt = receipt_type.model_validate(
+                dict(
+                    operation_id=command.operation_id,
+                    world_id=world_id,
+                    adoption_id=command.adoption_id,
+                    request_sha256=request_sha,
+                    adoption_receipt_fingerprint=adoption_row["record_fingerprint"],
+                    parent_revision_id=command.expected_parent_revision_id,
+                    parent_payload_sha256=command.parent_payload_sha256,
+                    published_revision_id=revision.revision_id,
+                    relationship_id=command.relationship_id,
+                    assertion_id=command.assertion_id,
+                    subject_object_id=command.subject_object_id,
+                    predicate=command.predicate,
+                    object_object_id=command.object_object_id,
+                    evidence_ref_id=command.evidence_ref_id,
+                    source_artifact_id=command.source_artifact_id,
+                    source_revision_id=command.source_revision_id,
+                    source_span_ref_id=command.source_span_ref_id,
+                    source_locator=command.source_locator,
+                    disposition=command.disposition,
+                    actor=command.actor,
+                    completed_at=command.requested_at,
+                    **(
+                        {"evidence_bindings": command.evidence_bindings}
+                        if isinstance(command, AdoptedAssertionWithdrawalCommandV4)
+                        else {}
+                    ),
+                )
+            )
             fingerprint = model_fingerprint(receipt)
             try:
                 conn.execute(
@@ -642,16 +679,30 @@ class PostgresExistingWorldAdoptionRepository:
                         """
                     ).format(sql.Identifier(SCHEMA)),
                     (
-                        receipt.operation_id, receipt.world_id, receipt.adoption_id,
-                        receipt.request_sha256, receipt.adoption_receipt_fingerprint,
-                        receipt.parent_revision_id, receipt.parent_payload_sha256,
-                        receipt.published_revision_id, receipt.relationship_id,
-                        receipt.assertion_id, receipt.subject_object_id, receipt.predicate,
-                        receipt.object_object_id, receipt.evidence_ref_id,
-                        receipt.source_artifact_id, receipt.source_revision_id,
-                        receipt.source_span_ref_id, receipt.source_locator,
-                        receipt.disposition, receipt.actor, receipt.completed_at,
-                        receipt.schema_version, fingerprint, jsonb(dump_payload(receipt)),
+                        receipt.operation_id,
+                        receipt.world_id,
+                        receipt.adoption_id,
+                        receipt.request_sha256,
+                        receipt.adoption_receipt_fingerprint,
+                        receipt.parent_revision_id,
+                        receipt.parent_payload_sha256,
+                        receipt.published_revision_id,
+                        receipt.relationship_id,
+                        receipt.assertion_id,
+                        receipt.subject_object_id,
+                        receipt.predicate,
+                        receipt.object_object_id,
+                        receipt.evidence_ref_id,
+                        receipt.source_artifact_id,
+                        receipt.source_revision_id,
+                        receipt.source_span_ref_id,
+                        receipt.source_locator,
+                        receipt.disposition,
+                        receipt.actor,
+                        receipt.completed_at,
+                        receipt.schema_version,
+                        fingerprint,
+                        jsonb(dump_payload(receipt)),
                     ),
                 )
             except UniqueViolation:
@@ -660,9 +711,7 @@ class PostgresExistingWorldAdoptionRepository:
                 ) from None
             if self._failure_hook is not None:
                 self._failure_hook("withdrawal_receipt")
-            row = _withdrawal_row(
-                conn, world_id=world_id, operation_id=command.operation_id
-            )
+            row = _withdrawal_row(conn, world_id=world_id, operation_id=command.operation_id)
             if row is None:
                 raise PersistenceIntegrityError("withdrawal receipt missing after insert")
             return self._load_verified_withdrawal(conn, row)

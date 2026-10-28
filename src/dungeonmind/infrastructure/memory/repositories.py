@@ -67,10 +67,13 @@ from ...contracts.adopted_assertion_withdrawal import (
     AdoptedAssertionWithdrawalCommandV1,
     AdoptedAssertionWithdrawalCommandV2,
     AdoptedAssertionWithdrawalCommandV3,
+    AdoptedAssertionWithdrawalCommandV4,
     AdoptedAssertionWithdrawalReceipt,
     AdoptedAssertionWithdrawalReceiptV1,
     AdoptedAssertionWithdrawalReceiptV2,
     AdoptedAssertionWithdrawalReceiptV3,
+    AdoptedAssertionWithdrawalReceiptV4,
+    withdrawal_evidence_bindings,
 )
 from ...contracts.contribution import (
     ContributionStatus,
@@ -2694,17 +2697,18 @@ class InMemoryExistingWorldAdoptionRepository:
             parent_sha = canonical_sha256(parent_stored.graph_payload)
             if parent_sha != command.parent_payload_sha256:
                 raise PersistenceIntegrityError("withdrawal parent payload digest mismatch")
-            artifact = self._sources._artifacts.get(command.source_artifact_id)
-            source_revision = self._sources._revisions.get(command.source_revision_id)
-            if (
-                not isinstance(artifact, SourceArtifactV2)
-                or artifact.world_id != world_id
-                or not isinstance(source_revision, SourceRevision)
-                or source_revision.source_artifact_id != command.source_artifact_id
-            ):
-                raise PersistenceIntegrityError(
-                    "withdrawal source artifact/revision is not persisted consistently"
-                )
+            for binding in withdrawal_evidence_bindings(command):
+                artifact = self._sources._artifacts.get(binding.source_artifact_id)
+                source_revision = self._sources._revisions.get(binding.source_revision_id)
+                if (
+                    not isinstance(artifact, SourceArtifactV2)
+                    or artifact.world_id != world_id
+                    or not isinstance(source_revision, SourceRevision)
+                    or source_revision.source_artifact_id != binding.source_artifact_id
+                ):
+                    raise PersistenceIntegrityError(
+                        "withdrawal source artifact/revision is not persisted consistently"
+                    )
 
             child_payload = materialize_withdrawal_payload(
                 command,
@@ -2729,7 +2733,9 @@ class InMemoryExistingWorldAdoptionRepository:
                 if self._failure_hook is not None:
                     self._failure_hook("withdrawal_graph")
                 receipt_type = (
-                    AdoptedAssertionWithdrawalReceiptV3
+                    AdoptedAssertionWithdrawalReceiptV4
+                    if isinstance(command, AdoptedAssertionWithdrawalCommandV4)
+                    else AdoptedAssertionWithdrawalReceiptV3
                     if isinstance(command, AdoptedAssertionWithdrawalCommandV3)
                     else AdoptedAssertionWithdrawalReceiptV2
                     if isinstance(command, AdoptedAssertionWithdrawalCommandV2)
@@ -2760,6 +2766,11 @@ class InMemoryExistingWorldAdoptionRepository:
                         disposition=command.disposition,
                         actor=command.actor,
                         completed_at=command.requested_at,
+                        **(
+                            {"evidence_bindings": command.evidence_bindings}
+                            if isinstance(command, AdoptedAssertionWithdrawalCommandV4)
+                            else {}
+                        ),
                     )
                 )
                 self._withdrawal_receipts[receipt_key] = receipt
@@ -2801,7 +2812,9 @@ class InMemoryExistingWorldAdoptionRepository:
         ):
             raise PersistenceIntegrityError("withdrawal receipt disagrees with graph lineage")
         command_type = (
-            AdoptedAssertionWithdrawalCommandV3
+            AdoptedAssertionWithdrawalCommandV4
+            if isinstance(receipt, AdoptedAssertionWithdrawalReceiptV4)
+            else AdoptedAssertionWithdrawalCommandV3
             if isinstance(receipt, AdoptedAssertionWithdrawalReceiptV3)
             else AdoptedAssertionWithdrawalCommandV2
             if isinstance(receipt, AdoptedAssertionWithdrawalReceiptV2)
@@ -2827,6 +2840,11 @@ class InMemoryExistingWorldAdoptionRepository:
                 disposition=receipt.disposition,
                 actor=receipt.actor,
                 requested_at=receipt.completed_at,
+                **(
+                    {"evidence_bindings": receipt.evidence_bindings}
+                    if isinstance(receipt, AdoptedAssertionWithdrawalReceiptV4)
+                    else {}
+                ),
             )
         )
         if withdrawal_request_sha256(command) != receipt.request_sha256:
