@@ -17,6 +17,7 @@ from pydantic import ConfigDict, field_validator, model_validator
 
 from .base import DungeonMindModel
 from .contribution_review_v2 import ReviewedIdentityPublicationPreconditions
+from .evidence import SourceArtifactRecord, SourceRevision
 
 FINALIZED_REVIEW_PUBLICATION_COMMAND_SCHEMA = "dm_finalized_review_publication_command_v1"
 FINALIZED_REVIEW_PUBLICATION_SCHEMA = "dm_finalized_review_publication_v1"
@@ -224,6 +225,12 @@ def decode_finalized_review_publication_command(
             if guarded
             else FinalizedReviewPublicationCommandV2
         )
+    elif family == "dm_finalized_review_publication_command_v3":
+        model = (
+            GuardedFinalizedReviewPublicationCommandV3
+            if guarded
+            else FinalizedReviewPublicationCommandV3
+        )
     else:
         raise ValueError("unknown finalized publication command family")
     return model.model_validate(value)
@@ -334,12 +341,123 @@ def decode_finalized_review_publication(value: dict[str, Any]) -> FinalizedRevie
         return FinalizedReviewPublication.model_validate(value)
     if family == "dm_finalized_review_publication_v2":
         return FinalizedReviewPublicationV2.model_validate(value)
+    if family == "dm_finalized_review_publication_v3":
+        return FinalizedReviewPublicationV3.model_validate(value)
     raise ValueError("unknown finalized publication family")
 
 
 def publication_record_payload(value: FinalizedReviewPublication) -> dict[str, Any]:
+    if isinstance(value, FinalizedReviewPublicationV3):
+        return FinalizedReviewPublicationV3.model_validate(
+            value.model_dump(mode="json")
+        ).model_dump(mode="json")
     if isinstance(value, FinalizedReviewPublicationV2):
         PublicationAdmissionContextV1.model_validate(value.admission_context)
         AdmissionPolicyRefV1.model_validate(value.admission_policy_ref)
         AdmissionValidatorRefV1.model_validate(value.validator_ref)
     return value.model_dump(mode="json")
+
+
+class FinalizedReviewPublicationCommandV3(FinalizedReviewPublicationCommand):
+    """Explicit independent-existence publication; parent schema is separate."""
+
+    schema_version: Literal["dm_finalized_review_publication_command_v3"] = (
+        "dm_finalized_review_publication_command_v3"
+    )
+    parent_graph_schema: Literal["dm_union_graph_v6", "dm_union_graph_v7"]
+    graph_schema: Literal["dm_union_graph_v7"] = "dm_union_graph_v7"
+    materialization_semantics: Literal["dm_independent_object_existence_support_v1"] = (
+        "dm_independent_object_existence_support_v1"
+    )
+    admission_policy_ref: AdmissionPolicyRefV1 | None = None
+    validator_ref: AdmissionValidatorRefV1 | None = None
+
+    @model_validator(mode="after")
+    def _paired_policy(self) -> Self:
+        if (self.admission_policy_ref is None) != (self.validator_ref is None):
+            raise ValueError("v3 admission policy/validator must be paired")
+        return self
+
+
+class GuardedFinalizedReviewPublicationCommandV3(
+    FinalizedReviewPublicationCommandV3, GuardedFinalizedReviewPublicationCommand
+):
+    pass
+
+
+class RetainedPublicationSourcesV1(DungeonMindModel):
+    """Publication-time source identity, not source bodies or present authority."""
+
+    artifacts: tuple[SourceArtifactRecord, ...]
+    revisions: tuple[SourceRevision, ...]
+
+    @model_validator(mode="after")
+    def _unique(self) -> Self:
+        aids = [a.source_artifact_id for a in self.artifacts]
+        rids = [r.source_revision_id for r in self.revisions]
+        if len(aids) != len(set(aids)) or len(rids) != len(set(rids)):
+            raise ValueError("duplicate retained source identity")
+        if any(r.source_artifact_id not in aids for r in self.revisions):
+            raise ValueError("retained source revision parent missing")
+        return self
+
+
+class FinalizedReviewPublicationV3(FinalizedReviewPublication):
+    schema_version: Literal["dm_finalized_review_publication_v3"] = (
+        "dm_finalized_review_publication_v3"
+    )
+    parent_graph_schema: Literal["dm_union_graph_v6", "dm_union_graph_v7"]
+    graph_schema: Literal["dm_union_graph_v7"] = "dm_union_graph_v7"
+    materialization_semantics: Literal["dm_independent_object_existence_support_v1"] = (
+        "dm_independent_object_existence_support_v1"
+    )
+    admission_policy_ref: AdmissionPolicyRefV1 | None = None
+    validator_ref: AdmissionValidatorRefV1 | None = None
+    admission_context: PublicationAdmissionContextV1 | None = None
+    admission_context_sha256: str | None = None
+    retained_sources: RetainedPublicationSourcesV1
+    retained_sources_sha256: str
+    identity_history: tuple[dict[str, Any], ...]
+    identity_history_sha256: str
+
+    @model_validator(mode="after")
+    def _v3_proof(self) -> Self:
+        if (
+            _canonical_sha256(self.retained_sources.model_dump(mode="json"))
+            != self.retained_sources_sha256
+        ):
+            raise ValueError("retained source snapshot fingerprint differs")
+        if _canonical_sha256(self.identity_history) != self.identity_history_sha256:
+            raise ValueError("v3 identity history fingerprint differs")
+        if len({r.get("decision_id") for r in self.identity_history}) != len(self.identity_history):
+            raise ValueError("v3 duplicate identity history")
+        if any(
+            r.get("world_id") != self.world_id or not r.get("decision_id")
+            for r in self.identity_history
+        ):
+            raise ValueError("v3 identity history World/identity differs")
+        fields = (
+            self.admission_policy_ref,
+            self.validator_ref,
+            self.admission_context,
+            self.admission_context_sha256,
+        )
+        if all(v is None for v in fields):
+            return self
+        if any(v is None for v in fields):
+            raise ValueError("v3 complete admission context required")
+        # Reuse the exact protected-context invariant without making a V3
+        # receipt an instance of the legacy V2 transport family.
+        raw = self.model_dump(mode="json")
+        for key in (
+            "parent_graph_schema",
+            "materialization_semantics",
+            "identity_history",
+            "identity_history_sha256",
+            "retained_sources",
+            "retained_sources_sha256",
+        ):
+            raw.pop(key)
+        raw["schema_version"] = "dm_finalized_review_publication_v2"
+        FinalizedReviewPublicationV2.model_validate(raw)
+        return self

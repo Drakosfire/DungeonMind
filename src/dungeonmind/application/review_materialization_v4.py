@@ -12,6 +12,7 @@ from ..contracts.contribution import (
     parse_reviewed_property_literal,
 )
 from ..contracts.contribution_review_v4 import ContributionReviewStateV4
+from ..contracts.contribution_review_v5 import ContributionReviewStateV5
 from ..contracts.evidence import EvidenceRefV2
 from ..contracts.graph import StoredGraphRevision
 from ..contracts.identity import IdentityOutcome
@@ -71,7 +72,9 @@ def _facet_ids(payload: dict[str, Any]) -> tuple[set[str], set[str]]:
     return set(ids), property_ids
 
 
-def _accepted(state: ContributionReviewStateV4) -> list[GraphContributionAssertionV4]:
+def _accepted(
+    state: ContributionReviewStateV4 | ContributionReviewStateV5,
+) -> list[GraphContributionAssertionV4]:
     return [
         a
         for a in state.reviewed_contribution.assertions
@@ -80,7 +83,9 @@ def _accepted(state: ContributionReviewStateV4) -> list[GraphContributionAsserti
     ]
 
 
-def _preflight(state: ContributionReviewStateV4, parent: StoredGraphRevision) -> None:
+def _preflight(
+    state: ContributionReviewStateV4 | ContributionReviewStateV5, parent: StoredGraphRevision,
+) -> None:
     parent_ids, properties = _facet_ids(parent.graph_payload)
     new_properties = {
         a.assertion_id
@@ -114,7 +119,7 @@ def _preflight(state: ContributionReviewStateV4, parent: StoredGraphRevision) ->
 
 
 def _property(
-    state: ContributionReviewStateV4,
+    state: ContributionReviewStateV4 | ContributionReviewStateV5,
     assertion: GraphContributionAssertionV4,
     source_snapshot: SourceProvenanceSnapshot | None,
 ) -> tuple[PropertyAssertionV4Record, dict[str, EvidenceRefV2]]:
@@ -183,8 +188,8 @@ def capture_property_literals_v4(payload: dict[str, Any]) -> dict[str, dict[str,
     return captured
 
 
-def validate_reviewed_property_delta_v4(
-    state: ContributionReviewStateV4,
+def _validate_reviewed_property_delta(
+    state: ContributionReviewStateV4 | ContributionReviewStateV5,
     *,
     parent: StoredGraphRevision,
     graph_payload: dict[str, Any],
@@ -192,7 +197,6 @@ def validate_reviewed_property_delta_v4(
     raw_literals: dict[str, dict[str, Any] | None] | None = None,
 ) -> None:
     """UoW re-proves exact property facts against its locked durable review/source."""
-    state = reload_review_v4(state)
     _preflight(state, parent)
     _facet_ids(graph_payload)
     new_ids = {a.assertion_id for a in _accepted(state) if a.assertion_kind == "property"}
@@ -245,6 +249,21 @@ def validate_reviewed_property_delta_v4(
             expected.get(object_id, [])
         ):
             _fail("reviewed_property_delta_mismatch")
+
+
+def validate_reviewed_property_delta_v4(
+    state: ContributionReviewStateV4,
+    *,
+    parent: StoredGraphRevision,
+    graph_payload: dict[str, Any],
+    source_snapshot: SourceProvenanceSnapshot | None,
+    raw_literals: dict[str, dict[str, Any] | None] | None = None,
+) -> None:
+    """Preserve the exact V4 entry and revalidation ceiling."""
+    _validate_reviewed_property_delta(
+        reload_review_v4(state), parent=parent, graph_payload=graph_payload,
+        source_snapshot=source_snapshot, raw_literals=raw_literals,
+    )
 
 
 def materialize_finalized_review_v4(

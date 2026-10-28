@@ -39,6 +39,7 @@ from ..contracts.contribution_review_v4 import (
     ContributionReviewStateV4,
     GuardedContributionReviewRecordV4,
 )
+from ..contracts.contribution_review_v5 import ContributionReviewRecordV5
 from ..contracts.graph import StoredGraphRevision
 from ..contracts.review_publication import (
     FinalizedReviewPublication,
@@ -116,7 +117,8 @@ def _reload_review(
     *,
     world_id: str,
     review_id: str,
-) -> DurableContributionReviewState:
+) -> (ContributionReviewState | ContributionReviewStateV2
+      | ContributionReviewStateV3 | ContributionReviewStateV4):
     try:
         if isinstance(state, ContributionReviewStateV4):
             GraphContributionV4.model_validate(state.candidate_contribution)
@@ -540,6 +542,7 @@ def validate_guarded_command_binding(
         | ContributionReviewRecordV2
         | ContributionReviewRecordV3
         | ContributionReviewRecordV4
+        | ContributionReviewRecordV5
     ),
 ) -> None:
     """Reject guard replacement, stripping or addition at the owning boundary."""

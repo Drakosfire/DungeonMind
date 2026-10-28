@@ -31,7 +31,7 @@ from ...application.existing_world_adoption_repair import (
     membership_from_loaded,
     prepare_source_classification_repair,
 )
-from ...application.graph_snapshot import GRAPH_SCHEMA_V6
+from ...application.graph_snapshot import GRAPH_SCHEMA_V6, GraphSnapshotReader
 from ...application.publication_admission import (
     InMemoryPublicationAdmissionRepository,
     PublicationAdmissionRegistry,
@@ -104,6 +104,10 @@ from ...contracts.contribution_review_v4 import (
     ContributionReviewRecordV4,
     ContributionReviewStateV4,
 )
+from ...contracts.contribution_review_v5 import (
+    ContributionReviewRecordV5,
+    ContributionReviewStateV5,
+)
 from ...contracts.evidence import SourceArtifactRecord, SourceArtifactV2, SourceRevision
 from ...contracts.existing_world_adoption import (
     EXISTING_WORLD_ADOPTION_RECEIPT_SCHEMA,
@@ -138,6 +142,7 @@ from ...contracts.review_publication import (
     FinalizedReviewPublication,
     FinalizedReviewPublicationCommand,
     FinalizedReviewPublicationV2,
+    FinalizedReviewPublicationV3,
     decode_finalized_review_publication,
     publication_record_payload,
 )
@@ -425,7 +430,8 @@ class InMemoryContributionReviewRepository:
             ContributionReviewRecord
             | ContributionReviewRecordV2
             | ContributionReviewRecordV3
-            | ContributionReviewRecordV4,
+            | ContributionReviewRecordV4
+            | ContributionReviewRecordV5,
         ] = {}
         self._lock = contributions._lock
         self._failure_hook = failure_hook
@@ -437,6 +443,7 @@ class InMemoryContributionReviewRepository:
             | ContributionReviewRecordV2
             | ContributionReviewRecordV3
             | ContributionReviewRecordV4
+            | ContributionReviewRecordV5
         ),
     ) -> DurableContributionReviewState:
         candidate = self._contributions._items.get(
@@ -450,6 +457,18 @@ class InMemoryContributionReviewRepository:
                 f"review {record.review_id!r} is missing a contribution child"
             )
         try:
+            if isinstance(record, ContributionReviewRecordV5):
+                if not isinstance(candidate, GraphContributionV4) or not isinstance(
+                    reviewed, GraphContributionV4
+                ):
+                    raise PersistenceIntegrityError(
+                        f"review {record.review_id!r} received a non-v4 contribution"
+                    )
+                return ContributionReviewStateV5(
+                    record=_copy(record),
+                    candidate_contribution=_copy(candidate),
+                    reviewed_contribution=_copy(reviewed),
+                )
             if isinstance(record, ContributionReviewRecordV4):
                 if not isinstance(candidate, GraphContributionV4) or not isinstance(
                     reviewed, GraphContributionV4
@@ -506,12 +525,14 @@ class InMemoryContributionReviewRepository:
 
     def finalize(self, state: DurableContributionReviewState) -> DurableContributionReviewState:
         try:
-            if isinstance(state, ContributionReviewStateV4):
+            if isinstance(state, (ContributionReviewStateV4, ContributionReviewStateV5)):
                 GraphContributionV4.model_validate(state.candidate_contribution)
                 GraphContributionV4.model_validate(state.reviewed_contribution)
             dumped = state.model_dump(mode="json")
             validated: DurableContributionReviewState = (
-                ContributionReviewStateV4.model_validate(dumped)
+                ContributionReviewStateV5.model_validate(dumped)
+                if isinstance(state, ContributionReviewStateV5)
+                else ContributionReviewStateV4.model_validate(dumped)
                 if isinstance(state, ContributionReviewStateV4)
                 else ContributionReviewStateV3.model_validate(dumped)
                 if isinstance(state, ContributionReviewStateV3)
@@ -627,6 +648,7 @@ class InMemoryFinalizedReviewPublicationRepository:
         admission_registry: PublicationAdmissionRegistry | None = None,
         source_repository: "InMemorySourceRepository | None" = None,
         identity_repository: "InMemoryIdentityDecisionRepository | None" = None,
+        v7_graph_reader: GraphSnapshotReader | None = None,
     ) -> None:
         self._reviews = review_repository
         self._graph = world_graph_repository
@@ -642,6 +664,7 @@ class InMemoryFinalizedReviewPublicationRepository:
         self._records_by_operation: dict[tuple[str, str], FinalizedReviewPublication] = {}
         self._records_by_revision: dict[tuple[str, str], FinalizedReviewPublication] = {}
         self._failure_hook = failure_hook
+        self._v7_graph_reader = v7_graph_reader
         self._sources = source_repository
         self._identity = identity_repository
         self._source_lock = source_repository._lock if source_repository else threading.RLock()
@@ -685,6 +708,13 @@ class InMemoryFinalizedReviewPublicationRepository:
         command: FinalizedReviewPublicationCommand,
         state: DurableContributionReviewState,
     ) -> None:
+        from ...contracts.contribution_review_v5 import ContributionReviewStateV5
+        from ...contracts.review_publication import FinalizedReviewPublicationCommandV3
+
+        if isinstance(state, ContributionReviewStateV5) and not isinstance(
+            command, FinalizedReviewPublicationCommandV3
+        ):
+            raise PersistenceIntegrityError("V5 reviews require explicit V7 publication")
         record = state.record
         expected = (
             record.world_id,
@@ -708,7 +738,9 @@ class InMemoryFinalizedReviewPublicationRepository:
             command.operation_id,
             command.expected_parent_revision_id,
             command.parent_graph_payload_sha256,
-            command.graph_schema,
+            (command.parent_graph_schema
+             if isinstance(command, FinalizedReviewPublicationCommandV3)
+             else command.graph_schema),
         )
         from ...application.review_publication import validate_guarded_command_binding
 
@@ -780,7 +812,11 @@ class InMemoryFinalizedReviewPublicationRepository:
             or publication.expected_parent_revision_id
             != record.plan_ref.expected_parent_revision_id
             or publication.parent_graph_payload_sha256 != record.plan_ref.base_graph_payload_sha256
-            or publication.graph_schema != record.plan_ref.base_graph_schema
+            or (
+                publication.parent_graph_schema
+                if isinstance(publication, FinalizedReviewPublicationV3)
+                else publication.graph_schema
+            ) != record.plan_ref.base_graph_schema
         ):
             raise PersistenceIntegrityError(
                 "finalized publication record disagrees with its durable review"
@@ -791,6 +827,16 @@ class InMemoryFinalizedReviewPublicationRepository:
         command: FinalizedReviewPublicationCommand,
         publication: FinalizedReviewPublication,
     ) -> None:
+        from ...contracts.review_publication import FinalizedReviewPublicationCommandV3
+
+        if isinstance(command, FinalizedReviewPublicationCommandV3) != isinstance(
+            publication, FinalizedReviewPublicationV3
+        ):
+            raise IdempotencyConflictError("publication receipt family differs")
+        if (isinstance(command, FinalizedReviewPublicationCommandV3)
+            and isinstance(publication, FinalizedReviewPublicationV3)
+            and command.parent_graph_schema != publication.parent_graph_schema):
+            raise IdempotencyConflictError("publication parent schema differs")
         if (
             getattr(command, "admission_policy_ref", None)
             != getattr(publication, "admission_policy_ref", None)
@@ -857,6 +903,11 @@ class InMemoryFinalizedReviewPublicationRepository:
         publication: FinalizedReviewPublication,
     ) -> FinalizedReviewPublication:
         verified = self._validate_record(publication)
+        if isinstance(verified, FinalizedReviewPublicationV3):
+            from .review_publication_v7 import reconstruct_v7
+
+            with self._source_lock, self._identity_lock:
+                return reconstruct_v7(self, verified)
         state = self._reviews.get(verified.world_id, verified.review_id)
         if state is None:
             raise PersistenceIntegrityError("finalized publication references a missing review")
@@ -1015,6 +1066,12 @@ class InMemoryFinalizedReviewPublicationRepository:
         self,
         command: FinalizedReviewPublicationCommand,
     ) -> FinalizedReviewPublication:
+        from ...contracts.review_publication import FinalizedReviewPublicationCommandV3
+
+        if isinstance(command, FinalizedReviewPublicationCommandV3):
+            from .review_publication_v7 import publish_v7
+
+            return publish_v7(self, command)
         from ...application.review_materialization_v4 import capture_property_literals_v4
 
         raw_literals = capture_property_literals_v4(command.graph_payload)

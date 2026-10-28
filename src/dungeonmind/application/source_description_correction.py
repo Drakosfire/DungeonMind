@@ -27,6 +27,7 @@ from ..contracts.contribution_review_v2 import (
 )
 from ..contracts.contribution_review_v3 import ContributionReviewRecordV3, ContributionReviewStateV3
 from ..contracts.contribution_review_v4 import ContributionReviewRecordV4, ContributionReviewStateV4
+from ..contracts.contribution_review_v5 import ContributionReviewRecordV5, ContributionReviewStateV5
 from ..contracts.evidence import EvidenceRole, SourceDomain
 from ..contracts.graph import StoredGraphRevision
 from ..domain.canonical import canonical_sha256
@@ -57,7 +58,10 @@ class SourceDescriptionCorrectionProof:
 
     def matches(
         self,
-        state: ContributionReviewStateV2 | ContributionReviewStateV3 | ContributionReviewStateV4,
+        state: (
+            ContributionReviewStateV2 | ContributionReviewStateV3
+            | ContributionReviewStateV4 | ContributionReviewStateV5
+        ),
         parent: StoredGraphRevision,
     ) -> bool:
         return (
@@ -78,7 +82,7 @@ class SourceDescriptionCorrectionProof:
     def admits(
         self,
         record: (ContributionReviewRecordV2 | ContributionReviewRecordV3
-                 | ContributionReviewRecordV4),
+                 | ContributionReviewRecordV4 | ContributionReviewRecordV5),
         correction: GraphContributionAssertionCorrection,
     ) -> bool:
         return (
@@ -90,7 +94,10 @@ class SourceDescriptionCorrectionProof:
 
 
 def verify_source_description_corrections(
-    state: ContributionReviewStateV2 | ContributionReviewStateV3 | ContributionReviewStateV4,
+    state: (
+        ContributionReviewStateV2 | ContributionReviewStateV3
+        | ContributionReviewStateV4 | ContributionReviewStateV5
+    ),
     *,
     parent: StoredGraphRevision,
     world_graph: WorldGraphRepository,
@@ -102,7 +109,9 @@ def verify_source_description_corrections(
     ]
     if not corrections:
         return None
-    if not isinstance(state, (ContributionReviewStateV3, ContributionReviewStateV4)):
+    if not isinstance(
+        state, (ContributionReviewStateV3, ContributionReviewStateV4, ContributionReviewStateV5)
+    ):
         _fail("source_description_correction_requires_v3")
     targets = [(c.target_contribution_id, c.target_assertion_id) for c in corrections]
     if len(set(targets)) != len(targets):
@@ -167,8 +176,8 @@ def verify_source_description_corrections(
                 if pair in suppressed:
                     _fail("source_description_correction_already_withdrawn")
                 if not isinstance(prior, ContributionReviewStateV3) and not (
-                    isinstance(state, ContributionReviewStateV4)
-                    and isinstance(prior, ContributionReviewStateV4)
+                    isinstance(state, (ContributionReviewStateV4, ContributionReviewStateV5))
+                    and isinstance(prior, (ContributionReviewStateV4, ContributionReviewStateV5))
                 ):
                     _fail("source_description_correction_target_kind")
                 _validate_target(
@@ -195,7 +204,7 @@ def verify_source_description_corrections(
 
 
 def _validate_target(
-    state: ContributionReviewStateV3 | ContributionReviewStateV4,
+    state: ContributionReviewStateV3 | ContributionReviewStateV4 | ContributionReviewStateV5,
     contribution: GraphContributionV3 | GraphContributionV4,
     assertion: GraphContributionAssertionV3 | GraphContributionAssertionV4,
     objects: dict[str, Any],
