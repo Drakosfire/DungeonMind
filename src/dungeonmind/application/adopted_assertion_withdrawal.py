@@ -10,16 +10,18 @@ from ..contracts.adopted_assertion_withdrawal import (
     ADOPTED_ASSERTION_WITHDRAWAL_TOOL,
     AdoptedAssertionWithdrawalCommand,
     AdoptedAssertionWithdrawalCommandV1,
+    AdoptedAssertionWithdrawalCommandV3,
     AdoptedAssertionWithdrawalReceipt,
 )
 from ..contracts.capability import CapabilityEffect, CapabilityPolicy
 from ..contracts.existing_world_adoption import ExistingWorldAdoptionReceiptV4
 from ..contracts.knowledge_assertion import KnowledgeAssertionMetadataV1
 from ..contracts.projection import Admissibility
+from ..contracts.vocabulary import CanonState
 from ..domain.canonical import canonical_sha256
 from ..domain.capability import evaluate_capability
 from ..domain.errors import CapabilityDeniedError, PersistenceIntegrityError
-from .graph_snapshot_v6 import UnionGraphV6Payload
+from .graph_snapshot_v6 import GraphObjectV6Record, GraphRelationshipV6Record, UnionGraphV6Payload
 from .repositories import ExistingWorldAdoptionRepository
 
 
@@ -51,7 +53,7 @@ def materialize_withdrawal_payload(
     adopted_payload: dict[str, Any],
     parent_payload: dict[str, Any],
 ) -> dict[str, Any]:
-    """Verify the exact adoption-bound relationship and remove only that record."""
+    """Verify the exact adoption-bound target and remove only that record."""
     if (
         adoption_receipt.world_id != command.world_id
         or adoption_receipt.adoption_id != command.adoption_id
@@ -75,10 +77,19 @@ def materialize_withdrawal_payload(
     if adopted.semantic_profile != parent.semantic_profile:
         raise PersistenceIntegrityError("withdrawal cannot change the semantic profile")
 
-    original = [r for r in adopted.relationships if r.relationship_id == command.relationship_id]
-    current = [r for r in parent.relationships if r.relationship_id == command.relationship_id]
+    object_withdrawal = isinstance(command, AdoptedAssertionWithdrawalCommandV3)
+    original: list[GraphObjectV6Record | GraphRelationshipV6Record]
+    current: list[GraphObjectV6Record | GraphRelationshipV6Record]
+    if object_withdrawal:
+        original = [o for o in adopted.objects if o.object_id == command.subject_object_id]
+        current = [o for o in parent.objects if o.object_id == command.subject_object_id]
+    else:
+        original = [
+            r for r in adopted.relationships if r.relationship_id == command.relationship_id
+        ]
+        current = [r for r in parent.relationships if r.relationship_id == command.relationship_id]
     if len(original) != 1 or len(current) != 1:
-        raise PersistenceIntegrityError("withdrawal target relationship is not unique")
+        raise PersistenceIntegrityError("withdrawal target is not unique")
     target = original[0]
     matching_assertions = [
         metadata
@@ -89,7 +100,15 @@ def materialize_withdrawal_payload(
         raise PersistenceIntegrityError("withdrawal assertion identity is not unique in adoption")
     if target.assertion_metadata.assertion_id != command.assertion_id:
         raise PersistenceIntegrityError("withdrawal assertion does not match adoption")
-    if (
+    if object_withdrawal:
+        if target.assertion_metadata.canon_state is not CanonState.CANONICAL:
+            raise PersistenceIntegrityError("withdrawal target object is not canonical")
+        if any(
+            command.subject_object_id in {r.source_object_id, r.target_object_id}
+            for r in parent.relationships
+        ):
+            raise PersistenceIntegrityError("withdrawal target object has incident relationships")
+    elif not isinstance(target, GraphRelationshipV6Record) or (
         target.source_object_id != command.subject_object_id
         or target.predicate != command.predicate
         or target.target_object_id != command.object_object_id
@@ -147,11 +166,18 @@ def materialize_withdrawal_payload(
     # Preserve the exact stored JSON representation for every retained record;
     # Pydantic serialization would add defaults to historical sparse payloads.
     child_payload = copy.deepcopy(parent_payload)
-    child_payload["relationships"] = [
-        record
-        for record in child_payload["relationships"]
-        if record.get("relationship_id") != command.relationship_id
-    ]
+    if object_withdrawal:
+        child_payload["objects"] = [
+            record
+            for record in child_payload["objects"]
+            if record.get("object_id") != command.subject_object_id
+        ]
+    else:
+        child_payload["relationships"] = [
+            record
+            for record in child_payload["relationships"]
+            if record.get("relationship_id") != command.relationship_id
+        ]
     return child_payload
 
 

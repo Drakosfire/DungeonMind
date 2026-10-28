@@ -36,7 +36,7 @@ def _aware(value: datetime) -> datetime:
     return value
 
 
-class _WithdrawalCommand(DungeonMindModel):
+class _WithdrawalCommandCommon(DungeonMindModel):
     """Internal command; provenance is cross-verified by the repository."""
 
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
@@ -45,11 +45,8 @@ class _WithdrawalCommand(DungeonMindModel):
     world_id: str
     adoption_id: str
     expected_parent_revision_id: str
-    relationship_id: str
     assertion_id: str
     subject_object_id: str
-    predicate: str
-    object_object_id: str
     evidence_ref_id: str
     source_artifact_id: str
     source_revision_id: str
@@ -74,9 +71,14 @@ class _WithdrawalCommand(DungeonMindModel):
         "source_revision_id",
         "source_span_ref_id",
         "actor",
+        check_fields=False,
     )
     @classmethod
-    def _bounded_ids(cls, value: str, info: ValidationInfo) -> str:
+    def _bounded_ids(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is None:
+            if info.field_name not in {"relationship_id", "predicate", "object_object_id"}:
+                raise ValueError("required withdrawal identity is null")
+            return None
         return _id(value, info.field_name or "field")
 
     @field_validator("requested_at")
@@ -90,6 +92,12 @@ class _WithdrawalCommand(DungeonMindModel):
         if not _DIGEST.fullmatch(value):
             raise ValueError("parent_payload_sha256 must be a lowercase SHA-256 digest")
         return value
+
+
+class _WithdrawalCommand(_WithdrawalCommandCommon):
+    relationship_id: str
+    predicate: str
+    object_object_id: str
 
 
 class AdoptedAssertionWithdrawalCommandV1(_WithdrawalCommand):
@@ -113,7 +121,7 @@ class AdoptedAssertionWithdrawalCommandV2(_WithdrawalCommand):
     source_locator: None
 
 
-class _WithdrawalReceipt(DungeonMindModel):
+class _WithdrawalReceiptCommon(DungeonMindModel):
     """Immutable terminal proof of one withdrawal and its graph publication."""
 
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
@@ -126,11 +134,8 @@ class _WithdrawalReceipt(DungeonMindModel):
     parent_revision_id: str
     parent_payload_sha256: str
     published_revision_id: str
-    relationship_id: str
     assertion_id: str
     subject_object_id: str
-    predicate: str
-    object_object_id: str
     evidence_ref_id: str
     source_artifact_id: str
     source_revision_id: str
@@ -155,9 +160,14 @@ class _WithdrawalReceipt(DungeonMindModel):
         "source_revision_id",
         "source_span_ref_id",
         "actor",
+        check_fields=False,
     )
     @classmethod
-    def _bounded_ids(cls, value: str, info: ValidationInfo) -> str:
+    def _bounded_ids(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is None:
+            if info.field_name not in {"relationship_id", "predicate", "object_object_id"}:
+                raise ValueError("required withdrawal identity is null")
+            return None
         return _id(value, info.field_name or "field")
 
     @field_validator("request_sha256", "adoption_receipt_fingerprint", "parent_payload_sha256")
@@ -171,6 +181,12 @@ class _WithdrawalReceipt(DungeonMindModel):
     @classmethod
     def _timestamp(cls, value: datetime) -> datetime:
         return _aware(value)
+
+
+class _WithdrawalReceipt(_WithdrawalReceiptCommon):
+    relationship_id: str
+    predicate: str
+    object_object_id: str
 
 
 class AdoptedAssertionWithdrawalReceiptV1(_WithdrawalReceipt):
@@ -192,9 +208,45 @@ class AdoptedAssertionWithdrawalReceiptV2(_WithdrawalReceipt):
     source_locator: None
 
 
+class AdoptedAssertionWithdrawalCommandV3(_WithdrawalCommandCommon):
+    """Withdraw one dependency-free adopted object; never a relationship."""
+
+    schema_version: Literal["dm_adopted_object_withdrawal_command_v3"] = (
+        "dm_adopted_object_withdrawal_command_v3"
+    )
+    relationship_id: None
+    predicate: None
+    object_object_id: None
+    source_locator: str | None
+
+    @field_validator("source_locator")
+    @classmethod
+    def _locator(cls, value: str | None) -> str | None:
+        return None if value is None else _id(value, "source_locator")
+
+
+class AdoptedAssertionWithdrawalReceiptV3(_WithdrawalReceiptCommon):
+    schema_version: Literal["dm_adopted_object_withdrawal_receipt_v3"] = (
+        "dm_adopted_object_withdrawal_receipt_v3"
+    )
+    relationship_id: None
+    predicate: None
+    object_object_id: None
+    source_locator: str | None
+
+    @field_validator("source_locator")
+    @classmethod
+    def _locator(cls, value: str | None) -> str | None:
+        return None if value is None else _id(value, "source_locator")
+
+
 AdoptedAssertionWithdrawalCommand = (
-    AdoptedAssertionWithdrawalCommandV1 | AdoptedAssertionWithdrawalCommandV2
+    AdoptedAssertionWithdrawalCommandV1
+    | AdoptedAssertionWithdrawalCommandV2
+    | AdoptedAssertionWithdrawalCommandV3
 )
 AdoptedAssertionWithdrawalReceipt = (
-    AdoptedAssertionWithdrawalReceiptV1 | AdoptedAssertionWithdrawalReceiptV2
+    AdoptedAssertionWithdrawalReceiptV1
+    | AdoptedAssertionWithdrawalReceiptV2
+    | AdoptedAssertionWithdrawalReceiptV3
 )
