@@ -80,7 +80,7 @@ def test_vector_extension_and_schema_tables(db) -> None:
 
         version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
         assert version is not None
-        assert version["version_num"] == "0016_operator_source_attestation"
+        assert version["version_num"] == "0018_adopted_object_withdrawal"
 
         constraints = conn.execute(
             """
@@ -94,7 +94,11 @@ def test_vector_extension_and_schema_tables(db) -> None:
         assert "UNIQUE (world_id, review_id)" in constraint_text
         assert "UNIQUE (world_id, published_revision_id)" in constraint_text
         assert "FOREIGN KEY (world_id, reviewed_contribution_id)" in constraint_text
-        assert "REFERENCES graph_contributions(world_id, contribution_id)" in constraint_text
+        # PostgreSQL qualifies the referenced relation when it is outside search_path.
+        assert any(
+            f"REFERENCES {prefix}graph_contributions(world_id, contribution_id)" in constraint_text
+            for prefix in ("", "dungeonmind.")
+        )
 
 
 @pytest.mark.integration
@@ -143,7 +147,7 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
         database = PostgresDatabase(target)
         with database.connect() as conn:
             version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
-            assert version["version_num"] == "0016_operator_source_attestation"
+            assert version["version_num"] == "0018_adopted_object_withdrawal"
             tables = conn.execute(
                 """
                 SELECT COUNT(*) AS n
