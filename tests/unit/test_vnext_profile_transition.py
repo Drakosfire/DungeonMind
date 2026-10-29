@@ -342,3 +342,29 @@ def test_unavailable_recovery_stays_unknown_without_second_operation():
         transition(f)
     assert len(calls) == 2
     assert f.repo.get_head(SPACE).head_revision_id == f.parent.published_revision_id
+
+
+def test_reusing_publication_id_for_later_parent_and_target_conflicts():
+    f = fixture()
+    first = transition(f)
+    third = f.target.model_dump(mode="json")
+    third["profile_revision"] = "3"
+    third["open_predicate_namespaces"][0]["allowed_value_kinds"].append("entity_ref")
+    third = SemanticProfileDescriptorV3.model_validate(third)
+    request = f.request.model_copy(
+        update={
+            "expected_parent_revision_id": first.published_revision_id,
+            "from_profile_ref": f.request.to_profile_ref,
+            "to_profile_ref": f.request.to_profile_ref.model_copy(
+                update={
+                    "profile_revision": "3",
+                    "descriptor_sha256": canonical_sha256(third.model_dump(mode="json")),
+                }
+            ),
+        }
+    )
+    before = f.repo.get_head(SPACE)
+    with pytest.raises(KnowledgePublicationIdempotencyConflictError):
+        transition(f, request=request, current_profile=f.target, target_profile=third)
+    assert f.repo.get_head(SPACE) == before
+    assert f.repo.get_publication_receipt(SPACE, request.publication_id) == first
