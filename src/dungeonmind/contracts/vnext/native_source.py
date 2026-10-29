@@ -190,3 +190,78 @@ class NativeTextSourceAccessV1(DungeonMindModel):
             if self.span_start_byte >= self.span_end_byte:  # type: ignore[operator]
                 raise ValueError("available result span must be nonempty")
         return self
+
+
+class NativeSourceEvidenceExtensionV1(DungeonMindModel):
+    """Additional exact intervals on one already admitted immutable source."""
+
+    schema_version: Literal["dm_native_source_evidence_extension_v1"] = (
+        "dm_native_source_evidence_extension_v1"
+    )
+    space_id: NonBlankId
+    extension_id: NonBlankId
+    original_admission_id: NonBlankId
+    source_artifact_id: NonBlankId
+    source_revision_id: NonBlankId
+    expected_body_sha256: Sha256Hex
+    expected_parent_revision_id: NonBlankId
+    expected_source_authority_epoch: int = Field(ge=1)
+    created_at: datetime
+    spans: list[NativeTextEvidenceSpanRequestV1] = Field(
+        min_length=1, max_length=MAX_NATIVE_TEXT_SPANS
+    )
+
+    @model_validator(mode="after")
+    def _integrity(self) -> NativeSourceEvidenceExtensionV1:
+        if self.created_at.utcoffset() is None:
+            raise ValueError("created_at must be timezone-aware")
+        if len({s.client_ref for s in self.spans}) != len(self.spans):
+            raise ValueError("span client references must be unique")
+        if len({(s.start_byte, s.end_byte) for s in self.spans}) != len(self.spans):
+            raise ValueError("duplicate source interval")
+        return self
+
+
+class NativeSourceEvidenceExtensionReceiptV1(DungeonMindModel):
+    """Immutable extension proof rooted in an original admission, never a replacement."""
+
+    schema_version: Literal["dm_native_source_evidence_extension_receipt_v1"] = (
+        "dm_native_source_evidence_extension_receipt_v1"
+    )
+    space_id: NonBlankId
+    extension_id: NonBlankId
+    original_admission_id: NonBlankId
+    original_admission_sha256: Sha256Hex
+    intent_sha256: Sha256Hex
+    source_artifact_id: NonBlankId
+    source_revision_id: NonBlankId
+    origin: NativeTextSourceOriginV1 | None = None
+    source_authority_epoch: int = Field(ge=1)
+    bindings: list[NativeTextSourceAdmissionBindingV1] = Field(
+        min_length=1, max_length=MAX_NATIVE_TEXT_SPANS
+    )
+    proofs: list[NativeUtf8SpanProofV1] = Field(min_length=1, max_length=MAX_NATIVE_TEXT_SPANS)
+    publication_receipt: KnowledgePublicationReceipt
+
+    @model_validator(mode="after")
+    def _binding(self) -> NativeSourceEvidenceExtensionReceiptV1:
+        if (
+            self.publication_receipt.space_id != self.space_id
+            or self.publication_receipt.publication_id != self.extension_id
+        ):
+            raise ValueError("extension publication identity mismatch")
+        if len(self.bindings) != len(self.proofs):
+            raise ValueError("extension proof count mismatch")
+        if len({b.client_ref for b in self.bindings}) != len(self.bindings):
+            raise ValueError("extension client references duplicate")
+        if len({p.span_id for p in self.proofs}) != len(self.proofs) or len(
+            {p.evidence_ref_id for p in self.proofs}
+        ) != len(self.proofs):
+            raise ValueError("extension proof identities duplicate")
+        for b, p in zip(self.bindings, self.proofs, strict=True):
+            if (b.span_id, b.evidence_ref_id) != (
+                p.span_id,
+                p.evidence_ref_id,
+            ) or p.source_revision_id != self.source_revision_id:
+                raise ValueError("extension proof binding mismatch")
+        return self

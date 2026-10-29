@@ -26,10 +26,13 @@ from dungeonmind.contracts.vnext.domain import (
     SemanticProfileDescriptorV3,
 )
 from dungeonmind.contracts.vnext.knowledge import (
+    KnowledgeHead,
     PublishKnowledgeRevisionCommand,
 )
 from dungeonmind.contracts.vnext.native_source import (
     NativeSourceAdmissionReceiptV1,
+    NativeSourceEvidenceExtensionReceiptV1,
+    NativeSourceEvidenceExtensionV1,
     NativeTextSourceAdmissionBindingV1,
     NativeTextSourceAdmissionV1,
     NativeTextSourceOriginV1,
@@ -78,6 +81,88 @@ def _record_fingerprint(
             "receipt": receipt.model_dump(mode="json"),
         }
     )
+
+
+def _read_extension(
+    conn: Connection[Any], space_id: str, extension_id: str
+) -> NativeSourceEvidenceExtensionReceiptV1 | None:
+    row = conn.execute(
+        sql.SQL(
+            "SELECT * FROM {}.knowledge_native_source_extensions "
+            "WHERE space_id=%s AND extension_id=%s"
+        ).format(sql.Identifier(SCHEMA)),
+        (space_id, extension_id),
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        receipt = NativeSourceEvidenceExtensionReceiptV1.model_validate(row["receipt_payload"])
+    except Exception as exc:
+        raise PersistenceIntegrityError("extension receipt reconstruction failed") from exc
+    if canonical_sha256(receipt.model_dump(mode="json")) != row["record_fingerprint"]:
+        raise PersistenceIntegrityError("extension receipt fingerprint drift")
+    if any(
+        getattr(receipt, k) != row[k]
+        for k in (
+            "space_id",
+            "extension_id",
+            "original_admission_id",
+            "source_artifact_id",
+            "source_revision_id",
+            "source_authority_epoch",
+        )
+    ):
+        raise PersistenceIntegrityError("extension receipt identity drift")
+    root = _read_native_receipt(conn, space_id, receipt.original_admission_id)
+    if (
+        root is None
+        or canonical_sha256(root.model_dump(mode="json")) != receipt.original_admission_sha256
+        or (root.source_artifact_id, root.source_revision_id, root.origin)
+        != (receipt.source_artifact_id, receipt.source_revision_id, receipt.origin)
+    ):
+        raise PersistenceIntegrityError("extension original admission lineage drift")
+    publication = _read_receipt(conn, space_id, extension_id)
+    if publication != receipt.publication_receipt:
+        raise PersistenceIntegrityError("extension publication receipt drift")
+    return receipt
+
+
+class _ExtensionLockedView:
+    """Transaction-local publication reads; immutable source reads pin its held epoch."""
+
+    def __init__(self, conn: Connection[Any], database: PostgresDatabase) -> None:
+        self.conn, self.database = conn, database
+
+    def get_head(self, space: str) -> KnowledgeHead | None:
+        return _read_head(self.conn, space)
+
+    def get_revision(self, space: str, revision: str) -> StoredKnowledgeRevision | None:
+        return _read_revision(self.conn, space, revision)
+
+    def get_publication_receipt(
+        self, space: str, operation: str
+    ) -> KnowledgePublicationReceipt | None:
+        return _read_receipt(self.conn, space, operation)
+
+    def get_native_source_admission_receipt(
+        self, space: str, operation: str
+    ) -> NativeSourceAdmissionReceiptV1 | None:
+        return _read_native_receipt(self.conn, space, operation)
+
+    def get_native_source_evidence_extension_receipt(
+        self, space: str, operation: str
+    ) -> NativeSourceEvidenceExtensionReceiptV1 | None:
+        return _read_extension(self.conn, space, operation)
+
+    def open_native_source_view(self, space: str) -> NativeTextSourceView:
+        row = self.conn.execute(
+            sql.SQL(
+                "SELECT epoch FROM {}.knowledge_native_source_authority WHERE singleton_id=1"
+            ).format(sql.Identifier(SCHEMA))
+        ).fetchone()
+        if row is None:
+            raise PersistenceIntegrityError("native source epoch missing")
+        return _PostgresNativeTextSourceView(self.database, space, row["epoch"])
 
 
 def _lock_native_epoch(conn: Connection[Any]) -> None:
@@ -391,6 +476,129 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
             self._after_native_publication_commit()
         return companion
 
+    def get_native_source_evidence_extension_receipt(
+        self, space_id: str, extension_id: str
+    ) -> NativeSourceEvidenceExtensionReceiptV1 | None:
+        with self._database.transaction() as conn:
+            return _read_extension(conn, space_id, extension_id)
+
+    def publish_native_source_evidence_extension(
+        self,
+        *,
+        request: NativeSourceEvidenceExtensionV1,
+        domain_contract: DomainContractDescriptor,
+        semantic_profile: SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
+        audience_labels: Sequence[str],
+    ) -> NativeSourceEvidenceExtensionReceiptV1:
+        from ...application.vnext.errors import KnowledgePublicationOutcomeUnknownError
+        from ...application.vnext.native_source_extension import (
+            extension_plan,
+            make_extension_receipt,
+            snapshot_extension_inputs,
+        )
+
+        request, domain_contract, semantic_profile = snapshot_extension_inputs(
+            request, domain_contract, semantic_profile
+        )
+        audience_labels = tuple(audience_labels)
+
+
+        with self._database.transaction() as conn:
+            _lock_native_epoch(conn)
+            _lock_space(conn, request.space_id, created_at=request.created_at)
+            locked = _ExtensionLockedView(conn, self._database)
+            root_record = _read_native_record(conn, request.space_id, request.original_admission_id)
+            intervals = (
+                set()
+                if root_record is None
+                else {(p.start_byte, p.end_byte) for p in root_record["proofs"]}
+            )
+            rows = conn.execute(
+                sql.SQL(
+                    "SELECT extension_id FROM {}.knowledge_native_source_extensions "
+                    "WHERE space_id=%s AND source_revision_id=%s"
+                ).format(sql.Identifier(SCHEMA)),
+                (request.space_id, request.source_revision_id),
+            ).fetchall()
+            for row in rows:
+                prior = _read_extension(conn, request.space_id, row["extension_id"])
+                intervals.update((p.start_byte, p.end_byte) for p in prior.proofs)
+            plan = extension_plan(
+                repository=locked,
+                request=request,
+                domain_contract=domain_contract,
+                semantic_profile=semantic_profile,
+                audience_labels=audience_labels,
+                registered_intervals=intervals,
+            )
+            if isinstance(plan, NativeSourceEvidenceExtensionReceiptV1):
+                return plan
+            command = plan.command
+
+            def insert_child(value: StoredKnowledgeRevision) -> None:
+                _insert_revision(conn, value)
+                if self._after_revision_insert:
+                    self._after_revision_insert()
+
+            stored = commit_expected_parent(
+                command,
+                read_head=lambda: _read_head(conn, request.space_id),
+                read_revision=lambda rid: _read_revision(conn, request.space_id, rid),
+                insert_revision=insert_child,
+                advance_head=lambda head, event: _advance_head(conn, head, event),
+            )
+            publication = KnowledgePublicationReceipt(
+                space_id=request.space_id,
+                publication_id=request.extension_id,
+                command_sha256=canonical_sha256(command.model_dump(mode="json")),
+                expected_parent_revision_id=request.expected_parent_revision_id,
+                published_revision_id=stored.revision.revision_id,
+                graph_payload_sha256=stored.graph_payload_sha256,
+            )
+            _insert_receipt(conn, publication)
+            if self._after_receipt_insert:
+                self._after_receipt_insert()
+            epoch = conn.execute(
+                sql.SQL(
+                    "UPDATE {}.knowledge_native_source_authority SET epoch=epoch+1 "
+                    "WHERE singleton_id=1 RETURNING epoch"
+                ).format(sql.Identifier(SCHEMA))
+            ).fetchone()["epoch"]
+            receipt = make_extension_receipt(plan, epoch, publication)
+            conn.execute(
+                sql.SQL(
+                    "INSERT INTO {}.knowledge_native_source_extensions("
+                    "space_id,extension_id,original_admission_id,source_artifact_id,"
+                    "source_revision_id,source_authority_epoch,receipt_payload,record_fingerprint) "
+                    "VALUES(%s,%s,%s,%s,%s,%s,%s,%s)"
+                ).format(sql.Identifier(SCHEMA)),
+                (
+                    request.space_id,
+                    request.extension_id,
+                    request.original_admission_id,
+                    request.source_artifact_id,
+                    request.source_revision_id,
+                    epoch,
+                    jsonb(receipt.model_dump(mode="json")),
+                    canonical_sha256(receipt.model_dump(mode="json")),
+                ),
+            )
+            if self._after_native_source_insert:
+                self._after_native_source_insert()
+            if self._after_native_receipt_insert:
+                self._after_native_receipt_insert()
+        if self._after_native_publication_commit:
+            try:
+                self._after_native_publication_commit()
+            except Exception as exc:
+                raise KnowledgePublicationOutcomeUnknownError(
+                    space_id=request.space_id,
+                    publication_id=request.extension_id,
+                    expected_published_revision_id=receipt.publication_receipt.published_revision_id,
+                    reason="extension_commit_acknowledgement_lost",
+                ) from exc
+        return receipt
+
     def open_native_source_view(self, space_id: str) -> NativeTextSourceView:
         with self._database.transaction() as conn:
             row = conn.execute(
@@ -481,12 +689,31 @@ class _PostgresNativeTextSourceView:
             if record is None:
                 raise PersistenceIntegrityError("native source record disappeared")
             span = next((proof for proof in record["proofs"] if proof.span_id == span_id), None)
+            proof_epoch = record["epoch"]
             if span is None:
-                return None
+                rows = conn.execute(
+                    sql.SQL(
+                        "SELECT extension_id FROM {}.knowledge_native_source_extensions "
+                        "WHERE space_id=%s AND source_artifact_id=%s "
+                        "AND source_revision_id=%s AND source_authority_epoch<=%s"
+                    ).format(sql.Identifier(SCHEMA)),
+                    (self._space_id, source_artifact_id, source_revision_id, self._epoch),
+                ).fetchall()
+                matches = []
+                for extension_row in rows:
+                    receipt = _read_extension(conn, self._space_id, extension_row["extension_id"])
+                    for proof in receipt.proofs:
+                        if proof.span_id == span_id:
+                            matches.append((proof, receipt.source_authority_epoch))
+                if not matches:
+                    return None
+                if len(matches) != 1:
+                    raise PersistenceIntegrityError("extension span identity collision")
+                span, proof_epoch = matches[0]
             return StoredNativeTextSource(
                 source_artifact=record["artifact"],
                 source_revision=record["revision"],
                 body_bytes=record["body"],
                 span_proof=span,
-                authority_epoch=record["epoch"],
+                authority_epoch=proof_epoch,
             )
