@@ -333,6 +333,8 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
 
             for key in self._extension_receipts:
                 receipt = self.get_native_source_evidence_extension_receipt(*key)
+                if receipt is None:
+                    raise PersistenceIntegrityError("extension receipt index drift")
                 if (
                     receipt.space_id == request.space_id
                     and receipt.source_revision_id == request.source_revision_id
@@ -498,6 +500,8 @@ class _InMemoryNativeTextSourceView:
                     receipt = self._repository.get_native_source_evidence_extension_receipt(
                         self._space_id, extension_id
                     )
+                    if receipt is None:
+                        raise PersistenceIntegrityError("extension span receipt missing")
                     root = self._repository.get_native_source_admission_receipt(
                         self._space_id, receipt.original_admission_id
                     )

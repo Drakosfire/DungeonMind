@@ -124,6 +124,8 @@ def extension_plan(
     _require_original_ancestor(
         repository, request.space_id, root.published_revision_id, head.head_revision_id
     )
+    if access.body_text is None:
+        _fail("extension_source_body_missing")
     body = access.body_text.encode("utf-8")
     intent = extension_intent(request, domain_contract, semantic_profile)
     prior = repository.get_native_source_evidence_extension_receipt(

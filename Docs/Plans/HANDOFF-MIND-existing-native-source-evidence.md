@@ -37,3 +37,10 @@ final runs; no product gate was relaxed.
 No Buddy adoption, private corpus integration, provider call, deployment, accepted
 native V7 publication or full-chain score is claimed. Exact cumulative independent
 review and CI remain merge gates.
+
+Initial CI core243fed failed Pyright Optional-member checks; memory and PostgreSQL
+behavior tests had passed. Successor adds explicit integrity refusals for missing
+available-body text and missing indexed extension receipts. No typing suppression,
+compatibility fallback, semantic criteria or test expectation changed. Local whole
+repo Pyright now reports0errors; Ruff and cumulative diff checks pass. Independent
+review must cover this final cumulative head before merge.
