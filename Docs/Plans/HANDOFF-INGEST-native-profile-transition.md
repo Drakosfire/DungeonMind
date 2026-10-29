@@ -118,3 +118,13 @@ This prerequisite does not replace ordinary supported-answer delivery, independe
 Q01/Q13 assessment, or the complete guided authoring/preparation/Play/recovery goal.
 
 Owning adoption: OverMind reviewed head7aecc45, merge8665968; exact Core base4ccd39a.
+
+Predecessor settlement: Core144 independently reviewed81453e9 and merged
+as dcc0a47f56407559eee64832cdf2a15566faa2de after all three CI gates passed.
+This lane is rebased onto that exact main revision; original4ccd implementation
+and frozen-hash failure evidence remain in Git/CI. Seven leased paths unchanged.
+The transition tests now include nonempty admitted source row/epoch preservation
+and original source opens before/after transition. No fixture transition performed.
+Private test driver/cache retained under Projects/.codex/native-profile-transition/cache
+for independent verification; PRIME removes reproducible driver/PR-body artifacts
+with checkout settlement after active consumers/unique evidence are checked.
