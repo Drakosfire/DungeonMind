@@ -16,13 +16,26 @@ from tests.unit.test_vnext_profile_transition import (
 pytestmark = pytest.mark.integration
 
 
-def source_counts(pg):
+def source_snapshot(pg):
+    # Compare actual nonempty authority rows and epoch, not only row counts.
+    from psycopg import sql
+
     with pg.database.connect() as conn:
-        return conn.execute(
-            "SELECT (SELECT count(*) FROM dungeonmind.knowledge_native_source_admissions), "
-            "(SELECT count(*) FROM dungeonmind.knowledge_native_source_spans), "
-            "(SELECT count(*) FROM dungeonmind.source_admission_receipts)"
-        ).fetchone()
+        return {
+            table: conn.execute(
+                sql.SQL(
+                    "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), "
+                    "'[]'::jsonb) "
+                    "AS rows FROM dungeonmind.{} t"
+                ).format(sql.Identifier(table))
+            ).fetchone()["rows"]
+            for table in (
+                "knowledge_native_source_admissions",
+                "knowledge_native_source_spans",
+                "source_admission_receipts",
+                "knowledge_native_source_authority",
+            )
+        }
 
 
 def test_postgres_preserves_unrelated_world_sources_and_future_publication(pg):
@@ -32,9 +45,43 @@ def test_postgres_preserves_unrelated_world_sources_and_future_publication(pg):
     )
     other_before = repo.get_revision("space:other", other.published_revision_id)
     f = fixture(repo)
-    before_counts = source_counts(pg)
-    assert_preservation_and_future_publication(f)
-    assert source_counts(pg) == before_counts
+    from datetime import timedelta
+
+    from dungeonmind.application.vnext import publish_native_text_source_evidence
+    from dungeonmind.application.vnext.native_source_access import (
+        open_admitted_native_text,
+        open_native_text_source_access_context,
+    )
+    from dungeonmind.infrastructure.postgres.vnext_sources import (
+        PostgresNativeSourceEvidenceRepository,
+    )
+    from tests.unit.test_vnext_native_source_admission import BODY, _request
+
+    sources = PostgresNativeSourceEvidenceRepository(pg.database)
+    request = _request(space_id=SPACE, parent_revision_id=f.parent.published_revision_id)
+    admitted = publish_native_text_source_evidence(
+        repository=sources, request=request, domain_contract=f.domain, semantic_profile=f.current
+    )
+    f.parent = admitted.publication_receipt
+    f.request = f.request.model_copy(
+        update={
+            "expected_parent_revision_id": admitted.published_revision_id,
+            "created_at": request.created_at + timedelta(minutes=1),
+        }
+    )
+    before = source_snapshot(pg)
+    assert before["knowledge_native_source_admissions"]
+    epoch = sources.open_native_source_view(SPACE).epoch
+    receipt = assert_preservation_and_future_publication(f)
+    assert source_snapshot(pg) == before
+    assert sources.open_native_source_view(SPACE).epoch == epoch
+    for revision in (admitted.published_revision_id, receipt.published_revision_id):
+        context = open_native_text_source_access_context(
+            repository=sources, space_id=SPACE, revision_id=revision, domain_contract=f.domain
+        )
+        opened = open_admitted_native_text(context, admitted.bindings[0].evidence_ref_id)
+        assert opened.status == "available" and opened.body_text == BODY
+        assert opened.body_sha256 == request.expected_body_sha256
     assert repo.get_head("space:other").head_revision_id == other.published_revision_id
     assert repo.get_revision("space:other", other.published_revision_id) == other_before
 
