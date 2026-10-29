@@ -110,6 +110,7 @@ from .neighborhood import (
     NeighborhoodResult,
     NeighborhoodWorkCounts,
 )
+from .profile_transition import transition_knowledge_semantic_profile
 from .prospective import (
     ResolvedProspectiveContribution,
     get_prospective_publication,
@@ -279,6 +280,7 @@ __all__ = [
     "publish_prospective_contribution",
     "resolve_prospective_contribution",
     "thaw_json_value",
+    "transition_knowledge_semantic_profile",
     "validate_stored_legacy_graph_revision",
     "verify_historical_semantic_parity",
     "verify_legacy_compatibility_manifest",
