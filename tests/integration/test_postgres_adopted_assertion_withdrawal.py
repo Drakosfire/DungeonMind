@@ -258,27 +258,20 @@ def test_postgres_profile_drift_fails_before_withdrawal_mutation(pg, withdrawal_
     command, parent = _prepared(pg, version=withdrawal_version)
     changed = copy.deepcopy(parent.graph_payload)
     changed["semantic_profile"]["descriptor_sha256"] = "f" * 64
-    alternate = pg.world_graph.publish_revision(
-        PublishRevisionCommand(
-            world_id=command.world_id,
-            parent_revision_id=command.expected_parent_revision_id,
-            expected_parent_revision_id=command.expected_parent_revision_id,
-            operation_ids=["withdrawal-test:profile-drift"],
-            graph_schema="dm_union_graph_v6",
-            graph_payload=changed,
-            created_at=NOW,
-        )
-    )
     before_counts = _counts(pg, command.world_id)
     before_head = pg.world_graph.get_head(command.world_id)
-    forged = command.model_copy(
-        update={
-            "expected_parent_revision_id": alternate.revision_id,
-            "parent_payload_sha256": canonical_sha256(changed),
-        }
-    )
-    with pytest.raises((PersistenceIntegrityError, ValidationError)):
-        pg.existing_world_adoptions.withdraw_adopted_assertion(forged)
+    with pytest.raises(PersistenceIntegrityError, match="publication admission refused"):
+        pg.world_graph.publish_revision(
+            PublishRevisionCommand(
+                world_id=command.world_id,
+                parent_revision_id=command.expected_parent_revision_id,
+                expected_parent_revision_id=command.expected_parent_revision_id,
+                operation_ids=["withdrawal-test:profile-drift"],
+                graph_schema="dm_union_graph_v6",
+                graph_payload=changed,
+                created_at=NOW,
+            )
+        )
     assert _counts(pg, command.world_id) == before_counts
     assert pg.world_graph.get_head(command.world_id) == before_head
 
@@ -317,6 +310,24 @@ def test_postgres_persisted_unbound_source_revision_is_rejected(pg, withdrawal_v
 def test_postgres_v2_parent_drift_leaves_zero_partial_state(pg, drift):
     command, parent = _prepared(pg, version=2)
     payload = _drift_parent(copy.deepcopy(parent.graph_payload), command, drift)
+    if drift == "profile":
+        before = _counts(pg, command.world_id)
+        before_head = pg.world_graph.get_head(command.world_id)
+        with pytest.raises(PersistenceIntegrityError, match="publication admission refused"):
+            pg.world_graph.publish_revision(
+                PublishRevisionCommand(
+                    world_id=command.world_id,
+                    parent_revision_id=command.expected_parent_revision_id,
+                    expected_parent_revision_id=command.expected_parent_revision_id,
+                    operation_ids=["test-parent-drift:profile"],
+                    graph_schema="dm_union_graph_v6",
+                    graph_payload=payload,
+                    created_at=NOW,
+                )
+            )
+        assert _counts(pg, command.world_id) == before
+        assert pg.world_graph.get_head(command.world_id) == before_head
+        return
     changed = pg.world_graph.publish_revision(
         PublishRevisionCommand(
             world_id=command.world_id,

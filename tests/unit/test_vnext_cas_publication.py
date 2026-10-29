@@ -496,8 +496,10 @@ def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
     publication_source = "\n".join(
         ast.get_source_segment(graph_source, node) or "" for node in nodes
     )
+    # Mandatory profile-use admission landed in 047272c; the old fingerprint
+    # pinned its parent. Keep the admitted implementation frozen thereafter.
     assert hashlib.sha256(publication_source.encode()).hexdigest() == (
-        "417ca5ca9eec34052cac31fdf6000f5b39bed88da397157fcd4f9113e7d96120"
+        "b61a5d5066b37a8e5231515debe471d3e9dd4a668da87110de2202687f0c7086"
     )
     publication_methods = ("_publish_revision_locked", "publish_revision")
     publication = hashlib.sha256()
@@ -510,7 +512,7 @@ def test_world_publication_and_frozen_contracts_are_unchanged() -> None:
         publication.update(source.encode())
         publication.update(b"\0")
     assert publication.hexdigest() == (
-        "f3848d1aad074e0873067ecc14e908c09c3d9abe7923d13b49a766f2f4fd6d92"
+        "e32057331fa0ee9c52034ae94fad5702f7ccfea2ea2c8f2963b92be15127bf85"
     )
     locked = inspect.getsource(InMemoryWorldGraphRepository._publish_revision_locked)
     assert "compute_revision_id" in locked

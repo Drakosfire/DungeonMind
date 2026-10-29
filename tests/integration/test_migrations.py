@@ -80,11 +80,12 @@ def test_vector_extension_and_schema_tables(db) -> None:
 
         version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
         assert version is not None
-        assert version["version_num"] == "0016_operator_source_attestation"
+        assert version["version_num"] == "0017_publication_admission"
 
         constraints = conn.execute(
             """
-            SELECT pg_get_constraintdef(oid) AS definition
+            SELECT pg_get_constraintdef(oid) AS definition,
+                   confrelid = 'dungeonmind.graph_contributions'::regclass AS contribution_target
             FROM pg_constraint
             WHERE conrelid = 'dungeonmind.finalized_review_publications'::regclass
             """
@@ -94,7 +95,11 @@ def test_vector_extension_and_schema_tables(db) -> None:
         assert "UNIQUE (world_id, review_id)" in constraint_text
         assert "UNIQUE (world_id, published_revision_id)" in constraint_text
         assert "FOREIGN KEY (world_id, reviewed_contribution_id)" in constraint_text
-        assert "REFERENCES graph_contributions(world_id, contribution_id)" in constraint_text
+        assert any(
+            row["contribution_target"]
+            and "FOREIGN KEY (world_id, reviewed_contribution_id)" in row["definition"]
+            for row in constraints
+        )
 
 
 @pytest.mark.integration
@@ -143,7 +148,7 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
         database = PostgresDatabase(target)
         with database.connect() as conn:
             version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
-            assert version["version_num"] == "0016_operator_source_attestation"
+            assert version["version_num"] == "0017_publication_admission"
             tables = conn.execute(
                 """
                 SELECT COUNT(*) AS n

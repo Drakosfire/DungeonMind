@@ -35,6 +35,7 @@ from ..contracts.contribution_review_v3 import (
 )
 from ..contracts.contribution_review_v4 import (
     CONTRIBUTION_REVIEW_STATE_V4_SCHEMA,
+    ContributionReviewRecordV4,
     ContributionReviewStateV4,
     GuardedContributionReviewRecordV4,
 )
@@ -252,18 +253,22 @@ def publish_finalized_review(
             reviews=review_repository,
             publications=publication_repository,
         )
-        materializer = (
-            materialize_finalized_review_v4
-            if isinstance(state, ContributionReviewStateV4)
-            else materialize_finalized_review_v6
-        )
-        materialization = materializer(
-            state,
-            parent=parent,
-            graph_reader=graph_reader,
-            source_snapshot=source_snapshot,
-            source_description_correction_proof=correction_proof,
-        )
+        if isinstance(state, ContributionReviewStateV4):
+            materialization = materialize_finalized_review_v4(
+                state,
+                parent=parent,
+                graph_reader=graph_reader,
+                source_snapshot=source_snapshot,
+                source_description_correction_proof=correction_proof,
+            )
+        else:
+            materialization = materialize_finalized_review_v6(
+                state,
+                parent=parent,
+                graph_reader=graph_reader,
+                source_snapshot=source_snapshot,
+                source_description_correction_proof=correction_proof,
+            )
     else:
         materialization = materialize_finalized_review(
             state,
@@ -521,7 +526,12 @@ def validate_reviewed_identity_publication_preconditions(
 
 def validate_guarded_command_binding(
     command: FinalizedReviewPublicationCommand,
-    record: ContributionReviewRecord | ContributionReviewRecordV2 | ContributionReviewRecordV3,
+    record: (
+        ContributionReviewRecord
+        | ContributionReviewRecordV2
+        | ContributionReviewRecordV3
+        | ContributionReviewRecordV4
+    ),
 ) -> None:
     """Reject guard replacement, stripping or addition at the owning boundary."""
     from ..domain.errors import IdempotencyConflictError

@@ -11,7 +11,7 @@ import hashlib
 import json
 import re
 from datetime import datetime
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, cast
 
 from pydantic import ConfigDict, field_validator, model_validator
 
@@ -254,7 +254,11 @@ class FinalizedReviewPublicationCommandV2(FinalizedReviewPublicationCommand):
     def model_validate_json(cls, json_data: str | bytes | bytearray, **kwargs: Any) -> Self:
         if type(json_data) not in (str, bytes, bytearray):
             raise ValueError("admission JSON input must be text or bytes")
-        raw = json_data.encode("utf-8") if type(json_data) is str else bytes(json_data)
+        raw = (
+            cast(str, json_data).encode("utf-8")
+            if type(json_data) is str
+            else bytes(cast(bytes | bytearray, json_data))
+        )
         return cls.model_validate(
             strict_json_loads(raw, max_bytes=GRAPH_BYTES + CONTEXT_BYTES), **kwargs
         )
@@ -295,7 +299,11 @@ class FinalizedReviewPublicationV2(FinalizedReviewPublication):
     def model_validate_json(cls, json_data: str | bytes | bytearray, **kwargs: Any) -> Self:
         if type(json_data) not in (str, bytes, bytearray):
             raise ValueError("admission JSON input must be text or bytes")
-        raw = json_data.encode("utf-8") if type(json_data) is str else bytes(json_data)
+        raw = (
+            cast(str, json_data).encode("utf-8")
+            if type(json_data) is str
+            else bytes(cast(bytes | bytearray, json_data))
+        )
         return cls.model_validate(
             strict_json_loads(raw, max_bytes=GRAPH_BYTES + CONTEXT_BYTES), **kwargs
         )

@@ -34,6 +34,7 @@ from ..contracts.contribution_review_v2 import (
     ContributionReviewStateV2,
 )
 from ..contracts.contribution_review_v3 import ContributionReviewStateV3
+from ..contracts.contribution_review_v4 import ContributionReviewStateV4
 from ..contracts.evidence import EvidenceRefV2, EvidenceRole, SourceArtifactV2
 from ..contracts.graph import StoredGraphRevision
 from ..contracts.knowledge_assertion import (
@@ -111,7 +112,7 @@ def _reload_parent(parent: StoredGraphRevision) -> StoredGraphRevision:
 def _parse_parent(
     parent: StoredGraphRevision,
     *,
-    state: ContributionReviewStateV2 | ContributionReviewStateV3,
+    state: ContributionReviewStateV2 | ContributionReviewStateV3 | ContributionReviewStateV4,
     graph_reader: GraphSnapshotReader,
 ) -> tuple[UnionGraphV6Payload, ParsedGraphSnapshot]:
     record = state.record
@@ -267,7 +268,7 @@ def _metadata(
 
 
 def review_source_refs_v6(
-    state: ContributionReviewStateV2 | ContributionReviewStateV3,
+    state: ContributionReviewStateV2 | ContributionReviewStateV3 | ContributionReviewStateV4,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Bound one snapshot to the evidence actually applied by this review."""
     artifacts: set[str] = set()
@@ -540,7 +541,7 @@ class _V6Materialization:
     def __init__(
         self,
         *,
-        state: ContributionReviewStateV2 | ContributionReviewStateV3,
+        state: ContributionReviewStateV2 | ContributionReviewStateV3 | ContributionReviewStateV4,
         parent_payload: UnionGraphV6Payload,
         parent_snapshot: ParsedGraphSnapshot,
         source_snapshot: SourceProvenanceSnapshot | None,

@@ -10,7 +10,7 @@ import hashlib
 import json
 import math
 import re
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Any, Literal, Self, cast
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -101,10 +101,10 @@ def bounded_canonical(
         elif kind is str:
             string(item)
         elif item is None or kind in (bool, int, float):
-            if kind is float and not math.isfinite(item):
+            if kind is float and not math.isfinite(cast(float, item)):
                 raise ValueError("admission JSON must be finite")
             # Bound integers before conversion (including Python's digit guard).
-            if kind is int and item.bit_length() > max_bytes * 4:
+            if kind is int and cast(int, item).bit_length() > max_bytes * 4:
                 raise ValueError("admission_context_limit_exceeded")
             emit(json.dumps(item, allow_nan=False))
         else:
@@ -201,7 +201,11 @@ class _Closed(DungeonMindModel):
     def model_validate_json(cls, json_data: str | bytes | bytearray, **kwargs: Any) -> Self:
         if type(json_data) not in (str, bytes, bytearray):
             raise ValueError("admission JSON input must be text or bytes")
-        raw = json_data.encode("utf-8") if type(json_data) is str else bytes(json_data)
+        raw = (
+            cast(str, json_data).encode("utf-8")
+            if type(json_data) is str
+            else bytes(cast(bytes | bytearray, json_data))
+        )
         return cls.model_validate(strict_json_loads(raw), **kwargs)
 
     @model_validator(mode="before")
@@ -397,7 +401,7 @@ class PublicationAdmissionContextV1(_Closed):
     def bindings(self) -> Self:
         if len(self.accepted_assertions) > MAX_COLLECTION:
             raise ValueError("admission_context_limit_exceeded")
-        ids = [opaque(row.get("assertion_id")) for row in self.accepted_assertions]
+        ids = [opaque(cast(str, row.get("assertion_id"))) for row in self.accepted_assertions]
         _ordered(ids)
         if (
             bounded_sha256(self.accepted_assertions, max_bytes=ACCEPTED_BYTES)

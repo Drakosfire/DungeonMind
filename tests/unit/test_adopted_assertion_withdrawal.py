@@ -349,6 +349,30 @@ def withdrawal_version(request):
     return request.param
 
 
+def test_v2_profile_drift_is_rejected_before_parent_publication():
+    from dungeonmind.contracts.graph import PublishRevisionCommand
+
+    graph, repository, command = _prepared(version=2)
+    parent = graph.get_revision(command.world_id, command.expected_parent_revision_id)
+    payload = _drift_parent(copy.deepcopy(parent.graph_payload), command, "profile")
+    before = copy.deepcopy((graph._revisions, graph._heads))
+    with pytest.raises(PersistenceIntegrityError) as refused:
+        graph.publish_revision(
+            PublishRevisionCommand(
+                world_id=command.world_id,
+                parent_revision_id=command.expected_parent_revision_id,
+                expected_parent_revision_id=command.expected_parent_revision_id,
+                operation_ids=["test-drift:profile"],
+                graph_schema="dm_union_graph_v6",
+                graph_payload=payload,
+                created_at=NOW,
+            )
+        )
+    assert refused.value.details["reason"] == "admission_profile_conflict"
+    assert (graph._revisions, graph._heads) == before
+    assert repository._withdrawal_receipts == {}
+
+
 @pytest.mark.parametrize("version,locator", [(1, None), (2, "fixture://forged")])
 def test_locator_contracts_are_disjoint_and_v2_null_must_be_explicit(version, locator):
     _graph, _repository, command = _prepared(version=version)
@@ -439,7 +463,7 @@ def _drift_parent(payload, command, drift):
 
 
 @pytest.mark.parametrize(
-    "drift", ["locator", "span", "revision", "profile", "duplicate", "assertion", "evidence"]
+    "drift", ["locator", "span", "revision", "duplicate", "assertion", "evidence"]
 )
 def test_v2_rejects_parent_drift_without_mutation(drift):
     from dungeonmind.contracts.graph import PublishRevisionCommand
