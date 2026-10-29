@@ -196,3 +196,13 @@ class KnowledgePublicationOutcomeUnknownError(DungeonMindError):
         self.publication_id = publication_id
         self.expected_published_revision_id = expected_published_revision_id
         self.retry_safe = True
+
+
+class KnowledgeProfileTransitionIntegrityError(PersistenceIntegrityError):
+    """Profile transition authority or additive policy failed validation."""
+
+    code = "knowledge_profile_transition_integrity_error"
+
+    def __init__(self, reason: str) -> None:
+        super().__init__("native profile transition failed", details={"reason": reason})
+        self.reason = reason
