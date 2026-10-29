@@ -14,6 +14,8 @@ from dungeonmind.contracts.vnext.domain import (
 from dungeonmind.contracts.vnext.knowledge import KnowledgeHead, PublishKnowledgeRevisionCommand
 from dungeonmind.contracts.vnext.native_source import (
     NativeSourceAdmissionReceiptV1,
+    NativeSourceEvidenceExtensionReceiptV1,
+    NativeSourceEvidenceExtensionV1,
     NativeTextSourceAdmissionV1,
     NativeUtf8SpanProofV1,
 )
@@ -155,6 +157,21 @@ class NativeSourceEvidenceRepository(KnowledgeRevisionRepository, Protocol):
         space_id: str,
         admission_id: str,
     ) -> NativeSourceAdmissionReceiptV1 | None: ...
+
+    def publish_native_source_evidence_extension(
+        self,
+        *,
+        request: NativeSourceEvidenceExtensionV1,
+        domain_contract: DomainContractDescriptor,
+        semantic_profile: SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
+        audience_labels: Sequence[str],
+    ) -> NativeSourceEvidenceExtensionReceiptV1: ...
+
+    def get_native_source_evidence_extension_receipt(
+        self,
+        space_id: str,
+        extension_id: str,
+    ) -> NativeSourceEvidenceExtensionReceiptV1 | None: ...
 
     def open_native_source_view(self, space_id: str) -> NativeTextSourceView: ...
 

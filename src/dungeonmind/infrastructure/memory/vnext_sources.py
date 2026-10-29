@@ -29,6 +29,8 @@ from dungeonmind.contracts.vnext.knowledge import (
 )
 from dungeonmind.contracts.vnext.native_source import (
     NativeSourceAdmissionReceiptV1,
+    NativeSourceEvidenceExtensionReceiptV1,
+    NativeSourceEvidenceExtensionV1,
     NativeTextSourceAdmissionBindingV1,
     NativeTextSourceAdmissionV1,
     NativeTextSourceOriginV1,
@@ -101,6 +103,8 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
         )
         self._after_native_publication_receipt_insert = after_receipt_insert
         self._native_epoch = 0
+        self._extension_receipts = {}
+        self._extension_by_span = {}
         self._native_receipts: dict[tuple[str, str], NativeSourceAdmissionReceiptV1] = {}
         self._native_records: dict[tuple[str, str], _NativeSourceRecord] = {}
         self._by_revision: dict[tuple[str, str], _NativeSourceRecord] = {}
@@ -273,6 +277,151 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
             self._after_publication_commit()
         return companion.model_copy(deep=True)
 
+    def get_native_source_evidence_extension_receipt(
+        self, space_id: str, extension_id: str
+    ) -> NativeSourceEvidenceExtensionReceiptV1 | None:
+        with self._lock:
+            value = self._extension_receipts.get((space_id, extension_id))
+            if value is None:
+                return None
+            receipt, fingerprint = value
+            if canonical_sha256(receipt.model_dump(mode="json")) != fingerprint:
+                raise PersistenceIntegrityError("extension receipt fingerprint drift")
+            return NativeSourceEvidenceExtensionReceiptV1.model_validate(
+                receipt.model_dump(mode="json")
+            )
+
+    def publish_native_source_evidence_extension(
+        self,
+        *,
+        request: NativeSourceEvidenceExtensionV1,
+        domain_contract: DomainContractDescriptor,
+        semantic_profile: SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
+        audience_labels: Sequence[str],
+    ) -> NativeSourceEvidenceExtensionReceiptV1:
+        from ...application.vnext.errors import KnowledgePublicationOutcomeUnknownError
+        from ...application.vnext.native_source_extension import (
+            extension_plan,
+            make_extension_receipt,
+            snapshot_extension_inputs,
+        )
+
+        request, domain_contract, semantic_profile = snapshot_extension_inputs(
+            request, domain_contract, semantic_profile
+        )
+        audience_labels = tuple(audience_labels)
+
+        with self._lock:
+            record = self._by_revision.get((request.space_id, request.source_revision_id))
+            intervals = (
+                set() if record is None else {(p.start_byte, p.end_byte) for p in record.proofs}
+            )
+            root = self.get_native_source_admission_receipt(
+                request.space_id, request.original_admission_id
+            )
+            if (
+                root is not None
+                and record is not None
+                and (
+                    root.source_artifact_id != record.artifact.source_artifact_id
+                    or root.source_revision_id != record.revision.source_revision_id
+                    or root.origin != record.origin
+                    or {b.span_id for b in root.bindings} != {p.span_id for p in record.proofs}
+                )
+            ):
+                raise PersistenceIntegrityError("extension original source receipt drift")
+
+            for key in self._extension_receipts:
+                receipt = self.get_native_source_evidence_extension_receipt(*key)
+                if receipt is None:
+                    raise PersistenceIntegrityError("extension receipt index drift")
+                if (
+                    receipt.space_id == request.space_id
+                    and receipt.source_revision_id == request.source_revision_id
+                ):
+                    intervals.update((p.start_byte, p.end_byte) for p in receipt.proofs)
+            plan = extension_plan(
+                repository=self,
+                request=request,
+                domain_contract=domain_contract,
+                semantic_profile=semantic_profile,
+                audience_labels=audience_labels,
+                registered_intervals=intervals,
+            )
+            if isinstance(plan, NativeSourceEvidenceExtensionReceiptV1):
+                return plan
+            ids = [i for p in plan.proofs for i in (p.span_id, p.evidence_ref_id)]
+            if any(i in self._global_identity_space for i in ids):
+                raise PersistenceIntegrityError("extension identity collision")
+            snapshot = (
+                dict(self._revisions),
+                dict(self._heads),
+                list(self._events),
+                dict(self._receipts),
+                self._native_epoch,
+                dict(self._extension_receipts),
+                dict(self._extension_by_span),
+                dict(self._global_identity_space),
+            )
+            try:
+                command = plan.command
+                stored = commit_expected_parent(
+                    command,
+                    read_head=lambda: self._heads.get(request.space_id),
+                    read_revision=lambda rid: self._revisions.get((request.space_id, rid)),
+                    insert_revision=self._insert_native_child,
+                    advance_head=self._advance_native_head,
+                )
+                publication = KnowledgePublicationReceipt(
+                    space_id=request.space_id,
+                    publication_id=request.extension_id,
+                    command_sha256=canonical_sha256(command.model_dump(mode="json")),
+                    expected_parent_revision_id=request.expected_parent_revision_id,
+                    published_revision_id=stored.revision.revision_id,
+                    graph_payload_sha256=stored.graph_payload_sha256,
+                )
+                self._receipts[(request.space_id, request.extension_id)] = publication
+                if self._after_native_publication_receipt_insert:
+                    self._after_native_publication_receipt_insert()
+                self._native_epoch += 1
+                receipt = make_extension_receipt(plan, self._native_epoch, publication)
+                self._extension_receipts[(request.space_id, request.extension_id)] = (
+                    receipt,
+                    canonical_sha256(receipt.model_dump(mode="json")),
+                )
+                for proof in plan.proofs:
+                    self._extension_by_span[(request.space_id, proof.span_id)] = (
+                        request.extension_id
+                    )
+                self._global_identity_space.update({i: request.space_id for i in ids})
+                if self._after_native_source_insert:
+                    self._after_native_source_insert()
+                if self._after_native_receipt_insert:
+                    self._after_native_receipt_insert()
+            except Exception:
+                (
+                    self._revisions,
+                    self._heads,
+                    self._events,
+                    self._receipts,
+                    self._native_epoch,
+                    self._extension_receipts,
+                    self._extension_by_span,
+                    self._global_identity_space,
+                ) = snapshot
+                raise
+        if self._after_publication_commit:
+            try:
+                self._after_publication_commit()
+            except Exception as exc:
+                raise KnowledgePublicationOutcomeUnknownError(
+                    space_id=request.space_id,
+                    publication_id=request.extension_id,
+                    expected_published_revision_id=receipt.publication_receipt.published_revision_id,
+                    reason="extension_commit_acknowledgement_lost",
+                ) from exc
+        return receipt.model_copy(deep=True)
+
     def _insert_native_child(self, stored: StoredKnowledgeRevision) -> None:
         key = (stored.revision.space_id, stored.revision.revision_id)
         self._revisions[key] = stored
@@ -344,6 +493,33 @@ class _InMemoryNativeTextSourceView:
             indexed_span = self._repository._by_span.get((self._space_id, span_id))
             if record is None or record.epoch > self._epoch:
                 return None
+            proof_epoch = record.epoch
+            if indexed_span is None:
+                extension_id = self._repository._extension_by_span.get((self._space_id, span_id))
+                if extension_id is not None:
+                    receipt = self._repository.get_native_source_evidence_extension_receipt(
+                        self._space_id, extension_id
+                    )
+                    if receipt is None:
+                        raise PersistenceIntegrityError("extension span receipt missing")
+                    root = self._repository.get_native_source_admission_receipt(
+                        self._space_id, receipt.original_admission_id
+                    )
+                    if (
+                        root is None
+                        or canonical_sha256(root.model_dump(mode="json"))
+                        != receipt.original_admission_sha256
+                        or (receipt.source_artifact_id, receipt.source_revision_id, receipt.origin)
+                        != (source_artifact_id, source_revision_id, root.origin)
+                    ):
+                        raise PersistenceIntegrityError("extension source lineage drift")
+                    if receipt.source_authority_epoch > self._epoch:
+                        return None
+                    proof = next((p for p in receipt.proofs if p.span_id == span_id), None)
+                    if proof is None:
+                        raise PersistenceIntegrityError("extension span index drift")
+                    indexed_span = (record, proof)
+                    proof_epoch = receipt.source_authority_epoch
             if (
                 indexed_revision is not record
                 or indexed_span is None
@@ -366,5 +542,5 @@ class _InMemoryNativeTextSourceView:
                 source_revision=record.revision.model_copy(deep=True),
                 body_bytes=bytes(record.body),
                 span_proof=proof.model_copy(deep=True),
-                authority_epoch=record.epoch,
+                authority_epoch=proof_epoch,
             )
