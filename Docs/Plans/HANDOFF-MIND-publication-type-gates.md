@@ -9,3 +9,16 @@ Lease: this handoff; application/{publication_admission,review_materialization_v
 
 ## Gates
 Full locked Python3.12 Ruff/Pyright, owning strict JSON/publication/V4/materialization/repository/rollback tests and full non-integration suite. Inspect exact cumulative diff; independent Bugbot exact-head review; CI; PRIME merge. Then re-anchor PR143 on the merged prerequisite and repeat review/CI. Preserve all sources, revisions and runtime state. No runtime delivery until separately reviewed Buddy adoption.
+
+
+PRIME gate repair amendment, 2026-10-29: exact-head integration CI exposed five
+inherited expectations after mandatory publication admission0017. Extend this
+same prerequisite lease to tests/integration/test_migrations.py (assert actual
+0017 head) and tests/integration/test_postgres_adopted_assertion_withdrawal.py
+(profile drift must refuse at publication, with graph/head/receipt conservation).
+No production semantics or migration changes. Serialize these two shared test
+paths ahead of held successor PR145–150; those lanes have no active writes and
+must rebase/reconcile their later migration heads after this prerequisite merges.
+PR151 native profile transition remains path-disjoint and waits for these gates.
+Preserve original CI40622226492/job122598729107 failure. Independently review the
+exact new cumulative head and require all CI before merge.
