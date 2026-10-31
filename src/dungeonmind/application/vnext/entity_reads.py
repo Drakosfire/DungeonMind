@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Literal
 
 from dungeonmind.domain.canonical import canonical_sha256
@@ -21,6 +21,7 @@ from .records import (
     ParsedEntityRefValue,
     ParsedEvidenceRef,
     ParsedIdentityAlias,
+    ParsedKnowledgeRevisionIdentity,
 )
 
 ENTITY_READ_PARTIAL_REASONS = frozenset({"support_unavailable", "result_truncated"})
@@ -94,6 +95,22 @@ class EntityReadSourceRevision:
     source_revision_id: str
     source_artifact_id: str
     content_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class EntityListResult:
+    """All entities with admitted assertion presence in one exact read context.
+
+    Endpoint presence does not admit the endpoint's other facts or aliases.
+    Completeness concerns this finite revision/request, never the whole corpus.
+    """
+
+    identity: ParsedKnowledgeRevisionIdentity
+    request_sha256: str
+    entities: tuple[ParsedEntity, ...]
+    admitted_assertion_ids: tuple[str, ...]
+    completeness: EntityReadCompleteness
+    result_digest: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -605,7 +622,51 @@ def _assemble(
 
 
 class EntityReadService:
-    """Exact-ID entity reads using revision-local indexes and the V2 admission seam."""
+    """Entity catalogue and exact-ID reads through the same Core admission seam."""
+
+    def list_entities(self, context: KnowledgeReadContext) -> EntityListResult:
+        """Enumerate admitted presence once, without search, ranking or a result cap."""
+        parsed = context.parsed
+        admission, _ = context.evaluate_candidates(tuple(parsed.assertions_by_id))
+        identifiers: set[str] = set()
+        for assertion_id in admission.admitted_assertion_ids:
+            assertion = parsed.get_assertion(assertion_id)
+            if assertion is None:
+                raise EntityReadIntegrityError(
+                    f"admitted listing assertion missing from revision: {assertion_id}"
+                )
+            identifiers.add(assertion.subject_entity_id)
+            if isinstance(assertion.value, ParsedEntityRefValue):
+                identifiers.add(assertion.value.entity_id)
+        entities = []
+        for entity_id in sorted(identifiers):
+            entity = parsed.get_entity(entity_id)
+            if entity is None:
+                raise EntityReadIntegrityError(
+                    f"admitted listing endpoint missing from revision: {entity_id}"
+                )
+            entities.append(entity)
+        request_sha256 = canonical_sha256(context.request.model_dump(mode="json"))
+        completeness = EntityReadCompleteness(status="complete")
+        digest = canonical_sha256({
+            "space_id": parsed.space_id,
+            "revision_id": parsed.revision_id,
+            "graph_payload_sha256": parsed.graph_payload_sha256,
+            "domain_contract_ref": asdict(parsed.domain_contract_ref),
+            "semantic_profile_ref": asdict(parsed.semantic_profile_ref),
+            "request_sha256": request_sha256,
+            "entity_ids": [entity.entity_id for entity in entities],
+            "admitted_assertion_ids": list(admission.admitted_assertion_ids),
+            "completeness": completeness.status,
+        })
+        return EntityListResult(
+            identity=parsed.identity,
+            request_sha256=request_sha256,
+            entities=tuple(entities),
+            admitted_assertion_ids=admission.admitted_assertion_ids,
+            completeness=completeness,
+            result_digest=digest,
+        )
 
     def get_entity(self, context: KnowledgeReadContext, entity_id: str) -> EntityLookupResult:
         result = _assemble(context=context, entity_id=entity_id, include_touching=False)
