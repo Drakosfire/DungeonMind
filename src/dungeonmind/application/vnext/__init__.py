@@ -97,6 +97,9 @@ from .model import (
 )
 from .native_source_access import (
     NativeTextSourceAccessContext,
+    NativeTextSourceCatalog,
+    NativeTextSourceMetadata,
+    list_admitted_native_text_sources,
     open_admitted_native_text,
     open_native_text_source_access_context,
 )
@@ -213,6 +216,8 @@ __all__ = [
     "NativeTextSourceAccessContext",
     "NativeTextSourceAccessIntegrityError",
     "NativeTextSourceAdmissionIntegrityError",
+    "NativeTextSourceCatalog",
+    "NativeTextSourceMetadata",
     "NeighborhoodLayerWork",
     "NeighborhoodReadIdentity",
     "NeighborhoodReadIntegrityError",
@@ -274,6 +279,7 @@ __all__ = [
     "get_prospective_publication",
     "get_publication_receipt",
     "initialize_empty_knowledge_space",
+    "list_admitted_native_text_sources",
     "load_legacy_world_compat_manifest",
     "materialize_governed_revision",
     "open_admitted_native_text",

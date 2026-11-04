@@ -139,9 +139,7 @@ def test_postgres_lost_post_commit_response_recovers_and_replays_fresh_repositor
     # event, admission row or epoch increment may be introduced.
     fresh_repository = _repository(pg)
     assert (
-        fresh_repository.get_native_source_admission_receipt(
-            request.space_id, request.admission_id
-        )
+        fresh_repository.get_native_source_admission_receipt(request.space_id, request.admission_id)
         == recovered
     )
     assert (
@@ -294,3 +292,79 @@ def test_postgres_different_admissions_racing_same_parent_have_one_winner(pg):
     assert sum(not isinstance(item, KnowledgeStaleParentRevisionError) for item in outcomes) == 1
     assert sum(isinstance(item, KnowledgeStaleParentRevisionError) for item in outcomes) == 1
     assert len(_knowledge(repository).head_events("space:postgres-native-source")) == 2
+
+
+def test_postgres_source_metadata_reads_no_body_and_defers_byte_verification(pg, monkeypatch):
+    from dungeonmind.application.vnext import list_admitted_native_text_sources
+    from dungeonmind.application.vnext.errors import NativeTextSourceAccessIntegrityError
+    from dungeonmind.infrastructure.postgres import vnext_sources as storage
+
+    repository = _repository(pg)
+    domain, profile, genesis = _init(repository)
+    request = _request(
+        space_id="space:postgres-native-source", parent_revision_id=genesis.published_revision_id
+    )
+    receipt = publish_native_text_source_evidence(
+        repository=repository, request=request, domain_contract=domain, semantic_profile=profile
+    )
+    context = open_native_text_source_access_context(
+        repository=repository,
+        space_id=request.space_id,
+        revision_id=receipt.published_revision_id,
+        domain_contract=domain,
+    )
+    actual = storage._read_native_record
+    reads = []
+
+    def record(conn, space_id, admission_id, *, include_body):
+        result = actual(conn, space_id, admission_id, include_body=include_body)
+        reads.append(include_body)
+        if not include_body:
+            assert result["body"] is None
+        return result
+
+    monkeypatch.setattr(storage, "_read_native_record", record)
+    result = list_admitted_native_text_sources(context)
+    assert result.complete and len(result.sources) == 1 and reads == [False]
+    evidence_id = result.sources[0].evidence_ref_ids[0]
+    assert open_admitted_native_text(context, evidence_id).status == "available"
+    assert reads == [False, True]
+
+    # Metadata is not proof of byte integrity. Exact opening retains that check.
+    with pg.database.transaction() as conn:
+        conn.execute(
+            "UPDATE dungeonmind.knowledge_native_source_admissions "
+            "SET body_bytes=%s WHERE space_id=%s AND admission_id=%s",
+            (b"corrupted bytes", request.space_id, request.admission_id),
+        )
+    assert list_admitted_native_text_sources(context).complete
+    with pytest.raises(NativeTextSourceAccessIntegrityError):
+        open_admitted_native_text(context, evidence_id)
+
+
+def test_postgres_metadata_does_not_skip_record_integrity(pg):
+    from dungeonmind.application.vnext import list_admitted_native_text_sources
+    from dungeonmind.application.vnext.errors import NativeTextSourceAccessIntegrityError
+
+    repository = _repository(pg)
+    domain, profile, genesis = _init(repository)
+    request = _request(
+        space_id="space:postgres-native-source", parent_revision_id=genesis.published_revision_id
+    )
+    receipt = publish_native_text_source_evidence(
+        repository=repository, request=request, domain_contract=domain, semantic_profile=profile
+    )
+    context = open_native_text_source_access_context(
+        repository=repository,
+        space_id=request.space_id,
+        revision_id=receipt.published_revision_id,
+        domain_contract=domain,
+    )
+    with pg.database.transaction() as conn:
+        conn.execute(
+            "UPDATE dungeonmind.knowledge_native_source_admissions "
+            "SET record_fingerprint=%s WHERE space_id=%s AND admission_id=%s",
+            ("0" * 64, request.space_id, request.admission_id),
+        )
+    with pytest.raises(NativeTextSourceAccessIntegrityError):
+        list_admitted_native_text_sources(context)
