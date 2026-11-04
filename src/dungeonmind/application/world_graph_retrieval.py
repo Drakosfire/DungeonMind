@@ -42,6 +42,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from copy import deepcopy
@@ -3571,9 +3572,32 @@ class WorldGraphRetrievalService:
                     artifact=entry.validated.artifact,
                 )
             )
-        if max_anchors is not None and len(anchors) > max_anchors:
-            return tuple(anchors[:max_anchors]), True
-        return tuple(anchors), False
+        if max_anchors is None:
+            return tuple(anchors), False
+        # Context-bound anchor hashes are capabilities, not an allocation rank.
+        # Give each admitted source revision a turn before taking another span
+        # from a broad source. Only stable native identities determine exposure.
+        groups: dict[tuple[str, str | None], list[SourceAnchorMetadata]] = {}
+        for anchor in anchors:
+            groups.setdefault(
+                (anchor.source_artifact_id, anchor.source_revision_id), []
+            ).append(anchor)
+        pending = deque(
+            iter(sorted(groups[key], key=lambda item: (
+                item.locator_identity, item.evidence_ref_id,
+            )))
+            for key in sorted(groups, key=lambda pair: (
+                pair[0], pair[1] is not None, pair[1] or "",
+            ))
+        )
+        selected: list[SourceAnchorMetadata] = []
+        while pending and len(selected) < max_anchors:
+            group = pending.popleft()
+            anchor = next(group, None)
+            if anchor is not None:
+                selected.append(anchor)
+                pending.append(group)
+        return tuple(selected), len(anchors) > max_anchors
 
     @staticmethod
     def _related_objects_for(
