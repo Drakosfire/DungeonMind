@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from dungeonmind.contracts.vnext.domain import DomainContractDescriptor
 from dungeonmind.contracts.vnext.native_source import NativeTextSourceAccessV1
+from dungeonmind.contracts.vnext.source import SourceArtifactV3, SourceRevisionV2
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnavailableError
 
@@ -17,6 +18,7 @@ from .errors import KnowledgeReadContextIntegrityError, NativeTextSourceAccessIn
 from .materialization import NATIVE_VNEXT_GRAPH_SCHEMA, decode_native_graph_payload
 from .model import ParsedKnowledgeRevision
 from .ports import NativeSourceEvidenceRepository, NativeTextSourceView
+from .records import ParsedEvidenceRef
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +76,124 @@ def open_native_text_source_access_context(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class NativeTextSourceMetadata:
+    """Authorized navigation metadata, not a body/span verification receipt."""
+
+    source_artifact: SourceArtifactV3
+    source_revision: SourceRevisionV2
+    evidence_ref_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class NativeTextSourceCatalog:
+    """All eligible metadata in one pinned source context, without reading bodies."""
+
+    space_id: str
+    revision_id: str
+    source_authority_epoch: int
+    sources: tuple[NativeTextSourceMetadata, ...]
+    complete: bool
+
+
+def _eligible_evidence(
+    context: NativeTextSourceAccessContext,
+    evidence: ParsedEvidenceRef,
+) -> bool:
+    return (
+        evidence.can_open_source
+        and evidence.can_highlight_span
+        and evidence.source_revision_id is not None
+        and evidence.source_span_ref_id is not None
+        and all(
+            item.schema_term in context.source_annotation_schemas
+            for item in evidence.domain_metadata
+        )
+    )
+
+
+def _metadata_allowed(
+    context: NativeTextSourceAccessContext,
+    evidence: ParsedEvidenceRef,
+    artifact: SourceArtifactV3,
+    revision: SourceRevisionV2,
+) -> bool:
+    """One owner for the shared metadata identity and access decision."""
+    if artifact.source_artifact_id != evidence.source_artifact_id:
+        raise NativeTextSourceAccessIntegrityError("artifact identity mismatch")
+    if artifact.status != "active" or artifact.current_revision_id != revision.source_revision_id:
+        return False
+    if revision.source_artifact_id != artifact.source_artifact_id:
+        raise NativeTextSourceAccessIntegrityError("revision artifact binding mismatch")
+    if revision.source_revision_id != evidence.source_revision_id:
+        raise NativeTextSourceAccessIntegrityError("revision identity mismatch")
+    if revision.body_storage != "dm_native_utf8_body_v1":
+        raise NativeTextSourceAccessIntegrityError("body storage kind mismatch")
+    return _contract_visibility_visible(
+        artifact,
+        audience=context.audience_labels,
+        declared_labels=context.declared_visibility_labels,
+    ) and all(
+        item.schema_term in context.source_annotation_schemas for item in artifact.domain_metadata
+    )
+
+
+def list_admitted_native_text_sources(
+    context: NativeTextSourceAccessContext,
+) -> NativeTextSourceCatalog:
+    """Discover authorized metadata; selected reads still verify bytes and proofs.
+
+    Missing metadata yields partial discovery. Visibility exclusions do not disclose
+    the excluded source or make an authorized audience's catalogue partial.
+    """
+    pairs = {}
+    for evidence in context.parsed.evidence_by_id.values():
+        if _eligible_evidence(context, evidence):
+            pairs.setdefault((evidence.source_artifact_id, evidence.source_revision_id), []).append(
+                evidence
+            )
+    try:
+        snapshot = context.source_view.get_provenance_snapshot(
+            artifact_ids=sorted({pair[0] for pair in pairs}),
+            revision_ids=sorted({pair[1] for pair in pairs}),
+        )
+        complete, sources = True, []
+        for (artifact_id, revision_id), evidence in sorted(pairs.items()):
+            artifact, revision = (
+                snapshot.get_artifact(artifact_id),
+                snapshot.get_revision(revision_id),
+            )
+            if artifact is None or revision is None:
+                complete = False
+                continue
+            allowed = tuple(
+                sorted(
+                    row.evidence_ref_id
+                    for row in evidence
+                    if _metadata_allowed(context, row, artifact, revision)
+                )
+            )
+            if allowed:
+                sources.append(
+                    NativeTextSourceMetadata(
+                        source_artifact=artifact.model_copy(deep=True),
+                        source_revision=revision.model_copy(deep=True),
+                        evidence_ref_ids=allowed,
+                    )
+                )
+    except PersistenceUnavailableError:
+        raise
+    except PersistenceIntegrityError as exc:
+        raise NativeTextSourceAccessIntegrityError("source metadata integrity failed") from exc
+    return NativeTextSourceCatalog(
+        space_id=context.space_id,
+        revision_id=context.revision_id,
+        source_authority_epoch=context.source_view.epoch,
+        sources=tuple(sources),
+        complete=complete,
+    )
+
+
 def _unavailable() -> NativeTextSourceAccessV1:
     return NativeTextSourceAccessV1(status="unavailable")
 
@@ -89,17 +209,7 @@ def open_admitted_native_text(
     evidence = parsed.get_evidence(evidence_ref_id)
     if evidence is None:
         return _unavailable()
-    if (
-        not evidence.can_open_source
-        or not evidence.can_highlight_span
-        or evidence.source_revision_id is None
-        or evidence.source_span_ref_id is None
-    ):
-        return _unavailable()
-    if any(
-        item.schema_term not in context.source_annotation_schemas
-        for item in evidence.domain_metadata
-    ):
+    if not _eligible_evidence(context, evidence):
         return _unavailable()
 
     try:
@@ -118,35 +228,14 @@ def open_admitted_native_text(
     artifact = source.source_artifact
     revision = source.source_revision
     proof = source.span_proof
-    if artifact.source_artifact_id != evidence.source_artifact_id:
-        raise NativeTextSourceAccessIntegrityError("artifact identity mismatch")
-    if artifact.status != "active" or artifact.current_revision_id != revision.source_revision_id:
+    if not _metadata_allowed(context, evidence, artifact, revision):
         return _unavailable()
-    if revision.source_artifact_id != artifact.source_artifact_id:
-        raise NativeTextSourceAccessIntegrityError("revision artifact binding mismatch")
-    if revision.source_revision_id != evidence.source_revision_id:
-        raise NativeTextSourceAccessIntegrityError("revision identity mismatch")
-    if revision.body_storage != "dm_native_utf8_body_v1":
-        raise NativeTextSourceAccessIntegrityError("body storage kind mismatch")
     if proof.source_revision_id != revision.source_revision_id:
         raise NativeTextSourceAccessIntegrityError("span revision binding mismatch")
     if proof.evidence_ref_id != evidence_ref_id:
         raise NativeTextSourceAccessIntegrityError("span evidence binding mismatch")
     if proof.span_id != evidence.source_span_ref_id:
         raise NativeTextSourceAccessIntegrityError("span identity mismatch")
-    if evidence.source_artifact_id != artifact.source_artifact_id:
-        raise NativeTextSourceAccessIntegrityError("evidence artifact binding mismatch")
-    if not _contract_visibility_visible(
-        artifact,
-        audience=context.audience_labels,
-        declared_labels=context.declared_visibility_labels,
-    ):
-        return _unavailable()
-    if any(
-        item.schema_term not in context.source_annotation_schemas
-        for item in artifact.domain_metadata
-    ):
-        return _unavailable()
 
     body = source.body_bytes
     body_digest = hashlib.sha256(body).hexdigest()

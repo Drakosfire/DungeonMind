@@ -66,7 +66,7 @@ def _record_fingerprint(
     *,
     artifact: SourceArtifactV3,
     revision: SourceRevisionV2,
-    body: bytes,
+    body_sha256: str,
     proofs: Sequence[NativeUtf8SpanProofV1],
     origin: NativeTextSourceOriginV1 | None,
     receipt: NativeSourceAdmissionReceiptV1,
@@ -75,7 +75,7 @@ def _record_fingerprint(
         {
             "artifact": artifact.model_dump(mode="json"),
             "revision": revision.model_dump(mode="json"),
-            "body_sha256": hashlib.sha256(body).hexdigest(),
+            "body_sha256": body_sha256,
             "proofs": [item.model_dump(mode="json") for item in proofs],
             "origin": None if origin is None else origin.model_dump(mode="json"),
             "receipt": receipt.model_dump(mode="json"),
@@ -177,19 +177,24 @@ def _lock_native_epoch(conn: Connection[Any]) -> None:
 
 
 def _read_native_record(
-    conn: Connection[Any], space_id: str, admission_id: str
+    conn: Connection[Any], space_id: str, admission_id: str, *, include_body: bool
 ) -> dict[str, Any] | None:
+    # Metadata discovery binds metadata to the stored fingerprint using its
+    # declared body digest. Only an exact body read verifies the actual bytes.
     row = conn.execute(
         sql.SQL(
             """
             SELECT space_id, admission_id, command_sha256, source_authority_epoch,
                    source_artifact_id, source_revision_id, published_revision_id,
-                   source_artifact, source_revision, origin, body_bytes, span_proofs,
+                   source_artifact, source_revision, origin, {body_column}, span_proofs,
                    receipt_payload, record_fingerprint
             FROM {}.knowledge_native_source_admissions
             WHERE space_id = %s AND admission_id = %s
             """
-        ).format(sql.Identifier(SCHEMA)),
+        ).format(
+            sql.Identifier(SCHEMA),
+            body_column=sql.SQL("body_bytes" if include_body else "NULL::bytea AS body_bytes"),
+        ),
         (space_id, admission_id),
     ).fetchone()
     if row is None:
@@ -204,13 +209,15 @@ def _read_native_record(
             else NativeTextSourceOriginV1.model_validate(row["origin"])
         )
         receipt = NativeSourceAdmissionReceiptV1.model_validate(row["receipt_payload"])
-        body = bytes(row["body_bytes"])
+        body = bytes(row["body_bytes"]) if include_body else None
     except Exception as exc:
         raise PersistenceIntegrityError("native source record reconstruction failed") from exc
     expected = _record_fingerprint(
         artifact=artifact,
         revision=revision,
-        body=body,
+        body_sha256=hashlib.sha256(body).hexdigest()
+        if body is not None
+        else revision.content_sha256,
         proofs=proofs,
         origin=origin,
         receipt=receipt,
@@ -270,7 +277,7 @@ def _read_native_record(
 def _read_native_receipt(
     conn: Connection[Any], space_id: str, admission_id: str
 ) -> NativeSourceAdmissionReceiptV1 | None:
-    record = _read_native_record(conn, space_id, admission_id)
+    record = _read_native_record(conn, space_id, admission_id, include_body=True)
     return None if record is None else record["receipt"]
 
 
@@ -412,7 +419,7 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
             fingerprint = _record_fingerprint(
                 artifact=parts.artifact,
                 revision=parts.revision,
-                body=parts.body_bytes,
+                body_sha256=hashlib.sha256(parts.body_bytes).hexdigest(),
                 proofs=parts.span_proofs,
                 origin=request.origin,
                 receipt=companion,
@@ -502,12 +509,13 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
         )
         audience_labels = tuple(audience_labels)
 
-
         with self._database.transaction() as conn:
             _lock_native_epoch(conn)
             _lock_space(conn, request.space_id, created_at=request.created_at)
             locked = _ExtensionLockedView(conn, self._database)
-            root_record = _read_native_record(conn, request.space_id, request.original_admission_id)
+            root_record = _read_native_record(
+                conn, request.space_id, request.original_admission_id, include_body=True
+            )
             intervals = (
                 set()
                 if root_record is None
@@ -652,7 +660,9 @@ class _PostgresNativeTextSourceView:
                     ),
                 ).fetchall()
                 for row in rows:
-                    record = _read_native_record(conn, self._space_id, row["admission_id"])
+                    record = _read_native_record(
+                        conn, self._space_id, row["admission_id"], include_body=False
+                    )
                     if record is None:
                         raise PersistenceIntegrityError("native source record disappeared")
                     if row["source_artifact_id"] in requested_artifacts:
@@ -685,7 +695,9 @@ class _PostgresNativeTextSourceView:
             ).fetchone()
             if row is None:
                 return None
-            record = _read_native_record(conn, self._space_id, row["admission_id"])
+            record = _read_native_record(
+                conn, self._space_id, row["admission_id"], include_body=True
+            )
             if record is None:
                 raise PersistenceIntegrityError("native source record disappeared")
             span = next((proof for proof in record["proofs"] if proof.span_id == span_id), None)
