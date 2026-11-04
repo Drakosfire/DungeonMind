@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import cast
 
 from dungeonmind.contracts.vnext.domain import DomainContractDescriptor
 from dungeonmind.contracts.vnext.native_source import NativeTextSourceAccessV1
@@ -215,8 +216,9 @@ def open_admitted_native_text(
     try:
         source = context.source_view.get_native_text_source(
             source_artifact_id=evidence.source_artifact_id,
-            source_revision_id=evidence.source_revision_id,
-            span_id=evidence.source_span_ref_id,
+            # _eligible_evidence established both frozen fields are non-None.
+            source_revision_id=cast(str, evidence.source_revision_id),
+            span_id=cast(str, evidence.source_span_ref_id),
         )
     except PersistenceUnavailableError:
         raise
