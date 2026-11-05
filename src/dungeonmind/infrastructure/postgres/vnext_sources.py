@@ -18,6 +18,7 @@ from dungeonmind.application.vnext.ports import (
     StoredNativeTextSource,
 )
 from dungeonmind.application.vnext.provenance import (
+    KnowledgeProvenanceSnapshot,
     _build_snapshot_from_loaded,
 )
 from dungeonmind.contracts.vnext.domain import (
@@ -633,6 +634,14 @@ class _PostgresNativeTextSourceView:
 
     def open_coherent_view(self) -> NativeTextSourceView:
         return _PostgresNativeTextSourceView(self._database, self._space_id, self._epoch)
+
+    def get_provenance_snapshot(
+        self, *, artifact_ids: Sequence[str], revision_ids: Sequence[str]
+    ) -> KnowledgeProvenanceSnapshot:
+        """General Graph evidence reader projects the same native metadata load."""
+        return self.get_native_metadata_snapshot(
+            artifact_ids=artifact_ids, revision_ids=revision_ids
+        ).provenance
 
     def get_native_metadata_snapshot(
         self, *, artifact_ids: Sequence[str], revision_ids: Sequence[str]

@@ -323,3 +323,21 @@ def test_changed_stored_origin_fails_metadata_integrity():
     record.origin.revision_id = "changed"
     with pytest.raises(NativeTextSourceAccessIntegrityError):
         list_admitted_native_text_sources(context)
+
+
+def test_native_source_view_preserves_the_general_evidence_reader_contract():
+    _, _, _, context, receipt = source_case()
+    view = context.source_view.open_coherent_view()
+    selectors = {
+        "artifact_ids": [receipt.source_artifact_id],
+        "revision_ids": [receipt.source_revision_id],
+    }
+    general = view.get_provenance_snapshot(**selectors)
+    native = view.get_native_metadata_snapshot(**selectors)
+    assert general.fingerprint == native.provenance.fingerprint
+    assert general.get_artifact(receipt.source_artifact_id) == native.provenance.get_artifact(
+        receipt.source_artifact_id
+    )
+    assert general.get_revision(receipt.source_revision_id) == native.provenance.get_revision(
+        receipt.source_revision_id
+    )

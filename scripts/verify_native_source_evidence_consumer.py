@@ -63,6 +63,7 @@ def run(database_url: str, keeper_checkout: Path) -> dict[str, object]:
     from dungeonmind.application.vnext.initialization import initialize_empty_knowledge_space
     from dungeonmind.application.vnext.materialization import decode_native_graph_payload
     from dungeonmind.application.vnext.native_source_access import (
+        list_admitted_native_text_sources,
         open_admitted_native_text,
         open_native_text_source_access_context,
     )
@@ -153,6 +154,12 @@ def run(database_url: str, keeper_checkout: Path) -> dict[str, object]:
             )
         ],
     )
+    from dungeonmind.contracts.vnext.native_source import NativeTextSourceOriginV1
+
+    origin = NativeTextSourceOriginV1(
+        namespace="test.consumer", object_id="authored-source", revision_id="revision:1"
+    )
+    request = request.model_copy(update={"origin": origin})
     admission = publish_native_text_source_evidence(
         repository=repository,
         request=request,
@@ -248,6 +255,9 @@ def run(database_url: str, keeper_checkout: Path) -> dict[str, object]:
         revision_id=committed.child_revision_id,
         domain_contract=domain,
     )
+    metadata = list_admitted_native_text_sources(context)
+    if not metadata.complete or len(metadata.sources) != 1 or metadata.sources[0].origin != origin:
+        raise AssertionError("native metadata did not retain the exact producer origin")
     access = open_admitted_native_text(context, evidence_id)
     if access.status != "available" or access.body_text != BODY:
         raise AssertionError("reopened native source preview did not verify exact authored bytes")
@@ -281,7 +291,10 @@ def run(database_url: str, keeper_checkout: Path) -> dict[str, object]:
     source_view = reopened.open_native_source_view(space_id)
     if not isinstance(child, StoredKnowledgeRevision) or not all(
         callable(getattr(source_view, member, None))
-        for member in ("open_coherent_view", "get_provenance_snapshot", "get_native_text_source")
+        for member in (
+            "open_coherent_view", "get_provenance_snapshot",
+            "get_native_metadata_snapshot", "get_native_text_source",
+        )
     ):
         raise AssertionError("candidate repository does not satisfy the native read ports")
     expected_domain_digest = canonical_sha256(domain.model_dump(mode="json"))
@@ -307,6 +320,7 @@ def run(database_url: str, keeper_checkout: Path) -> dict[str, object]:
         "object_bindings": object_results,
         "assertion_bindings": assertion_results,
         "ordinary_evidence_read": evidence_result.available,
+        "metadata_origin_exact": metadata.sources[0].origin == origin,
         "source_preview_after_reopen": access.status,
         "replay_exact": replayed == committed,
         "stale_parent_rejected": True,

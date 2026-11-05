@@ -137,8 +137,8 @@ class NativeTextSourceSnapshot:
         return None if origin is None else origin.model_copy(deep=True)
 
 
-class NativeTextSourceView(Protocol):
-    """O(1) epoch-pinned native provenance and body reader."""
+class NativeTextSourceView(KnowledgeSourceReader, Protocol):
+    """O(1) epoch-pinned native metadata/body reader and general evidence reader."""
 
     @property
     def epoch(self) -> int: ...
