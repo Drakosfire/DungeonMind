@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import cast
 
 from dungeonmind.contracts.vnext.domain import DomainContractDescriptor
@@ -78,6 +78,32 @@ def open_native_text_source_access_context(
         declared_visibility_labels=frozenset(domain_snapshot.visibility_labels),
         source_annotation_schemas=frozenset(domain_snapshot.source_annotation_schemas),
     )
+
+
+def refresh_native_text_source_access_context(
+    *,
+    repository: NativeSourceEvidenceRepository,
+    context: NativeTextSourceAccessContext,
+) -> NativeTextSourceAccessContext:
+    """Refresh source authority without reloading immutable Graph membership.
+
+    The repository must be the authority that opened the original context. The
+    exact parsed revision and its audience/domain inputs remain pinned; only
+    the source view advances. Body reads still perform normal admission checks.
+    """
+    identity = context.parsed.identity
+    if (
+        not context.space_id.strip()
+        or not context.revision_id.strip()
+        or identity.space_id != context.space_id
+        or identity.revision_id != context.revision_id
+        or identity.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA
+    ):
+        raise KnowledgeReadContextIntegrityError("native source context identity mismatch")
+    view = repository.open_native_source_view(context.space_id)
+    if view.epoch < context.source_view.epoch:
+        raise KnowledgeReadContextIntegrityError("native source authority epoch moved backwards")
+    return replace(context, source_view=view)
 
 
 @dataclass(frozen=True, slots=True)

@@ -12,6 +12,7 @@ from dungeonmind.application.vnext.initialization import initialize_empty_knowle
 from dungeonmind.application.vnext.native_source_access import (
     open_admitted_native_text,
     open_native_text_source_access_context,
+    refresh_native_text_source_access_context,
 )
 from dungeonmind.application.vnext.native_source_admission import (
     publish_native_text_source_evidence,
@@ -100,6 +101,14 @@ def test_postgres_commits_exact_source_and_replays_after_descendant(pg):
     )
     assert replay == receipt
     assert repository.get_head(request.space_id).head_revision_id != receipt.published_revision_id
+
+    # A newer head does not widen this read's Graph membership. The source
+    # authority is reopened while the exact parsed child is reused.
+    refreshed = refresh_native_text_source_access_context(repository=repository, context=context)
+    assert refreshed.parsed is context.parsed
+    assert refreshed.revision_id == receipt.published_revision_id
+    assert refreshed.source_view is not context.source_view
+    assert open_admitted_native_text(refreshed, receipt.bindings[0].evidence_ref_id) == access
 
 
 def test_postgres_lost_post_commit_response_recovers_and_replays_fresh_repository(pg):
