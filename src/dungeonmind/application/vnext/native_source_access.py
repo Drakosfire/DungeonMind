@@ -8,7 +8,10 @@ from dataclasses import dataclass
 from typing import cast
 
 from dungeonmind.contracts.vnext.domain import DomainContractDescriptor
-from dungeonmind.contracts.vnext.native_source import NativeTextSourceAccessV1
+from dungeonmind.contracts.vnext.native_source import (
+    NativeTextSourceAccessV1,
+    NativeTextSourceOriginV1,
+)
 from dungeonmind.contracts.vnext.source import SourceArtifactV3, SourceRevisionV2
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnavailableError
@@ -84,6 +87,7 @@ class NativeTextSourceMetadata:
     source_artifact: SourceArtifactV3
     source_revision: SourceRevisionV2
     evidence_ref_ids: tuple[str, ...]
+    origin: NativeTextSourceOriginV1 | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,15 +158,15 @@ def list_admitted_native_text_sources(
                 evidence
             )
     try:
-        snapshot = context.source_view.get_provenance_snapshot(
+        snapshot = context.source_view.get_native_metadata_snapshot(
             artifact_ids=sorted({pair[0] for pair in pairs}),
             revision_ids=sorted({pair[1] for pair in pairs}),
         )
         complete, sources = True, []
         for (artifact_id, revision_id), evidence in sorted(pairs.items()):
             artifact, revision = (
-                snapshot.get_artifact(artifact_id),
-                snapshot.get_revision(revision_id),
+                snapshot.provenance.get_artifact(artifact_id),
+                snapshot.provenance.get_revision(revision_id),
             )
             if artifact is None or revision is None:
                 complete = False
@@ -180,6 +184,7 @@ def list_admitted_native_text_sources(
                         source_artifact=artifact.model_copy(deep=True),
                         source_revision=revision.model_copy(deep=True),
                         evidence_ref_ids=allowed,
+                        origin=snapshot.get_origin(artifact_id, revision_id),
                     )
                 )
     except PersistenceUnavailableError:

@@ -11,6 +11,7 @@ from dungeonmind.application.vnext.native_source_admission import (
     validate_native_source_write,
 )
 from dungeonmind.application.vnext.ports import (
+    NativeTextSourceSnapshot,
     NativeTextSourceView,
     StoredNativeTextSource,
 )
@@ -66,7 +67,7 @@ def _native_fingerprint(
     *,
     artifact: SourceArtifactV3,
     revision: SourceRevisionV2,
-    body: bytes,
+    body_sha256: str,
     proofs: Sequence[NativeUtf8SpanProofV1],
     origin: NativeTextSourceOriginV1 | None,
     epoch: int,
@@ -75,7 +76,7 @@ def _native_fingerprint(
         {
             "artifact": artifact.model_dump(mode="json"),
             "revision": revision.model_dump(mode="json"),
-            "body_sha256": hashlib.sha256(body).hexdigest(),
+            "body_sha256": body_sha256,
             "proofs": [item.model_dump(mode="json") for item in proofs],
             "origin": None if origin is None else origin.model_dump(mode="json"),
             "epoch": epoch,
@@ -223,7 +224,7 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
                     fingerprint=_native_fingerprint(
                         artifact=parts.artifact,
                         revision=parts.revision,
-                        body=parts.body_bytes,
+                        body_sha256=hashlib.sha256(parts.body_bytes).hexdigest(),
                         proofs=parts.span_proofs,
                         origin=request.origin,
                         epoch=epoch,
@@ -460,8 +461,17 @@ class _InMemoryNativeTextSourceView:
     def get_provenance_snapshot(
         self, *, artifact_ids: Sequence[str], revision_ids: Sequence[str]
     ) -> KnowledgeProvenanceSnapshot:
+        """General Graph evidence reader projects the same native metadata load."""
+        return self.get_native_metadata_snapshot(
+            artifact_ids=artifact_ids, revision_ids=revision_ids
+        ).provenance
+
+    def get_native_metadata_snapshot(
+        self, *, artifact_ids: Sequence[str], revision_ids: Sequence[str]
+    ) -> NativeTextSourceSnapshot:
         requested_artifacts = tuple(sorted(set(artifact_ids)))
         requested_revisions = tuple(sorted(set(revision_ids)))
+        origins: dict[tuple[str, str], NativeTextSourceOriginV1 | None] = {}
         artifacts: dict[str, SourceArtifactV3] = {}
         revisions: dict[str, SourceRevisionV2] = {}
         with self._repository._lock:
@@ -472,8 +482,16 @@ class _InMemoryNativeTextSourceView:
             for revision_id in requested_revisions:
                 record = self._repository._by_revision.get((self._space_id, revision_id))
                 if record is not None and record.epoch <= self._epoch:
+                    expected = _native_fingerprint(
+                        artifact=record.artifact, revision=record.revision,
+                        body_sha256=record.revision.content_sha256,
+                        proofs=record.proofs, origin=record.origin, epoch=record.epoch,
+                    )
+                    if expected != record.fingerprint:
+                        raise PersistenceIntegrityError("native source record fingerprint drift")
                     revisions[revision_id] = record.revision
-        return _build_snapshot_from_loaded(
+                    origins[(record.artifact.source_artifact_id, revision_id)] = record.origin
+        provenance = _build_snapshot_from_loaded(
             loaded_artifacts=artifacts,
             loaded_revisions=revisions,
             requested_artifacts=requested_artifacts,
@@ -481,6 +499,8 @@ class _InMemoryNativeTextSourceView:
             missing_artifacts=tuple(item for item in requested_artifacts if item not in artifacts),
             missing_revisions=tuple(item for item in requested_revisions if item not in revisions),
         )
+
+        return NativeTextSourceSnapshot(provenance=provenance, _origins=origins)
 
     def get_native_text_source(
         self, *, source_artifact_id: str, source_revision_id: str, span_id: str
@@ -529,7 +549,7 @@ class _InMemoryNativeTextSourceView:
             expected = _native_fingerprint(
                 artifact=record.artifact,
                 revision=record.revision,
-                body=record.body,
+                body_sha256=hashlib.sha256(record.body).hexdigest(),
                 proofs=record.proofs,
                 origin=record.origin,
                 epoch=record.epoch,

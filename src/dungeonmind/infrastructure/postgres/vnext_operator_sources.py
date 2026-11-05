@@ -16,7 +16,11 @@ from dungeonmind.application.vnext.operator_approval import (
 from dungeonmind.application.vnext.operator_source_binding import (
     validate_operator_source_selection,
 )
-from dungeonmind.application.vnext.ports import NativeTextSourceView, StoredNativeTextSource
+from dungeonmind.application.vnext.ports import (
+    NativeTextSourceSnapshot,
+    NativeTextSourceView,
+    StoredNativeTextSource,
+)
 from dungeonmind.application.vnext.provenance import (
     KnowledgeProvenanceSnapshot,
     _build_snapshot_from_loaded,
@@ -495,13 +499,21 @@ class _PostgresOperatorSourceView:
         )
 
     def get_provenance_snapshot(
-        self, *, artifact_ids: Sequence[str], revision_ids: Sequence[str],
+        self, *, artifact_ids: Sequence[str], revision_ids: Sequence[str]
     ) -> KnowledgeProvenanceSnapshot:
-        base = self._base.get_provenance_snapshot(
+        """General Graph evidence reader projects the same native metadata load."""
+        return self.get_native_metadata_snapshot(
+            artifact_ids=artifact_ids, revision_ids=revision_ids
+        ).provenance
+
+    def get_native_metadata_snapshot(
+        self, *, artifact_ids: Sequence[str], revision_ids: Sequence[str],
+    ) -> NativeTextSourceSnapshot:
+        base = self._base.get_native_metadata_snapshot(
             artifact_ids=artifact_ids, revision_ids=revision_ids,
         )
-        artifacts = dict(base.artifacts_by_id)
-        revisions = dict(base.revisions_by_id)
+        artifacts = dict(base.provenance.artifacts_by_id)
+        revisions = dict(base.provenance.revisions_by_id)
         if artifact_ids or revision_ids:
             with self._database.transaction() as conn:
                 rows = conn.execute(
@@ -551,13 +563,15 @@ class _PostgresOperatorSourceView:
                         artifacts[artifact_id] = item["policy"]
                     if revision_id in revision_ids:
                         revisions[revision_id] = item["revision"]
-        return _build_snapshot_from_loaded(
+        provenance = _build_snapshot_from_loaded(
             loaded_artifacts=artifacts, loaded_revisions=revisions,
             requested_artifacts=tuple(sorted(set(artifact_ids))),
             requested_revisions=tuple(sorted(set(revision_ids))),
             missing_artifacts=tuple(a for a in artifact_ids if a not in artifacts),
             missing_revisions=tuple(r for r in revision_ids if r not in revisions),
         )
+
+        return NativeTextSourceSnapshot(provenance=provenance, _origins=base.origins)
 
     def get_native_text_source(
         self, *, source_artifact_id: str, source_revision_id: str, span_id: str,

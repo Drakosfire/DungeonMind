@@ -297,6 +297,7 @@ def test_postgres_different_admissions_racing_same_parent_have_one_winner(pg):
 def test_postgres_source_metadata_reads_no_body_and_defers_byte_verification(pg, monkeypatch):
     from dungeonmind.application.vnext import list_admitted_native_text_sources
     from dungeonmind.application.vnext.errors import NativeTextSourceAccessIntegrityError
+    from dungeonmind.contracts.vnext.native_source import NativeTextSourceOriginV1
     from dungeonmind.infrastructure.postgres import vnext_sources as storage
 
     repository = _repository(pg)
@@ -304,6 +305,10 @@ def test_postgres_source_metadata_reads_no_body_and_defers_byte_verification(pg,
     request = _request(
         space_id="space:postgres-native-source", parent_revision_id=genesis.published_revision_id
     )
+    origin = NativeTextSourceOriginV1(
+        namespace="test.producer", object_id="object:1", revision_id="r:1"
+    )
+    request = request.model_copy(update={"origin": origin})
     receipt = publish_native_text_source_evidence(
         repository=repository, request=request, domain_contract=domain, semantic_profile=profile
     )
@@ -326,9 +331,13 @@ def test_postgres_source_metadata_reads_no_body_and_defers_byte_verification(pg,
     monkeypatch.setattr(storage, "_read_native_record", record)
     result = list_admitted_native_text_sources(context)
     assert result.complete and len(result.sources) == 1 and reads == [False]
+    assert result.sources[0].origin == origin
+    result.sources[0].origin.object_id = "changed"
+    assert list_admitted_native_text_sources(context).sources[0].origin == origin
+    assert reads == [False, False]
     evidence_id = result.sources[0].evidence_ref_ids[0]
     assert open_admitted_native_text(context, evidence_id).status == "available"
-    assert reads == [False, True]
+    assert reads == [False, False, True]
 
     # Metadata is not proof of byte integrity. Exact opening retains that check.
     with pg.database.transaction() as conn:
@@ -342,7 +351,8 @@ def test_postgres_source_metadata_reads_no_body_and_defers_byte_verification(pg,
         open_admitted_native_text(context, evidence_id)
 
 
-def test_postgres_metadata_does_not_skip_record_integrity(pg):
+@pytest.mark.parametrize("corruption", ["fingerprint", "origin"])
+def test_postgres_metadata_does_not_skip_record_integrity(pg, corruption):
     from dungeonmind.application.vnext import list_admitted_native_text_sources
     from dungeonmind.application.vnext.errors import NativeTextSourceAccessIntegrityError
 
@@ -361,10 +371,18 @@ def test_postgres_metadata_does_not_skip_record_integrity(pg):
         domain_contract=domain,
     )
     with pg.database.transaction() as conn:
-        conn.execute(
-            "UPDATE dungeonmind.knowledge_native_source_admissions "
-            "SET record_fingerprint=%s WHERE space_id=%s AND admission_id=%s",
-            ("0" * 64, request.space_id, request.admission_id),
-        )
+        if corruption == "fingerprint":
+            conn.execute(
+                "UPDATE dungeonmind.knowledge_native_source_admissions "
+                "SET record_fingerprint=%s WHERE space_id=%s AND admission_id=%s",
+                ("0" * 64, request.space_id, request.admission_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE dungeonmind.knowledge_native_source_admissions "
+                "SET origin=%s::jsonb WHERE space_id=%s AND admission_id=%s",
+                ('{"namespace":"other","object_id":"foreign","revision_id":"other"}',
+                 request.space_id, request.admission_id),
+            )
     with pytest.raises(NativeTextSourceAccessIntegrityError):
         list_admitted_native_text_sources(context)

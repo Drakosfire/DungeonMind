@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Protocol
 
 from dungeonmind.contracts.vnext.domain import (
@@ -17,6 +18,7 @@ from dungeonmind.contracts.vnext.native_source import (
     NativeSourceEvidenceExtensionReceiptV1,
     NativeSourceEvidenceExtensionV1,
     NativeTextSourceAdmissionV1,
+    NativeTextSourceOriginV1,
     NativeUtf8SpanProofV1,
 )
 from dungeonmind.contracts.vnext.operator_source import (
@@ -111,20 +113,44 @@ class StoredNativeTextSource:
     authority_epoch: int
 
 
-class NativeTextSourceView(Protocol):
-    """O(1) epoch-pinned native provenance and body reader."""
+@dataclass(frozen=True, slots=True)
+class NativeTextSourceSnapshot:
+    """Pinned native metadata plus persisted producer links; never read authority."""
+
+    provenance: KnowledgeProvenanceSnapshot
+    _origins: Mapping[tuple[str, str], NativeTextSourceOriginV1 | None]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_origins", MappingProxyType({
+            pair: None if origin is None else origin.model_copy(deep=True)
+            for pair, origin in self._origins.items()
+        }))
+
+    @property
+    def origins(self) -> Mapping[tuple[str, str], NativeTextSourceOriginV1 | None]:
+        return MappingProxyType({
+            pair: self.get_origin(*pair) for pair in self._origins
+        })
+
+    def get_origin(self, artifact_id: str, revision_id: str) -> NativeTextSourceOriginV1 | None:
+        origin = self._origins.get((artifact_id, revision_id))
+        return None if origin is None else origin.model_copy(deep=True)
+
+
+class NativeTextSourceView(KnowledgeSourceReader, Protocol):
+    """O(1) epoch-pinned native metadata/body reader and general evidence reader."""
 
     @property
     def epoch(self) -> int: ...
 
     def open_coherent_view(self) -> NativeTextSourceView: ...
 
-    def get_provenance_snapshot(
+    def get_native_metadata_snapshot(
         self,
         *,
         artifact_ids: Sequence[str],
         revision_ids: Sequence[str],
-    ) -> KnowledgeProvenanceSnapshot: ...
+    ) -> NativeTextSourceSnapshot: ...
 
     def get_native_text_source(
         self,

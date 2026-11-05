@@ -13,6 +13,7 @@ from dungeonmind.application.vnext.native_source_admission import (
     validate_native_source_write,
 )
 from dungeonmind.application.vnext.ports import (
+    NativeTextSourceSnapshot,
     NativeTextSourceView,
     StoredNativeTextSource,
 )
@@ -637,8 +638,17 @@ class _PostgresNativeTextSourceView:
     def get_provenance_snapshot(
         self, *, artifact_ids: Sequence[str], revision_ids: Sequence[str]
     ) -> KnowledgeProvenanceSnapshot:
+        """General Graph evidence reader projects the same native metadata load."""
+        return self.get_native_metadata_snapshot(
+            artifact_ids=artifact_ids, revision_ids=revision_ids
+        ).provenance
+
+    def get_native_metadata_snapshot(
+        self, *, artifact_ids: Sequence[str], revision_ids: Sequence[str]
+    ) -> NativeTextSourceSnapshot:
         requested_artifacts = tuple(sorted(set(artifact_ids)))
         requested_revisions = tuple(sorted(set(revision_ids)))
+        origins: dict[tuple[str, str], NativeTextSourceOriginV1 | None] = {}
         artifacts: dict[str, SourceArtifactV3] = {}
         revisions: dict[str, SourceRevisionV2] = {}
         if requested_artifacts or requested_revisions:
@@ -669,7 +679,9 @@ class _PostgresNativeTextSourceView:
                         artifacts[row["source_artifact_id"]] = record["artifact"]
                     if row["source_revision_id"] in requested_revisions:
                         revisions[row["source_revision_id"]] = record["revision"]
-        return _build_snapshot_from_loaded(
+                        pair = (row["source_artifact_id"], row["source_revision_id"])
+                        origins[pair] = record["origin"]
+        provenance = _build_snapshot_from_loaded(
             loaded_artifacts=artifacts,
             loaded_revisions=revisions,
             requested_artifacts=requested_artifacts,
@@ -677,6 +689,8 @@ class _PostgresNativeTextSourceView:
             missing_artifacts=tuple(item for item in requested_artifacts if item not in artifacts),
             missing_revisions=tuple(item for item in requested_revisions if item not in revisions),
         )
+
+        return NativeTextSourceSnapshot(provenance=provenance, _origins=origins)
 
     def get_native_text_source(
         self, *, source_artifact_id: str, source_revision_id: str, span_id: str
