@@ -102,6 +102,7 @@ from .native_source_access import (
     list_admitted_native_text_sources,
     open_admitted_native_text,
     open_native_text_source_access_context,
+    refresh_native_text_source_access_context,
 )
 from .native_source_admission import (
     publish_native_text_source_evidence,
@@ -288,6 +289,7 @@ __all__ = [
     "publish_native_source_evidence_extension",
     "publish_native_text_source_evidence",
     "publish_prospective_contribution",
+    "refresh_native_text_source_access_context",
     "resolve_prospective_contribution",
     "thaw_json_value",
     "transition_knowledge_semantic_profile",
