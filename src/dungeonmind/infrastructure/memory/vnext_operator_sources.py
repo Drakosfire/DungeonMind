@@ -14,9 +14,12 @@ from dungeonmind.application.vnext.operator_approval import (
 from dungeonmind.application.vnext.operator_source_binding import (
     validate_operator_source_selection,
 )
-from dungeonmind.application.vnext.ports import NativeTextSourceView, StoredNativeTextSource
+from dungeonmind.application.vnext.ports import (
+    NativeTextSourceSnapshot,
+    NativeTextSourceView,
+    StoredNativeTextSource,
+)
 from dungeonmind.application.vnext.provenance import (
-    KnowledgeProvenanceSnapshot,
     _build_snapshot_from_loaded,
 )
 from dungeonmind.contracts.evidence import SourceStatus
@@ -356,14 +359,14 @@ class _OperatorSourceView:
     def open_coherent_view(self) -> _OperatorSourceView:
         return _OperatorSourceView(self._repo, self._base.open_coherent_view(), self._space_id)
 
-    def get_provenance_snapshot(
+    def get_native_metadata_snapshot(
         self, *, artifact_ids: Sequence[str], revision_ids: Sequence[str]
-    ) -> KnowledgeProvenanceSnapshot:
-        base = self._base.get_provenance_snapshot(
+    ) -> NativeTextSourceSnapshot:
+        base = self._base.get_native_metadata_snapshot(
             artifact_ids=artifact_ids, revision_ids=revision_ids,
         )
-        artifacts = dict(base.artifacts_by_id)
-        revisions = dict(base.revisions_by_id)
+        artifacts = dict(base.provenance.artifacts_by_id)
+        revisions = dict(base.provenance.revisions_by_id)
         with self._repo._legacy_sources._lock, self._repo._lock:
             for artifact_id in artifact_ids:
                 item = self._repo._operator_artifacts.get((self._space_id, artifact_id))
@@ -397,13 +400,15 @@ class _OperatorSourceView:
                         and legacy_artifact.current_revision_id == revision_id
                     ):
                         revisions[revision_id] = item.source_revision
-        return _build_snapshot_from_loaded(
+        provenance = _build_snapshot_from_loaded(
             loaded_artifacts=artifacts, loaded_revisions=revisions,
             requested_artifacts=tuple(sorted(set(artifact_ids))),
             requested_revisions=tuple(sorted(set(revision_ids))),
             missing_artifacts=tuple(a for a in artifact_ids if a not in artifacts),
             missing_revisions=tuple(r for r in revision_ids if r not in revisions),
         )
+
+        return NativeTextSourceSnapshot(provenance=provenance, _origins=base.origins)
 
     def get_native_text_source(
         self, *, source_artifact_id: str, source_revision_id: str, span_id: str,

@@ -14,6 +14,7 @@ from dungeonmind.application.vnext import (
 )
 from dungeonmind.application.vnext.errors import NativeTextSourceAccessIntegrityError
 from dungeonmind.contracts.vnext.common import LabelsAnyVisibility
+from dungeonmind.contracts.vnext.native_source import NativeTextSourceOriginV1
 from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnavailableError
 from tests.unit.test_vnext_native_source_admission import (
     NOW,
@@ -23,7 +24,7 @@ from tests.unit.test_vnext_native_source_admission import (
 )
 
 
-def source_case(*, hidden=False):
+def source_case(*, hidden=False, origin=None):
     repo, domain, profile, genesis = _initialized()
     if hidden:
         domain = _domain(visibility_labels=["test:gm"])
@@ -43,6 +44,7 @@ def source_case(*, hidden=False):
         parent_revision_id=genesis.published_revision_id,
         visibility=LabelsAnyVisibility(kind="labels_any", labels=["test:gm"]) if hidden else None,
     )
+    request = request.model_copy(update={"origin": origin})
     receipt = publish_native_text_source_evidence(
         repository=repo, request=request, domain_contract=domain, semantic_profile=profile
     )
@@ -120,12 +122,17 @@ def snapshot_context(context, *, artifact=None, revision=None, failure=None):
     def snapshot(**kwargs):
         if failure:
             raise failure
-        return SimpleNamespace(get_artifact=lambda _: artifact, get_revision=lambda _: revision)
+        return SimpleNamespace(
+            provenance=SimpleNamespace(
+                get_artifact=lambda _: artifact, get_revision=lambda _: revision
+            ),
+            get_origin=lambda *_: None,
+        )
 
     return replace(
         context,
         source_view=SimpleNamespace(
-            epoch=context.source_view.epoch, get_provenance_snapshot=snapshot
+            epoch=context.source_view.epoch, get_native_metadata_snapshot=snapshot
         ),
     )
 
@@ -270,3 +277,49 @@ def test_undeclared_source_annotation_is_not_navigation_authority():
     assert not list_admitted_native_text_sources(
         snapshot_context(context, artifact=artifact, revision=item.source_revision)
     ).sources
+
+
+def test_origin_is_exact_copied_navigation_metadata_without_body_reads(monkeypatch):
+    origin = NativeTextSourceOriginV1(
+        namespace="test.producer", object_id="object:1", revision_id="r:1"
+    )
+    repo, _, _, context, receipt = source_case(origin=origin)
+    def forbidden(*args, **kwargs):
+        pytest.fail("Metadata origin attempted a body or receipt read")
+    monkeypatch.setattr(type(context.source_view), "get_native_text_source", forbidden)
+    monkeypatch.setattr(repo, "get_native_source_admission_receipt", forbidden)
+    first = list_admitted_native_text_sources(context).sources[0]
+    assert first.origin == origin == receipt.origin
+    first.origin.object_id = "changed"
+    assert list_admitted_native_text_sources(context).sources[0].origin.object_id == "object:1"
+    snapshot = context.source_view.get_native_metadata_snapshot(
+        artifact_ids=[receipt.source_artifact_id], revision_ids=[receipt.source_revision_id]
+    )
+    pair = (receipt.source_artifact_id, receipt.source_revision_id)
+    snapshot.origins[pair].object_id = "changed snapshot copy"
+    assert snapshot.get_origin(*pair) == origin
+    assert snapshot.get_origin("other-artifact", receipt.source_revision_id) is None
+    assert snapshot.get_origin(receipt.source_artifact_id, "other-revision") is None
+    assert snapshot.get_origin(receipt.source_artifact_id, receipt.source_revision_id) == origin
+
+
+def test_absent_origin_is_not_invented_and_hidden_origin_is_not_disclosed():
+    *_, context, _ = source_case()
+    assert list_admitted_native_text_sources(context).sources[0].origin is None
+    origin = NativeTextSourceOriginV1(
+        namespace="test.producer", object_id="secret", revision_id="r:1"
+    )
+    *_, context, _ = source_case(hidden=True, origin=origin)
+    denied = replace(context, audience_labels=frozenset())
+    assert list_admitted_native_text_sources(denied).sources == ()
+
+
+def test_changed_stored_origin_fails_metadata_integrity():
+    origin = NativeTextSourceOriginV1(
+        namespace="test.producer", object_id="object:1", revision_id="r:1"
+    )
+    repo, _, _, context, receipt = source_case(origin=origin)
+    record = repo._native_records[(context.space_id, receipt.source_artifact_id)]
+    record.origin.revision_id = "changed"
+    with pytest.raises(NativeTextSourceAccessIntegrityError):
+        list_admitted_native_text_sources(context)
