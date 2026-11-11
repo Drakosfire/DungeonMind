@@ -154,7 +154,9 @@ def test_open_pdf_region_requires_visibility_and_exact_bytes(region):
 def test_register_pdf_evidence_preserves_graph_and_replays_exact_parent(region):
     from dungeonmind.application.vnext.errors import KnowledgeStaleParentRevisionError
     from dungeonmind.application.vnext.native_pdf_access import register_native_pdf_evidence
-    from dungeonmind.infrastructure.memory.vnext_knowledge import InMemoryKnowledgeRevisionRepository
+    from dungeonmind.infrastructure.memory.vnext_knowledge import (
+        InMemoryKnowledgeRevisionRepository,
+    )
     from tests.unit.test_vnext_cas_publication import genesis_command
 
     repository = InMemoryKnowledgeRevisionRepository()
