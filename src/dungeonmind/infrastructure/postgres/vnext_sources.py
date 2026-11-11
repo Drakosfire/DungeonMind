@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable, Sequence
+from io import BytesIO
 from typing import Any
 
 from psycopg import Connection, sql
+from psycopg.types.json import Jsonb
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 from dungeonmind.application.vnext.native_source_admission import (
+    build_native_pdf_source_records,
     native_source_command_sha256,
     validate_native_source_write,
 )
@@ -39,6 +44,7 @@ from dungeonmind.contracts.vnext.native_source import (
     NativeTextSourceOriginV1,
     NativeUtf8SpanProofV1,
 )
+from dungeonmind.contracts.vnext.pdf_region import NativePdfSourceAdmissionV1
 from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
 from dungeonmind.contracts.vnext.source import SourceArtifactV3, SourceRevisionV2
 from dungeonmind.domain.canonical import canonical_sha256
@@ -303,6 +309,80 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
         self._after_native_source_insert = after_native_source_insert
         self._after_native_receipt_insert = after_native_receipt_insert
         self._after_native_publication_commit = after_publication_commit
+
+    def retain_native_pdf_source(
+        self, request: NativePdfSourceAdmissionV1, body: bytes
+    ) -> SourceRevisionV2:
+        """Retain one verified upload. The caller must authorize admission first."""
+        artifact, revision = build_native_pdf_source_records(request, body)
+        try:
+            pdf = PdfReader(BytesIO(body), strict=True)
+            if pdf.is_encrypted:
+                raise ValueError("Encrypted PDFs cannot be admitted")
+            page_count = len(pdf.pages)
+        except PdfReadError as exc:
+            raise ValueError("Invalid PDF source") from exc
+        if page_count == 0:
+            raise ValueError("PDF source must contain a page")
+        artifact_payload = artifact.model_dump(mode="json")
+        revision_payload = revision.model_dump(mode="json")
+        with self._database.transaction() as conn:
+            conn.execute(
+                """
+                INSERT INTO dungeonmind.knowledge_native_pdf_sources
+                    (space_id, admission_id, source_revision_id, source_artifact,
+                     source_revision, page_count, body_bytes)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (space_id, admission_id) DO NOTHING
+                """,
+                (request.space_id, request.admission_id, revision.source_revision_id,
+                 Jsonb(artifact_payload), Jsonb(revision_payload), page_count, body),
+            )
+            row = conn.execute(
+                """
+                SELECT source_artifact, source_revision, page_count, body_bytes
+                FROM dungeonmind.knowledge_native_pdf_sources
+                WHERE space_id = %s AND admission_id = %s
+                """,
+                (request.space_id, request.admission_id),
+            ).fetchone()
+            if row is None:
+                raise PersistenceIntegrityError("PDF admission row is missing")
+            if (
+                row["source_artifact"] != artifact_payload
+                or row["source_revision"] != revision_payload
+                or row["page_count"] != page_count
+                or bytes(row["body_bytes"]) != body
+            ):
+                raise KnowledgePublicationIdempotencyConflictError(
+                    space_id=request.space_id, publication_id=request.admission_id
+                )
+        return revision
+
+    def get_native_pdf_source(
+        self, space_id: str, source_revision_id: str
+    ) -> tuple[SourceArtifactV3, SourceRevisionV2, int, bytes] | None:
+        """Load the exact scoped record for application-level authorization."""
+        with self._database.transaction() as conn:
+            row = conn.execute(
+                """
+                SELECT source_artifact, source_revision, page_count, body_bytes
+                FROM dungeonmind.knowledge_native_pdf_sources
+                WHERE space_id = %s AND source_revision_id = %s
+                """,
+                (space_id, source_revision_id),
+            ).fetchone()
+        if row is None:
+            return None
+        artifact = SourceArtifactV3.model_validate(row["source_artifact"])
+        revision = SourceRevisionV2.model_validate(row["source_revision"])
+        if (
+            revision.source_revision_id != source_revision_id
+            or revision.source_artifact_id != artifact.source_artifact_id
+            or artifact.current_revision_id != source_revision_id
+        ):
+            raise PersistenceIntegrityError("PDF source record identity mismatch")
+        return artifact, revision, row["page_count"], bytes(row["body_bytes"])
 
     def get_native_source_admission_receipt(
         self, space_id: str, admission_id: str

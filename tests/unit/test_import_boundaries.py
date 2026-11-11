@@ -44,7 +44,7 @@ FORBIDDEN_ROOTS = {
 }
 
 # Allowed only inside dungeonmind.infrastructure.postgres.
-POSTGRES_ONLY_ROOTS = {"psycopg", "pgvector"}
+POSTGRES_ONLY_ROOTS = {"psycopg", "pgvector", "pypdf"}
 
 # Allowed only inside dungeonmind.service (optional ``api`` extra).
 API_ONLY_ROOTS = {"fastapi", "uvicorn", "starlette"}
