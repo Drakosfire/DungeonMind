@@ -192,7 +192,9 @@ def _build_native_source_records(
         visibility=request.visibility.model_copy(deep=True),
         status="active",
         uri=None,
-        foreign_refs=list(request.foreign_refs) if isinstance(request, NativeTextSourceAdmissionV1) else [],
+        foreign_refs=(
+            list(request.foreign_refs) if isinstance(request, NativeTextSourceAdmissionV1) else []
+        ),
         domain_metadata=(
             [item.model_copy(deep=True) for item in request.domain_metadata]
             if isinstance(request, NativeTextSourceAdmissionV1) else []

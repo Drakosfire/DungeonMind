@@ -47,7 +47,9 @@ def test_native_pdf_region_rejects_invalid_locator(region, invalid):
 
 def test_native_pdf_region_binds_exact_revision_and_page(region):
     body = b"test source bytes"
-    locator = NativePdfRegionV1.model_validate(region | {"content_sha256": sha256(body).hexdigest()})
+    locator = NativePdfRegionV1.model_validate(
+        region | {"content_sha256": sha256(body).hexdigest()}
+    )
     revision = SourceRevisionV2(
         source_revision_id=locator.source_revision_id,
         source_artifact_id="artifact:pdf",
