@@ -399,13 +399,20 @@ def test_postgres_metadata_does_not_skip_record_integrity(pg, corruption):
 
 def test_postgres_retains_pdf_before_publication(pg):
     from hashlib import sha256
+    from io import BytesIO
+
+    from pypdf import PdfWriter
 
     from dungeonmind.application.vnext.native_pdf_access import open_native_pdf_region
     from dungeonmind.contracts.vnext.pdf_region import NativePdfRegionV1, NativePdfSourceAdmissionV1
 
     repository = _repository(pg)
     _init(repository)
-    body = b"%PDF-1.7\n"
+    output = BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    writer.write(output)
+    body = output.getvalue()
     request = NativePdfSourceAdmissionV1.model_validate({
         "space_id": "space:postgres-native-source",
         "admission_id": "admission:pdf",
@@ -416,8 +423,8 @@ def test_postgres_retains_pdf_before_publication(pg):
         "visibility": {"kind": "public"},
     })
     head = repository.get_head(request.space_id)
-    revision = repository.retain_native_pdf_source(request, body, page_count=1)
-    assert repository.retain_native_pdf_source(request, body, page_count=1) == revision
+    revision = repository.retain_native_pdf_source(request, body)
+    assert repository.retain_native_pdf_source(request, body) == revision
     locator = NativePdfRegionV1(
         source_revision_id=revision.source_revision_id,
         content_sha256=revision.content_sha256,
@@ -428,4 +435,16 @@ def test_postgres_retains_pdf_before_publication(pg):
         audience=frozenset(), declared_labels=frozenset(),
         load=repository.get_native_pdf_source,
     ) == body
+    with pytest.raises(ValueError, match="outside"):
+        open_native_pdf_region(
+            locator.model_copy(update={"page": 2}), authorized_space_id=request.space_id,
+            audience=frozenset(), declared_labels=frozenset(),
+            load=repository.get_native_pdf_source,
+        )
+    truncated = b"%PDF-1.7\n"
+    with pytest.raises(ValueError, match="Invalid PDF"):
+        repository.retain_native_pdf_source(
+            request.model_copy(update={"content_sha256": sha256(truncated).hexdigest()}),
+            truncated,
+        )
     assert repository.get_head(request.space_id) == head

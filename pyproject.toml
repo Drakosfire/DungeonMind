@@ -21,6 +21,7 @@ postgres = [
     "pgvector>=0.3.6",
     "alembic>=1.13",
     "sqlalchemy>=2.0",
+    "pypdf>=6",
 ]
 # FastAPI service host (PR B.1a). Never required to import dungeonmind core.
 api = [
