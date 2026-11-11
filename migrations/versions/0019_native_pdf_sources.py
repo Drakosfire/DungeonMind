@@ -25,4 +25,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("""
+        DO $$
+        BEGIN
+            LOCK TABLE dungeonmind.knowledge_native_pdf_sources IN ACCESS EXCLUSIVE MODE;
+            IF EXISTS (SELECT 1 FROM dungeonmind.knowledge_native_pdf_sources) THEN
+                RAISE EXCEPTION 'cannot downgrade populated native PDF sources';
+            END IF;
+        END
+        $$;
+    """)
     op.execute("DROP TABLE dungeonmind.knowledge_native_pdf_sources")
