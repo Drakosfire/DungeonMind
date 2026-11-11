@@ -164,18 +164,13 @@ def _span_slice(body: bytes, span: NativeTextEvidenceSpanRequestV1) -> bytes:
     return selected
 
 
-def build_native_source_write_parts(
-    *, request: NativeTextSourceAdmissionV1
-) -> NativeSourceWriteParts:
-    """Build exact immutable artifact/revision/evidence values without side effects."""
-    try:
-        body = request.body_text.encode("utf-8", errors="strict")
-    except UnicodeEncodeError:
-        _fail("body_not_valid_utf8")
-    body_sha256 = hashlib.sha256(body).hexdigest()
-    if body_sha256 != request.expected_body_sha256:
-        _fail("body_digest_mismatch")
-
+def _build_native_source_records(
+    *,
+    request: NativeTextSourceAdmissionV1,
+    body_sha256: str,
+    body_storage: str,
+) -> tuple[SourceArtifactV3, SourceRevisionV2]:
+    """Construct the artifact and revision before attaching format-specific evidence."""
     artifact_id = allocate_native_source_id(
         space_id=request.space_id,
         admission_id=request.admission_id,
@@ -205,10 +200,32 @@ def build_native_source_write_parts(
         source_revision_id=revision_id,
         source_artifact_id=artifact_id,
         content_sha256=body_sha256,
-        body_storage=NATIVE_TEXT_BODY_STORAGE,
+        body_storage=body_storage,
         locator=None,
         created_at=request.created_at,
     )
+    return artifact, revision
+
+
+def build_native_source_write_parts(
+    *, request: NativeTextSourceAdmissionV1
+) -> NativeSourceWriteParts:
+    """Build exact immutable artifact/revision/evidence values without side effects."""
+    try:
+        body = request.body_text.encode("utf-8", errors="strict")
+    except UnicodeEncodeError:
+        _fail("body_not_valid_utf8")
+    body_sha256 = hashlib.sha256(body).hexdigest()
+    if body_sha256 != request.expected_body_sha256:
+        _fail("body_digest_mismatch")
+
+    artifact, revision = _build_native_source_records(
+        request=request,
+        body_sha256=body_sha256,
+        body_storage=NATIVE_TEXT_BODY_STORAGE,
+    )
+    artifact_id = artifact.source_artifact_id
+    revision_id = revision.source_revision_id
 
     evidence: list[EvidenceRefV3] = []
     proofs: list[NativeUtf8SpanProofV1] = []
