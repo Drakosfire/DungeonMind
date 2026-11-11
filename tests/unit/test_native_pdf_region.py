@@ -149,3 +149,54 @@ def test_open_pdf_region_requires_visibility_and_exact_bytes(region):
         locator, authorized_space_id=request.space_id, audience=frozenset(),
         declared_labels=frozenset({"test:private"}), load=load,
     ) is None
+
+
+def test_register_pdf_evidence_preserves_graph_and_replays_exact_parent(region):
+    from dungeonmind.application.vnext.errors import KnowledgeStaleParentRevisionError
+    from dungeonmind.application.vnext.native_pdf_access import register_native_pdf_evidence
+    from dungeonmind.infrastructure.memory.vnext_knowledge import InMemoryKnowledgeRevisionRepository
+    from tests.unit.test_vnext_cas_publication import genesis_command
+
+    repository = InMemoryKnowledgeRevisionRepository()
+    parent = repository.publish_revision(genesis_command())
+    body = b"%PDF-1.7\n"
+    created_at = datetime.now(UTC)
+    request = NativePdfSourceAdmissionV1.model_validate({
+        "space_id": parent.revision.space_id,
+        "admission_id": "admission:pdf",
+        "created_at": created_at,
+        "content_sha256": sha256(body).hexdigest(),
+        "source_classification": "test:pdf",
+        "authority": "primary",
+        "visibility": {"kind": "public"},
+    })
+    artifact, revision = build_native_pdf_source_records(request, body)
+    locator = NativePdfRegionV1.model_validate(region | {
+        "source_revision_id": revision.source_revision_id,
+        "content_sha256": revision.content_sha256,
+    })
+
+    def load(space_id, revision_id):
+        if (space_id, revision_id) == (request.space_id, revision.source_revision_id):
+            return artifact, revision, 1, body
+        return None
+
+    def register(publication_id):
+        return register_native_pdf_evidence(
+            locator, authorized_space_id=request.space_id, audience=frozenset(),
+            declared_labels=frozenset(), load=load, repository=repository,
+            expected_parent_revision_id=parent.revision.revision_id,
+            publication_id=publication_id, created_at=created_at,
+        )
+
+    registered = register("register:region")
+    assert registered is not None
+    evidence, receipt = registered
+    child = repository.get_revision(request.space_id, receipt.published_revision_id)
+    assert child is not None
+    assert child.graph_payload == parent.graph_payload | {
+        "evidence": [*parent.graph_payload["evidence"], evidence.model_dump(mode="json")],
+    }
+    assert register("register:region") == registered
+    with pytest.raises(KnowledgeStaleParentRevisionError):
+        register("register:stale")
