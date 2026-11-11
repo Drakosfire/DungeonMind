@@ -397,7 +397,8 @@ def test_postgres_metadata_does_not_skip_record_integrity(pg, corruption):
         list_admitted_native_text_sources(context)
 
 
-def test_postgres_retains_pdf_before_publication(pg):
+@pytest.mark.parametrize("text_first", [True, False])
+def test_postgres_retains_pdf_before_publication(pg, text_first):
     from hashlib import sha256
     from io import BytesIO
 
@@ -407,7 +408,7 @@ def test_postgres_retains_pdf_before_publication(pg):
     from dungeonmind.contracts.vnext.pdf_region import NativePdfRegionV1, NativePdfSourceAdmissionV1
 
     repository = _repository(pg)
-    _init(repository)
+    domain, profile, genesis = _init(repository)
     output = BytesIO()
     writer = PdfWriter()
     writer.add_blank_page(width=72, height=72)
@@ -422,9 +423,42 @@ def test_postgres_retains_pdf_before_publication(pg):
         "authority": "primary",
         "visibility": {"kind": "public"},
     })
+    from dungeonmind.application.vnext.errors import KnowledgePublicationIdempotencyConflictError
+
+    text_request = _request(
+        space_id=request.space_id, parent_revision_id=genesis.published_revision_id,
+    ).model_copy(update={"admission_id": request.admission_id})
+
+    def admit_text():
+        return publish_native_text_source_evidence(
+            repository=repository, request=text_request, domain_contract=domain,
+            semantic_profile=profile,
+        )
+
+    if text_first:
+        admit_text()
+        with pytest.raises(KnowledgePublicationIdempotencyConflictError):
+            repository.retain_native_pdf_source(request, body)
+        return
+
     head = repository.get_head(request.space_id)
+    old_view = repository.open_native_source_view(request.space_id)
     revision = repository.retain_native_pdf_source(request, body)
     assert repository.retain_native_pdf_source(request, body) == revision
+    current_view = repository.open_native_source_view(request.space_id)
+    assert current_view.epoch == old_view.epoch + 1
+    keys = dict(
+        artifact_ids=[revision.source_artifact_id],
+        revision_ids=[revision.source_revision_id],
+    )
+    snapshot = old_view.get_provenance_snapshot(**keys)
+    assert snapshot.get_revision(revision.source_revision_id) is None
+    current = current_view.get_provenance_snapshot(**keys)
+    assert current.get_revision(revision.source_revision_id) == revision
+    assert current.get_artifact(revision.source_artifact_id) is not None
+    unrelated = repository.open_native_source_view("space:unrelated")
+    snapshot = unrelated.get_provenance_snapshot(**keys)
+    assert snapshot.get_revision(revision.source_revision_id) is None
     locator = NativePdfRegionV1(
         source_revision_id=revision.source_revision_id,
         content_sha256=revision.content_sha256,
@@ -448,3 +482,5 @@ def test_postgres_retains_pdf_before_publication(pg):
             truncated,
         )
     assert repository.get_head(request.space_id) == head
+    with pytest.raises(KnowledgePublicationIdempotencyConflictError):
+        admit_text()
