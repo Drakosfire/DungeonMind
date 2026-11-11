@@ -1,7 +1,12 @@
+from datetime import UTC, datetime
+from hashlib import sha256
+
 import pytest
 from pydantic import ValidationError
 
-from dungeonmind.contracts.vnext.pdf_region import NativePdfRegionV1
+from dungeonmind.application.vnext.native_source_admission import build_native_pdf_source_records
+from dungeonmind.contracts.vnext.pdf_region import NativePdfRegionV1, NativePdfSourceAdmissionV1
+from dungeonmind.contracts.vnext.source import SourceRevisionV2
 
 
 @pytest.fixture
@@ -38,3 +43,91 @@ def test_native_pdf_region_json_round_trip(region):
 def test_native_pdf_region_rejects_invalid_locator(region, invalid):
     with pytest.raises(ValidationError):
         NativePdfRegionV1.model_validate(region | invalid)
+
+
+def test_native_pdf_region_binds_exact_revision_and_page(region):
+    body = b"test source bytes"
+    locator = NativePdfRegionV1.model_validate(region | {"content_sha256": sha256(body).hexdigest()})
+    revision = SourceRevisionV2(
+        source_revision_id=locator.source_revision_id,
+        source_artifact_id="artifact:pdf",
+        content_sha256=locator.content_sha256,
+        body_storage="native",
+        created_at=datetime.now(UTC),
+    )
+    locator.validate_source(revision, body=body, page_count=1)
+
+    with pytest.raises(ValueError, match="different source revision"):
+        locator.validate_source(
+            revision.model_copy(update={"source_revision_id": "rev:other"}), body=body, page_count=1
+        )
+    with pytest.raises(ValueError, match="content hash"):
+        locator.validate_source(
+            revision.model_copy(update={"content_sha256": "b" * 64}), body=body, page_count=1
+        )
+    with pytest.raises(ValueError, match="outside"):
+        locator.validate_source(revision, body=body, page_count=0)
+    with pytest.raises(ValueError, match="body digest"):
+        locator.validate_source(revision, body=b"changed source bytes", page_count=1)
+
+
+def test_build_native_pdf_records_bind_verified_bytes_to_stable_identity():
+    body = b"%PDF-1.7\n"
+    request = NativePdfSourceAdmissionV1.model_validate({
+        "space_id": "space:pdf",
+        "admission_id": "admission:pdf",
+        "created_at": datetime.now(UTC),
+        "content_sha256": sha256(body).hexdigest(),
+        "source_classification": "test:pdf",
+        "authority": "primary",
+        "visibility": {"kind": "public"},
+    })
+
+    artifact, revision = build_native_pdf_source_records(request, body)
+    assert artifact.current_revision_id == revision.source_revision_id
+    assert artifact.source_artifact_id == revision.source_artifact_id
+    assert revision.content_sha256 == request.content_sha256
+    assert build_native_pdf_source_records(request, body) == (artifact, revision)
+
+    with pytest.raises(ValueError, match="PDF header"):
+        build_native_pdf_source_records(request, b"not a PDF")
+    with pytest.raises(ValueError, match="digest"):
+        build_native_pdf_source_records(request, b"%PDF-1.4\n")
+
+
+def test_open_pdf_region_requires_visibility_and_exact_bytes(region):
+    from dungeonmind.application.vnext.native_pdf_access import open_native_pdf_region
+
+    body = b"%PDF-1.7\n"
+    request = NativePdfSourceAdmissionV1.model_validate({
+        "space_id": "space:pdf",
+        "admission_id": "admission:pdf",
+        "created_at": datetime.now(UTC),
+        "content_sha256": sha256(body).hexdigest(),
+        "source_classification": "test:pdf",
+        "authority": "primary",
+        "visibility": {"kind": "labels_any", "labels": ["test:private"]},
+    })
+    artifact, revision = build_native_pdf_source_records(request, body)
+    locator = NativePdfRegionV1.model_validate(region | {
+        "source_revision_id": revision.source_revision_id,
+        "content_sha256": revision.content_sha256,
+    })
+
+    def load(space_id, revision_id):
+        if (space_id, revision_id) == (request.space_id, revision.source_revision_id):
+            return artifact, revision, 1, body
+        return None
+
+    assert open_native_pdf_region(
+        locator, authorized_space_id=request.space_id, audience=frozenset(),
+        declared_labels=frozenset({"test:private"}), load=load,
+    ) is None
+    assert open_native_pdf_region(
+        locator, authorized_space_id="space:other", audience=frozenset({"test:private"}),
+        declared_labels=frozenset({"test:private"}), load=load,
+    ) is None
+    assert open_native_pdf_region(
+        locator, authorized_space_id=request.space_id, audience=frozenset({"test:private"}),
+        declared_labels=frozenset({"test:private"}), load=load,
+    ) == body

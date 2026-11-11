@@ -395,3 +395,37 @@ def test_postgres_metadata_does_not_skip_record_integrity(pg, corruption):
             )
     with pytest.raises(NativeTextSourceAccessIntegrityError):
         list_admitted_native_text_sources(context)
+
+
+def test_postgres_retains_pdf_before_publication(pg):
+    from hashlib import sha256
+
+    from dungeonmind.application.vnext.native_pdf_access import open_native_pdf_region
+    from dungeonmind.contracts.vnext.pdf_region import NativePdfRegionV1, NativePdfSourceAdmissionV1
+
+    repository = _repository(pg)
+    _init(repository)
+    body = b"%PDF-1.7\n"
+    request = NativePdfSourceAdmissionV1.model_validate({
+        "space_id": "space:postgres-native-source",
+        "admission_id": "admission:pdf",
+        "created_at": NOW,
+        "content_sha256": sha256(body).hexdigest(),
+        "source_classification": "test:pdf",
+        "authority": "primary",
+        "visibility": {"kind": "public"},
+    })
+    head = repository.get_head(request.space_id)
+    revision = repository.retain_native_pdf_source(request, body, page_count=1)
+    assert repository.retain_native_pdf_source(request, body, page_count=1) == revision
+    locator = NativePdfRegionV1(
+        source_revision_id=revision.source_revision_id,
+        content_sha256=revision.content_sha256,
+        page=1, left=0, top=0, right=1, bottom=1,
+    )
+    assert open_native_pdf_region(
+        locator, authorized_space_id=request.space_id,
+        audience=frozenset(), declared_labels=frozenset(),
+        load=repository.get_native_pdf_source,
+    ) == body
+    assert repository.get_head(request.space_id) == head

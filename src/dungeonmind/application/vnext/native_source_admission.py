@@ -29,6 +29,7 @@ from dungeonmind.contracts.vnext.native_source import (
     NativeTextSourceAdmissionV1,
     NativeUtf8SpanProofV1,
 )
+from dungeonmind.contracts.vnext.pdf_region import NativePdfSourceAdmissionV1
 from dungeonmind.contracts.vnext.source import EvidenceRefV3, SourceArtifactV3, SourceRevisionV2
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import (
@@ -166,7 +167,7 @@ def _span_slice(body: bytes, span: NativeTextEvidenceSpanRequestV1) -> bytes:
 
 def _build_native_source_records(
     *,
-    request: NativeTextSourceAdmissionV1,
+    request: NativeTextSourceAdmissionV1 | NativePdfSourceAdmissionV1,
     body_sha256: str,
     body_storage: str,
 ) -> tuple[SourceArtifactV3, SourceRevisionV2]:
@@ -191,8 +192,11 @@ def _build_native_source_records(
         visibility=request.visibility.model_copy(deep=True),
         status="active",
         uri=None,
-        foreign_refs=list(request.foreign_refs),
-        domain_metadata=[item.model_copy(deep=True) for item in request.domain_metadata],
+        foreign_refs=list(request.foreign_refs) if isinstance(request, NativeTextSourceAdmissionV1) else [],
+        domain_metadata=(
+            [item.model_copy(deep=True) for item in request.domain_metadata]
+            if isinstance(request, NativeTextSourceAdmissionV1) else []
+        ),
         created_at=request.created_at,
         updated_at=request.created_at,
     )
@@ -205,6 +209,18 @@ def _build_native_source_records(
         created_at=request.created_at,
     )
     return artifact, revision
+
+
+def build_native_pdf_source_records(
+    request: NativePdfSourceAdmissionV1,
+    body: bytes,
+) -> tuple[SourceArtifactV3, SourceRevisionV2]:
+    request.validate_body(body)
+    return _build_native_source_records(
+        request=request,
+        body_sha256=request.content_sha256,
+        body_storage="dungeonmind:native-pdf",
+    )
 
 
 def build_native_source_write_parts(
