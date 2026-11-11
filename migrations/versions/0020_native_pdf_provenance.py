@@ -10,7 +10,8 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("""
-        LOCK TABLE dungeonmind.knowledge_native_source_authority IN SHARE ROW EXCLUSIVE MODE;
+        SELECT epoch FROM dungeonmind.knowledge_native_source_authority
+            WHERE singleton_id = 1 FOR UPDATE;
         LOCK TABLE dungeonmind.knowledge_native_pdf_sources IN ACCESS EXCLUSIVE MODE;
         DO $$
         BEGIN
