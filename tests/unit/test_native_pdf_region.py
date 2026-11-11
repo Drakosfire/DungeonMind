@@ -98,7 +98,10 @@ def test_build_native_pdf_records_bind_verified_bytes_to_stable_identity():
 
 
 def test_open_pdf_region_requires_visibility_and_exact_bytes(region):
-    from dungeonmind.application.vnext.native_pdf_access import open_native_pdf_region
+    from dungeonmind.application.vnext.native_pdf_access import (
+        bind_native_pdf_evidence,
+        open_native_pdf_region,
+    )
 
     body = b"%PDF-1.7\n"
     request = NativePdfSourceAdmissionV1.model_validate({
@@ -133,3 +136,16 @@ def test_open_pdf_region_requires_visibility_and_exact_bytes(region):
         locator, authorized_space_id=request.space_id, audience=frozenset({"test:private"}),
         declared_labels=frozenset({"test:private"}), load=load,
     ) == body
+
+    evidence = bind_native_pdf_evidence(
+        locator, authorized_space_id=request.space_id, audience=frozenset({"test:private"}),
+        declared_labels=frozenset({"test:private"}), load=load,
+    )
+    assert evidence is not None and evidence.source_locator is not None
+    assert evidence.source_artifact_id == artifact.source_artifact_id
+    assert evidence.source_revision_id == revision.source_revision_id
+    assert NativePdfRegionV1.model_validate_json(evidence.source_locator) == locator
+    assert bind_native_pdf_evidence(
+        locator, authorized_space_id=request.space_id, audience=frozenset(),
+        declared_labels=frozenset({"test:private"}), load=load,
+    ) is None
