@@ -183,6 +183,21 @@ def _lock_native_epoch(conn: Connection[Any]) -> None:
         raise PersistenceIntegrityError("native source authority epoch row missing")
 
 
+def _reject_cross_format_admission(
+    conn: Connection[Any], space_id: str, admission_id: str, *, other_table: str,
+) -> None:
+    row = conn.execute(
+        sql.SQL("SELECT 1 FROM {}.{} WHERE space_id = %s AND admission_id = %s").format(
+            sql.Identifier(SCHEMA), sql.Identifier(other_table)
+        ),
+        (space_id, admission_id),
+    ).fetchone()
+    if row is not None:
+        raise KnowledgePublicationIdempotencyConflictError(
+            space_id=space_id, publication_id=admission_id
+        )
+
+
 def _read_native_record(
     conn: Connection[Any], space_id: str, admission_id: str, *, include_body: bool
 ) -> dict[str, Any] | None:
@@ -328,6 +343,10 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
         revision_payload = revision.model_dump(mode="json")
         with self._database.transaction() as conn:
             _lock_native_epoch(conn)
+            _reject_cross_format_admission(
+                conn, request.space_id, request.admission_id,
+                other_table="knowledge_native_source_admissions",
+            )
             inserted = conn.execute(
                 """
                 INSERT INTO dungeonmind.knowledge_native_pdf_sources
@@ -425,6 +444,10 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
         with self._database.transaction() as conn:
             # Global source epoch is always acquired before the per-space CAS lock.
             _lock_native_epoch(conn)
+            _reject_cross_format_admission(
+                conn, request.space_id, request.admission_id,
+                other_table="knowledge_native_pdf_sources",
+            )
             _lock_space(conn, request.space_id, created_at=request.created_at)
 
             parent = _read_revision(conn, request.space_id, request.expected_parent_revision_id)

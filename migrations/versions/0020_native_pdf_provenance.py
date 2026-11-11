@@ -10,6 +10,19 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("""
+        LOCK TABLE dungeonmind.knowledge_native_source_authority IN SHARE ROW EXCLUSIVE MODE;
+        LOCK TABLE dungeonmind.knowledge_native_pdf_sources IN ACCESS EXCLUSIVE MODE;
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM dungeonmind.knowledge_native_pdf_sources pdf
+                JOIN dungeonmind.knowledge_native_source_admissions text_source
+                USING (space_id, admission_id)
+            ) THEN
+                RAISE EXCEPTION 'PDF and text source admission identities collide';
+            END IF;
+        END
+        $$;
         ALTER TABLE dungeonmind.knowledge_native_pdf_sources
             ADD COLUMN source_authority_epoch bigint;
         WITH epoch AS (
