@@ -327,17 +327,28 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
         artifact_payload = artifact.model_dump(mode="json")
         revision_payload = revision.model_dump(mode="json")
         with self._database.transaction() as conn:
-            conn.execute(
+            _lock_native_epoch(conn)
+            inserted = conn.execute(
                 """
                 INSERT INTO dungeonmind.knowledge_native_pdf_sources
                     (space_id, admission_id, source_revision_id, source_artifact,
-                     source_revision, page_count, body_bytes)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                     source_revision, page_count, body_bytes, source_authority_epoch)
+                SELECT %s, %s, %s, %s, %s, %s, %s, epoch + 1
+                FROM dungeonmind.knowledge_native_source_authority WHERE singleton_id = 1
                 ON CONFLICT (space_id, admission_id) DO NOTHING
+                RETURNING source_authority_epoch
                 """,
                 (request.space_id, request.admission_id, revision.source_revision_id,
                  Jsonb(artifact_payload), Jsonb(revision_payload), page_count, body),
-            )
+            ).fetchone()
+            if inserted is not None:
+                conn.execute(
+                    """
+                    UPDATE dungeonmind.knowledge_native_source_authority
+                    SET epoch = %s WHERE singleton_id = 1
+                    """,
+                    (inserted["source_authority_epoch"],),
+                )
             row = conn.execute(
                 """
                 SELECT source_artifact, source_revision, page_count, body_bytes
@@ -761,6 +772,29 @@ class _PostgresNativeTextSourceView:
                         revisions[row["source_revision_id"]] = record["revision"]
                         pair = (row["source_artifact_id"], row["source_revision_id"])
                         origins[pair] = record["origin"]
+                pdf_rows = conn.execute(
+                    """
+                    SELECT source_revision_id, source_artifact, source_revision
+                    FROM dungeonmind.knowledge_native_pdf_sources
+                    WHERE space_id = %s AND source_authority_epoch <= %s
+                      AND (source_artifact ->> 'source_artifact_id' = ANY(%s)
+                           OR source_revision_id = ANY(%s))
+                    """,
+                    (self._space_id, self._epoch, list(requested_artifacts), list(requested_revisions)),
+                ).fetchall()
+                for row in pdf_rows:
+                    artifact = SourceArtifactV3.model_validate(row["source_artifact"])
+                    revision = SourceRevisionV2.model_validate(row["source_revision"])
+                    if (
+                        revision.source_revision_id != row["source_revision_id"]
+                        or revision.source_artifact_id != artifact.source_artifact_id
+                        or artifact.current_revision_id != revision.source_revision_id
+                    ):
+                        raise PersistenceIntegrityError("PDF source record identity mismatch")
+                    if artifact.source_artifact_id in requested_artifacts:
+                        artifacts[artifact.source_artifact_id] = artifact
+                    if revision.source_revision_id in requested_revisions:
+                        revisions[revision.source_revision_id] = revision
         provenance = _build_snapshot_from_loaded(
             loaded_artifacts=artifacts,
             loaded_revisions=revisions,

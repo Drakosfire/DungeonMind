@@ -423,8 +423,18 @@ def test_postgres_retains_pdf_before_publication(pg):
         "visibility": {"kind": "public"},
     })
     head = repository.get_head(request.space_id)
+    old_view = repository.open_native_source_view(request.space_id)
     revision = repository.retain_native_pdf_source(request, body)
     assert repository.retain_native_pdf_source(request, body) == revision
+    current_view = repository.open_native_source_view(request.space_id)
+    assert current_view.epoch == old_view.epoch + 1
+    keys = dict(artifact_ids=[revision.source_artifact_id], revision_ids=[revision.source_revision_id])
+    assert old_view.get_provenance_snapshot(**keys).get_revision(revision.source_revision_id) is None
+    current = current_view.get_provenance_snapshot(**keys)
+    assert current.get_revision(revision.source_revision_id) == revision
+    assert current.get_artifact(revision.source_artifact_id) is not None
+    unrelated = repository.open_native_source_view("space:unrelated")
+    assert unrelated.get_provenance_snapshot(**keys).get_revision(revision.source_revision_id) is None
     locator = NativePdfRegionV1(
         source_revision_id=revision.source_revision_id,
         content_sha256=revision.content_sha256,
