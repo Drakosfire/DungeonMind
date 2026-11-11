@@ -803,7 +803,10 @@ class _PostgresNativeTextSourceView:
                       AND (source_artifact ->> 'source_artifact_id' = ANY(%s)
                            OR source_revision_id = ANY(%s))
                     """,
-                    (self._space_id, self._epoch, list(requested_artifacts), list(requested_revisions)),
+                    (
+                        self._space_id, self._epoch,
+                        list(requested_artifacts), list(requested_revisions),
+                    ),
                 ).fetchall()
                 for row in pdf_rows:
                     artifact = SourceArtifactV3.model_validate(row["source_artifact"])
