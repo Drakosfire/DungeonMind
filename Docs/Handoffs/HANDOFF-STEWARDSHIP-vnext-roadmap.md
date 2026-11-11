@@ -1,7 +1,7 @@
-# HANDOFF — STEWARDSHIP: DungeonMind vNext roadmap
+# Handoff: DungeonMind vNext roadmap
 
 **Created:** 2026-09-14  
-**Status:** ACTIVE — living stewardship authority for the vNext roadmap  
+**Status:** ACTIVE roadmap coordination record; execution requires an explicit assignment and satisfied gates
 **Repository:** `Drakosfire/DungeonMind`  
 **Current main anchor at creation:** `22bf2e42686876e1c0f9750d1b346e4a6fffebc4` — merged PR #54  
 **Main base used for this amendment:** `19b9e8d71635d8736e9ad5f0db3aa075f635d510` — PR #94 merge; pinned predecessor for this qualification slice, not implementation or activation authority
@@ -19,15 +19,15 @@
 **Canonical roadmap:** `Docs/Roadmaps/ROADMAP.md`  
 **Semantic architecture:** `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`  
 **Read/performance architecture:** `Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`  
-**One-line mission:** Steward the deliberate V0–V11 transition from the current World-shaped DungeonMind implementation to a domain-agnostic governed knowledge library while preserving authority invariants, historical readability, semantic parity, and evidence-backed read-path performance.
+**One-line mission:** Carry the deliberate V0–V11 transition from the current World-shaped DungeonMind implementation to a domain-agnostic governed knowledge library while preserving authority invariants, historical readability, semantic parity, and evidence-backed read-path performance.
 
 ---
 
-## §1 Steward role
+## §1 Assigned responsibilities
 
-This is the durable control document for continuity of design and proof across the vNext roadmap.
+This is the durable control document for continuity of design and proof across the vNext roadmap. Its legacy filename remains for links and document-authority tests. Responsibilities come from explicit bounded assignments, not a standing role. Required independent review remains separate from authorship; this document grants no additional merge, runtime, data, model-allocation, or deployment authority.
 
-The Steward owns:
+The explicitly assigned roadmap owner coordinates:
 
 ```text
 intent
@@ -39,7 +39,7 @@ cross-repository contract alignment
 recording what was learned
 ```
 
-The Steward must:
+The assigned roadmap owner must:
 
 - re-anchor against current checked-in truth before every decision;
 - dispatch small PRs with one primary question;
@@ -299,7 +299,7 @@ Do not reinterpret PR #64 as V4.1 runtime acceptance. PR #69 is the accepted V5.
 
 Current checked-in repository truth outranks this handoff. Chat/history is never authority.
 
-Fresh Steward read order:
+Read order for the assigned roadmap owner:
 
 1. `Docs/Architecture/AUTHORITY.md`
 2. `Docs/Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`
@@ -650,7 +650,7 @@ V4.2 owns evidence + anchor support. V4.3 owns deterministic indexed search. V5.
 
 ---
 
-## §9 Stewarding one roadmap PR
+## §9 Carrying one roadmap PR
 
 Each implementation PR must state:
 
@@ -682,7 +682,7 @@ A PR merges only when its primary question has an evidence-backed answer.
 
 ---
 
-## §10 Steward mutation protocol
+## §10 Roadmap update protocol
 
 This document is intentionally mutable.
 
@@ -691,7 +691,7 @@ After every roadmap PR merge, update this file before another roadmap PR merges.
 Correct workflow:
 
 ```text
-Steward designs/writes next implementation handoff
+Assigned designer writes the next implementation handoff
         ↓
 Code agent creates implementation branch from current main
         ↓
@@ -701,9 +701,9 @@ same implementation PR:
   tests
   benchmark/evidence
         ↓
-Steward exact-head review
+Independent reviewer judges the exact head
         ↓
-PASS + merge
+Required evidence/review passes + authorized merge
 ```
 
 Handoffs do not get their own PRs. Bookkeeping and handoff-state updates belong in the implementation PR. Do not create a separate bookkeeping-only PR.
@@ -824,7 +824,7 @@ What remains safe in parallel:
 
 ---
 
-## §14 Current stewardship ledger
+## §14 Current coordination ledger
 
 ### Last merged roadmap implementation
 
@@ -983,13 +983,13 @@ standalone anchor-only churn. None of this is permission to activate V7.
 
 ---
 
-## §15 Steward completion condition
+## §15 Roadmap completion condition
 
 This handoff remains `ACTIVE` through the roadmap.
 
 It may be superseded only when either:
 
-1. V11 records `POST_CUTOVER_PERFORMANCE_BASELINE_ACCEPTED` and `VNEXT_ROADMAP_COMPLETE`, then activates a successor Steward handoff for `Docs/Roadmaps/ROADMAP-post-vnext-performance.md`; or
-2. the roadmap is deliberately replaced by a new canonical program with a successor Steward handoff.
+1. V11 records `POST_CUTOVER_PERFORMANCE_BASELINE_ACCEPTED` and `VNEXT_ROADMAP_COMPLETE`, then activates a successor bounded handoff for `Docs/Roadmaps/ROADMAP-post-vnext-performance.md`; or
+2. the roadmap is deliberately replaced by a new canonical program with a successor bounded handoff.
 
-Landing this file does not complete stewardship.
+Landing this file does not complete the roadmap.

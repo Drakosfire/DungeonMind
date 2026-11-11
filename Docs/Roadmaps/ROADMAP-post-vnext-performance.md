@@ -27,7 +27,7 @@ O7  performance lock-in
 
 ## Entry rule
 
-The successor Steward activates O1 only after V11 records both predecessor exit
+The explicitly assigned successor owner activates O1 only after V11 records both predecessor exit
 tokens and publishes the measured post-cutover baseline. O1 begins with work
 elimination; it does not presume a storage redesign.
 
