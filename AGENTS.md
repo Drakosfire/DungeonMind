@@ -1,5 +1,11 @@
 # Agent operating policy
 
+## Start here
+
+Read [the library boundary and development guide](README.md), then identify the
+active handoff and the contract that owns the change. Use the unit or integration
+commands in the README according to the boundary affected.
+
 This file is the durable repository operating law for agents working in DungeonMind. Slice-specific facts belong in checked-in handoffs. Product UX and campaign-memory presentation belong in DungeonMindBuddy.
 
 DungeonMind owns durable world knowledge, identity, provenance, revisions/publication, retrieval semantics, and knowledge persistence.
