@@ -104,6 +104,7 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
         )
         self._after_native_publication_receipt_insert = after_receipt_insert
         self._native_epoch = 0
+        self._native_withdrawals: dict[tuple[str, str, str], int] = {}
         self._extension_receipts = {}
         self._extension_by_span = {}
         self._native_receipts: dict[tuple[str, str], NativeSourceAdmissionReceiptV1] = {}
@@ -433,6 +434,21 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
         self._heads[head.space_id] = head
         self._events.append(event)
 
+    def withdraw_native_source(
+        self, *, space_id: str, source_artifact_id: str, source_revision_id: str
+    ) -> int:
+        with self._lock:
+            record = self._native_records.get((space_id, source_artifact_id))
+            if record is None or record.revision.source_revision_id != source_revision_id:
+                raise ValueError("Native source identity is not admitted in this space")
+            identity = (space_id, source_artifact_id, source_revision_id)
+            epoch = self._native_withdrawals.get(identity)
+            if epoch is None:
+                self._native_epoch += 1
+                epoch = self._native_epoch
+                self._native_withdrawals[identity] = epoch
+            return epoch
+
     def open_native_source_view(self, space_id: str) -> NativeTextSourceView:
         with self._lock:
             return _InMemoryNativeTextSourceView(self, space_id, self._native_epoch)
@@ -458,6 +474,16 @@ class _InMemoryNativeTextSourceView:
     def open_coherent_view(self) -> NativeTextSourceView:
         return _InMemoryNativeTextSourceView(self._repository, self._space_id, self._epoch)
 
+    def _artifact_at_epoch(self, artifact: SourceArtifactV3) -> SourceArtifactV3:
+        revision_id = artifact.current_revision_id
+        if revision_id is None:
+            return artifact.model_copy(deep=True)
+        identity = (self._space_id, artifact.source_artifact_id, revision_id)
+        epoch = self._repository._native_withdrawals.get(identity)
+        if epoch is not None and epoch <= self._epoch:
+            return artifact.model_copy(update={"status": "retracted"}, deep=True)
+        return artifact.model_copy(deep=True)
+
     def get_provenance_snapshot(
         self, *, artifact_ids: Sequence[str], revision_ids: Sequence[str]
     ) -> KnowledgeProvenanceSnapshot:
@@ -478,7 +504,7 @@ class _InMemoryNativeTextSourceView:
             for artifact_id in requested_artifacts:
                 record = self._repository._native_records.get((self._space_id, artifact_id))
                 if record is not None and record.epoch <= self._epoch:
-                    artifacts[artifact_id] = record.artifact
+                    artifacts[artifact_id] = self._artifact_at_epoch(record.artifact)
             for revision_id in requested_revisions:
                 record = self._repository._by_revision.get((self._space_id, revision_id))
                 if record is not None and record.epoch <= self._epoch:
@@ -558,7 +584,7 @@ class _InMemoryNativeTextSourceView:
                 raise PersistenceIntegrityError("native source record fingerprint drift")
             proof = indexed_span[1]
             return StoredNativeTextSource(
-                source_artifact=record.artifact.model_copy(deep=True),
+                source_artifact=self._artifact_at_epoch(record.artifact),
                 source_revision=record.revision.model_copy(deep=True),
                 body_bytes=bytes(record.body),
                 span_proof=proof.model_copy(deep=True),

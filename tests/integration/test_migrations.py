@@ -82,7 +82,7 @@ def test_vector_extension_and_schema_tables(db) -> None:
 
         version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
         assert version is not None
-        assert version["version_num"] == "0020_native_pdf_provenance"
+        assert version["version_num"] == "0021_native_source_withdrawal"
 
         constraints = conn.execute(
             """
@@ -150,7 +150,7 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
         database = PostgresDatabase(target)
         with database.connect() as conn:
             version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
-            assert version["version_num"] == "0020_native_pdf_provenance"
+            assert version["version_num"] == "0021_native_source_withdrawal"
             tables = conn.execute(
                 """
                 SELECT COUNT(*) AS n

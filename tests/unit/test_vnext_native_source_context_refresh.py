@@ -122,3 +122,28 @@ def test_refresh_preserves_storage_failure(monkeypatch):
     monkeypatch.setattr(repo, "open_native_source_view", offline)
     with pytest.raises(PersistenceUnavailableError, match="offline"):
         refresh_native_text_source_access_context(repository=repo, context=context)
+
+
+def test_persisted_withdrawal_changes_source_epoch_without_graph_publication():
+    repo, _, _, context, receipt = source_case()
+    space_id = receipt.space_id
+    evidence_id = receipt.bindings[0].evidence_ref_id
+    identity = dict(
+        space_id=space_id,
+        source_artifact_id=receipt.source_artifact_id,
+        source_revision_id=receipt.source_revision_id,
+    )
+    head = repo.get_head(space_id)
+    events = repo.head_events(space_id)
+    assert open_admitted_native_text(context, evidence_id).status == "available"
+    with pytest.raises(ValueError):
+        repo.withdraw_native_source(**{**identity, "space_id": "other"})
+    epoch = repo.withdraw_native_source(**identity)
+    assert epoch == context.source_view.epoch + 1
+    assert repo.withdraw_native_source(**identity) == epoch
+    refreshed = refresh_native_text_source_access_context(repository=repo, context=context)
+    assert refreshed.source_view.epoch == epoch
+    assert open_admitted_native_text(refreshed, evidence_id).status == "unavailable"
+    assert open_admitted_native_text(context, evidence_id).status == "available"
+    assert repo.get_head(space_id) == head
+    assert repo.head_events(space_id) == events

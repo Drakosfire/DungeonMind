@@ -199,6 +199,10 @@ class NativeSourceEvidenceRepository(KnowledgeRevisionRepository, Protocol):
         extension_id: str,
     ) -> NativeSourceEvidenceExtensionReceiptV1 | None: ...
 
+    def withdraw_native_source(
+        self, *, space_id: str, source_artifact_id: str, source_revision_id: str
+    ) -> int: ...
+
     def open_native_source_view(self, space_id: str) -> NativeTextSourceView: ...
 
 
