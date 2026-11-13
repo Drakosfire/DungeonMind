@@ -7,6 +7,7 @@ import pytest
 
 from dungeonmind.application.vnext import (
     open_admitted_native_text,
+    open_native_text_source_access_context,
     publish_native_text_source_evidence,
     refresh_native_text_source_access_context,
 )
@@ -15,6 +16,36 @@ from dungeonmind.contracts.vnext.common import LabelsAnyVisibility
 from dungeonmind.domain.errors import PersistenceUnavailableError
 from tests.unit.test_vnext_native_source_admission import _request
 from tests.unit.test_vnext_native_source_metadata import source_case
+
+
+def test_open_context_resolves_domain_from_one_pinned_revision(monkeypatch):
+    repo, domain, profile, original, first = source_case(hidden=True)
+    get_revision = repo.get_revision
+    calls = []
+
+    def counted(space_id, revision_id):
+        calls.append((space_id, revision_id))
+        return get_revision(space_id, revision_id)
+
+    def resolve(ref, profile_ref):
+        assert profile_ref.profile_id == profile.profile_id
+        assert profile_ref.profile_revision == profile.profile_revision
+        assert ref.domain_id == domain.domain_id
+        assert ref.domain_revision == domain.domain_revision
+        return domain
+
+    monkeypatch.setattr(repo, "get_revision", counted)
+    context = open_native_text_source_access_context(
+        repository=repo,
+        space_id=original.space_id,
+        revision_id=original.revision_id,
+        domain_contract=resolve,
+        audience_labels=("test:gm",),
+    )
+    assert calls == [(original.space_id, original.revision_id)]
+    assert (
+        open_admitted_native_text(context, first.bindings[0].evidence_ref_id).status == "available"
+    )
 
 
 def test_refresh_reuses_exact_parsed_revision_after_later_publication(monkeypatch):
