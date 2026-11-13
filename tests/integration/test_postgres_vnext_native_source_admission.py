@@ -537,4 +537,7 @@ def test_postgres_concurrent_withdrawal_preserves_graph_and_pinned_source_view(p
     assert open_admitted_native_text(context, evidence_id).body_text == BODY
     assert fresh.get_head(request.space_id) == head
     assert fresh.head_events(request.space_id) == events
-    assert fresh.get_native_source_admission_receipt(request.space_id, request.admission_id) == receipt
+    assert (
+        fresh.get_native_source_admission_receipt(request.space_id, request.admission_id)
+        == receipt
+    )
