@@ -763,7 +763,7 @@ substantive reviewed runtime head `91d2ebaf8aadf512a26ac209cfe8f6414063e732`,
 PASS review `5321738653`, merge `f3738f3af3e3c8e204668a3d87d240a32c0d3988`.
 Buddy V6.1 / #749 and V6.2 / #767 are now complete, as are PLAY-1 / #773 and
 PLAY-2 / #779. Their exact accepted refs and scope are recorded in the current
-stewardship handoff §2. Buddy V6.5 / #780 now accepts native evidence/anchor
+roadmap handoff §2. Buddy V6.5 / #780 now accepts native evidence/anchor
 preservation and closes V6 at `11d7b5801b51f664e7a6eeafcb2aa2b0f5922b71`.
 V6.K1 and that acceptance do not authorize public alias search or a production
 route switch.
