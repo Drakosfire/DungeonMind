@@ -22,3 +22,27 @@ semantic-equivalent comparisons on the intended serving routes, and assemble
 digests. Core owns the benchmark and joint record. Buddy owns route evidence
 and its dependency pin. V9 follows only after joint acceptance and an approved
 authority switch with rehearsed rollback.
+
+## Buddy complete-object candidate and serving evidence
+
+Buddy #3224 merged at `ffb666db75c388c5d3d2943eeeec616937136626` and
+retains the Core package pin above. At that merge, 18 mounted inspection
+tests and 29 preservation tests passed. The synthetic mounted complete-object
+route returned response SHA-256
+`ce456fb84f3938741c3242793b9a2974bb5f02b7295ad7f0a61d7177af4d234d`
+across 21 reads, with a 4.01 ms median over the 20 warm reads.
+
+The signed-in Graph surface on port 5202 displayed Elderwyld at
+`rev:9a457bfed6bc517af83a7a719644970c`. It loaded 3,005 objects and
+reported 3,828 omitted assertions with zero unexamined. The serving API
+environment's installed Core distribution reported
+`855f23bd8b20c3b91c27d0d065c3a3cfb0fef917`. Its OpenAPI schema lacked
+the candidate complete-object endpoint.
+
+The capped classic scale diagnostic terminated with exit 137 during
+100,000-item World-like setup. It emitted no timing report. Buddy owns the
+remaining proof for Elderwyld's authorized complete-object results, historical
+pins, exact citations and timings on the candidate route. Use independent
+expectations for Elderwyld and matched fixtures for classic/native timing
+comparisons. Core owns the final joint artifact after that route evidence
+and all required fixture semantics are verified.
