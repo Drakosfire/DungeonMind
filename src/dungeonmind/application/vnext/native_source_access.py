@@ -45,7 +45,8 @@ def open_native_text_source_access_context(
     space_id: str,
     revision_id: str,
     domain_contract: (
-        DomainContractDescriptor | Callable[[DomainContractRef, SemanticProfileRef], DomainContractDescriptor]
+        DomainContractDescriptor
+        | Callable[[DomainContractRef, SemanticProfileRef], DomainContractDescriptor]
     ),
     audience_labels: Sequence[str] = (),
 ) -> NativeTextSourceAccessContext:

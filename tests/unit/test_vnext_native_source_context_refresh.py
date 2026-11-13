@@ -43,7 +43,9 @@ def test_open_context_resolves_domain_from_one_pinned_revision(monkeypatch):
         audience_labels=("test:gm",),
     )
     assert calls == [(original.space_id, original.revision_id)]
-    assert open_admitted_native_text(context, first.bindings[0].evidence_ref_id).status == "available"
+    assert (
+        open_admitted_native_text(context, first.bindings[0].evidence_ref_id).status == "available"
+    )
 
 
 def test_refresh_reuses_exact_parsed_revision_after_later_publication(monkeypatch):
