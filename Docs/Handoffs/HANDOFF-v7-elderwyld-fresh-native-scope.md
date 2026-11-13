@@ -66,7 +66,7 @@ Independent review is required; this record does not activate V8.
 The retained exact readback (SHA-256
 `9ac2ab62d63901f70415967bd4eada3666e384dcba578d55a5d6d829a2ba491f`)
 records 243 available, matching citation records. That larger citation count
-does not increase the number of sessions with independently checked witnesses.
+does not increase the number of sessions with a recorded representative witness.
 Raw source bodies, credentials and private records are not part of this change.
 
 **Outstanding:** Buddy deployment evidence must tie the loaded build and Core
