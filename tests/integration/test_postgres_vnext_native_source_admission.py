@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 
 import pytest
 
@@ -503,7 +504,7 @@ def test_postgres_retains_pdf_before_publication(pg, text_first):
     assert repository.get_head(request.space_id) == head
 
 
-def test_postgres_concurrent_withdrawal_preserves_graph_and_pinned_source_view(pg):
+def test_postgres_concurrent_withdrawal_preserves_graph_and_pinned_source_view(pg, monkeypatch):
     repository = _repository(pg)
     domain, profile, genesis = _init(repository)
     request = _request(
@@ -526,6 +527,21 @@ def test_postgres_concurrent_withdrawal_preserves_graph_and_pinned_source_view(p
     )
     with pytest.raises(ValueError):
         repository.withdraw_native_source(**{**identity, "space_id": "space:foreign"})
+    transaction = repository._database.transaction
+
+    @contextmanager
+    def fail_before_commit():
+        with transaction() as conn:
+            yield conn
+            raise RuntimeError("injected withdrawal rollback")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(repository._database, "transaction", fail_before_commit)
+        with pytest.raises(RuntimeError, match="injected withdrawal rollback"):
+            repository.withdraw_native_source(**identity)
+    unchanged = refresh_native_text_source_access_context(repository=repository, context=context)
+    assert unchanged.source_view.epoch == context.source_view.epoch
+    assert open_admitted_native_text(unchanged, evidence_id).body_text == BODY
     with ThreadPoolExecutor(max_workers=2) as executor:
         first = executor.submit(repository.withdraw_native_source, **identity)
         second = executor.submit(_repository(pg).withdraw_native_source, **identity)
