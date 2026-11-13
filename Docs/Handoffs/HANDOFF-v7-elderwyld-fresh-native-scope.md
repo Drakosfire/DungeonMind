@@ -69,12 +69,22 @@ records 243 available, matching citation records. That larger citation count
 does not increase the number of sessions with a recorded representative witness.
 Raw source bodies, credentials and private records are not part of this change.
 
-**Outstanding:** Buddy deployment evidence must tie the loaded build and Core
-package to the serving route; MIND owns independent verification of the native
-pin. The source and Buddy product owners must disposition the remaining
-candidate scope: the retained ledger records 10 chronology review witnesses,
-37 unverified review dispositions, and all 47 full-candidate publication
-dispositions unverified. This does not mean unpublished. The accepted scope
-must identify any required candidates and explicitly record exclusions or
-unsupported inputs before V7 is accepted. No ingestion rerun, archive restore,
-live write or cutover is part of this slice.
+### V7 scope clarification and V8 entry
+
+The operator identified port 5202 as the serving Buddy UI. The authenticated
+Graph read and exact matching Core head establish the serving World binding.
+The UI is served from a mutable checkout, so this observation is not a
+reproducible full-build pin. Capture exact UI, API and Core pins for V8
+comparisons; do not require a production restart to recognize the V7 binding.
+
+The fresh-native checkpoint covers the published Elderwyld graph and the
+47-session admitted-source and timeline-placement cohort. It does not require
+publishing or auditing every extraction candidate. The retained ledger records
+10 chronology review witnesses, 37 unverified review dispositions, and all 47
+full-candidate publication dispositions unverified. These are not evidence
+of missing published records. Keep candidate review separate unless a specific
+gap affects a required acceptance witness.
+
+This scope clarification is the proposed V7 disposition for independent
+review before V8 execution. It does not accept V8, claim a bridge passed, or
+authorize a restart, ingestion rerun, archive restore, live write or cutover.
