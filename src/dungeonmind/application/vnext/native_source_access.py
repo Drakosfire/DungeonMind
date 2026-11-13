@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import cast
 
-from dungeonmind.contracts.vnext.domain import DomainContractDescriptor
+from dungeonmind.contracts.vnext.domain import DomainContractDescriptor, DomainContractRef
 from dungeonmind.contracts.vnext.native_source import (
     NativeTextSourceAccessV1,
     NativeTextSourceOriginV1,
@@ -43,10 +43,16 @@ def open_native_text_source_access_context(
     repository: NativeSourceEvidenceRepository,
     space_id: str,
     revision_id: str,
-    domain_contract: DomainContractDescriptor,
+    domain_contract: (
+        DomainContractDescriptor | Callable[[DomainContractRef], DomainContractDescriptor]
+    ),
     audience_labels: Sequence[str] = (),
 ) -> NativeTextSourceAccessContext:
-    """Pin one exact native revision and one coherent source-authority epoch."""
+    """Pin one exact native revision and one coherent source-authority epoch.
+
+    A descriptor resolver receives the reference from the loaded revision.
+    Both descriptor forms undergo the same pin validation.
+    """
     if not space_id.strip() or not revision_id.strip():
         raise KnowledgeReadContextIntegrityError("native source context identity is blank")
     stored = repository.get_revision(space_id, revision_id)
@@ -54,6 +60,8 @@ def open_native_text_source_access_context(
         raise KnowledgeReadContextIntegrityError("native source context revision is missing")
     if stored.revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA:
         raise KnowledgeReadContextIntegrityError("native source context is not a native revision")
+    if callable(domain_contract):
+        domain_contract = domain_contract(stored.revision.domain_contract_ref)
     domain_snapshot = DomainContractDescriptor.model_validate(
         domain_contract.model_dump(mode="json")
     )
