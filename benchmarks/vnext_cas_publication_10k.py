@@ -194,15 +194,20 @@ def _time_publish(
     iterations: int,
 ) -> dict[str, Any]:
     samples: list[float] = []
-    published = None
+    receipt = None
     repo: InMemoryKnowledgeRevisionRepository | None = None
     for _ in range(iterations):
         repo = InMemoryKnowledgeRevisionRepository()
         repo.publish_revision(parent_command)
         started = time.perf_counter()
-        published = publish_governed_materialization(materialization, repository=repo)
+        receipt = publish_governed_materialization(
+            materialization, repository=repo, publication_id="benchmark:tiny-delta"
+        )
         samples.append((time.perf_counter() - started) * 1000.0)
-    assert published is not None and repo is not None
+    assert receipt is not None and repo is not None
+    published = repo.get_revision(receipt.space_id, receipt.published_revision_id)
+    assert published is not None
+    assert published.graph_payload_sha256 == receipt.graph_payload_sha256
     envelope = canonical_json(published.revision.model_dump(mode="json")).encode("utf-8")
     graph = canonical_json(published.graph_payload).encode("utf-8")
     head = repo.get_head(SPACE)
