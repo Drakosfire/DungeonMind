@@ -172,6 +172,21 @@ class _ExtensionLockedView:
         return _PostgresNativeTextSourceView(self.database, space, row["epoch"])
 
 
+def _withdrawn_sources(
+    conn: Connection[Any], space_id: str, artifact_ids: Sequence[str], epoch: int
+) -> set[tuple[str, str]]:
+    rows = conn.execute(
+        """
+        SELECT source_artifact_id, source_revision_id
+        FROM dungeonmind.knowledge_native_source_withdrawals
+        WHERE space_id = %s AND source_artifact_id = ANY(%s)
+          AND source_authority_epoch <= %s
+        """,
+        (space_id, list(artifact_ids), epoch),
+    ).fetchall()
+    return {(row["source_artifact_id"], row["source_revision_id"]) for row in rows}
+
+
 def _lock_native_epoch(conn: Connection[Any]) -> None:
     row = conn.execute(
         sql.SQL(
@@ -399,6 +414,12 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
                 SELECT source_artifact, source_revision, page_count, body_bytes
                 FROM dungeonmind.knowledge_native_pdf_sources
                 WHERE space_id = %s AND source_revision_id = %s
+                  AND NOT EXISTS (
+                      SELECT 1 FROM dungeonmind.knowledge_native_source_withdrawals AS w
+                      WHERE w.space_id = knowledge_native_pdf_sources.space_id
+                        AND w.source_artifact_id = source_artifact ->> 'source_artifact_id'
+                        AND w.source_revision_id = knowledge_native_pdf_sources.source_revision_id
+                  )
                 """,
                 (space_id, source_revision_id),
             ).fetchone()
@@ -722,6 +743,54 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
                 ) from exc
         return receipt
 
+    def withdraw_native_source(
+        self, *, space_id: str, source_artifact_id: str, source_revision_id: str
+    ) -> int:
+        """Withdraw an exact admitted source and return its authority epoch."""
+        identity = (space_id, source_artifact_id, source_revision_id)
+        with self._database.transaction() as conn:
+            _lock_native_epoch(conn)
+            existing = conn.execute(
+                """
+                SELECT source_authority_epoch
+                FROM dungeonmind.knowledge_native_source_withdrawals
+                WHERE space_id = %s AND source_artifact_id = %s AND source_revision_id = %s
+                """,
+                identity,
+            ).fetchone()
+            if existing is not None:
+                return existing["source_authority_epoch"]
+            admitted = conn.execute(
+                """
+                SELECT 1 FROM dungeonmind.knowledge_native_source_admissions
+                WHERE space_id = %s AND source_artifact_id = %s AND source_revision_id = %s
+                UNION ALL
+                SELECT 1 FROM dungeonmind.knowledge_native_pdf_sources
+                WHERE space_id = %s AND source_artifact ->> 'source_artifact_id' = %s
+                  AND source_revision_id = %s
+                """,
+                identity + identity,
+            ).fetchall()
+            if not admitted:
+                raise ValueError("Native source identity is not admitted in this space")
+            if len(admitted) != 1:
+                raise PersistenceIntegrityError("Native source identity is ambiguous")
+            epoch = conn.execute(
+                """
+                UPDATE dungeonmind.knowledge_native_source_authority
+                SET epoch = epoch + 1 WHERE singleton_id = 1 RETURNING epoch
+                """
+            ).fetchone()["epoch"]
+            conn.execute(
+                """
+                INSERT INTO dungeonmind.knowledge_native_source_withdrawals
+                    (space_id, source_artifact_id, source_revision_id, source_authority_epoch)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (*identity, epoch),
+            )
+            return epoch
+
     def open_native_source_view(self, space_id: str) -> NativeTextSourceView:
         with self._database.transaction() as conn:
             row = conn.execute(
@@ -821,6 +890,12 @@ class _PostgresNativeTextSourceView:
                         artifacts[artifact.source_artifact_id] = artifact
                     if revision.source_revision_id in requested_revisions:
                         revisions[revision.source_revision_id] = revision
+                withdrawn = _withdrawn_sources(
+                    conn, self._space_id, requested_artifacts, self._epoch
+                )
+                for artifact_id, artifact in artifacts.items():
+                    if (artifact_id, artifact.current_revision_id) in withdrawn:
+                        artifacts[artifact_id] = artifact.model_copy(update={"status": "retracted"})
         provenance = _build_snapshot_from_loaded(
             loaded_artifacts=artifacts,
             loaded_revisions=revisions,
@@ -876,8 +951,13 @@ class _PostgresNativeTextSourceView:
                 if len(matches) != 1:
                     raise PersistenceIntegrityError("extension span identity collision")
                 span, proof_epoch = matches[0]
+            artifact = record["artifact"]
+            if (source_artifact_id, source_revision_id) in _withdrawn_sources(
+                conn, self._space_id, (source_artifact_id,), self._epoch
+            ):
+                artifact = artifact.model_copy(update={"status": "retracted"})
             return StoredNativeTextSource(
-                source_artifact=record["artifact"],
+                source_artifact=artifact,
                 source_revision=record["revision"],
                 body_bytes=record["body"],
                 span_proof=span,

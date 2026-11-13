@@ -29,6 +29,7 @@ TRUNCATE TABLE
     dungeonmind.knowledge_operator_source_artifacts,
     dungeonmind.knowledge_operator_source_preparations,
     dungeonmind.source_admission_receipts,
+    dungeonmind.knowledge_native_source_withdrawals,
     dungeonmind.knowledge_native_source_spans,
     dungeonmind.knowledge_native_source_admissions,
     dungeonmind.knowledge_head_events,

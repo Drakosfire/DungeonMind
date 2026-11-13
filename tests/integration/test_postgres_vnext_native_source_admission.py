@@ -484,3 +484,57 @@ def test_postgres_retains_pdf_before_publication(pg, text_first):
     assert repository.get_head(request.space_id) == head
     with pytest.raises(KnowledgePublicationIdempotencyConflictError):
         admit_text()
+
+    epoch = repository.withdraw_native_source(
+        space_id=request.space_id,
+        source_artifact_id=revision.source_artifact_id,
+        source_revision_id=revision.source_revision_id,
+    )
+    fresh = repository.open_native_source_view(request.space_id)
+    assert fresh.epoch == epoch == current_view.epoch + 1
+    assert fresh.get_provenance_snapshot(**keys).get_artifact(
+        revision.source_artifact_id
+    ).status == "retracted"
+    assert current_view.get_provenance_snapshot(**keys).get_artifact(
+        revision.source_artifact_id
+    ) == current.get_artifact(revision.source_artifact_id)
+    assert repository.get_native_pdf_source(request.space_id, revision.source_revision_id) is None
+    assert repository.retain_native_pdf_source(request, body) == revision
+    assert repository.get_head(request.space_id) == head
+
+
+def test_postgres_concurrent_withdrawal_preserves_graph_and_pinned_source_view(pg):
+    repository = _repository(pg)
+    domain, profile, genesis = _init(repository)
+    request = _request(
+        space_id=genesis.space_id, parent_revision_id=genesis.published_revision_id
+    )
+    receipt = publish_native_text_source_evidence(
+        repository=repository, request=request, domain_contract=domain, semantic_profile=profile
+    )
+    context = open_native_text_source_access_context(
+        repository=repository, space_id=request.space_id,
+        revision_id=receipt.published_revision_id, domain_contract=domain,
+    )
+    evidence_id = receipt.bindings[0].evidence_ref_id
+    assert open_admitted_native_text(context, evidence_id).body_text == BODY
+    head = repository.get_head(request.space_id)
+    events = repository.head_events(request.space_id)
+    identity = dict(
+        space_id=request.space_id, source_artifact_id=receipt.source_artifact_id,
+        source_revision_id=receipt.source_revision_id,
+    )
+    with pytest.raises(ValueError):
+        repository.withdraw_native_source(**{**identity, "space_id": "space:foreign"})
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(repository.withdraw_native_source, **identity)
+        second = executor.submit(_repository(pg).withdraw_native_source, **identity)
+        assert first.result() == second.result() == context.source_view.epoch + 1
+    fresh = _repository(pg)
+    refreshed = refresh_native_text_source_access_context(repository=fresh, context=context)
+    assert refreshed.source_view.epoch == context.source_view.epoch + 1
+    assert open_admitted_native_text(refreshed, evidence_id).status == "unavailable"
+    assert open_admitted_native_text(context, evidence_id).body_text == BODY
+    assert fresh.get_head(request.space_id) == head
+    assert fresh.head_events(request.space_id) == events
+    assert fresh.get_native_source_admission_receipt(request.space_id, request.admission_id) == receipt
