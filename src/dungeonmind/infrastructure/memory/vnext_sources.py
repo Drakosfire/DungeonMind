@@ -475,7 +475,10 @@ class _InMemoryNativeTextSourceView:
         return _InMemoryNativeTextSourceView(self._repository, self._space_id, self._epoch)
 
     def _artifact_at_epoch(self, artifact: SourceArtifactV3) -> SourceArtifactV3:
-        identity = (self._space_id, artifact.source_artifact_id, artifact.current_revision_id)
+        revision_id = artifact.current_revision_id
+        if revision_id is None:
+            return artifact.model_copy(deep=True)
+        identity = (self._space_id, artifact.source_artifact_id, revision_id)
         epoch = self._repository._native_withdrawals.get(identity)
         if epoch is not None and epoch <= self._epoch:
             return artifact.model_copy(update={"status": "retracted"}, deep=True)

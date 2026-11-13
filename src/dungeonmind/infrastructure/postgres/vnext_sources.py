@@ -894,7 +894,9 @@ class _PostgresNativeTextSourceView:
                     conn, self._space_id, requested_artifacts, self._epoch
                 )
                 for artifact_id, artifact in artifacts.items():
-                    if (artifact_id, artifact.current_revision_id) in withdrawn:
+                    if artifact.current_revision_id is not None and (
+                        artifact_id, artifact.current_revision_id
+                    ) in withdrawn:
                         artifacts[artifact_id] = artifact.model_copy(update={"status": "retracted"})
         provenance = _build_snapshot_from_loaded(
             loaded_artifacts=artifacts,
