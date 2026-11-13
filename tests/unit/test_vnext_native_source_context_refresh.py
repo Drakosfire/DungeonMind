@@ -19,7 +19,7 @@ from tests.unit.test_vnext_native_source_metadata import source_case
 
 
 def test_open_context_resolves_domain_from_one_pinned_revision(monkeypatch):
-    repo, domain, _, original, first = source_case(hidden=True)
+    repo, domain, profile, original, first = source_case(hidden=True)
     get_revision = repo.get_revision
     calls = []
 
@@ -27,7 +27,9 @@ def test_open_context_resolves_domain_from_one_pinned_revision(monkeypatch):
         calls.append((space_id, revision_id))
         return get_revision(space_id, revision_id)
 
-    def resolve(ref):
+    def resolve(ref, profile_ref):
+        assert profile_ref.profile_id == profile.profile_id
+        assert profile_ref.profile_revision == profile.profile_revision
         assert ref.domain_id == domain.domain_id
         assert ref.domain_revision == domain.domain_revision
         return domain

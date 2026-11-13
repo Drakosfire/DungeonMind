@@ -7,6 +7,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import cast
 
+from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.domain import DomainContractDescriptor, DomainContractRef
 from dungeonmind.contracts.vnext.native_source import (
     NativeTextSourceAccessV1,
@@ -44,13 +45,13 @@ def open_native_text_source_access_context(
     space_id: str,
     revision_id: str,
     domain_contract: (
-        DomainContractDescriptor | Callable[[DomainContractRef], DomainContractDescriptor]
+        DomainContractDescriptor | Callable[[DomainContractRef, SemanticProfileRef], DomainContractDescriptor]
     ),
     audience_labels: Sequence[str] = (),
 ) -> NativeTextSourceAccessContext:
     """Pin one exact native revision and one coherent source-authority epoch.
 
-    A descriptor resolver receives the reference from the loaded revision.
+    A descriptor resolver receives both descriptor references from the loaded revision.
     Both descriptor forms undergo the same pin validation.
     """
     if not space_id.strip() or not revision_id.strip():
@@ -61,7 +62,9 @@ def open_native_text_source_access_context(
     if stored.revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA:
         raise KnowledgeReadContextIntegrityError("native source context is not a native revision")
     if callable(domain_contract):
-        domain_contract = domain_contract(stored.revision.domain_contract_ref)
+        domain_contract = domain_contract(
+            stored.revision.domain_contract_ref, stored.revision.semantic_profile_ref
+        )
     domain_snapshot = DomainContractDescriptor.model_validate(
         domain_contract.model_dump(mode="json")
     )
