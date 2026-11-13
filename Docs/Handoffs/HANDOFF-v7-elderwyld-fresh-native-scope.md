@@ -88,3 +88,26 @@ gap affects a required acceptance witness.
 This scope clarification is the proposed V7 disposition for independent
 review before V8 execution. It does not accept V8, claim a bridge passed, or
 authorize a restart, ingestion rerun, archive restore, live write or cutover.
+
+## Scoped V7 disposition
+
+The current Buddy deployment serves the canonical managed and native
+Elderwyld space. The operator selected fresh ingestion for this deployment
+and excluded the retired World and its bridge from this scope.
+
+The replacement V7 evidence covers the published Elderwyld graph at
+`rev:9a457bfed6bc517af83a7a719644970c`. Core reconciled all 280 revisions in
+that head's lineage against publication receipts. Buddy's refresh ledger
+and timeline census reconcile 47 sessions to admitted native source
+revisions, with an exact citation witness per session.
+
+| Obligation | Disposition and owner |
+| --- | --- |
+| Legacy export and mapping | Outside the operator-selected scope. The original bridge gates retain their existing disposition. |
+| Published lineage | Core owns the 280-revision receipt reconciliation. Historical payload replay beyond the sampled pins remains unverified. |
+| Source and body coverage | Buddy and source owners own the 47-session reconciliation. Candidate publication and review beyond the recorded witnesses remain unverified. |
+| Serving identity | Buddy owns build and route attestation. The observed binding and head establish World identity. Exact serving build attestation is V8/V9 evidence. |
+
+This scoped record supports V8 entry. Joint acceptance, serving
+cutover, rollback rehearsal, and historical compatibility verification
+retain their own evidence requirements.
