@@ -252,3 +252,20 @@ Both routes report truncation and reopen their selected evidence.
 The capped citation identities differ. V8 joint acceptance must
 disposition that difference for Elderwyld. This synthetic comparison
 does not measure citation selection on the serving deployment.
+
+## Elderwyld neighborhood citations at the default bound
+
+The authenticated depth-two neighborhood request on the isolated Elderwyld
+restore pinned revision `rev:2320336c2bf9b6d3f5cf514f8e2dc9b6` and used
+Buddy's default 24-anchor bound. It returned eight nodes, eight relationships,
+and ten readable anchors. Coverage reported node truncation only.
+
+All ten anchors reopened at the requested revision. Hashes of the returned
+content matched the stored span SHA-256 for the same evidence IDs in the
+isolated Core database. Five matched base span records and five matched
+extension receipts. The listener used the same Buddy checkout and installed
+Core package documented in the default-bound search witness above.
+
+This verifies exact reopening for this request. The separate one-anchor
+paired fixture still demonstrates different citation selection under
+truncation. V8 joint acceptance remains open.
