@@ -111,6 +111,17 @@ reviewed label and context. Both tested player views omitted the edge.
 These observations characterize the respective routes. Same-surface
 display parity and disposition of the cold neighborhood cost remain open.
 
+## Complete-object assertion ledger diagnostic
+
+On Buddy `ad0eeea558a0b03f82b2cb7f873d21eedb5372ec` with installed Core
+`45d04fb6691cb084b1d50feb1ddb7ab18f15a95d`, a mounted HTTP probe against
+disposable PostgreSQL verified the shared location and directed relationship,
+source attribution and excerpt, and foreign-campaign citation withholding.
+The classic fixture returned one GM-scoped existence fact. The native fixture
+returned GM-scoped classification and name beliefs. Both ledgers matched
+their fixture expectations. The fixtures encode different assertions, so
+this run supplies no equivalent-work complete-object timing.
+
 ## Proposed disposition for Elderwyld
 
 Preserve the reviewed label and context in the native complete-object
