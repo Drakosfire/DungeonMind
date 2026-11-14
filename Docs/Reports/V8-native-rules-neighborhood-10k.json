@@ -1,0 +1,88 @@
+{
+  "parsed_semantic_digest": "93d2b8df2f27bc4ed5a33c068577735ae7bf4e510946879ef8bfc5a2a8debc34",
+  "workload_digest": "32a4eca80a5071f9919c84f93c3e4b5bc6f9f8fc58867babaac727ee7813625e",
+  "entity_count": 12043,
+  "assertion_count": 24038,
+  "core": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
+  "iterations": 40,
+  "ring_edges": 10000,
+  "rows": [
+    {
+      "p50_ms": 0.308899994706735,
+      "p95_ms": 0.3996460000053048,
+      "requested_seeds": [
+        "ent:decoy-00000"
+      ],
+      "requested_depth": 1,
+      "found_seed_entity_ids": [
+        "ent:decoy-00000"
+      ],
+      "missing_seed_entity_ids": [],
+      "returned_entity_count": 3,
+      "returned_traversal_assertion_count": 2,
+      "seed_entity_lookups": 1,
+      "frontier_entities_expanded": 1,
+      "touching_assertion_candidates": 2,
+      "deduped_candidate_assertions": 2,
+      "assertions_evaluated": 2,
+      "policy_evaluations": 2,
+      "endpoint_entity_lookups": 2,
+      "evidence_ids_returned": 2,
+      "artifact_ids_requested": 2,
+      "revision_ids_requested": 2,
+      "provenance_snapshot_calls": 1,
+      "layers": [
+        {
+          "layer": 1,
+          "frontier_entities_expanded": 1,
+          "touching_assertion_candidates": 2,
+          "deduped_candidate_assertions": 2,
+          "assertions_evaluated": 2
+        }
+      ],
+      "result_digest": "cf9e955259ba553b299e0cd05c0cdd4795414653bc68cda03a68e56e87640dd7"
+    },
+    {
+      "p50_ms": 0.5584480095421895,
+      "p95_ms": 0.6881699955556542,
+      "requested_seeds": [
+        "ent:decoy-00000"
+      ],
+      "requested_depth": 2,
+      "found_seed_entity_ids": [
+        "ent:decoy-00000"
+      ],
+      "missing_seed_entity_ids": [],
+      "returned_entity_count": 5,
+      "returned_traversal_assertion_count": 4,
+      "seed_entity_lookups": 1,
+      "frontier_entities_expanded": 3,
+      "touching_assertion_candidates": 6,
+      "deduped_candidate_assertions": 4,
+      "assertions_evaluated": 4,
+      "policy_evaluations": 4,
+      "endpoint_entity_lookups": 4,
+      "evidence_ids_returned": 2,
+      "artifact_ids_requested": 2,
+      "revision_ids_requested": 2,
+      "provenance_snapshot_calls": 2,
+      "layers": [
+        {
+          "layer": 1,
+          "frontier_entities_expanded": 1,
+          "touching_assertion_candidates": 2,
+          "deduped_candidate_assertions": 2,
+          "assertions_evaluated": 2
+        },
+        {
+          "layer": 2,
+          "frontier_entities_expanded": 2,
+          "touching_assertion_candidates": 4,
+          "deduped_candidate_assertions": 2,
+          "assertions_evaluated": 2
+        }
+      ],
+      "result_digest": "fa440bc24fd7b007d530ef5f1a924aae3b3b8a0afa11542ddb325d16cc375e02"
+    }
+  ]
+}
