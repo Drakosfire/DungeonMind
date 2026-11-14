@@ -275,5 +275,23 @@
     "Reconcile semantic fixture outcome digests at candidate pins",
     "Decide cold neighborhood disposition",
     "Record joint acceptance"
-  ]
+  ],
+  "candidate_core_semantic_outputs": {
+    "core": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
+    "adversarial_identity": {
+      "standings": {
+        "asrt:belief-owns": "provisional",
+        "asrt:fact-owns": "established",
+        "asrt:retracted-rumor": "retracted",
+        "asrt:plan-transfer": "provisional"
+      },
+      "standings_sha256": "28a24f76327f7fcf929ff8c6fbb4015a7a4099eea72e825f427e0cc7d3af7420"
+    },
+    "organizational_memory": {
+      "fixture_variant": "_org_with_isolated_entity",
+      "exact_priya": "34c2a1c284b9871ca92754dffbb82c9134ecbe2a60e3100f45c0b7efadf63646",
+      "complete_priya": "73074194f4517cbee3e7fec8f2b0d00daf91173b5795f7f5381e733c16625368",
+      "complete_retrieval_evaluation": "6a4dcc5aaa590b5abb1ab55e05dff04dc6c0f97a915855ce48857e926fdad6dd"
+    }
+  }
 }
