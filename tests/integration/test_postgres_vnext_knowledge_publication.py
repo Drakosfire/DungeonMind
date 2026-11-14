@@ -15,6 +15,7 @@ from dungeonmind.application.vnext.errors import (
 )
 from dungeonmind.application.vnext.publication import publish_governed_materialization
 from dungeonmind.application.vnext.records import StoredKnowledgeRevision
+from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import (
     ImmutableRevisionConflictError,
     PersistenceIntegrityError,
@@ -489,11 +490,19 @@ def test_conflicting_envelope_and_corrupt_rows_fail_closed(migrated_database: st
         conn.execute(
             """
             UPDATE dungeonmind.knowledge_revisions
-            SET graph_payload = %s
+            SET graph_payload = %s, record_fingerprint = %s
             WHERE space_id = %s AND revision_id = %s
             """,
-            (jsonb({"tampered": True}), SPACE, expected.revision_id),
+            (
+                jsonb({"tampered": True}),
+                canonical_sha256({
+                    "graph_payload": {"tampered": True},
+                    "revision": planted.model_dump(mode="json"),
+                }),
+                SPACE,
+                expected.revision_id,
+            ),
         )
         conn.commit()
-    with pytest.raises(PersistenceIntegrityError):
+    with pytest.raises(PersistenceIntegrityError, match="stored graph payload hash mismatch"):
         repo.get_revision(SPACE, expected.revision_id)
