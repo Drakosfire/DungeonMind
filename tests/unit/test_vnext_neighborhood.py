@@ -993,3 +993,15 @@ def fixture_org_context() -> tuple[KnowledgeReadContext, InMemoryKnowledgeSource
         contract_digest=ORG_CONTRACT_DIGEST,
         profile_digest=ORG_PROFILE_DIGEST,
     )
+
+
+def test_admitted_seed_mode_withholds_hidden_seed_like_absent_seed():
+    context, _ = _privacy_lab()
+    for seed in ("secret", "absent"):
+        result = _SVC.get_neighborhood(context, [seed], depth=2, require_admitted_seeds=True)
+        assert result.found_seed_entity_ids == ()
+        assert result.missing_seed_entity_ids == (seed,)
+        assert result.entities == result.traversal_assertions == result.evidence == ()
+    result = _SVC.get_neighborhood(context, ["seed"], depth=2, require_admitted_seeds=True)
+    assert result.found_seed_entity_ids == ("seed",)
+    assert _ids(result) == {"seed", "public"}
