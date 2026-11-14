@@ -73,3 +73,33 @@ V8 remains open. The paired timing covers one synthetic selected-object
 workload. The retained native listing and classic full projection have
 different result contracts and timing boundaries. The Core operation
 comparisons and canonical joint artifact remain prerequisites for V9.
+
+## Fresh-native Elderwyld replay at the serving head
+
+V8 remains open. Buddy #3370 merged at
+`02b613c68727e9be852cd86065b0476ea8ba5a7a` with Core
+`ab330d49864738ae54157fcaf2c95071ff072180`. The restored Elderwyld
+head `rev:2320336c2bf9b6d3f5cf514f8e2dc9b6` reconciled 288 revisions
+to one root, with one matching receipt and publish event per revision.
+
+The authenticated candidate managed projection returned 3,008 nodes at
+the head and 3,007 at parent `rev:643a89642dcd9ab74a63056fb0fa1e1c`,
+with 2,651 relationships at both pins. The head response digest matched
+across standalone HTTP and in-process HTTP. One retained citation opened
+the same 1,276 bytes at both pins. Anonymous requests returned 401.
+A separate authenticated scope check rejected stale binding and unrelated
+campaign requests with 409 and withheld source content.
+
+The serving build returned `revision_not_bridged` for managed projection
+at the live native head. Both managed projection and shared complete-object
+returned 404, then 200, then 404 when their candidate dispatch flags were
+toggled off, on, and off against the isolated restore. A deployment
+rollback rehearsal remains required. The restored classic head is empty,
+so use matched synthetic workloads for comparative timing.
+
+Buddy #3370 restored related-object search matching. A paired 10k
+PostgreSQL fixture returned the same two mapped hits in order for one
+exact-label query. The broader V8 matrix still needs semantic-equivalent
+comparisons, including evidence and setup parity for neighborhood reads,
+full projection attribution and provenance, and governed tiny-delta
+publication. No joint acceptance or serving cutover is recorded here.
