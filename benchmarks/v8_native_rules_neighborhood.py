@@ -5,10 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
-import subprocess
 import time
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any, Literal
 
 from dungeonmind.application.vnext.admission import AlwaysAdmitPolicy
@@ -41,24 +39,10 @@ from dungeonmind.contracts.vnext.projection import ProjectionRequest
 from dungeonmind.contracts.vnext.source import EvidenceRefV3, SourceArtifactV3, SourceRevisionV2
 from dungeonmind.domain.canonical import canonical_sha256
 
-KNOWN_MERGE_BASE = "82a5c3e6889ad4e5648fef8f358423b5a576cb9b"
 HIGH_DEGREE = 30
 NOISY_LITERALS = 2_000
 DEPTH_BOUNDARY_EDGES = 2_000
 SOURCE_ARTIFACT_COUNT = 250
-
-
-def _git_head() -> str:
-    return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-
-
-def _git_merge_base() -> str:
-    try:
-        return subprocess.check_output(
-            ["git", "merge-base", "HEAD", "origin/main"], text=True
-        ).strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return KNOWN_MERGE_BASE
 
 
 def _domain_and_profile() -> tuple[DomainContractDescriptor, SemanticProfileDescriptorV2]:
