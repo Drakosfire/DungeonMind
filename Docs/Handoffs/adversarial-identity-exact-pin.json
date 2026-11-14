@@ -1,0 +1,11 @@
+{
+  "core": "b1fadd145a90565ae5938837e5bd67b6dc6e004b",
+  "fixture_sha256": "1a4fbd8f9e9dd1052bc3497ac3528a68db4fe9ea4596957b242940a2f4eb8717",
+  "standings": {
+    "asrt:belief-owns": "provisional",
+    "asrt:fact-owns": "established",
+    "asrt:plan-transfer": "provisional",
+    "asrt:retracted-rumor": "retracted"
+  },
+  "result_sha256": "28a24f76327f7fcf929ff8c6fbb4015a7a4099eea72e825f427e0cc7d3af7420"
+}

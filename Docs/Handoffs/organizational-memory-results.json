@@ -1,0 +1,7 @@
+{
+  "core_package_commit": "41c74076a27abfcbbf7a8c84ede0f784fd75a3dd",
+  "fixture": "organizational_memory_v1.json",
+  "exact_priya": "8e79dda83ababbd74f01b6a8a12c63653078ae6abd8101f6affa02e43811c558",
+  "complete_priya": "a0af1cd8c578ff9e61b8a8ecce0943fb67ade313a4b685bf50be9745a7e020eb",
+  "complete_retrieval_evaluation": "772747b0597a119f6b873eb61008bc85e6ba73ffd38e2947337560a4fef7582c"
+}
