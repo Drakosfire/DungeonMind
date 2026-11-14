@@ -17,6 +17,7 @@ from dungeonmind.domain.canonical import canonical_sha256
 
 from .admission import (
     AdmissionWorkCounts,
+    AlwaysAdmitPolicy,
     CandidateAdmissionResult,
     CandidateExclusion,
     DomainAdmissionPolicy,
@@ -241,7 +242,8 @@ class KnowledgeReadContext:
                 )
             if reason is None:
                 policy_evaluations += 1
-                if not self.domain_policy.narrow(
+                # The exact built-in policy never inspects or mutates callback inputs.
+                if type(self.domain_policy) is not AlwaysAdmitPolicy and not self.domain_policy.narrow(
                     assertion=copy.deepcopy(assertion),
                     request=request.model_copy(deep=True),
                     domain_contract=domain_contract.model_copy(deep=True),
