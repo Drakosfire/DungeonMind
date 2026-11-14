@@ -294,8 +294,12 @@
     "profile_sha256": "88daff5cf39e36b5d749b031523d0f126d98fe31d2a592b79ff37adf22ce82de"
   },
   "open": [
-    "Decide cold neighborhood disposition",
-    "Record joint acceptance"
+    "Core and Buddy: disposition cold neighborhood latency for Elderwyld",
+    "Buddy: disposition complete-object presentation differences",
+    "Buddy: disposition default-bound search coverage and secondary ordering",
+    "Buddy: disposition capped citation selection while preserving exact reopening",
+    "Core: complete matched Rules-like performance evidence and record the largest practical scale rung",
+    "Core and Buddy: record joint acceptance and pin the cutover candidate"
   ],
   "candidate_core_semantic_outputs": {
     "core": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
