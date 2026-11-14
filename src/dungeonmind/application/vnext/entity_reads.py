@@ -114,6 +114,17 @@ class EntityListResult:
 
 
 @dataclass(frozen=True, slots=True)
+class EntityListWithSupportResult:
+    """Authorized bulk graph membership and its reachable provenance."""
+
+    listing: EntityListResult
+    aliases: tuple[ParsedIdentityAlias, ...]
+    evidence: tuple[ParsedEvidenceRef, ...]
+    source_artifacts: tuple[EntityReadSourceArtifact, ...]
+    source_revisions: tuple[EntityReadSourceRevision, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class EntityLookupResult:
     identity: EntityReadIdentity
     found: bool
@@ -625,8 +636,14 @@ class EntityReadService:
 
     def list_entities(self, context: KnowledgeReadContext) -> EntityListResult:
         """Enumerate admitted presence once, without search, ranking or a result cap."""
+        listing, _ = self._list_entities(context)
+        return listing
+
+    def _list_entities(
+        self, context: KnowledgeReadContext
+    ) -> tuple[EntityListResult, KnowledgeProvenanceSnapshot]:
         parsed = context.parsed
-        admission, _ = context.evaluate_candidates(tuple(parsed.assertions_by_id))
+        admission, provenance = context.evaluate_candidates(tuple(parsed.assertions_by_id))
         identifiers: set[str] = set()
         for assertion_id in admission.admitted_assertion_ids:
             assertion = parsed.get_assertion(assertion_id)
@@ -665,20 +682,50 @@ class EntityReadService:
             admitted_assertion_ids=admission.admitted_assertion_ids,
             completeness=completeness,
             result_digest=digest,
-        )
+        ), provenance
 
     def list_entities_with_aliases(
         self, context: KnowledgeReadContext
     ) -> tuple[EntityListResult, tuple[ParsedIdentityAlias, ...]]:
         """List authorized entities and their authorized aliases in one read context."""
         listing = self.list_entities(context)
+        aliases, _ = self._listing_aliases(context, listing)
+        return listing, aliases
+
+    def list_entities_with_support(
+        self, context: KnowledgeReadContext
+    ) -> EntityListWithSupportResult:
+        """Assemble authorized support without fetching another provenance snapshot."""
+        listing, provenance = self._list_entities(context)
+        aliases, alias_provenance = self._listing_aliases(context, listing)
+        evidence_ids = [
+            evidence_id
+            for assertion_id in listing.admitted_assertion_ids
+            for evidence_id in context.parsed.assertion_evidence.get(assertion_id, ())
+        ]
+        evidence_ids.extend(
+            evidence_id for alias in aliases for evidence_id in alias.evidence_ref_ids
+        )
+        evidence, artifacts, revisions = _support_for_evidence_ids(
+            context=context,
+            evidence_ids=evidence_ids,
+            provenance=(
+                (provenance, alias_provenance) if alias_provenance is not None else provenance
+            ),
+        )
+        return EntityListWithSupportResult(listing, aliases, evidence, artifacts, revisions)
+
+    @staticmethod
+    def _listing_aliases(
+        context: KnowledgeReadContext, listing: EntityListResult
+    ) -> tuple[tuple[ParsedIdentityAlias, ...], KnowledgeProvenanceSnapshot | None]:
         candidates = tuple(
             alias
             for entity in listing.entities
             for alias in context.parsed.get_entity_aliases(entity.entity_id)
         )
-        aliases, *_ = _authorize_aliases(context=context, candidates=candidates)
-        return listing, aliases
+        aliases, provenance, *_ = _authorize_aliases(context=context, candidates=candidates)
+        return aliases, provenance
 
     def get_entity(self, context: KnowledgeReadContext, entity_id: str) -> EntityLookupResult:
         result = _assemble(context=context, entity_id=entity_id, include_touching=False)
