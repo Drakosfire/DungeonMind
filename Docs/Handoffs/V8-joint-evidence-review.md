@@ -110,3 +110,23 @@ predicate alone, while the native complete-object DTO retained the
 reviewed label and context. Both tested player views omitted the edge.
 These observations characterize the respective routes. Same-surface
 display parity and disposition of the cold neighborhood cost remain open.
+
+## Proposed disposition for Elderwyld
+
+Preserve the reviewed label and context in the native complete-object
+response. The classic evidence response displayed only the predicate
+after publication. Both write trials preserved existing endpoints,
+relationship direction, exact cited bytes and replay. Both tested player
+views omitted the edge. The route timings characterize those observed
+outputs. Full read DTO equivalence is unverified.
+
+Carry the observed cold neighborhood cost as an explicit rollout tradeoff
+for this scope, subject to joint acceptance. The paired 10k sample took
+2.12 seconds native versus 0.54 seconds classic on first read, with exact
+citation parity. Native repeat reads took 378–387 ms. At V11, record cold
+and repeat latency at the deployed Buddy and installed Core pins, with
+the World binding, revision, and hop depth held fixed. Verify ordered
+results and reopened citation bytes in both conditions. Include revision
+reconstruction and context preparation in the performance handoff.
+
+V8 remains open pending joint acceptance of these dispositions.
