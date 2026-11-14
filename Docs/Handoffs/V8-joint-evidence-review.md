@@ -122,6 +122,18 @@ returned GM-scoped classification and name beliefs. Both ledgers matched
 their fixture expectations. The fixtures encode different assertions, so
 this run supplies no equivalent-work complete-object timing.
 
+## Bounded search timing
+
+On Buddy `ad0eeea558a0b03f82b2cb7f873d21eedb5372ec` with installed Core
+`45d04fb6691cb084b1d50feb1ddb7ab18f15a95d`, the paired 10k PostgreSQL
+fixture queried `Object 1001` with `Object 0` as the seed and a two-node cap.
+Both routes returned those two labels in that order and reopened the same
+citation at the requested revision. Three in-process HTTP samples were
+1044, 1077 and 1014 ms classic and 416, 590 and 437 ms native.
+Classic reported truncated coverage and native reported a partial result.
+At an eight-node cap the secondary results differed. The timing comparison
+covers the two-node request and its verified outputs.
+
 ## Proposed disposition for Elderwyld
 
 Preserve the reviewed label and context in the native complete-object
