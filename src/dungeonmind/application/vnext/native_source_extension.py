@@ -128,9 +128,6 @@ def extension_plan(
         access.body_sha256,
     ) != (request.source_artifact_id, request.source_revision_id, request.expected_body_sha256):
         _fail("extension_source_inaccessible")
-    _require_original_ancestor(
-        repository, request.space_id, root.published_revision_id, head.head_revision_id
-    )
     if access.body_text is None:
         _fail("extension_source_body_missing")
     body = access.body_text.encode("utf-8")
@@ -156,6 +153,10 @@ def extension_plan(
             raise KnowledgePublicationIdempotencyConflictError(
                 space_id=request.space_id, publication_id=request.extension_id
             )
+    if head.head_revision_id != request.expected_parent_revision_id:
+        _require_original_ancestor(
+            repository, request.space_id, root.published_revision_id, head.head_revision_id
+        )
     parent = repository.get_revision(request.space_id, request.expected_parent_revision_id)
     if parent is None or parent.revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA:
         _fail("extension_parent_missing")
