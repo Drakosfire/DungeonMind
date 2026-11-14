@@ -202,6 +202,7 @@ class KnowledgeReadContext:
         admitted: list[str] = []
         excluded: list[CandidateExclusion] = []
         policy_evaluations = 0
+        uses_custom_policy = type(self.domain_policy) is not AlwaysAdmitPolicy
 
         for assertion_id in evaluation_order:
             assertion = self.parsed.get_assertion(assertion_id)
@@ -243,7 +244,7 @@ class KnowledgeReadContext:
             if reason is None:
                 policy_evaluations += 1
                 # The exact built-in policy never inspects or mutates callback inputs.
-                if type(self.domain_policy) is not AlwaysAdmitPolicy and not self.domain_policy.narrow(
+                if uses_custom_policy and not self.domain_policy.narrow(
                     assertion=copy.deepcopy(assertion),
                     request=request.model_copy(deep=True),
                     domain_contract=domain_contract.model_copy(deep=True),
