@@ -235,3 +235,20 @@ This fixture has source revision metadata and external locators only.
 The comparison does not report a latency ratio. PR #200's separate native
 ring diagnostic measures pre-parsed neighborhood work on a different
 topology. V8 acceptance remains open.
+
+## Paired neighborhood citation selection
+
+An isolated PostgreSQL test exercised both mounted Buddy neighborhood
+routes on a synthetic 10k fixture with the same two hops and two eligible
+paragraph citations. Both returned one anchor and reported truncation
+with a one-anchor cap. Classic selected paragraph 1 and reopened 38
+bytes (SHA-256 `a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc`).
+Native selected paragraph 2 and reopened 34 bytes including CRLF
+(SHA-256 `83ed4c58230152e6ad69a9000a9a088cd978ef848fdafdfea6d9af1d315add36`).
+The test verified each reopen against its selected paragraph at the
+requested revision and dropped the disposable native test database.
+
+Both routes report truncation and reopen their selected evidence.
+The capped citation identities differ. V8 joint acceptance must
+disposition that difference for Elderwyld. This synthetic comparison
+does not measure citation selection on the serving deployment.
