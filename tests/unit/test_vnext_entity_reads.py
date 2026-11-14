@@ -2006,6 +2006,9 @@ def test_v6_k1_alias_admission_fails_closed(
         context_factory(), "entity:organization:ada-lab"
     )
     assert len(result.aliases) == expected_aliases
+    listing, aliases = _SVC.list_entities_with_aliases(context_factory())
+    assert not listing.entities
+    assert not aliases
 
 
 def test_v6_k1_evidence_less_alias_returns_without_alias_source_work() -> None:

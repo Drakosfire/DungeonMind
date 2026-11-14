@@ -340,7 +340,7 @@ def _support_for_admitted(
 def _authorize_aliases(
     *,
     context: KnowledgeReadContext,
-    entity_id: str,
+    candidates: tuple[ParsedIdentityAlias, ...],
 ) -> tuple[
     tuple[ParsedIdentityAlias, ...],
     KnowledgeProvenanceSnapshot | None,
@@ -351,7 +351,6 @@ def _authorize_aliases(
     int,
 ]:
     parsed = context.parsed
-    candidates = parsed.get_entity_aliases(entity_id)
     request = context.request
     standing = frozenset(request.standing_selector)
     standing_eligible = tuple(alias for alias in candidates if alias.standing in standing)
@@ -541,7 +540,7 @@ def _assemble(
             alias_artifact_ids_requested,
             alias_revision_ids_requested,
             alias_snapshot_calls,
-        ) = _authorize_aliases(context=context, entity_id=entity_id)
+        ) = _authorize_aliases(context=context, candidates=parsed.get_entity_aliases(entity_id))
 
     support_evidence_ids = [
         evidence_id
@@ -667,6 +666,19 @@ class EntityReadService:
             completeness=completeness,
             result_digest=digest,
         )
+
+    def list_entities_with_aliases(
+        self, context: KnowledgeReadContext
+    ) -> tuple[EntityListResult, tuple[ParsedIdentityAlias, ...]]:
+        """List authorized entities and their authorized aliases in one read context."""
+        listing = self.list_entities(context)
+        candidates = tuple(
+            alias
+            for entity in listing.entities
+            for alias in context.parsed.get_entity_aliases(entity.entity_id)
+        )
+        aliases, *_ = _authorize_aliases(context=context, candidates=candidates)
+        return listing, aliases
 
     def get_entity(self, context: KnowledgeReadContext, entity_id: str) -> EntityLookupResult:
         result = _assemble(context=context, entity_id=entity_id, include_touching=False)
