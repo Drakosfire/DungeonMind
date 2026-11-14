@@ -37,6 +37,7 @@ from dungeonmind.contracts.vnext.knowledge import (
 )
 from dungeonmind.contracts.vnext.native_source import (
     NativeSourceAdmissionReceiptV1,
+    GovernedNativeSourceEvidenceExtensionReceiptV1,
     NativeSourceEvidenceExtensionReceiptV1,
     NativeSourceEvidenceExtensionV1,
     NativeTextSourceAdmissionBindingV1,
@@ -103,7 +104,13 @@ def _read_extension(
     if row is None:
         return None
     try:
-        receipt = NativeSourceEvidenceExtensionReceiptV1.model_validate(row["receipt_payload"])
+        payload = row["receipt_payload"]
+        receipt_type = (
+            GovernedNativeSourceEvidenceExtensionReceiptV1
+            if "result_bindings" in payload
+            else NativeSourceEvidenceExtensionReceiptV1
+        )
+        receipt = receipt_type.model_validate(payload)
     except Exception as exc:
         raise PersistenceIntegrityError("extension receipt reconstruction failed") from exc
     if canonical_sha256(receipt.model_dump(mode="json")) != row["record_fingerprint"]:

@@ -14,6 +14,7 @@ from dungeonmind.contracts.vnext.domain import (
 )
 from dungeonmind.contracts.vnext.knowledge import PublishKnowledgeRevisionCommand
 from dungeonmind.contracts.vnext.native_source import (
+    GovernedNativeSourceEvidenceExtensionReceiptV1,
     GovernedNativeSourceEvidenceExtensionV1,
     NativeSourceAdmissionReceiptV1,
     NativeSourceEvidenceExtensionReceiptV1,
@@ -21,6 +22,7 @@ from dungeonmind.contracts.vnext.native_source import (
     NativeTextSourceAdmissionBindingV1,
     NativeUtf8SpanProofV1,
 )
+from dungeonmind.contracts.vnext.prospective import ProspectiveResultBinding
 from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
 from dungeonmind.contracts.vnext.source import EvidenceRefV3
 from dungeonmind.domain.canonical import canonical_sha256
@@ -53,6 +55,7 @@ class ExtensionPlan:
     proofs: tuple[NativeUtf8SpanProofV1, ...]
     bindings: tuple[NativeTextSourceAdmissionBindingV1, ...]
     intent_sha256: str
+    result_bindings: tuple[ProspectiveResultBinding, ...] | None = None
 
 
 def extension_intent(
@@ -236,11 +239,12 @@ def extension_plan(
         migration_origin_ref=parent.revision.migration_origin_ref,
         created_at=request.created_at,
     )
+    result_bindings = None
     if isinstance(request, GovernedNativeSourceEvidenceExtensionV1):
         parsed_parent = build_parsed_knowledge_revision(
             revision=parent.revision, decoded_content=content,
         )
-        materialization, _ = _plan_prospective_publication(
+        materialization, resolved = _plan_prospective_publication(
             parent=parsed_parent,
             prospective_contribution=request.contribution,
             dispositions=request.dispositions,
@@ -255,7 +259,8 @@ def extension_plan(
             admitted_evidence=tuple(evidence[binding.evidence_ref_id] for binding in bindings),
         )
         command = materialization.command
-    plan = ExtensionPlan(command, root, tuple(proofs), tuple(bindings), intent)
+        result_bindings = resolved.committed_result_bindings
+    plan = ExtensionPlan(command, root, tuple(proofs), tuple(bindings), intent, result_bindings)
     if prior is not None:
         verify_extension_receipt(repository, prior, plan)
         return prior.model_copy(deep=True)
@@ -265,7 +270,7 @@ def extension_plan(
 def make_extension_receipt(
     plan: ExtensionPlan, epoch: int, publication_receipt: KnowledgePublicationReceipt
 ) -> NativeSourceEvidenceExtensionReceiptV1:
-    return NativeSourceEvidenceExtensionReceiptV1(
+    receipt = NativeSourceEvidenceExtensionReceiptV1(
         space_id=plan.root.space_id,
         extension_id=publication_receipt.publication_id,
         original_admission_id=plan.root.admission_id,
@@ -278,6 +283,11 @@ def make_extension_receipt(
         bindings=list(plan.bindings),
         proofs=list(plan.proofs),
         publication_receipt=publication_receipt,
+    )
+    if plan.result_bindings is None:
+        return receipt
+    return GovernedNativeSourceEvidenceExtensionReceiptV1(
+        **receipt.model_dump(), result_bindings=list(plan.result_bindings),
     )
 
 

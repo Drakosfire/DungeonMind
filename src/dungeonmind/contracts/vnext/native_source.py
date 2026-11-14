@@ -17,7 +17,7 @@ from .common import (
     _unique,
 )
 from .contribution import ContributionDisposition
-from .prospective import ProspectiveKnowledgeContribution
+from .prospective import ProspectiveKnowledgeContribution, ProspectiveResultBinding
 from .publication import KnowledgePublicationReceipt
 
 MAX_NATIVE_TEXT_BYTES = 1_048_576
@@ -274,3 +274,10 @@ class NativeSourceEvidenceExtensionReceiptV1(DungeonMindModel):
             ) or p.source_revision_id != self.source_revision_id:
                 raise ValueError("extension proof binding mismatch")
         return self
+
+
+
+class GovernedNativeSourceEvidenceExtensionReceiptV1(NativeSourceEvidenceExtensionReceiptV1):
+    """Exact span proof and durable graph allocations from the same commit."""
+
+    result_bindings: list[ProspectiveResultBinding]

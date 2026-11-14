@@ -463,7 +463,6 @@ def governed_extension(repo, root):
         identity_kind="evidence", client_ref="new",
     )
     assertion = deepcopy(stored.graph_payload["assertions"][0])
-    assertion["assertion_id"] = "assertion:combined"
     assertion["metadata"]["evidence_ref_ids"] = [evidence_id]
     return GovernedNativeSourceEvidenceExtensionV1.model_validate({
         **request.model_dump(),
@@ -473,7 +472,13 @@ def governed_extension(repo, root):
             "producer": "test:author",
             "produced_at": request.created_at,
             "status": "finalized",
-            "items": [{"kind": "propose_assertion", "item_id": "item:combined", "assertion": assertion}],
+            "items": [{
+                "kind": "create_assertion", "item_id": "item:combined",
+                "client_op_id": "combined",
+                "subject": {"kind": "durable_entity", "entity_id": assertion["subject_entity_id"]},
+                "predicate": assertion["predicate"], "value": assertion["value"],
+                "metadata": assertion["metadata"],
+            }],
         },
         "dispositions": [{"item_id": "item:combined", "disposition": "accepted"}],
     })
@@ -486,7 +491,12 @@ def exercise_governed_extension(repo, reopen):
     evidence_id = receipt.bindings[0].evidence_ref_id
     child = repo.get_revision(root.space_id, receipt.publication_receipt.published_revision_id)
     assert child.revision.parent_revision_id == request.expected_parent_revision_id
-    assertion = next(a for a in child.graph_payload["assertions"] if a["assertion_id"] == "assertion:combined")
+    binding, = receipt.result_bindings
+    assert binding.client_op_id == "combined"
+    assert binding.result_kind == "assertion"
+    assertion = next(
+        a for a in child.graph_payload["assertions"] if a["assertion_id"] == binding.durable_id
+    )
     assert assertion["metadata"]["evidence_ref_ids"] == [evidence_id]
     assert access(repo, domain, root, evidence_id).status == "available"
     assert publish(reopen(), domain, profile, request) == receipt

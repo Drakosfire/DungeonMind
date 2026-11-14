@@ -289,7 +289,7 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
             receipt, fingerprint = value
             if canonical_sha256(receipt.model_dump(mode="json")) != fingerprint:
                 raise PersistenceIntegrityError("extension receipt fingerprint drift")
-            return NativeSourceEvidenceExtensionReceiptV1.model_validate(
+            return type(receipt).model_validate(
                 receipt.model_dump(mode="json")
             )
 
