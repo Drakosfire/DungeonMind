@@ -149,6 +149,7 @@ def materialize_governed_revision(
     publication: GovernedPublicationIdentity,
     domain_contract: DomainContractDescriptor,
     semantic_profile: SemanticProfileDescriptorV2,
+    admitted_evidence: Sequence[EvidenceRefV3] = (),
 ) -> GovernedMaterializationResult:
     """Materialize one validated native child graph and publish command."""
     validate_started = time.perf_counter()
@@ -178,6 +179,10 @@ def materialize_governed_revision(
     }
     aliases = {alias.alias_id: alias for alias in _aliases_from_parsed(parent)}
     evidence = {ref.evidence_ref_id: ref for ref in _evidence_from_parsed(parent)}
+    for ref in admitted_evidence:
+        if ref.evidence_ref_id in evidence:
+            _fail("child_evidence_identity_collision")
+        evidence[ref.evidence_ref_id] = ref
 
     for item in contribution.items:
         if disposition_by_item[item.item_id].disposition != "accepted":

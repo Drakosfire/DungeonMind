@@ -16,6 +16,8 @@ from .common import (
     VisibilityRequirement,
     _unique,
 )
+from .contribution import ContributionDisposition
+from .prospective import ProspectiveKnowledgeContribution, ProspectiveResultBinding
 from .publication import KnowledgePublicationReceipt
 
 MAX_NATIVE_TEXT_BYTES = 1_048_576
@@ -222,6 +224,13 @@ class NativeSourceEvidenceExtensionV1(DungeonMindModel):
         return self
 
 
+class GovernedNativeSourceEvidenceExtensionV1(NativeSourceEvidenceExtensionV1):
+    """An exact evidence extension committed with a governed graph change."""
+
+    contribution: ProspectiveKnowledgeContribution
+    dispositions: list[ContributionDisposition] = Field(min_length=1)
+
+
 class NativeSourceEvidenceExtensionReceiptV1(DungeonMindModel):
     """Immutable extension proof rooted in an original admission, never a replacement."""
 
@@ -265,3 +274,9 @@ class NativeSourceEvidenceExtensionReceiptV1(DungeonMindModel):
             ) or p.source_revision_id != self.source_revision_id:
                 raise ValueError("extension proof binding mismatch")
         return self
+
+
+class GovernedNativeSourceEvidenceExtensionReceiptV1(NativeSourceEvidenceExtensionReceiptV1):
+    """Exact span proof and durable graph allocations from the same commit."""
+
+    result_bindings: list[ProspectiveResultBinding]

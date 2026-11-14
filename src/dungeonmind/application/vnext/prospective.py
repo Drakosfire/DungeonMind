@@ -29,6 +29,7 @@ from dungeonmind.contracts.vnext.prospective import (
     ProspectiveKnowledgeContribution,
     ProspectiveResultBinding,
 )
+from dungeonmind.contracts.vnext.source import EvidenceRefV3
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import ImmutableRevisionConflictError, PersistenceIntegrityError
 
@@ -111,12 +112,9 @@ def validate_prospective_result_bindings(
     result_bindings: Sequence[ProspectiveResultBinding],
 ) -> None:
     """Verify port-supplied mappings before repository authority can mutate."""
-    entity_ids = {
-        item.get("entity_id") for item in command_graph_payload.get("entities", [])
-    }
+    entity_ids = {item.get("entity_id") for item in command_graph_payload.get("entities", [])}
     assertion_ids = {
-        item.get("assertion_id")
-        for item in command_graph_payload.get("assertions", [])
+        item.get("assertion_id") for item in command_graph_payload.get("assertions", [])
     }
     for binding in result_bindings:
         expected_id = allocate_prospective_result_id(
@@ -147,19 +145,12 @@ def validate_prospective_result_absent_from_parent(
     result_bindings: Sequence[ProspectiveResultBinding],
 ) -> None:
     """Preserve create-new semantics at the repository authority boundary."""
-    parent_entity_ids = {
-        item.get("entity_id") for item in parent_graph_payload.get("entities", [])
-    }
+    parent_entity_ids = {item.get("entity_id") for item in parent_graph_payload.get("entities", [])}
     parent_assertion_ids = {
-        item.get("assertion_id")
-        for item in parent_graph_payload.get("assertions", [])
+        item.get("assertion_id") for item in parent_graph_payload.get("assertions", [])
     }
     for binding in result_bindings:
-        parent_ids = (
-            parent_entity_ids
-            if binding.result_kind == "entity"
-            else parent_assertion_ids
-        )
+        parent_ids = parent_entity_ids if binding.result_kind == "entity" else parent_assertion_ids
         if binding.durable_id in parent_ids:
             _fail(
                 "identity_allocation_collision",
@@ -305,9 +296,7 @@ def resolve_prospective_contribution(
                     )
                 )
         else:
-            predicted_id = _find_allocated_id(
-                item.model_dump(mode="json"), allocated_ids
-            )
+            predicted_id = _find_allocated_id(item.model_dump(mode="json"), allocated_ids)
             if predicted_id is not None:
                 _fail(
                     "ordinary_item_targets_prospective_result",
@@ -351,7 +340,7 @@ def resolve_prospective_contribution(
     )
 
 
-def publish_prospective_contribution(
+def _plan_prospective_publication(
     *,
     parent: ParsedKnowledgeRevision,
     prospective_contribution: ProspectiveKnowledgeContribution,
@@ -360,9 +349,9 @@ def publish_prospective_contribution(
     publication_id: str,
     domain_contract: DomainContractDescriptor,
     semantic_profile: SemanticProfileDescriptorV2,
-    repository: KnowledgeRevisionRepository,
-) -> KnowledgeProspectivePublication:
-    """Resolve, validate, and atomically publish one prospective contribution."""
+    admitted_evidence: Sequence[EvidenceRefV3] = (),
+) -> tuple[GovernedMaterializationResult, ResolvedProspectiveContribution]:
+    """Resolve and validate the prospective graph change before persistence."""
     resolved = resolve_prospective_contribution(
         prospective_contribution=prospective_contribution,
         dispositions=dispositions,
@@ -377,6 +366,7 @@ def publish_prospective_contribution(
         publication=publication,
         domain_contract=domain_contract,
         semantic_profile=semantic_profile,
+        admitted_evidence=admitted_evidence,
     )
     command = materialization.command
     validate_prospective_result_bindings(
@@ -385,6 +375,31 @@ def publish_prospective_contribution(
         publication_id=publication_id,
         result_bindings=resolved.committed_result_bindings,
     )
+    return materialization, resolved
+
+
+def publish_prospective_contribution(
+    *,
+    parent: ParsedKnowledgeRevision,
+    prospective_contribution: ProspectiveKnowledgeContribution,
+    dispositions: Sequence[ContributionDisposition],
+    publication: GovernedPublicationIdentity,
+    publication_id: str,
+    domain_contract: DomainContractDescriptor,
+    semantic_profile: SemanticProfileDescriptorV2,
+    repository: KnowledgeRevisionRepository,
+) -> KnowledgeProspectivePublication:
+    """Resolve, validate, and atomically publish one prospective contribution."""
+    materialization, resolved = _plan_prospective_publication(
+        parent=parent,
+        prospective_contribution=prospective_contribution,
+        dispositions=dispositions,
+        publication=publication,
+        publication_id=publication_id,
+        domain_contract=domain_contract,
+        semantic_profile=semantic_profile,
+    )
+    command = materialization.command
     expected_revision_id = revision_from_command(command).revision_id
     try:
         aggregate = repository.publish_prospective_publication(

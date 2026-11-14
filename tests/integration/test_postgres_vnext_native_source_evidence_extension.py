@@ -16,9 +16,11 @@ from tests.unit.test_vnext_native_source_evidence_extension import (
     access,
     exercise_access_and_conflict,
     exercise_duplicates,
+    exercise_governed_extension,
     exercise_refusal,
     exercise_success,
     extension,
+    governed_extension,
     publish,
     setup_source,
 )
@@ -201,3 +203,22 @@ def test_populated_extension_authority_refuses_downgrade(pg):
             ]
             == "0021_native_source_withdrawal"
         )
+
+
+def test_postgres_governed_extension_commits_one_child_and_replays(pg):
+    exercise_governed_extension(repository(pg), lambda: repository(pg))
+
+
+def test_postgres_governed_extension_rolls_back_both_changes(pg):
+    repo = repository(pg)
+    domain, profile, _, root = setup_source(repo)
+    request = governed_extension(repo, root)
+    before = snapshot(pg)
+
+    def fail():
+        raise RuntimeError("injected combined publication failure")
+
+    repo._after_native_receipt_insert = fail
+    with pytest.raises(RuntimeError, match="injected combined"):
+        publish(repo, domain, profile, request)
+    assert snapshot(pg) == before

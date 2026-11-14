@@ -14,20 +14,25 @@ from dungeonmind.contracts.vnext.domain import (
 )
 from dungeonmind.contracts.vnext.knowledge import PublishKnowledgeRevisionCommand
 from dungeonmind.contracts.vnext.native_source import (
+    GovernedNativeSourceEvidenceExtensionReceiptV1,
+    GovernedNativeSourceEvidenceExtensionV1,
     NativeSourceAdmissionReceiptV1,
     NativeSourceEvidenceExtensionReceiptV1,
     NativeSourceEvidenceExtensionV1,
     NativeTextSourceAdmissionBindingV1,
     NativeUtf8SpanProofV1,
 )
+from dungeonmind.contracts.vnext.prospective import ProspectiveResultBinding
 from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
 from dungeonmind.contracts.vnext.source import EvidenceRefV3
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
 
+from .builder import build_parsed_knowledge_revision
 from .errors import KnowledgePublicationIdempotencyConflictError, KnowledgeStaleParentRevisionError
 from .materialization import (
     NATIVE_VNEXT_GRAPH_SCHEMA,
+    GovernedPublicationIdentity,
     decode_native_graph_payload,
     encode_native_graph_payload,
 )
@@ -39,6 +44,7 @@ from .native_source_admission import (
     _span_slice,
     allocate_native_source_id,
 )
+from .prospective import _plan_prospective_publication
 from .publication import _verify_receipt
 
 
@@ -49,6 +55,7 @@ class ExtensionPlan:
     proofs: tuple[NativeUtf8SpanProofV1, ...]
     bindings: tuple[NativeTextSourceAdmissionBindingV1, ...]
     intent_sha256: str
+    result_bindings: tuple[ProspectiveResultBinding, ...] | None = None
 
 
 def extension_intent(
@@ -121,9 +128,6 @@ def extension_plan(
         access.body_sha256,
     ) != (request.source_artifact_id, request.source_revision_id, request.expected_body_sha256):
         _fail("extension_source_inaccessible")
-    _require_original_ancestor(
-        repository, request.space_id, root.published_revision_id, head.head_revision_id
-    )
     if access.body_text is None:
         _fail("extension_source_body_missing")
     body = access.body_text.encode("utf-8")
@@ -149,6 +153,10 @@ def extension_plan(
             raise KnowledgePublicationIdempotencyConflictError(
                 space_id=request.space_id, publication_id=request.extension_id
             )
+    if head.head_revision_id != request.expected_parent_revision_id:
+        _require_original_ancestor(
+            repository, request.space_id, root.published_revision_id, head.head_revision_id
+        )
     parent = repository.get_revision(request.space_id, request.expected_parent_revision_id)
     if parent is None or parent.revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA:
         _fail("extension_parent_missing")
@@ -232,7 +240,29 @@ def extension_plan(
         migration_origin_ref=parent.revision.migration_origin_ref,
         created_at=request.created_at,
     )
-    plan = ExtensionPlan(command, root, tuple(proofs), tuple(bindings), intent)
+    result_bindings = None
+    if isinstance(request, GovernedNativeSourceEvidenceExtensionV1):
+        parsed_parent = build_parsed_knowledge_revision(
+            revision=parent.revision,
+            decoded_content=content,
+        )
+        materialization, resolved = _plan_prospective_publication(
+            parent=parsed_parent,
+            prospective_contribution=request.contribution,
+            dispositions=request.dispositions,
+            publication_id=request.extension_id,
+            publication=GovernedPublicationIdentity(
+                operation_ids=(request.extension_id,),
+                created_at=request.created_at,
+                expected_parent_revision_id=request.expected_parent_revision_id,
+            ),
+            domain_contract=domain_contract,
+            semantic_profile=semantic_profile,
+            admitted_evidence=tuple(evidence[binding.evidence_ref_id] for binding in bindings),
+        )
+        command = materialization.command
+        result_bindings = resolved.committed_result_bindings
+    plan = ExtensionPlan(command, root, tuple(proofs), tuple(bindings), intent, result_bindings)
     if prior is not None:
         verify_extension_receipt(repository, prior, plan)
         return prior.model_copy(deep=True)
@@ -242,7 +272,7 @@ def extension_plan(
 def make_extension_receipt(
     plan: ExtensionPlan, epoch: int, publication_receipt: KnowledgePublicationReceipt
 ) -> NativeSourceEvidenceExtensionReceiptV1:
-    return NativeSourceEvidenceExtensionReceiptV1(
+    receipt = NativeSourceEvidenceExtensionReceiptV1(
         space_id=plan.root.space_id,
         extension_id=publication_receipt.publication_id,
         original_admission_id=plan.root.admission_id,
@@ -255,6 +285,12 @@ def make_extension_receipt(
         bindings=list(plan.bindings),
         proofs=list(plan.proofs),
         publication_receipt=publication_receipt,
+    )
+    if plan.result_bindings is None:
+        return receipt
+    return GovernedNativeSourceEvidenceExtensionReceiptV1(
+        **receipt.model_dump(),
+        result_bindings=list(plan.result_bindings),
     )
 
 
@@ -297,9 +333,7 @@ def snapshot_extension_inputs(
     DomainContractDescriptor,
     SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
 ]:
-    request_snapshot = NativeSourceEvidenceExtensionV1.model_validate(
-        request.model_dump(mode="json")
-    )
+    request_snapshot = type(request).model_validate(request.model_dump(mode="json"))
     domain_snapshot = DomainContractDescriptor.model_validate(
         domain_contract.model_dump(mode="json")
     )
@@ -309,6 +343,39 @@ def snapshot_extension_inputs(
         semantic_profile.model_dump(mode="json")
     )
     return request_snapshot, domain_snapshot, profile_snapshot
+
+
+def preview_native_source_evidence_extension(
+    *,
+    repository: Any,
+    request: NativeSourceEvidenceExtensionV1,
+    domain_contract: DomainContractDescriptor,
+    semantic_profile: SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
+    audience_labels: Sequence[str] = (),
+) -> tuple[EvidenceRefV3, ...]:
+    """Validate candidate evidence at a pin without reserving it.
+
+    Publication revalidates under the repository locks, including registered
+    intervals and the source authority epoch.
+    """
+    if type(request) is not NativeSourceEvidenceExtensionV1:
+        _fail("extension_preview_requires_evidence_only")
+    request, domain, profile = snapshot_extension_inputs(request, domain_contract, semantic_profile)
+    plan = extension_plan(
+        repository=repository,
+        request=request,
+        domain_contract=domain,
+        semantic_profile=profile,
+        audience_labels=tuple(audience_labels),
+        registered_intervals=set(),
+    )
+    if isinstance(plan, NativeSourceEvidenceExtensionReceiptV1):
+        _fail("extension_preview_already_published")
+    evidence = {
+        item.evidence_ref_id: item
+        for item in decode_native_graph_payload(plan.command.graph_payload).evidence
+    }
+    return tuple(evidence[binding.evidence_ref_id] for binding in plan.bindings)
 
 
 def publish_native_source_evidence_extension(

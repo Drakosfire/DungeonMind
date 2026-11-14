@@ -107,7 +107,10 @@ from .native_source_access import (
 from .native_source_admission import (
     publish_native_text_source_evidence,
 )
-from .native_source_extension import publish_native_source_evidence_extension
+from .native_source_extension import (
+    preview_native_source_evidence_extension,
+    publish_native_source_evidence_extension,
+)
 from .neighborhood import (
     MAX_NEIGHBORHOOD_SEED_COUNT,
     NeighborhoodLayerWork,
@@ -285,6 +288,7 @@ __all__ = [
     "materialize_governed_revision",
     "open_admitted_native_text",
     "open_native_text_source_access_context",
+    "preview_native_source_evidence_extension",
     "publish_governed_materialization",
     "publish_native_source_evidence_extension",
     "publish_native_text_source_evidence",
