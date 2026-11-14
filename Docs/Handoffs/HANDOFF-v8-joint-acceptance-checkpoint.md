@@ -121,6 +121,14 @@ immutable revision. Retain both observations for joint acceptance.
 Separate 10k write diagnostics recorded 577 ms for classic finalized review
 (two added nodes) and 3,059 ms for native parent load through governed
 publication (one added entity). Both replayed exactly. Their parent assertion
-shapes and accepted deltas differ. A matched write comparison and full
-projection attribution and provenance remain open, as does disposition of
+shapes and accepted deltas differ. A matched write comparison remains open, as does disposition of
 the first-request latency gap. V8 joint acceptance and V9 cutover are pending.
+
+## Managed projection at 10k
+
+An isolated PostgreSQL pair using Buddy `4a3282f0d` and locked Core
+`45d04fb6` returned 10,003 mapped nodes, one directed relationship,
+one evidence reference and one source artifact on each route, without
+truncation. Display fields, mapped node and edge provenance, and campaign
+scope matched. The fixture had no standalone attributes. Median HTTP latency
+over five requests per arm was 1,118 ms classic and 644 ms native.
