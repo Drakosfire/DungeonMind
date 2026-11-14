@@ -215,6 +215,8 @@ class NeighborhoodReadService:
         context: KnowledgeReadContext,
         seed_entity_ids: Sequence[str],
         depth: Literal[1, 2] = 1,
+        *,
+        require_admitted_seeds: bool = False,
     ) -> NeighborhoodResult:
         requested_depth = _normalize_depth(depth)
         requested_seeds = _normalize_seeds(seed_entity_ids)
@@ -319,6 +321,34 @@ class NeighborhoodReadService:
                 )
             )
             frontier = tuple(sorted(newly_discovered))
+
+        if require_admitted_seeds:
+            supported = {
+                endpoint
+                for assertion in returned_assertions.values()
+                for endpoint in _assertion_endpoints(assertion)
+            }
+            for seed in found_seed_ids:
+                if seed in supported:
+                    continue
+                candidates = tuple(
+                    assertion_id for assertion_id in parsed.get_subject_assertion_ids(seed)
+                    if assertion_id not in evaluated_assertion_ids
+                )
+                if candidates:
+                    admission, provenance = context.evaluate_candidates(candidates)
+                    assertions_evaluated += admission.work.assertions_evaluated
+                    policy_evaluations += admission.work.policy_evaluations
+                    provenance_snapshot_calls += admission.work.provenance_snapshot_calls
+                    requested_artifact_ids.update(provenance.requested_artifact_ids)
+                    requested_revision_ids.update(provenance.requested_revision_ids)
+                    if admission.admitted_assertion_ids:
+                        continue
+                del entities[seed]
+                del entity_depth_map[seed]
+                missing_seeds.append(seed)
+            found_seed_ids = tuple(seed for seed in found_seed_ids if seed in entities)
+            missing_seed_ids = tuple(sorted(missing_seeds))
 
         admitted_ids = tuple(sorted(returned_assertions))
         assertions_tuple = tuple(returned_assertions[assertion_id] for assertion_id in admitted_ids)
