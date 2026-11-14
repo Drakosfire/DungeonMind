@@ -2177,6 +2177,16 @@ def test_entity_listing_batches_alias_provenance(alias_source_status: str) -> No
     assert tuple(entity.entity_id for entity in listing.entities) == ids
     expected = ("alias:0", "alias:1") if alias_source_status == "active" else ()
     assert tuple(alias.alias_id for alias in admitted) == expected
+
+    before = context.source_reader.snapshot_call_count
+    enriched = _SVC.list_entities_with_support(context)
+    assert context.source_reader.snapshot_call_count - before == 2
+    assert enriched.listing == listing
+    assert enriched.aliases == admitted
+    assert any(
+        revision.source_revision_id == "srcrev:alias"
+        for revision in enriched.source_revisions
+    ) == (alias_source_status == "active")
     assert admitted == tuple(
         alias
         for entity_id in ids
