@@ -19,4 +19,4 @@ On the paired 10k fixture, the first native request took 2.12 s versus 0.54 s cl
 
 The proposal is to carry the cold cost explicitly for scoped Elderwyld, capture deployed cold and repeat timings at V11, and prioritize reducing whole-revision preparation in the post-vNext performance program. Restarts, eviction, and new pinned revisions can expose the first-request cost again.
 
-Joint acceptance still requires the versioned evidence artifact and reconciliation of the three semantic fixture witnesses against the release pins. V9 follows joint acceptance and requires the deployment rollback rehearsal.
+The [versioned evidence artifact](dm_vnext_contract_acceptance_v1.json) records candidate-pin outputs for Buddy preservation, organizational memory, and adversarial identity. Joint acceptance still requires a decision on the measured cold neighborhood cost. V9 follows joint acceptance and requires the deployment rollback rehearsal.
