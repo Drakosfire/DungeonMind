@@ -709,7 +709,9 @@ class EntityReadService:
         evidence, artifacts, revisions = _support_for_evidence_ids(
             context=context,
             evidence_ids=evidence_ids,
-            provenance=(provenance, alias_provenance) if alias_provenance is not None else provenance,
+            provenance=(
+                (provenance, alias_provenance) if alias_provenance is not None else provenance
+            ),
         )
         return EntityListWithSupportResult(listing, aliases, evidence, artifacts, revisions)
 
