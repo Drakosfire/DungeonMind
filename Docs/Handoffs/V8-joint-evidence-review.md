@@ -215,3 +215,23 @@ paired fixture returned different secondary results. Preserve that
 difference in the acceptance record and verify the seed and citation
 behavior again on the deployed route during cutover. Joint acceptance
 remains open.
+
+## Rules-like depth-one comparison
+
+A synthetic 10k comparison used the classic Rules-like generator with
+15,000 directed relationships and 25,000 evidence references. The native
+benchmark mapping encoded each endpoint's campaign restriction on the
+relationship. On Core `45d04fb6691cb084b1d50feb1ddb7ab18f15a95d`,
+both reads excluded all edges from the selected seed in world-only player
+scope. The Alpha player request returned the same four relationship IDs,
+including two incoming edges. Directed endpoints, predicates, and evidence
+membership matched. Classic retained relationship evidence first within
+each edge, while native ordered object evidence first.
+
+The classic Core and native Buddy neighborhood paths each sort anchors
+before applying their cap. The anchor IDs and span eligibility differ, so
+the observed evidence membership does not establish capped citation parity.
+This fixture has source revision metadata and external locators only.
+The comparison does not report a latency ratio. PR #200's separate native
+ring diagnostic measures pre-parsed neighborhood work on a different
+topology. V8 acceptance remains open.
