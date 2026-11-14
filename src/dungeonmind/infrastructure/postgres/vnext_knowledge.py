@@ -10,7 +10,6 @@ from psycopg import Connection, sql
 from ...application.vnext.authority import (
     commit_expected_parent,
     revision_from_command,
-    verify_stored_revision,
 )
 from ...application.vnext.errors import KnowledgePublicationIdempotencyConflictError
 from ...application.vnext.materialization import NATIVE_VNEXT_GRAPH_SCHEMA
@@ -705,14 +704,6 @@ def _reconstruct(row: dict[str, Any]) -> StoredKnowledgeRevision:
         raise PersistenceIntegrityError("knowledge revision schema_version column drift")
     if _normalize(revision.created_at) != _normalize(row["created_at"]):
         raise PersistenceIntegrityError("knowledge revision created_at column drift")
-    if canonical_sha256(payload) != revision.graph_payload_sha256:
-        raise PersistenceIntegrityError("stored graph payload hash mismatch")
-    stored = StoredKnowledgeRevision(
-        revision=revision,
-        graph_payload_sha256=revision.graph_payload_sha256,
-        _payload_json=canonical_json(payload),
-    )
-    verify_stored_revision(stored)
     expected = revision_from_command(
         PublishKnowledgeRevisionCommand(
             space_id=revision.space_id,
@@ -727,6 +718,12 @@ def _reconstruct(row: dict[str, Any]) -> StoredKnowledgeRevision:
             created_at=revision.created_at,
         )
     )
+    if expected.graph_payload_sha256 != revision.graph_payload_sha256:
+        raise PersistenceIntegrityError("stored graph payload hash mismatch")
     if expected.revision_id != revision.revision_id:
         raise PersistenceIntegrityError("recomputed native revision id disagrees with stored id")
-    return stored
+    return StoredKnowledgeRevision(
+        revision=revision,
+        graph_payload_sha256=revision.graph_payload_sha256,
+        _payload_json=canonical_json(payload),
+    )
