@@ -171,3 +171,14 @@ matched the persisted span proof in Core extension
 `elderwyld-c2-session18-native-batch-post2067-support-v1`, including the
 proof's byte length. These were local-operator reads on an isolated restore.
 Serving authority, hosted deployment verification, and rollback remain open.
+
+### Isolated browser Graph
+
+The production frontend build at Buddy `ca5a0450489a94cd364183af1c53d3f041ad7d0f`
+ran with installed Core `45d04fb6691cb084b1d50feb1ddb7ab18f15a95d`.
+The browser selected Elderwyld V8 Witness and rendered 3,008 loaded
+objects and 2,651 listed relationships with a Partial native read status.
+The isolated API logged HTTP 200 for both local session establishment
+and the mounted `POST /api/live/native-graph-explorer/graph` request.
+The preview preserved the configured loopback Host and UI origin.
+This witness covers local-operator browser Graph loading on the restore.
