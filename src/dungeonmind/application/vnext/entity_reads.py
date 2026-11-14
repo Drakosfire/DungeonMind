@@ -689,7 +689,7 @@ class EntityReadService:
     ) -> tuple[EntityListResult, tuple[ParsedIdentityAlias, ...]]:
         """List authorized entities and their authorized aliases in one read context."""
         listing = self.list_entities(context)
-        aliases, *_ = self._listing_aliases(context, listing)
+        aliases, _ = self._listing_aliases(context, listing)
         return listing, aliases
 
     def list_entities_with_support(
@@ -697,7 +697,7 @@ class EntityReadService:
     ) -> EntityListWithSupportResult:
         """Assemble authorized support without fetching another provenance snapshot."""
         listing, provenance = self._list_entities(context)
-        aliases, alias_provenance, *_ = self._listing_aliases(context, listing)
+        aliases, alias_provenance = self._listing_aliases(context, listing)
         evidence_ids = [
             evidence_id
             for assertion_id in listing.admitted_assertion_ids
@@ -714,13 +714,16 @@ class EntityReadService:
         return EntityListWithSupportResult(listing, aliases, evidence, artifacts, revisions)
 
     @staticmethod
-    def _listing_aliases(context: KnowledgeReadContext, listing: EntityListResult):
+    def _listing_aliases(
+        context: KnowledgeReadContext, listing: EntityListResult
+    ) -> tuple[tuple[ParsedIdentityAlias, ...], KnowledgeProvenanceSnapshot | None]:
         candidates = tuple(
             alias
             for entity in listing.entities
             for alias in context.parsed.get_entity_aliases(entity.entity_id)
         )
-        return _authorize_aliases(context=context, candidates=candidates)
+        aliases, provenance, *_ = _authorize_aliases(context=context, candidates=candidates)
+        return aliases, provenance
 
     def get_entity(self, context: KnowledgeReadContext, entity_id: str) -> EntityLookupResult:
         result = _assemble(context=context, entity_id=entity_id, include_touching=False)
