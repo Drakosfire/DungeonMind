@@ -22,6 +22,7 @@ from dungeonmind.application.vnext.native_source_admission import (
     publish_native_text_source_evidence,
 )
 from dungeonmind.application.vnext.native_source_extension import (
+    preview_native_source_evidence_extension,
     publish_native_source_evidence_extension,
 )
 from dungeonmind.contracts.vnext.common import LabelsAnyVisibility
@@ -506,3 +507,21 @@ def exercise_governed_extension(repo, reopen):
 def test_governed_extension_commits_one_child_and_replays():
     repo = InMemoryNativeSourceEvidenceRepository()
     exercise_governed_extension(repo, lambda: repo)
+
+
+
+def test_extension_preview_is_read_only_and_matches_committed_evidence():
+    repo = InMemoryNativeSourceEvidenceRepository()
+    domain, profile, _, root = setup_source(repo)
+    request = extension(repo, root)
+    head = repo.get_head(root.space_id)
+    epoch = repo.open_native_source_view(root.space_id).epoch
+    preview, = preview_native_source_evidence_extension(
+        repository=repo, request=request, domain_contract=domain, semantic_profile=profile,
+    )
+    assert repo.get_head(root.space_id) == head
+    assert repo.open_native_source_view(root.space_id).epoch == epoch
+    assert repo.get_publication_receipt(root.space_id, request.extension_id) is None
+    receipt = publish(repo, domain, profile, request)
+    assert preview.evidence_ref_id == receipt.bindings[0].evidence_ref_id
+    assert preview.source_span_ref_id == receipt.bindings[0].span_id

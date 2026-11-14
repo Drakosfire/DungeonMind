@@ -344,6 +344,41 @@ def snapshot_extension_inputs(
     return request_snapshot, domain_snapshot, profile_snapshot
 
 
+def preview_native_source_evidence_extension(
+    *,
+    repository: Any,
+    request: NativeSourceEvidenceExtensionV1,
+    domain_contract: DomainContractDescriptor,
+    semantic_profile: SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
+    audience_labels: Sequence[str] = (),
+) -> tuple[EvidenceRefV3, ...]:
+    """Validate candidate evidence at a pin without reserving it.
+
+    Publication revalidates under the repository locks, including registered
+    intervals and the source authority epoch.
+    """
+    if type(request) is not NativeSourceEvidenceExtensionV1:
+        _fail("extension_preview_requires_evidence_only")
+    request, domain, profile = snapshot_extension_inputs(
+        request, domain_contract, semantic_profile
+    )
+    plan = extension_plan(
+        repository=repository,
+        request=request,
+        domain_contract=domain,
+        semantic_profile=profile,
+        audience_labels=tuple(audience_labels),
+        registered_intervals=set(),
+    )
+    if isinstance(plan, NativeSourceEvidenceExtensionReceiptV1):
+        _fail("extension_preview_already_published")
+    evidence = {
+        item.evidence_ref_id: item
+        for item in decode_native_graph_payload(plan.command.graph_payload).evidence
+    }
+    return tuple(evidence[binding.evidence_ref_id] for binding in plan.bindings)
+
+
 def publish_native_source_evidence_extension(
     *,
     repository: Any,
