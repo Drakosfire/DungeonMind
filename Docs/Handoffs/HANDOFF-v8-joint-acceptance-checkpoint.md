@@ -99,7 +99,9 @@ so use matched synthetic workloads for comparative timing.
 
 Buddy #3370 restored related-object search matching. A paired 10k
 PostgreSQL fixture returned the same two mapped hits in order for one
-exact-label query. ## Shared neighborhood and governed publication evidence
+exact-label query.
+
+## Shared neighborhood and governed publication evidence
 
 Core #184 merged at `45d04fb6691cb084b1d50feb1ddb7ab18f15a95d`.
 Buddy #3409 merged at `7ab97e95680b17a042f7b90c5d45b31c1221ce53` and
