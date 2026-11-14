@@ -99,7 +99,26 @@ so use matched synthetic workloads for comparative timing.
 
 Buddy #3370 restored related-object search matching. A paired 10k
 PostgreSQL fixture returned the same two mapped hits in order for one
-exact-label query. The broader V8 matrix still needs semantic-equivalent
-comparisons, including evidence and setup parity for neighborhood reads,
-full projection attribution and provenance, and governed tiny-delta
-publication. No joint acceptance or serving cutover is recorded here.
+exact-label query. ## Shared neighborhood and governed publication evidence
+
+Core #184 merged at `45d04fb6691cb084b1d50feb1ddb7ab18f15a95d`.
+Buddy #3409 merged at `7ab97e95680b17a042f7b90c5d45b31c1221ce53` and
+pins that Core commit. The shared native World neighborhood route is opt-in.
+
+The isolated paired PostgreSQL check on Buddy's reviewed head `4a3282f0d`
+and the locked Core install returned the same three labels, two edges, one
+shared-evidence anchor, and byte-identical UTF-8 source excerpt. The fixture
+had no standalone attributes. A mounted native regression separately proves
+standalone term-reference attributes under Buddy's native semantic profile.
+
+The first observed two-hop request took 514 ms classic and 2,093 ms native.
+Four repeats took 514–529 ms classic and 348–360 ms native. The profile
+attributes the first native request primarily to loading and parsing the
+immutable revision. Retain both observations for joint acceptance.
+
+Separate 10k write diagnostics recorded 577 ms for classic finalized review
+(two added nodes) and 3,059 ms for native parent load through governed
+publication (one added entity). Both replayed exactly. Their parent assertion
+shapes and accepted deltas differ. A matched write comparison and full
+projection attribution and provenance remain open, as does disposition of
+the first-request latency gap. V8 joint acceptance and V9 cutover are pending.
