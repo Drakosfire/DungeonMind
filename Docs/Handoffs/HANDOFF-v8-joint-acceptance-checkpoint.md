@@ -132,3 +132,28 @@ one evidence reference and one source artifact on each route, without
 truncation. Display fields, mapped node and edge provenance, and campaign
 scope matched. The fixture had no standalone attributes. Median HTTP latency
 over five requests per arm was 1,118 ms classic and 644 ms native.
+
+## Joint acceptance decisions pending
+
+The [joint evidence review](V8-joint-evidence-review.md) and
+[retained fixture evidence](dm_vnext_contract_acceptance_v1.json) record
+the later witnesses at their individual Core and Buddy pins. The rollout
+scope is fresh-native Elderwyld under Core PR #174.
+
+- Decide whether to carry the measured cold neighborhood cost into
+  rollout. The paired 10k witness measured 2.12 s native and 0.54 s
+  classic with exact citation parity. Repeat native requests took
+  378–387 ms. Record deployed cold and repeat timings at V11.
+- Decide whether to retain the native complete-object presentation.
+  The paired relationship write preserved endpoints, direction, replay,
+  and exact cited bytes. Both tested player views withheld the
+  relationship. The complete-object ledgers differ, which limits the
+  read timing comparison.
+- Verify the intended serving search cap. Ordered labels and reopened
+  citations matched at two nodes. Secondary results differed at eight.
+- Record whether native Rules-like performance is required for Elderwyld
+  acceptance. The 50k native structural diagnostic and PostgreSQL World
+  projection cover different workloads.
+
+V8 stays open pending joint acceptance. V9 owns the serving authority
+switch and deployment rollback rehearsal.
