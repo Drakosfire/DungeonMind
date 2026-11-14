@@ -87,3 +87,26 @@ holds aliases outside its selectable facts. Native verification proved
 two new entities, a directed supported edge, one head advance, and exact
 replay. The retained timings are separate route diagnostics. A matched
 write-performance disposition and the cold-read disposition remain open.
+
+## Existing-endpoint relationship publication
+
+At Buddy `4da2aa696925ce618ef3f5daf08db33a8deb40dd` with installed Core
+`45d04fb6691cb084b1d50feb1ddb7ab18f15a95d`, both disposable PostgreSQL
+arms added one directed NPC-to-location ownership relationship between
+existing endpoints, preserved 10,000 object or entity records, and reopened
+the full reviewed passage byte for byte. Replay returned the committed
+publication without moving the head again.
+
+| In-process HTTP stage | Classic, ms | Native, ms |
+| --- | ---: | ---: |
+| Stage and prepare | 230.56 | 689.19 |
+| Confirm | 4395.86 | 705.00 |
+| Replay | 810.51 | 652.32 |
+
+Each timing is one sample and excludes setup. Classic stage and prepare
+span two requests. The native parent included a setup relationship.
+Subsequent readback showed the classic evidence DTO displaying the
+predicate alone, while the native complete-object DTO retained the
+reviewed label and context. Both tested player views omitted the edge.
+These observations characterize the respective routes. Same-surface
+display parity and disposition of the cold neighborhood cost remain open.
