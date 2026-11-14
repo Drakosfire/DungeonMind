@@ -188,3 +188,30 @@ response listed 9,077 assertions and omitted 3,828. It reported zero
 omitted entities and zero unexamined entities or assertions. The partial
 status disclosed ambiguous classifications, conflicting or missing names,
 and non-graph assertions.
+
+## Elderwyld search at the Plan and Play default bound
+
+Plan and Play construct the shared search request without a bounds override.
+The request model defaults to eight nodes. The authenticated mounted
+Elderwyld witness searched for Ephanna on the isolated restore at
+`rev:2320336c2bf9b6d3f5cf514f8e2dc9b6`. The listener's clean Buddy checkout
+was `ca5a0450489a94cd364183af1c53d3f041ad7d0f`; the route and adapter
+files predated startup. Installed Core distribution metadata identified
+`45d04fb6691cb084b1d50feb1ddb7ab18f15a95d`.
+
+The result returned eight matches with the requested seed first and
+disclosed truncation of nodes, relationships, and source anchors. No seed,
+evidence reference, or readable anchor was reported missing. A repeated
+request reproduced response SHA-256
+`d0e5525f28707deda5d2f056775a7c6a8b6a6b90cac0d9f94936dc9959fba6e6`.
+Reopening a returned anchor at the same revision yielded 1,532 bytes
+matching the retained Core span digest
+`3760c43d8e5a57af546ba037a2d550c45afa3036c3d4273a5b79ddb57f4ab5a1`.
+
+Proposed search disposition for fresh-native Elderwyld: accept disclosed
+partial coverage and native secondary ordering for navigation, with
+admitted seeds first and exact source reopening required. The eight-node
+paired fixture returned different secondary results. Preserve that
+difference in the acceptance record and verify the seed and citation
+behavior again on the deployed route during cutover. Joint acceptance
+remains open.
