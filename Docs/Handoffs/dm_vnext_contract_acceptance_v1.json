@@ -62,7 +62,29 @@
     "installed_core": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
     "passed": 52,
     "report": "v8-e7e892808-preservation.xml",
-    "sha256": "e5e3c5dfbdd2b9873cffc788c2ab18d1d2af24419e75986454f4d4f876209214"
+    "sha256": "e5e3c5dfbdd2b9873cffc788c2ab18d1d2af24419e75986454f4d4f876209214",
+    "fixture_sha256": "c8ad6cd148d43a6ca4d195b502aa7d14f2323cc155622cb919c2756bad49d8e5",
+    "campaign_admission_outputs": {
+      "gm": {
+        "admitted": [
+          "as:brennan-classification",
+          "as:brennan-located-in-mireward",
+          "as:brennan-name",
+          "as:brennan-secret-plan",
+          "as:mireward-classification"
+        ],
+        "admitted_sha256": "ed1763d426e25184d751c8bec6269c9545eb21db1fa84373871e0eaacbd45147"
+      },
+      "player": {
+        "admitted": [
+          "as:brennan-classification",
+          "as:brennan-located-in-mireward",
+          "as:brennan-name",
+          "as:mireward-classification"
+        ],
+        "admitted_sha256": "1d7237096f98b55e54b6546e991281dfd1e5d5538028315cb82da19c807a9816"
+      }
+    }
   },
   "paired_governed_http_write_10k": {
     "buddy": "e7e892808dbfbb39016f59aba42becfb6be39655",
@@ -272,7 +294,6 @@
     "profile_sha256": "88daff5cf39e36b5d749b031523d0f126d98fe31d2a592b79ff37adf22ce82de"
   },
   "open": [
-    "Reconcile semantic fixture outcome digests at candidate pins",
     "Decide cold neighborhood disposition",
     "Record joint acceptance"
   ],
