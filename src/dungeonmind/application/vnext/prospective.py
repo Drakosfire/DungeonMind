@@ -112,12 +112,9 @@ def validate_prospective_result_bindings(
     result_bindings: Sequence[ProspectiveResultBinding],
 ) -> None:
     """Verify port-supplied mappings before repository authority can mutate."""
-    entity_ids = {
-        item.get("entity_id") for item in command_graph_payload.get("entities", [])
-    }
+    entity_ids = {item.get("entity_id") for item in command_graph_payload.get("entities", [])}
     assertion_ids = {
-        item.get("assertion_id")
-        for item in command_graph_payload.get("assertions", [])
+        item.get("assertion_id") for item in command_graph_payload.get("assertions", [])
     }
     for binding in result_bindings:
         expected_id = allocate_prospective_result_id(
@@ -148,19 +145,12 @@ def validate_prospective_result_absent_from_parent(
     result_bindings: Sequence[ProspectiveResultBinding],
 ) -> None:
     """Preserve create-new semantics at the repository authority boundary."""
-    parent_entity_ids = {
-        item.get("entity_id") for item in parent_graph_payload.get("entities", [])
-    }
+    parent_entity_ids = {item.get("entity_id") for item in parent_graph_payload.get("entities", [])}
     parent_assertion_ids = {
-        item.get("assertion_id")
-        for item in parent_graph_payload.get("assertions", [])
+        item.get("assertion_id") for item in parent_graph_payload.get("assertions", [])
     }
     for binding in result_bindings:
-        parent_ids = (
-            parent_entity_ids
-            if binding.result_kind == "entity"
-            else parent_assertion_ids
-        )
+        parent_ids = parent_entity_ids if binding.result_kind == "entity" else parent_assertion_ids
         if binding.durable_id in parent_ids:
             _fail(
                 "identity_allocation_collision",
@@ -306,9 +296,7 @@ def resolve_prospective_contribution(
                     )
                 )
         else:
-            predicted_id = _find_allocated_id(
-                item.model_dump(mode="json"), allocated_ids
-            )
+            predicted_id = _find_allocated_id(item.model_dump(mode="json"), allocated_ids)
             if predicted_id is not None:
                 _fail(
                     "ordinary_item_targets_prospective_result",

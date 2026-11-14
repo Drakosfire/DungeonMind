@@ -276,7 +276,6 @@ class NativeSourceEvidenceExtensionReceiptV1(DungeonMindModel):
         return self
 
 
-
 class GovernedNativeSourceEvidenceExtensionReceiptV1(NativeSourceEvidenceExtensionReceiptV1):
     """Exact span proof and durable graph allocations from the same commit."""
 

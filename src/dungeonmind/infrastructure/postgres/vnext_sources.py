@@ -36,8 +36,8 @@ from dungeonmind.contracts.vnext.knowledge import (
     PublishKnowledgeRevisionCommand,
 )
 from dungeonmind.contracts.vnext.native_source import (
-    NativeSourceAdmissionReceiptV1,
     GovernedNativeSourceEvidenceExtensionReceiptV1,
+    NativeSourceAdmissionReceiptV1,
     NativeSourceEvidenceExtensionReceiptV1,
     NativeSourceEvidenceExtensionV1,
     NativeTextSourceAdmissionBindingV1,
@@ -206,7 +206,11 @@ def _lock_native_epoch(conn: Connection[Any]) -> None:
 
 
 def _reject_cross_format_admission(
-    conn: Connection[Any], space_id: str, admission_id: str, *, other_table: str,
+    conn: Connection[Any],
+    space_id: str,
+    admission_id: str,
+    *,
+    other_table: str,
 ) -> None:
     row = conn.execute(
         sql.SQL("SELECT 1 FROM {}.{} WHERE space_id = %s AND admission_id = %s").format(
@@ -366,7 +370,9 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
         with self._database.transaction() as conn:
             _lock_native_epoch(conn)
             _reject_cross_format_admission(
-                conn, request.space_id, request.admission_id,
+                conn,
+                request.space_id,
+                request.admission_id,
                 other_table="knowledge_native_source_admissions",
             )
             inserted = conn.execute(
@@ -379,8 +385,15 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
                 ON CONFLICT (space_id, admission_id) DO NOTHING
                 RETURNING source_authority_epoch
                 """,
-                (request.space_id, request.admission_id, revision.source_revision_id,
-                 Jsonb(artifact_payload), Jsonb(revision_payload), page_count, body),
+                (
+                    request.space_id,
+                    request.admission_id,
+                    revision.source_revision_id,
+                    Jsonb(artifact_payload),
+                    Jsonb(revision_payload),
+                    page_count,
+                    body,
+                ),
             ).fetchone()
             if inserted is not None:
                 conn.execute(
@@ -473,7 +486,9 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
             # Global source epoch is always acquired before the per-space CAS lock.
             _lock_native_epoch(conn)
             _reject_cross_format_admission(
-                conn, request.space_id, request.admission_id,
+                conn,
+                request.space_id,
+                request.admission_id,
                 other_table="knowledge_native_pdf_sources",
             )
             _lock_space(conn, request.space_id, created_at=request.created_at)
@@ -880,8 +895,10 @@ class _PostgresNativeTextSourceView:
                            OR source_revision_id = ANY(%s))
                     """,
                     (
-                        self._space_id, self._epoch,
-                        list(requested_artifacts), list(requested_revisions),
+                        self._space_id,
+                        self._epoch,
+                        list(requested_artifacts),
+                        list(requested_revisions),
                     ),
                 ).fetchall()
                 for row in pdf_rows:
@@ -901,9 +918,10 @@ class _PostgresNativeTextSourceView:
                     conn, self._space_id, requested_artifacts, self._epoch
                 )
                 for artifact_id, artifact in artifacts.items():
-                    if artifact.current_revision_id is not None and (
-                        artifact_id, artifact.current_revision_id
-                    ) in withdrawn:
+                    if (
+                        artifact.current_revision_id is not None
+                        and (artifact_id, artifact.current_revision_id) in withdrawn
+                    ):
                         artifacts[artifact_id] = artifact.model_copy(update={"status": "retracted"})
         provenance = _build_snapshot_from_loaded(
             loaded_artifacts=artifacts,

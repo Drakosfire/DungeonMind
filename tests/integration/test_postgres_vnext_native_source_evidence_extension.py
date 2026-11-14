@@ -16,11 +16,11 @@ from tests.unit.test_vnext_native_source_evidence_extension import (
     access,
     exercise_access_and_conflict,
     exercise_duplicates,
+    exercise_governed_extension,
     exercise_refusal,
     exercise_success,
-    exercise_governed_extension,
-    governed_extension,
     extension,
+    governed_extension,
     publish,
     setup_source,
 )

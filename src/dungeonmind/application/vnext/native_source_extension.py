@@ -242,7 +242,8 @@ def extension_plan(
     result_bindings = None
     if isinstance(request, GovernedNativeSourceEvidenceExtensionV1):
         parsed_parent = build_parsed_knowledge_revision(
-            revision=parent.revision, decoded_content=content,
+            revision=parent.revision,
+            decoded_content=content,
         )
         materialization, resolved = _plan_prospective_publication(
             parent=parsed_parent,
@@ -287,7 +288,8 @@ def make_extension_receipt(
     if plan.result_bindings is None:
         return receipt
     return GovernedNativeSourceEvidenceExtensionReceiptV1(
-        **receipt.model_dump(), result_bindings=list(plan.result_bindings),
+        **receipt.model_dump(),
+        result_bindings=list(plan.result_bindings),
     )
 
 
@@ -330,9 +332,7 @@ def snapshot_extension_inputs(
     DomainContractDescriptor,
     SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
 ]:
-    request_snapshot = type(request).model_validate(
-        request.model_dump(mode="json")
-    )
+    request_snapshot = type(request).model_validate(request.model_dump(mode="json"))
     domain_snapshot = DomainContractDescriptor.model_validate(
         domain_contract.model_dump(mode="json")
     )
@@ -359,9 +359,7 @@ def preview_native_source_evidence_extension(
     """
     if type(request) is not NativeSourceEvidenceExtensionV1:
         _fail("extension_preview_requires_evidence_only")
-    request, domain, profile = snapshot_extension_inputs(
-        request, domain_contract, semantic_profile
-    )
+    request, domain, profile = snapshot_extension_inputs(request, domain_contract, semantic_profile)
     plan = extension_plan(
         repository=repository,
         request=request,

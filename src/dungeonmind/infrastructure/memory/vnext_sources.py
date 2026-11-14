@@ -289,9 +289,7 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
             receipt, fingerprint = value
             if canonical_sha256(receipt.model_dump(mode="json")) != fingerprint:
                 raise PersistenceIntegrityError("extension receipt fingerprint drift")
-            return type(receipt).model_validate(
-                receipt.model_dump(mode="json")
-            )
+            return type(receipt).model_validate(receipt.model_dump(mode="json"))
 
     def publish_native_source_evidence_extension(
         self,
@@ -509,9 +507,12 @@ class _InMemoryNativeTextSourceView:
                 record = self._repository._by_revision.get((self._space_id, revision_id))
                 if record is not None and record.epoch <= self._epoch:
                     expected = _native_fingerprint(
-                        artifact=record.artifact, revision=record.revision,
+                        artifact=record.artifact,
+                        revision=record.revision,
                         body_sha256=record.revision.content_sha256,
-                        proofs=record.proofs, origin=record.origin, epoch=record.epoch,
+                        proofs=record.proofs,
+                        origin=record.origin,
+                        epoch=record.epoch,
                     )
                     if expected != record.fingerprint:
                         raise PersistenceIntegrityError("native source record fingerprint drift")
