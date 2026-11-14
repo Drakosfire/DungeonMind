@@ -46,3 +46,30 @@ pins, exact citations and timings on the candidate route. Use independent
 expectations for Elderwyld and matched fixtures for classic/native timing
 comparisons. Core owns the final joint artifact after that route evidence
 and all required fixture semantics are verified.
+
+## Elderwyld PostgreSQL candidate evidence
+
+Core main was `fe01182432e2cbca9864fa9965b7be8db726045c`. Buddy #3303
+merged at `d9e56d6858632ee952e03eb5665f3cf8c397c484`, with Core pinned
+to `b1fadd145a90565ae5938837e5bd67b6dc6e004b`. The runs used the Buddy
+PR head `b7c2870de35c4ee5e092b60f84652d7f698d784e`.
+
+- The shared complete-object endpoint returned stable semantic fingerprints
+  and two source bindings at the Elderwyld snapshot head and parent. Five
+  in-process HTTP calls per revision had medians of 1,650.49 ms and
+  1,598.02 ms, respectively, using read-only PostgreSQL and a fixture
+  managed-world binding. Anonymous calls returned 401.
+- Elderwyld's classic head is an empty reset. A separate synthetic fixture
+  with equal graph cardinality exercised both complete-object branches
+  against disposable PostgreSQL. Twelve alternating requests per branch
+  yielded medians of 17.10 ms classic and 20.28 ms native. The selected
+  location facts and directed relationship matched. The ledgers retained
+  their respective existence and classification/name assertions.
+- The paired persisted campaign recap citation returned a 38-byte classic
+  paragraph and the exact 40-byte native span including CRLF. Both paths
+  withheld source text for a foreign campaign.
+
+V8 remains open. The paired timing covers one synthetic selected-object
+workload. The retained native listing and classic full projection have
+different result contracts and timing boundaries. The Core operation
+comparisons and canonical joint artifact remain prerequisites for V9.
