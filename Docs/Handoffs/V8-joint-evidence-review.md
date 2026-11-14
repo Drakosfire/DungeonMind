@@ -260,7 +260,8 @@ restore pinned revision `rev:2320336c2bf9b6d3f5cf514f8e2dc9b6` and used
 Buddy's default 24-anchor bound. It returned eight nodes, eight relationships,
 and ten readable anchors. Coverage reported node truncation only.
 
-All ten anchors reopened at the requested revision. Hashes of the returned
+All ten reopen calls supplied the same revision pin and returned content.
+The response did not independently echo the graph revision. Hashes of the returned
 content matched the stored span SHA-256 for the same evidence IDs in the
 isolated Core database. Five matched base span records and five matched
 extension receipts. The listener used the same Buddy checkout and installed
