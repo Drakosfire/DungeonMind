@@ -182,3 +182,9 @@ The isolated API logged HTTP 200 for both local session establishment
 and the mounted `POST /api/live/native-graph-explorer/graph` request.
 The preview preserved the configured loopback Host and UI origin.
 This witness covers local-operator browser Graph loading on the restore.
+
+At restored head `rev:2320336c2bf9b6d3f5cf514f8e2dc9b6`, the Explorer
+response listed 9,077 assertions and omitted 3,828. It reported zero
+omitted entities and zero unexamined entities or assertions. The partial
+status disclosed ambiguous classifications, conflicting or missing names,
+and non-graph assertions.
