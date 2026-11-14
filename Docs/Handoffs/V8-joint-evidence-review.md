@@ -57,3 +57,33 @@ The completed Plan browser citation, the broader scale acceptance and the
 cold-cost disposition remain open. The classic search dispatch was rehearsed
 on the isolated snapshot without moving either head. Deployment rollback
 still requires a process-level rehearsal. No serving switch occurred.
+
+## Plan browser delivery and 50k route evidence
+
+Buddy PR #3604 merged at `4da2aa696925ce618ef3f5daf08db33a8deb40dd`.
+The isolated browser on PR head `99953f24f` submitted a synthetic current
+Plan turn using local controller and writer fixtures, displayed the
+answer immediately, and opened the cited native passage without a
+reload. The POST and citation GET both returned 200. The merged Plan
+UI matches the tested branch. Four mounted HTTP cases also passed on
+the merge, checking citation reopening after head advance and replay
+without provider redispatch. This supersedes the pre-dispatch Plan
+observation above for the synthetic cohort.
+
+At Buddy `c80b5c66e` and installed Core `45d04fb6`, paired disposable
+PostgreSQL fixtures exercised managed projection, neighborhood, search,
+and citation reopening with at least 50,000 objects. Managed projection
+returned 50,003 mapped nodes in each arm, with matching display fields,
+relationship direction, and source and evidence identities. Two warm
+requests per arm took 3.24–3.25 s native and 5.46–5.49 s classic.
+Capped search kept its seed first, excluded the foreign campaign decoy,
+reported bounded coverage, and reopened identical citation text.
+Secondary search results differed. Its 2.29–2.83 s native and
+5.57–5.64 s classic timings characterize their respective outputs.
+
+Classic recap writes in the paired investigation persisted label aliases
+even with standalone alias proposals omitted. Native recap confirmation
+holds aliases outside its selectable facts. Native verification proved
+two new entities, a directed supported edge, one head advance, and exact
+replay. The retained timings are separate route diagnostics. A matched
+write-performance disposition and the cold-read disposition remain open.
