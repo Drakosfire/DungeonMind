@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from threading import Lock
 from typing import cast
 
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
@@ -23,7 +24,7 @@ from .errors import KnowledgeReadContextIntegrityError, NativeTextSourceAccessIn
 from .materialization import NATIVE_VNEXT_GRAPH_SCHEMA, decode_native_graph_payload
 from .model import ParsedKnowledgeRevision
 from .ports import NativeSourceEvidenceRepository, NativeTextSourceView
-from .records import ParsedEvidenceRef
+from .records import ParsedEvidenceRef, StoredKnowledgeRevision
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +40,29 @@ class NativeTextSourceAccessContext:
     source_annotation_schemas: frozenset[str]
 
 
+class NativeParsedRevisionCache:
+    """Keep one immutable parsed graph for repeated reads of a verified revision."""
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._entry: tuple[StoredKnowledgeRevision, ParsedKnowledgeRevision] | None = None
+
+    def parse(self, stored: StoredKnowledgeRevision) -> ParsedKnowledgeRevision:
+        with self._lock:
+            if self._entry is not None and self._entry[0] == stored:
+                return self._entry[1]
+            parsed = _parse_revision(stored)
+            self._entry = (stored, parsed)
+            return parsed
+
+
+def _parse_revision(stored: StoredKnowledgeRevision) -> ParsedKnowledgeRevision:
+    return build_parsed_knowledge_revision(
+        revision=stored.revision,
+        decoded_content=decode_native_graph_payload(stored.graph_payload),
+    )
+
+
 def open_native_text_source_access_context(
     *,
     repository: NativeSourceEvidenceRepository,
@@ -49,6 +73,7 @@ def open_native_text_source_access_context(
         | Callable[[DomainContractRef, SemanticProfileRef], DomainContractDescriptor]
     ),
     audience_labels: Sequence[str] = (),
+    parsed_cache: NativeParsedRevisionCache | None = None,
 ) -> NativeTextSourceAccessContext:
     """Pin one exact native revision and one coherent source-authority epoch.
 
@@ -76,10 +101,7 @@ def open_native_text_source_access_context(
         != stored.revision.domain_contract_ref.descriptor_sha256
     ):
         raise KnowledgeReadContextIntegrityError("native source context domain pin mismatch")
-    parsed = build_parsed_knowledge_revision(
-        revision=stored.revision,
-        decoded_content=decode_native_graph_payload(stored.graph_payload),
-    )
+    parsed = _parse_revision(stored) if parsed_cache is None else parsed_cache.parse(stored)
     view = repository.open_native_source_view(space_id)
     return NativeTextSourceAccessContext(
         space_id=space_id,

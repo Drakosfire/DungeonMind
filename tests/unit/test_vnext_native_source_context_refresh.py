@@ -178,3 +178,32 @@ def test_persisted_withdrawal_changes_source_epoch_without_graph_publication():
     assert open_admitted_native_text(context, evidence_id).status == "available"
     assert repo.get_head(space_id) == head
     assert repo.head_events(space_id) == events
+
+
+def test_cached_open_reuses_graph_but_reopens_source_authority(monkeypatch):
+    from dungeonmind.application.vnext.native_source_access import NativeParsedRevisionCache
+
+    repo, domain, _, original, receipt = source_case()
+    cache = NativeParsedRevisionCache()
+    arguments = dict(
+        repository=repo,
+        space_id=original.space_id,
+        revision_id=original.revision_id,
+        domain_contract=domain,
+        audience_labels=tuple(original.audience_labels),
+        parsed_cache=cache,
+    )
+    before = open_native_text_source_access_context(**arguments)
+    evidence_id = receipt.bindings[0].evidence_ref_id
+    assert open_admitted_native_text(before, evidence_id).status == "available"
+
+    withdrawn_view = SimpleNamespace(
+        epoch=before.source_view.epoch + 1,
+        get_native_text_source=lambda **kwargs: None,
+    )
+    monkeypatch.setattr(repo, "open_native_source_view", lambda space: withdrawn_view)
+    after = open_native_text_source_access_context(**arguments)
+
+    assert after.parsed is before.parsed
+    assert after.source_view is withdrawn_view
+    assert open_admitted_native_text(after, evidence_id).status == "unavailable"
