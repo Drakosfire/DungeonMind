@@ -337,7 +337,9 @@ def _time_neighborhood(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Measure native neighborhood reads on a synthetic evidence-backed ring.")
+    parser = argparse.ArgumentParser(
+        description="Measure native neighborhood reads on a synthetic evidence-backed ring."
+    )
     parser.add_argument("--ring-edges", type=int, default=10000, choices=(100, 10000))
     parser.add_argument("--iterations", type=int, default=40)
     args = parser.parse_args()
