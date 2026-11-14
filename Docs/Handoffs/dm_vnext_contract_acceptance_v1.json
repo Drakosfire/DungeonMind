@@ -328,7 +328,7 @@
     },
     "native_ms": {
       "prepare": 689.19,
-      "confirm": 705.0,
+      "confirm": 705,
       "replay": 652.32
     },
     "citation_sha256": "05b35547cd95cfc89090be7bfb82aa9e91b5b246b80dba7408fa0d875def6d16",
@@ -345,5 +345,25 @@
       "Timings are single samples"
     ],
     "report": "V8-joint-evidence-review.md"
+  },
+  "neighborhood_citations": {
+    "report": "V8-joint-evidence-review.md",
+    "default_bound": {
+      "revision": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6",
+      "max_anchors": 24,
+      "returned": 10,
+      "stored_span_hash_matches": 10,
+      "truncated_fields": [
+        "nodes"
+      ],
+      "revision_echoed_by_reopen": false
+    },
+    "paired_one_anchor_cap": {
+      "classic_paragraph": 1,
+      "native_paragraph": 2,
+      "both_disclosed_truncation": true,
+      "both_reopened_expected_content": true,
+      "disposition": "pending_joint_acceptance"
+    }
   }
 }
