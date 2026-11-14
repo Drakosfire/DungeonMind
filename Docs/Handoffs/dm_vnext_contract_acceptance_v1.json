@@ -1,0 +1,318 @@
+{
+  "schema": "dm_vnext_contract_acceptance_v1",
+  "status": "draft_unaccepted",
+  "candidate": {
+    "buddy": "e7e892808dbfbb39016f59aba42becfb6be39655",
+    "core": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d"
+  },
+  "contract_digest": "fd04a9047b8ed79aaa5e710b2247ce1b2654c0e44e05d24fafb2adecb9e7b7ea",
+  "domain_contract_digest": "d12f3a517a37d29a2ba52455d9ae1691bc5e4ff3fd6853b701a9e28e46ec65cd",
+  "semantic_profile_digest": "d40a352d1c6cbd24df68be887be6dc65a470e4cea8fb64970ef9ad89b96a3339",
+  "scope_manifest": {
+    "repository": "Drakosfire/DungeonMind",
+    "commit": "fe01182432e2cbca9864fa9965b7be8db726045c",
+    "path": "Docs/Handoffs/HANDOFF-v7-elderwyld-fresh-native-scope.md",
+    "sha256": "178159b20c2064ab4547a36d16ff969f3aa566f1b26fe5919a05a26827d031fb",
+    "published_session_cohort": 47,
+    "legacy_bridge": "out_of_scope",
+    "document_disposition": "Merged scoped V7 disposition in Core PR #174"
+  },
+  "fixture_evidence": {
+    "buddy_preservation": {
+      "path": "buddy-preservation-results.json",
+      "sha256": "f65b221a8af80e7caca24e2390f746bc0bfe7b105d2a2315cd781fefa723f8d2",
+      "observed": {
+        "buddy_commit": "ffb666db75c388c5d3d2943eeeec616937136626",
+        "fixture_sha256": "c8ad6cd148d43a6ca4d195b502aa7d14f2323cc155622cb919c2756bad49d8e5",
+        "semantic_fingerprints": {
+          "gm": "300c8fc97d07def24970df4e3380d2ea27f5964c1fc556687a569442ae03943b",
+          "player": "6164c3b371fc4b7a595bcd88acfff1acf034d742eafca97c02a32aa16ed1bdff"
+        }
+      }
+    },
+    "organizational_memory": {
+      "path": "organizational-memory-results.json",
+      "sha256": "94abe51560e9a89dc5e024871ee2077e437c7b99b7195de198aa4f6860b58afe",
+      "observed": {
+        "core_package_commit": "41c74076a27abfcbbf7a8c84ede0f784fd75a3dd",
+        "fixture": "organizational_memory_v1.json",
+        "exact_priya": "8e79dda83ababbd74f01b6a8a12c63653078ae6abd8101f6affa02e43811c558",
+        "complete_priya": "a0af1cd8c578ff9e61b8a8ecce0943fb67ade313a4b685bf50be9745a7e020eb",
+        "complete_retrieval_evaluation": "772747b0597a119f6b873eb61008bc85e6ba73ffd38e2947337560a4fef7582c"
+      }
+    },
+    "adversarial_identity": {
+      "path": "adversarial-identity-exact-pin.json",
+      "sha256": "3ce671533fe7f1175dd6ae475496ffd1f66de86505f5169d7bc2782e8505efa7",
+      "observed": {
+        "core": "b1fadd145a90565ae5938837e5bd67b6dc6e004b",
+        "fixture_sha256": "1a4fbd8f9e9dd1052bc3497ac3528a68db4fe9ea4596957b242940a2f4eb8717",
+        "standings": {
+          "asrt:belief-owns": "provisional",
+          "asrt:fact-owns": "established",
+          "asrt:plan-transfer": "provisional",
+          "asrt:retracted-rumor": "retracted"
+        },
+        "result_sha256": "28a24f76327f7fcf929ff8c6fbb4015a7a4099eea72e825f427e0cc7d3af7420"
+      }
+    }
+  },
+  "candidate_buddy_preservation": {
+    "buddy": "e7e892808dbfbb39016f59aba42becfb6be39655",
+    "installed_core": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
+    "passed": 52,
+    "report": "v8-e7e892808-preservation.xml",
+    "sha256": "e5e3c5dfbdd2b9873cffc788c2ab18d1d2af24419e75986454f4d4f876209214",
+    "fixture_sha256": "c8ad6cd148d43a6ca4d195b502aa7d14f2323cc155622cb919c2756bad49d8e5",
+    "campaign_admission_outputs": {
+      "gm": {
+        "admitted": [
+          "as:brennan-classification",
+          "as:brennan-located-in-mireward",
+          "as:brennan-name",
+          "as:brennan-secret-plan",
+          "as:mireward-classification"
+        ],
+        "admitted_sha256": "ed1763d426e25184d751c8bec6269c9545eb21db1fa84373871e0eaacbd45147"
+      },
+      "player": {
+        "admitted": [
+          "as:brennan-classification",
+          "as:brennan-located-in-mireward",
+          "as:brennan-name",
+          "as:mireward-classification"
+        ],
+        "admitted_sha256": "1d7237096f98b55e54b6546e991281dfd1e5d5538028315cb82da19c807a9816"
+      }
+    }
+  },
+  "paired_governed_http_write_10k": {
+    "buddy": "e7e892808dbfbb39016f59aba42becfb6be39655",
+    "buddy_core_lock": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
+    "parent_entities_per_arm": 10000,
+    "effect": "Two new locations joined by a directed dnd5e:located_in edge",
+    "excerpt_sha256": "401993f65d68a1bcd6def702d10d276554fe7064a45289e3a5451fff28675354",
+    "timing_boundary": "Mounted in-process HTTP prepare, confirm, replay against isolated PostgreSQL",
+    "order": [
+      "prepare",
+      "confirm",
+      "replay"
+    ],
+    "classic_ms": [
+      677.448,
+      3632.216,
+      386.639
+    ],
+    "native_ms": [
+      191.448,
+      706.145,
+      417.784
+    ],
+    "verified": [
+      "Exact parent revision",
+      "Durable child and directed edge",
+      "Replay returns the same result",
+      "Authorized citation returns identical excerpt bytes"
+    ],
+    "limitations": [
+      "One sample per arm",
+      "Synthetic fixtures with model-specific metadata and admission setup",
+      "No deployed serving timing claim"
+    ],
+    "artifact_sha256": {
+      "classic-write-http-citation.log": "c92ce6399414c654e1241ea7e71d12bf233c8a9c3ce3064d8c193017b3d8c098",
+      "native-two-locations.log": "f07ee2fb72e1f7c42bd17fafa6dec5da40636795a36c2e1af224c8c6afab19dd",
+      "test_classic_write_http.py": "1fc5ce60ff4975b5f3c8f3ce89872ba9e065a68d715ea5072dbb9f27b5dcab16",
+      "test_v8_native_two_locations.py": "459a20d32e20015cf1909ee9a0f72b76d09ed0f5731028f5d4cd2d0274ec71a7"
+    }
+  },
+  "current_pin_neighborhood_witness": {
+    "buddy": "e7e892808dbfbb39016f59aba42becfb6be39655",
+    "core": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
+    "native_first_ms": [
+      2124.0078509872546
+    ],
+    "classic_depth_ms": [
+      534.8809570132289,
+      537.1827080089133
+    ],
+    "native_repeat_ms": [
+      378.72800600598566,
+      387.0364690083079,
+      377.8878749872092,
+      379.6303779963637
+    ],
+    "classic_repeat_ms": [
+      541.134297993267,
+      539.9425920040812,
+      522.2924429981504,
+      535.4970719927223
+    ],
+    "log_sha256": "5e336045eb86e4e3197bc80b06ff2e1ca96aba6d2f631a1442bebfc359b9087f",
+    "scope": "Paired isolated mounted HTTP with exact excerpt parity"
+  },
+  "paired_managed_projection_50k": {
+    "buddy": "e7e892808dbfbb39016f59aba42becfb6be39655",
+    "installed_core": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
+    "scope": "Synthetic paired mounted HTTP and disposable PostgreSQL",
+    "world_node_count": 50003,
+    "relationship_count": 1,
+    "truncated": false,
+    "samples_ms": {
+      "classic": [
+        5725.267973000882,
+        5691.301935992669
+      ],
+      "native": [
+        4551.725750992773,
+        3562.136942986399
+      ]
+    },
+    "verified": [
+      "Mapped membership",
+      "Directed edge",
+      "Display fields",
+      "Node and relationship source and evidence identities"
+    ],
+    "limitations": [
+      "Two samples per path",
+      "Synthetic World-like shape",
+      "Stale 10k timing labels in log; cardinality assertions verify 50k fixture"
+    ],
+    "sha256": {
+      "v8-managed-producer-50k.log": "f4ffc2edfbe7452c9bd40f77c233a11894a019e3576f0ba40694808b58d1b229",
+      "test_v8_managed_producer_50k.py": "1782f647053f594f8da4da50b0bedc1b58d3a18cf0ddb62bc8bb05568e86a277",
+      "v8_managed_50k_aligned_fixture.py": "9970af3bcc62688105b2de498484815553bcfab36ceb868fdd681f47bef99547"
+    }
+  },
+  "scale_50k_memory_diagnostic": {
+    "artifact": "v8-scale-50k-capped.json",
+    "sha256": "9ff3e60c053d219247ef5f89af5f8b72a9b79f7c2c10830fbe53d146f9b91d38",
+    "cells": [
+      {
+        "shape": "rules_like",
+        "disposition": "measured",
+        "count": 8
+      },
+      {
+        "shape": "rules_like",
+        "disposition": "not_measured",
+        "count": 16
+      },
+      {
+        "shape": "world_like",
+        "disposition": "measured",
+        "count": 8
+      },
+      {
+        "shape": "world_like",
+        "disposition": "not_measured",
+        "count": 16
+      }
+    ],
+    "limitations": [
+      "One repeat, 8 GiB enforced",
+      "Runner does not attest exact checkout head",
+      "Memory diagnostic only",
+      "All 16 measured cells use classic V6 APIs. This run provides no native vNext scale coverage."
+    ],
+    "measured_api_family": "classic_v6_world_graph"
+  },
+  "native_50k_read_diagnostics": {
+    "reports": [
+      {
+        "operation": "neighborhood",
+        "artifact": "v8-native-neighborhood-50k.json",
+        "sha256": "d879ac4d2d412e7707924a98492fce0a796972b4f9dd659b0213ea802bf0bea9",
+        "verified_core_source_pin": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
+        "reported_head": "e7e892808dbfbb39016f59aba42becfb6be39655",
+        "structural_gate": {
+          "claim": "fixed local neighborhood candidate/source work does not grow with unrelated space size; noisy-neighbor literals and depth-2 extra edges are not scanned; high-degree seed work scales with actual touching degree",
+          "directional_target": "50k depth-1 neighborhood p95 < 50 ms",
+          "observed_low_degree_depth_1_50k_p95_ms": 0.37688500015065074,
+          "passes": true
+        }
+      },
+      {
+        "operation": "search",
+        "artifact": "v8-native-search-50k.json",
+        "sha256": "2ea58e720c8452c45573d51d1b22044fbb783992e1c4ac40dde91e5df292b0d4",
+        "verified_core_source_pin": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
+        "reported_head": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
+        "structural_gate": {
+          "claim": "fixed low-frequency search work does not grow with unrelated corpus size; hidden matches cannot change visible membership/order/digest; high-frequency work equals the real structural match set",
+          "directional_target": "50k deterministic search p95 < 100 ms",
+          "directional_target_met": true,
+          "observed_lexical_50k_p95_ms": 0.5118570115882903,
+          "passes": true
+        }
+      },
+      {
+        "operation": "entity",
+        "artifact": "v8-native-entity-50k.json",
+        "sha256": "587512539f58bfacafa580796f1f48e859b5985f08986e1482491e79126f9a65",
+        "verified_core_source_pin": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
+        "reported_head": "e7e892808dbfbb39016f59aba42becfb6be39655",
+        "structural_gate": {
+          "claim": "low-degree get_entity source work does not grow with unrelated revision size; incoming-heavy get_complete_entity work stays proportional to touching assertions",
+          "observed_1k_artifact_ids_requested": 1,
+          "observed_1k_assertions_evaluated": 1,
+          "observed_50k_artifact_ids_requested": 1,
+          "observed_50k_assertions_evaluated": 1,
+          "observed_incoming_heavy_1k_assertions_evaluated": 1,
+          "observed_incoming_heavy_50k_assertions_evaluated": 1,
+          "observed_incoming_heavy_50k_incoming_candidates": 1,
+          "passes": true
+        }
+      }
+    ],
+    "scope": "Parsed in-memory synthetic contexts and three primary timing samples per arm. Some report heads reflect the invoking Buddy worktree. Core source and original harnesses were checked against the listed pin. Cold context, deployed HTTP, and remaining native scale families are outside these measurements."
+  },
+  "additional_native_50k_diagnostics": {
+    "v8-native-evidence-50k.json": {
+      "sha256": "802fec3518ea419c82100d27efd53849af066db572a4159acabf6c818d3fb9d5",
+      "scope": "In-memory synthetic fixture",
+      "structural_gate": {
+        "claim": "fixed assertion/evidence/anchor work does not grow with unrelated corpus size; unrelated evidence and unused sources are not scanned; high-support work equals the actual supporter set; hidden-only public results stay unavailable",
+        "directional_target": "50k exact evidence p95 < 25 ms",
+        "directional_target_met": true,
+        "observed_exact_evidence_50k_p95_ms": 0.2232330007245764,
+        "passes": true
+      }
+    },
+    "v8-native-cas-50k-verified.json": {
+      "sha256": "7413ef50dd889f067d5a0f8a4ff6903579e64d53f50d46a50687ee960cf7b9b4",
+      "scope": "In-memory synthetic fixture",
+      "structural_gate": "PASS"
+    }
+  },
+  "cold_neighborhood_disposition_proposal": {
+    "status": "proposed_for_joint_review",
+    "proposal": "Carry cold context construction as a measured performance debt for scoped Elderwyld; record deployed cold and repeat timings at V11 and prioritize eliminating whole-revision preparation in the post-vNext program.",
+    "basis": "Current-pin paired HTTP verifies exact citation parity. Native repeat latency improves, but its first request regresses. An earlier instrumented run attributes the cost to reconstruction and parsing before traversal. The 50k native local traversal diagnostic confirms bounded traversal work once a context is open.",
+    "risk": "Restart, eviction or a new pinned revision can expose the cold cost again.",
+    "profile_sha256": "88daff5cf39e36b5d749b031523d0f126d98fe31d2a592b79ff37adf22ce82de"
+  },
+  "open": [
+    "Decide cold neighborhood disposition",
+    "Record joint acceptance"
+  ],
+  "candidate_core_semantic_outputs": {
+    "core": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
+    "adversarial_identity": {
+      "standings": {
+        "asrt:belief-owns": "provisional",
+        "asrt:fact-owns": "established",
+        "asrt:retracted-rumor": "retracted",
+        "asrt:plan-transfer": "provisional"
+      },
+      "standings_sha256": "28a24f76327f7fcf929ff8c6fbb4015a7a4099eea72e825f427e0cc7d3af7420"
+    },
+    "organizational_memory": {
+      "fixture_variant": "_org_with_isolated_entity",
+      "exact_priya": "34c2a1c284b9871ca92754dffbb82c9134ecbe2a60e3100f45c0b7efadf63646",
+      "complete_priya": "73074194f4517cbee3e7fec8f2b0d00daf91173b5795f7f5381e733c16625368",
+      "complete_retrieval_evaluation": "6a4dcc5aaa590b5abb1ab55e05dff04dc6c0f97a915855ce48857e926fdad6dd"
+    }
+  }
+}
