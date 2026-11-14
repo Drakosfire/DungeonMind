@@ -1843,3 +1843,31 @@ def test_claim_mode_filter_policy_fixture() -> None:
     )
     result = context.admit_candidates(["asrt:unscoped-rumor"])
     assert result.excluded[0].reason == "domain_policy"
+
+
+def test_builtin_policy_preserves_admission_and_subclasses_get_isolated_inputs(
+    org_context: tuple[KnowledgeReadContext, InMemoryKnowledgeSourceReader],
+) -> None:
+    context, reader = org_context
+    calls = []
+
+    class MutatingPolicy(AlwaysAdmitPolicy):
+        def narrow(self, **kwargs: Any) -> bool:
+            request = kwargs["request"]
+            calls.append(tuple(request.audience_labels))
+            request.audience_labels.clear()
+            return True
+
+    custom = KnowledgeReadContext(
+        parsed=context.parsed,
+        request=context.request,
+        domain_contract=context.domain_contract,
+        semantic_profile=context.semantic_profile,
+        domain_policy=MutatingPolicy(context.domain_policy.policy_id),
+        source_reader=reader,
+    )
+    candidates = tuple(context.parsed.assertions_by_id)
+    expected = context.admit_candidates(candidates)
+    assert expected.admitted_assertion_ids
+    assert custom.admit_candidates(candidates) == expected
+    assert calls == [tuple(context.request.audience_labels)] * len(expected.admitted_assertion_ids)
