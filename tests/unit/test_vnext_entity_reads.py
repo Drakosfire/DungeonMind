@@ -2115,3 +2115,46 @@ def test_v6_k1_basic_entity_read_does_not_expose_aliases() -> None:
     result = _SVC.get_entity(context, "entity:organization:ada-lab")
     assert not hasattr(result, "aliases")
     assert result.work.alias_candidates == 0
+
+
+def test_entity_listing_batches_alias_provenance() -> None:
+    ids = ("ent:first", "ent:second")
+    aliases = [
+        IdentityAlias(alias_id=f"alias:{index}", entity_id=entity_id,
+                      alias_text=entity_id, evidence_ref_ids=["ev:lab"],
+                      standing=KnowledgeStanding.ESTABLISHED)
+        for index, entity_id in enumerate(ids)
+    ]
+    context, _ = _lab_context(
+        entities=[Entity(entity_id=entity_id) for entity_id in ids],
+        assertions=[
+            Assertion(
+                assertion_id=f"asrt:{index}", subject_entity_id=entity_id,
+                predicate="test:title", value=LiteralValue(value=entity_id),
+                metadata=AssertionMetadata(
+                    scope=[], visibility=PublicVisibility(),
+                    epistemic_basis=EpistemicBasis.ASSERTED, claim_mode="test:fact",
+                    standing=KnowledgeStanding.ESTABLISHED, evidence_ref_ids=["ev:lab"],
+                    temporal_scope=TimelessTemporalScope(),
+                ),
+            )
+            for index, entity_id in enumerate(ids)
+        ],
+        evidence=[EvidenceRefV3(
+            evidence_ref_id="ev:lab", source_artifact_id="src:lab",
+            source_revision_id="srcrev:lab", evidence_role="support",
+            can_open_source=True, can_highlight_span=False,
+        )],
+        aliases=aliases,
+    )
+
+    before = context.source_reader.snapshot_call_count
+    listing, admitted = _SVC.list_entities_with_aliases(context)
+    assert context.source_reader.snapshot_call_count - before == 2
+    assert tuple(entity.entity_id for entity in listing.entities) == ids
+    assert tuple(alias.alias_id for alias in admitted) == ("alias:0", "alias:1")
+    assert admitted == tuple(
+        alias
+        for entity_id in ids
+        for alias in _SVC.get_complete_entity(context, entity_id).aliases
+    )
