@@ -270,3 +270,23 @@ Core package documented in the default-bound search witness above.
 This verifies exact reopening for this request. The separate one-anchor
 paired fixture still demonstrates different citation selection under
 truncation. V8 joint acceptance remains open.
+
+## Dense Rules-like preparation diagnostic
+
+On installed Core `45d04fb6691cb084b1d50feb1ddb7ab18f15a95d`, the
+synthetic native payload held 10,000 entities, 15,000 directed
+relationships, and 25,000 evidence records. Five runs from an in-memory
+payload measured medians of 0.596 s for decode and hash, 0.937 s for
+parsed revision construction, and 1.390 s for both stages combined.
+The combined figure is the median of total durations for each run.
+All five builds reproduced semantic SHA-256
+`cb8b70e29d96f9b063683e69ea01654c671a30313e595b9b1b88842c9996aea5`.
+
+The separately timed Alpha depth-one native read began with a parsed
+revision and took 0.411 ms median across 20 samples. It evaluated four
+assertions and each sample matched the expected directed relationships
+and evidence membership. The classic service request took 3.810 s
+median across five samples and returned the expected four relationship
+IDs. These are separate diagnostic boundaries with the evidence order
+difference documented above. A matched full-request timing, remaining
+operations, and larger Rules-like rungs remain open.
