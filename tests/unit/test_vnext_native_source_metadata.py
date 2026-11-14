@@ -341,3 +341,16 @@ def test_native_source_view_preserves_the_general_evidence_reader_contract():
     assert general.get_revision(receipt.source_revision_id) == native.provenance.get_revision(
         receipt.source_revision_id
     )
+
+
+def test_selected_source_metadata_preserves_admission():
+    _, _, _, context, receipt = source_case(hidden=True)
+    evidence_id = receipt.bindings[0].evidence_ref_id
+    selected = [evidence_id, evidence_id, "missing"]
+    catalogue = list_admitted_native_text_sources(context, evidence_ref_ids=selected)
+    assert catalogue == list_admitted_native_text_sources(context)
+    assert list_admitted_native_text_sources(context, evidence_ref_ids=[]).sources == ()
+    forbidden = replace(context, audience_labels=frozenset())
+    denied = list_admitted_native_text_sources(forbidden, evidence_ref_ids=selected)
+    assert denied.complete
+    assert denied.sources == ()

@@ -183,6 +183,8 @@ def _metadata_allowed(
 
 def list_admitted_native_text_sources(
     context: NativeTextSourceAccessContext,
+    *,
+    evidence_ref_ids: Sequence[str] | None = None,
 ) -> NativeTextSourceCatalog:
     """Discover authorized metadata; selected reads still verify bytes and proofs.
 
@@ -190,8 +192,14 @@ def list_admitted_native_text_sources(
     the excluded source or make an authorized audience's catalogue partial.
     """
     pairs = {}
-    for evidence in context.parsed.evidence_by_id.values():
-        if _eligible_evidence(context, evidence):
+    evidence_by_id = context.parsed.evidence_by_id
+    candidates = (
+        evidence_by_id.values()
+        if evidence_ref_ids is None
+        else (evidence_by_id.get(identity) for identity in dict.fromkeys(evidence_ref_ids))
+    )
+    for evidence in candidates:
+        if evidence is not None and _eligible_evidence(context, evidence):
             pairs.setdefault((evidence.source_artifact_id, evidence.source_revision_id), []).append(
                 evidence
             )
