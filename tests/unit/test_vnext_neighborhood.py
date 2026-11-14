@@ -1005,3 +1005,14 @@ def test_admitted_seed_mode_withholds_hidden_seed_like_absent_seed():
     result = _SVC.get_neighborhood(context, ["seed"], depth=2, require_admitted_seeds=True)
     assert result.found_seed_entity_ids == ("seed",)
     assert _ids(result) == {"seed", "public"}
+
+
+def test_admitted_seed_mode_keeps_isolated_seed_with_admitted_claim():
+    context, _ = _lab_context(
+        entities=[Entity(entity_id="isolated")],
+        assertions=[_literal("asrt:label", "isolated")],
+    )
+    result = _SVC.get_neighborhood(context, ["isolated"], require_admitted_seeds=True)
+    assert result.found_seed_entity_ids == ("isolated",)
+    assert result.entity_depths == (("isolated", 0),)
+    assert not result.traversal_assertions
