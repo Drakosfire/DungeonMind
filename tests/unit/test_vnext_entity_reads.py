@@ -2006,6 +2006,9 @@ def test_v6_k1_alias_admission_fails_closed(
         context_factory(), "entity:organization:ada-lab"
     )
     assert len(result.aliases) == expected_aliases
+    listing, aliases = _SVC.list_entities_with_aliases(context_factory())
+    assert not listing.entities
+    assert not aliases
 
 
 def test_v6_k1_evidence_less_alias_returns_without_alias_source_work() -> None:
@@ -2112,3 +2115,70 @@ def test_v6_k1_basic_entity_read_does_not_expose_aliases() -> None:
     result = _SVC.get_entity(context, "entity:organization:ada-lab")
     assert not hasattr(result, "aliases")
     assert result.work.alias_candidates == 0
+
+
+@pytest.mark.parametrize("alias_source_status", ["active", "retracted"])
+def test_entity_listing_batches_alias_provenance(alias_source_status: str) -> None:
+    ids = ("ent:first", "ent:second")
+    aliases = [
+        IdentityAlias(alias_id=f"alias:{index}", entity_id=entity_id,
+                      alias_text=entity_id, evidence_ref_ids=["ev:alias"],
+                      standing=KnowledgeStanding.ESTABLISHED)
+        for index, entity_id in enumerate(ids)
+    ]
+    _, reader = _lab_context(entities=[], assertions=[], evidence=[])
+    artifact = reader._artifacts["src:lab"]
+    revision = reader._revisions["srcrev:lab"]
+    context, _ = _lab_context(
+        entities=[Entity(entity_id=entity_id) for entity_id in ids],
+        assertions=[
+            Assertion(
+                assertion_id=f"asrt:{index}", subject_entity_id=entity_id,
+                predicate="test:title", value=LiteralValue(value=entity_id),
+                metadata=AssertionMetadata(
+                    scope=[], visibility=PublicVisibility(),
+                    epistemic_basis=EpistemicBasis.ASSERTED, claim_mode="test:fact",
+                    standing=KnowledgeStanding.ESTABLISHED, evidence_ref_ids=["ev:lab"],
+                    temporal_scope=TimelessTemporalScope(),
+                ),
+            )
+            for index, entity_id in enumerate(ids)
+        ],
+        artifacts={
+            "src:lab": artifact,
+            "src:alias": artifact.model_copy(update={
+                "source_artifact_id": "src:alias",
+                "current_revision_id": "srcrev:alias",
+                "status": alias_source_status,
+            }),
+        },
+        revisions={
+            "srcrev:lab": revision,
+            "srcrev:alias": revision.model_copy(update={
+                "source_revision_id": "srcrev:alias",
+                "source_artifact_id": "src:alias",
+            }),
+        },
+        evidence=[EvidenceRefV3(
+            evidence_ref_id="ev:lab", source_artifact_id="src:lab",
+            source_revision_id="srcrev:lab", evidence_role="support",
+            can_open_source=True, can_highlight_span=False,
+        ), EvidenceRefV3(
+            evidence_ref_id="ev:alias", source_artifact_id="src:alias",
+            source_revision_id="srcrev:alias", evidence_role="support",
+            can_open_source=True, can_highlight_span=False,
+        )],
+        aliases=aliases,
+    )
+
+    before = context.source_reader.snapshot_call_count
+    listing, admitted = _SVC.list_entities_with_aliases(context)
+    assert context.source_reader.snapshot_call_count - before == 2
+    assert tuple(entity.entity_id for entity in listing.entities) == ids
+    expected = ("alias:0", "alias:1") if alias_source_status == "active" else ()
+    assert tuple(alias.alias_id for alias in admitted) == expected
+    assert admitted == tuple(
+        alias
+        for entity_id in ids
+        for alias in _SVC.get_complete_entity(context, entity_id).aliases
+    )
