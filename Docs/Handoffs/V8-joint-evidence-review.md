@@ -153,3 +153,21 @@ results and reopened citation bytes in both conditions. Include revision
 reconstruction and context preparation in the performance handoff.
 
 V8 remains open pending joint acceptance of these dispositions.
+
+## Isolated Elderwyld route attestation
+
+Buddy `ad0eeea558a0b03f82b2cb7f873d21eedb5372ec` with installed Core
+`45d04fb6691cb084b1d50feb1ddb7ab18f15a95d` used the isolated PostgreSQL
+catalog to resolve managed World `elderwyld-v8-witness` to native space
+`elderwyld` at binding version 1. At restored head
+`rev:2320336c2bf9b6d3f5cf514f8e2dc9b6`, authenticated mounted search,
+complete-object, and two-hop neighborhood returned HTTP 200 and honored
+the requested revision. Search returned the expected seed first and
+returned HTTP 401 for the anonymous request.
+
+Buddy reopened 1,532 citation bytes at that revision. Their SHA-256
+`3760c43d8e5a57af546ba037a2d550c45afa3036c3d4273a5b79ddb57f4ab5a1`
+matched the persisted span proof in Core extension
+`elderwyld-c2-session18-native-batch-post2067-support-v1`, including the
+proof's byte length. These were local-operator reads on an isolated restore.
+Serving authority, hosted deployment verification, and rollback remain open.
