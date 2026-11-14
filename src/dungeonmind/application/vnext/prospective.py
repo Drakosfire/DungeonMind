@@ -29,6 +29,7 @@ from dungeonmind.contracts.vnext.prospective import (
     ProspectiveKnowledgeContribution,
     ProspectiveResultBinding,
 )
+from dungeonmind.contracts.vnext.source import EvidenceRefV3
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import ImmutableRevisionConflictError, PersistenceIntegrityError
 
@@ -351,7 +352,7 @@ def resolve_prospective_contribution(
     )
 
 
-def publish_prospective_contribution(
+def _plan_prospective_publication(
     *,
     parent: ParsedKnowledgeRevision,
     prospective_contribution: ProspectiveKnowledgeContribution,
@@ -360,9 +361,9 @@ def publish_prospective_contribution(
     publication_id: str,
     domain_contract: DomainContractDescriptor,
     semantic_profile: SemanticProfileDescriptorV2,
-    repository: KnowledgeRevisionRepository,
-) -> KnowledgeProspectivePublication:
-    """Resolve, validate, and atomically publish one prospective contribution."""
+    admitted_evidence: Sequence[EvidenceRefV3] = (),
+) -> tuple[GovernedMaterializationResult, ResolvedProspectiveContribution]:
+    """Resolve and validate the prospective graph change before persistence."""
     resolved = resolve_prospective_contribution(
         prospective_contribution=prospective_contribution,
         dispositions=dispositions,
@@ -377,6 +378,7 @@ def publish_prospective_contribution(
         publication=publication,
         domain_contract=domain_contract,
         semantic_profile=semantic_profile,
+        admitted_evidence=admitted_evidence,
     )
     command = materialization.command
     validate_prospective_result_bindings(
@@ -385,6 +387,31 @@ def publish_prospective_contribution(
         publication_id=publication_id,
         result_bindings=resolved.committed_result_bindings,
     )
+    return materialization, resolved
+
+
+def publish_prospective_contribution(
+    *,
+    parent: ParsedKnowledgeRevision,
+    prospective_contribution: ProspectiveKnowledgeContribution,
+    dispositions: Sequence[ContributionDisposition],
+    publication: GovernedPublicationIdentity,
+    publication_id: str,
+    domain_contract: DomainContractDescriptor,
+    semantic_profile: SemanticProfileDescriptorV2,
+    repository: KnowledgeRevisionRepository,
+) -> KnowledgeProspectivePublication:
+    """Resolve, validate, and atomically publish one prospective contribution."""
+    materialization, resolved = _plan_prospective_publication(
+        parent=parent,
+        prospective_contribution=prospective_contribution,
+        dispositions=dispositions,
+        publication=publication,
+        publication_id=publication_id,
+        domain_contract=domain_contract,
+        semantic_profile=semantic_profile,
+    )
+    command = materialization.command
     expected_revision_id = revision_from_command(command).revision_id
     try:
         aggregate = repository.publish_prospective_publication(

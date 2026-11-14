@@ -14,6 +14,7 @@ from dungeonmind.contracts.vnext.domain import (
 )
 from dungeonmind.contracts.vnext.knowledge import PublishKnowledgeRevisionCommand
 from dungeonmind.contracts.vnext.native_source import (
+    GovernedNativeSourceEvidenceExtensionV1,
     NativeSourceAdmissionReceiptV1,
     NativeSourceEvidenceExtensionReceiptV1,
     NativeSourceEvidenceExtensionV1,
@@ -25,9 +26,11 @@ from dungeonmind.contracts.vnext.source import EvidenceRefV3
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
 
+from .builder import build_parsed_knowledge_revision
 from .errors import KnowledgePublicationIdempotencyConflictError, KnowledgeStaleParentRevisionError
 from .materialization import (
     NATIVE_VNEXT_GRAPH_SCHEMA,
+    GovernedPublicationIdentity,
     decode_native_graph_payload,
     encode_native_graph_payload,
 )
@@ -39,6 +42,7 @@ from .native_source_admission import (
     _span_slice,
     allocate_native_source_id,
 )
+from .prospective import _plan_prospective_publication
 from .publication import _verify_receipt
 
 
@@ -232,6 +236,25 @@ def extension_plan(
         migration_origin_ref=parent.revision.migration_origin_ref,
         created_at=request.created_at,
     )
+    if isinstance(request, GovernedNativeSourceEvidenceExtensionV1):
+        parsed_parent = build_parsed_knowledge_revision(
+            revision=parent.revision, decoded_content=content,
+        )
+        materialization, _ = _plan_prospective_publication(
+            parent=parsed_parent,
+            prospective_contribution=request.contribution,
+            dispositions=request.dispositions,
+            publication_id=request.extension_id,
+            publication=GovernedPublicationIdentity(
+                operation_ids=(request.extension_id,),
+                created_at=request.created_at,
+                expected_parent_revision_id=request.expected_parent_revision_id,
+            ),
+            domain_contract=domain_contract,
+            semantic_profile=semantic_profile,
+            admitted_evidence=tuple(evidence[binding.evidence_ref_id] for binding in bindings),
+        )
+        command = materialization.command
     plan = ExtensionPlan(command, root, tuple(proofs), tuple(bindings), intent)
     if prior is not None:
         verify_extension_receipt(repository, prior, plan)
@@ -297,7 +320,7 @@ def snapshot_extension_inputs(
     DomainContractDescriptor,
     SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
 ]:
-    request_snapshot = NativeSourceEvidenceExtensionV1.model_validate(
+    request_snapshot = type(request).model_validate(
         request.model_dump(mode="json")
     )
     domain_snapshot = DomainContractDescriptor.model_validate(

@@ -16,6 +16,8 @@ from .common import (
     VisibilityRequirement,
     _unique,
 )
+from .contribution import ContributionDisposition
+from .prospective import ProspectiveKnowledgeContribution
 from .publication import KnowledgePublicationReceipt
 
 MAX_NATIVE_TEXT_BYTES = 1_048_576
@@ -220,6 +222,13 @@ class NativeSourceEvidenceExtensionV1(DungeonMindModel):
         if len({(s.start_byte, s.end_byte) for s in self.spans}) != len(self.spans):
             raise ValueError("duplicate source interval")
         return self
+
+
+class GovernedNativeSourceEvidenceExtensionV1(NativeSourceEvidenceExtensionV1):
+    """An exact evidence extension committed with a governed graph change."""
+
+    contribution: ProspectiveKnowledgeContribution
+    dispositions: list[ContributionDisposition] = Field(min_length=1)
 
 
 class NativeSourceEvidenceExtensionReceiptV1(DungeonMindModel):

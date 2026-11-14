@@ -36,6 +36,9 @@ from tests.unit.test_vnext_native_source_admission import BODY, NOW, _domain, _p
 def setup_source(repo, *, private=False):
     domain = _domain(visibility_labels=["role:gm"] if private else None)
     profile = _profile()
+    domain.claim_modes = ["test:source"]
+    from dungeonmind.contracts.vnext.domain import SemanticProfilePredicate
+    profile.predicates = [SemanticProfilePredicate(term="test:name", allowed_value_kinds=["literal"])]
     genesis = initialize_empty_knowledge_space(
         repository=repo,
         space_id="space:extension",
@@ -447,3 +450,49 @@ def test_extension_contract_artifact_is_reproducible():
         / "Docs/Contracts/vnext/dm_native_source_evidence_extension_v1.json"
     )
     assert path.read_text() == json.dumps(contract_bundle(), sort_keys=True, indent=2) + "\n"
+
+
+def governed_extension(repo, root):
+    from dungeonmind.application.vnext.native_source_admission import allocate_native_source_id
+    from dungeonmind.contracts.vnext.native_source import GovernedNativeSourceEvidenceExtensionV1
+
+    stored = seed_semantic_content(repo, root)
+    request = extension(repo, root)
+    evidence_id = allocate_native_source_id(
+        space_id=root.space_id, admission_id=request.extension_id,
+        identity_kind="evidence", client_ref="new",
+    )
+    assertion = deepcopy(stored.graph_payload["assertions"][0])
+    assertion["assertion_id"] = "assertion:combined"
+    assertion["metadata"]["evidence_ref_ids"] = [evidence_id]
+    return GovernedNativeSourceEvidenceExtensionV1.model_validate({
+        **request.model_dump(),
+        "contribution": {
+            "contribution_id": "contribution:combined",
+            "space_id": root.space_id,
+            "producer": "test:author",
+            "produced_at": request.created_at,
+            "status": "finalized",
+            "items": [{"kind": "propose_assertion", "item_id": "item:combined", "assertion": assertion}],
+        },
+        "dispositions": [{"item_id": "item:combined", "disposition": "accepted"}],
+    })
+
+
+def exercise_governed_extension(repo, reopen):
+    domain, profile, _, root = setup_source(repo)
+    request = governed_extension(repo, root)
+    receipt = publish(repo, domain, profile, request)
+    evidence_id = receipt.bindings[0].evidence_ref_id
+    child = repo.get_revision(root.space_id, receipt.publication_receipt.published_revision_id)
+    assert child.revision.parent_revision_id == request.expected_parent_revision_id
+    assertion = next(a for a in child.graph_payload["assertions"] if a["assertion_id"] == "assertion:combined")
+    assert assertion["metadata"]["evidence_ref_ids"] == [evidence_id]
+    assert access(repo, domain, root, evidence_id).status == "available"
+    assert publish(reopen(), domain, profile, request) == receipt
+    assert repo.get_head(root.space_id).head_revision_id == child.revision.revision_id
+
+
+def test_governed_extension_commits_one_child_and_replays():
+    repo = InMemoryNativeSourceEvidenceRepository()
+    exercise_governed_extension(repo, lambda: repo)
