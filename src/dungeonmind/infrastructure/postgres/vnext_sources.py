@@ -424,6 +424,33 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
                 )
         return revision
 
+    def list_public_native_pdf_revisions(
+        self, space_id: str, *, after_revision_id: str = "", limit: int = 100
+    ) -> list[SourceRevisionV2]:
+        """List active unwithdrawn public PDFs without loading their bytes."""
+        if not 1 <= limit <= 100:
+            raise ValueError("PDF revision page size must be between 1 and 100")
+        with self._database.transaction() as conn:
+            rows = conn.execute(
+                """
+                SELECT p.source_revision
+                FROM dungeonmind.knowledge_native_pdf_sources AS p
+                WHERE p.space_id = %s AND p.source_revision_id > %s
+                  AND p.source_artifact ->> 'status' = 'active'
+                  AND p.source_artifact -> 'visibility' ->> 'kind' = 'public'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM dungeonmind.knowledge_native_source_withdrawals AS w
+                      WHERE w.space_id = p.space_id
+                        AND w.source_artifact_id = p.source_artifact ->> 'source_artifact_id'
+                        AND w.source_revision_id = p.source_revision_id
+                  )
+                ORDER BY p.source_revision_id
+                LIMIT %s
+                """,
+                (space_id, after_revision_id, limit),
+            ).fetchall()
+        return [SourceRevisionV2.model_validate(row["source_revision"]) for row in rows]
+
     def get_native_pdf_source(
         self, space_id: str, source_revision_id: str
     ) -> tuple[SourceArtifactV3, SourceRevisionV2, int, bytes] | None:

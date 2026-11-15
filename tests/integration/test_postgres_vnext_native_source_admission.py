@@ -446,6 +446,11 @@ def test_postgres_retains_pdf_before_publication(pg, text_first):
     old_view = repository.open_native_source_view(request.space_id)
     revision = repository.retain_native_pdf_source(request, body)
     assert repository.retain_native_pdf_source(request, body) == revision
+    assert repository.list_public_native_pdf_revisions(request.space_id) == [revision]
+    assert repository.list_public_native_pdf_revisions("space:unrelated") == []
+    assert repository.list_public_native_pdf_revisions(
+        request.space_id, after_revision_id=revision.source_revision_id,
+    ) == []
     current_view = repository.open_native_source_view(request.space_id)
     assert current_view.epoch == old_view.epoch + 1
     keys = dict(
