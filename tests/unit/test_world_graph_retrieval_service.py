@@ -1627,6 +1627,21 @@ def test_neighborhood_discovery_edges_exclude_edges_between_seeds_and_bounded_ed
         bounds=RetrievalBounds(max_relationships=1),
     )
     assert bounded.discovery_relationship_ids == ("rel:keep-crypt",)
+    hop = bounded.discovery_hops[0]
+    assert (hop.from_object_id, hop.to_object_id) == ("obj:alpha-keep", "obj:beta-crypt")
+
+    object_bounded = service.get_neighborhood(
+        _cross(), seed_object_ids=seeds, depth=1,
+        bounds=RetrievalBounds(max_objects=3),
+    )
+    assert object_bounded.object_limit_pruned_ids == ("obj:beta-crypt", "obj:world-gate")
+    assert object_bounded.object_limit_pruned_count == 2
+    assert all(hop.to_object_id in object_bounded.object_depths for hop in object_bounded.discovery_hops)
+
+    reverse = service.get_neighborhood(_cross(), seed_object_ids=["obj:beta-crypt"], depth=1)
+    assert reverse.discovery_hops[0].from_object_id == "obj:beta-crypt"
+    assert reverse.discovery_hops[0].to_object_id == "obj:alpha-keep"
+
 
 
 def test_neighborhood_missing_seed_reported_never_replaced():
@@ -1660,6 +1675,7 @@ def test_neighborhood_player_never_crosses_gm_only_edge():
         "obj:world-gate",
     }
     assert all("secret" not in rel.relationship_id for rel in result.relationships)
+    assert "obj:alpha-secret" not in result.object_limit_pruned_ids
 
 
 def test_neighborhood_campaign_scope_excludes_other_campaign():
