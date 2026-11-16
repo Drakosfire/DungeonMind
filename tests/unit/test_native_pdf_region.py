@@ -202,3 +202,28 @@ def test_register_pdf_evidence_preserves_graph_and_replays_exact_parent(region):
     assert register("register:region") == registered
     with pytest.raises(KnowledgeStaleParentRevisionError):
         register("register:stale")
+
+
+def test_shared_pdf_validator_checks_pages_and_encryption():
+    from io import BytesIO
+
+    from pypdf import PdfWriter
+
+    from dungeonmind.application.vnext.native_source_admission import validate_native_pdf_body
+
+    writer = PdfWriter()
+    empty = BytesIO()
+    writer.write(empty)
+    with pytest.raises(ValueError, match="contain a page"):
+        validate_native_pdf_body(empty.getvalue())
+
+    writer.add_blank_page(width=200, height=300)
+    valid = BytesIO()
+    writer.write(valid)
+    assert validate_native_pdf_body(valid.getvalue()) == 1
+
+    writer.encrypt("fixture")
+    encrypted = BytesIO()
+    writer.write(encrypted)
+    with pytest.raises(ValueError, match="Encrypted"):
+        validate_native_pdf_body(encrypted.getvalue())
