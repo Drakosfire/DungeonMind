@@ -461,6 +461,8 @@ class NeighborhoodResult:
     property_assertions: tuple[AdmittedAssertionValue, ...]
     anchors: tuple[SourceAnchorMetadata, ...]
     coverage: RetrievalCoverage
+    # First-discovery edges retained by the same bounds as relationships.
+    discovery_relationship_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -2523,6 +2525,7 @@ class WorldGraphRetrievalService:
 
                 depths: dict[str, int] = {seed: 0 for seed in present_seeds}
                 visited_edge_ids: set[str] = set()
+                discovery_edge_ids: list[str] = []
                 frontier = list(present_seeds)
                 for level in range(1, depth + 1):
                     next_frontier: list[str] = []
@@ -2538,6 +2541,7 @@ class WorldGraphRetrievalService:
                             )
                             if other_id not in depths:
                                 depths[other_id] = level
+                                discovery_edge_ids.append(rel.relationship_id)
                                 next_frontier.append(other_id)
                     frontier = next_frontier
 
@@ -2583,10 +2587,14 @@ class WorldGraphRetrievalService:
                     assertion_ids={row.assertion_id for row in assertions},
                     max_anchors=bounds.max_anchors,
                 )
+            retained_relationship_ids = {rel.relationship_id for rel in relationships}
             op_result = NeighborhoodResult(
                 snapshot=result.snapshot,
                 seed_object_ids=tuple(present_seeds),
                 object_depths={oid: depths[oid] for oid in selected_ids},
+                discovery_relationship_ids=tuple(
+                    edge_id for edge_id in discovery_edge_ids if edge_id in retained_relationship_ids
+                ),
                 objects=tuple(graph.objects[object_id] for object_id in selected_ids),
                 relationships=relationships,
                 property_assertions=assertions,

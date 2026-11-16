@@ -1609,6 +1609,26 @@ def test_neighborhood_depth_one_and_two():
     assert projection.project_calls == 2
 
 
+
+def test_neighborhood_discovery_edges_exclude_edges_between_seeds_and_bounded_edges():
+    world_graph = InMemoryWorldGraphRepository()
+    _publish(world_graph)
+    service, _ = _services(world_graph)
+    seeds = ["obj:alpha-keep", "obj:world-tavern"]
+
+    result = service.get_neighborhood(_cross(), seed_object_ids=seeds, depth=1)
+    assert "rel:tavern-keep" in {rel.relationship_id for rel in result.relationships}
+    assert result.discovery_relationship_ids == (
+        "rel:keep-crypt", "rel:keep-secret", "rel:tavern-gate",
+    )
+
+    bounded = service.get_neighborhood(
+        _cross(), seed_object_ids=seeds, depth=1,
+        bounds=RetrievalBounds(max_relationships=1),
+    )
+    assert bounded.discovery_relationship_ids == ("rel:keep-crypt",)
+
+
 def test_neighborhood_missing_seed_reported_never_replaced():
     world_graph = InMemoryWorldGraphRepository()
     _publish(world_graph)
