@@ -450,6 +450,13 @@ class GraphSearchResult:
 
 
 @dataclass(frozen=True)
+class NeighborhoodHop:
+    relationship_id: str
+    from_object_id: str
+    to_object_id: str
+
+
+@dataclass(frozen=True)
 class NeighborhoodResult:
     """Bounded BFS expansion result. ``object_depths[seed] == 0``."""
 
@@ -463,6 +470,10 @@ class NeighborhoodResult:
     coverage: RetrievalCoverage
     # First-discovery edges retained by the same bounds as relationships.
     discovery_relationship_ids: tuple[str, ...] = ()
+    discovery_hops: tuple[NeighborhoodHop, ...] = ()
+    # Sample of already-visible candidates dropped by the object result cap.
+    object_limit_pruned_ids: tuple[str, ...] = ()
+    object_limit_pruned_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -2525,7 +2536,7 @@ class WorldGraphRetrievalService:
 
                 depths: dict[str, int] = {seed: 0 for seed in present_seeds}
                 visited_edge_ids: set[str] = set()
-                discovery_edge_ids: list[str] = []
+                discoveries: dict[str, NeighborhoodHop] = {}
                 frontier = list(present_seeds)
                 for level in range(1, depth + 1):
                     next_frontier: list[str] = []
@@ -2541,7 +2552,7 @@ class WorldGraphRetrievalService:
                             )
                             if other_id not in depths:
                                 depths[other_id] = level
-                                discovery_edge_ids.append(rel.relationship_id)
+                                discoveries[other_id] = NeighborhoodHop(rel.relationship_id, object_id, other_id)
                                 next_frontier.append(other_id)
                     frontier = next_frontier
 
@@ -2588,13 +2599,17 @@ class WorldGraphRetrievalService:
                     max_anchors=bounds.max_anchors,
                 )
             retained_relationship_ids = {rel.relationship_id for rel in relationships}
+            discovery_hops = tuple(
+                hop for hop in discoveries.values() if hop.relationship_id in retained_relationship_ids
+            )
             op_result = NeighborhoodResult(
                 snapshot=result.snapshot,
                 seed_object_ids=tuple(present_seeds),
                 object_depths={oid: depths[oid] for oid in selected_ids},
-                discovery_relationship_ids=tuple(
-                    edge_id for edge_id in discovery_edge_ids if edge_id in retained_relationship_ids
-                ),
+                discovery_relationship_ids=tuple(hop.relationship_id for hop in discovery_hops),
+                discovery_hops=discovery_hops,
+                object_limit_pruned_ids=tuple(others_ordered[remaining:remaining + 32]),
+                object_limit_pruned_count=len(others_ordered) - len(capped_others),
                 objects=tuple(graph.objects[object_id] for object_id in selected_ids),
                 relationships=relationships,
                 property_assertions=assertions,
