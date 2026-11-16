@@ -11,8 +11,8 @@ from psycopg.types.json import Jsonb
 
 from dungeonmind.application.vnext.native_source_admission import (
     build_native_pdf_source_records,
-    validate_native_pdf_body,
     native_source_command_sha256,
+    validate_native_pdf_body,
     validate_native_source_write,
 )
 from dungeonmind.application.vnext.ports import (
