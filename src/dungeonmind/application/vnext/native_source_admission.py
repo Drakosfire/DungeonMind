@@ -213,6 +213,25 @@ def _build_native_source_records(
     return artifact, revision
 
 
+def validate_native_pdf_body(body: bytes) -> int:
+    """Validate a PDF before provisioning or retaining it and return its page count."""
+    from io import BytesIO
+
+    from pypdf import PdfReader
+    from pypdf.errors import PdfReadError
+
+    try:
+        pdf = PdfReader(BytesIO(body), strict=True)
+        if pdf.is_encrypted:
+            raise ValueError("Encrypted PDFs cannot be admitted")
+        page_count = len(pdf.pages)
+    except PdfReadError as exc:
+        raise ValueError("Invalid PDF source") from exc
+    if page_count == 0:
+        raise ValueError("PDF source must contain a page")
+    return page_count
+
+
 def build_native_pdf_source_records(
     request: NativePdfSourceAdmissionV1,
     body: bytes,
