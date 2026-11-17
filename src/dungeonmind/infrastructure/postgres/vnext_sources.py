@@ -4,17 +4,15 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable, Sequence
-from io import BytesIO
 from typing import Any
 
 from psycopg import Connection, sql
 from psycopg.types.json import Jsonb
-from pypdf import PdfReader
-from pypdf.errors import PdfReadError
 
 from dungeonmind.application.vnext.native_source_admission import (
     build_native_pdf_source_records,
     native_source_command_sha256,
+    validate_native_pdf_body,
     validate_native_source_write,
 )
 from dungeonmind.application.vnext.ports import (
@@ -356,15 +354,7 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
     ) -> SourceRevisionV2:
         """Retain one verified upload. The caller must authorize admission first."""
         artifact, revision = build_native_pdf_source_records(request, body)
-        try:
-            pdf = PdfReader(BytesIO(body), strict=True)
-            if pdf.is_encrypted:
-                raise ValueError("Encrypted PDFs cannot be admitted")
-            page_count = len(pdf.pages)
-        except PdfReadError as exc:
-            raise ValueError("Invalid PDF source") from exc
-        if page_count == 0:
-            raise ValueError("PDF source must contain a page")
+        page_count = validate_native_pdf_body(body)
         artifact_payload = artifact.model_dump(mode="json")
         revision_payload = revision.model_dump(mode="json")
         with self._database.transaction() as conn:
