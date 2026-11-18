@@ -1,6 +1,8 @@
 # Exact current-source verification proof reuse
 
-Status: PROPOSED DESIGN ONLY; no runtime implementation accepted.
+Status: ACCEPTED DESIGN ONLY; no runtime implementation accepted.
+Reviewed24a8bdf merged as0dc8c357f05d884d01a9fdd720a20f33d0f52fa0 via226,
+independent approval and all CI44412416098 jobs passed.
 Owner: Elderwyld pre-cutover optimization lane. Authority: operator goal and
 implementation/review/merge authorization; this is an explicit owning-lane rebrief.
 Base: accepted224 f174923bf7962f78d14faeb36a41f77004520676.
