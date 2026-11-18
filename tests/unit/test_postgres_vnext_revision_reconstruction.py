@@ -1,15 +1,17 @@
 """Stored-row integrity and bounded reconstruction work for native reads."""
 
 from copy import deepcopy
+from importlib import import_module
 
 import pytest
 
 from dungeonmind.application.vnext.authority import revision_from_command
 from dungeonmind.domain.canonical import canonical_json, canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
-from dungeonmind.infrastructure.postgres import vnext_knowledge
 from tests.unit.test_vnext_cas_publication import genesis_command
 
+pytest.importorskip("psycopg")
+vnext_knowledge = import_module("dungeonmind.infrastructure.postgres.vnext_knowledge")
 
 def _row():
     command = genesis_command(origin=None)

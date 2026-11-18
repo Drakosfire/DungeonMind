@@ -89,3 +89,8 @@ The initial core CI job stopped on three inherited E501 violations in
 world_graph_retrieval.py and its unit test. The repair wraps exactly those
 three expressions in a separate commit. Python ASTs match before and after.
 These two additional paths unblock validation and add no behavioral scope.
+
+The next core job exposed two inherited missing-import diagnostics for the
+optional pypdf extra. Targeted Pyright annotations on those imports preserve
+runtime behavior in minimal installations. Reconstruction tests explicitly
+skip when psycopg is absent, preserving the optional PostgreSQL dependency.
