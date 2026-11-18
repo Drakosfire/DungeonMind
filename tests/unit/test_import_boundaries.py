@@ -166,6 +166,33 @@ def _module_name(path: Path) -> tuple[str, bool]:
     return module_name, is_init
 
 
+
+def _optional_pdf_validator_import(module_name: str, imported: str) -> bool:
+    return (
+        module_name == "dungeonmind.application.vnext.native_source_admission"
+        and imported in {"pypdf", "pypdf.errors"}
+    )
+
+
+def test_optional_pdf_imports_stay_inside_the_validator() -> None:
+    path = SRC / "application/vnext/native_source_admission.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    validator, = (
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "validate_native_pdf_body"
+    )
+    pdf_imports = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module in {"pypdf", "pypdf.errors"}
+    ]
+    assert len(pdf_imports) == 2
+    local_nodes = set(ast.walk(validator))
+    assert all(node in local_nodes for node in pdf_imports)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            assert all(alias.name.split(".")[0] != "pypdf" for alias in node.names)
+
 def test_no_forbidden_imports_anywhere() -> None:
     violations: list[str] = []
     for path in _all_source_files():
@@ -175,7 +202,11 @@ def test_no_forbidden_imports_anywhere() -> None:
             root = module.split(".")[0]
             if root in FORBIDDEN_ROOTS:
                 violations.append(f"{path.relative_to(SRC)} imports {module}")
-            if root in POSTGRES_ONLY_ROOTS and layer != "dungeonmind.infrastructure.postgres":
+            if (
+                root in POSTGRES_ONLY_ROOTS
+                and layer != "dungeonmind.infrastructure.postgres"
+                and not _optional_pdf_validator_import(module_name, module)
+            ):
                 violations.append(
                     f"{path.relative_to(SRC)} imports {module} outside infrastructure.postgres"
                 )
@@ -197,6 +228,8 @@ def test_layer_rules_hold() -> None:
         for module in _imports_of(path, module_name, is_init):
             root = module.split(".")[0]
             if root in stdlib or root in ALLOWED_EXTERNAL:
+                continue
+            if _optional_pdf_validator_import(module_name, module):
                 continue
             if root in POSTGRES_ONLY_ROOTS and importer_layer == (
                 "dungeonmind.infrastructure.postgres"

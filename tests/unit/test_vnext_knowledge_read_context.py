@@ -1727,6 +1727,10 @@ def _assert_world_graph_retrieval_compatibility() -> None:
             "property_assertions",
             "anchors",
             "coverage",
+            "discovery_relationship_ids",
+            "discovery_hops",
+            "object_limit_pruned_ids",
+            "object_limit_pruned_count",
         ),
         "EvidenceRetrievalResult": (
             "snapshot",

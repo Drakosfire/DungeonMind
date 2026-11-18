@@ -2552,7 +2552,9 @@ class WorldGraphRetrievalService:
                             )
                             if other_id not in depths:
                                 depths[other_id] = level
-                                discoveries[other_id] = NeighborhoodHop(rel.relationship_id, object_id, other_id)
+                                discoveries[other_id] = NeighborhoodHop(
+                                    rel.relationship_id, object_id, other_id
+                                )
                                 next_frontier.append(other_id)
                     frontier = next_frontier
 
@@ -2600,7 +2602,8 @@ class WorldGraphRetrievalService:
                 )
             retained_relationship_ids = {rel.relationship_id for rel in relationships}
             discovery_hops = tuple(
-                hop for hop in discoveries.values() if hop.relationship_id in retained_relationship_ids
+                hop for hop in discoveries.values()
+                if hop.relationship_id in retained_relationship_ids
             )
             op_result = NeighborhoodResult(
                 snapshot=result.snapshot,

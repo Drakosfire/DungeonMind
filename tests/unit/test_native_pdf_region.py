@@ -207,7 +207,7 @@ def test_register_pdf_evidence_preserves_graph_and_replays_exact_parent(region):
 def test_shared_pdf_validator_checks_pages_and_encryption():
     from io import BytesIO
 
-    from pypdf import PdfWriter
+    PdfWriter = pytest.importorskip("pypdf").PdfWriter
 
     from dungeonmind.application.vnext.native_source_admission import validate_native_pdf_body
 
