@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -36,7 +37,7 @@ from ...contracts.vnext.prospective import (
 )
 from ...contracts.vnext.publication import KnowledgePublicationReceipt
 from ...contracts.vnext.space_provisioning import KnowledgeSpaceProvisioningReceipt
-from ...domain.canonical import canonical_json, canonical_sha256, sha256_text
+from ...domain.canonical import canonical_json, canonical_sha256
 from ...domain.errors import PersistenceIntegrityError
 from .database import SCHEMA, PostgresDatabase, jsonb
 from .serialization import _normalize
@@ -688,10 +689,16 @@ def _reconstruct(row: dict[str, Any]) -> StoredKnowledgeRevision:
     payload = row["graph_payload"]
     if not isinstance(payload, dict):
         raise PersistenceIntegrityError("knowledge revision graph_payload is not an object")
-    fingerprint = canonical_sha256(
-        {"graph_payload": payload, "revision": revision.model_dump(mode="json")}
-    )
-    if fingerprint != row["record_fingerprint"]:
+    payload_json = canonical_json(payload)
+    payload_bytes = payload_json.encode("utf-8")
+    # These are the two sorted keys of the existing canonical fingerprint
+    # object. Stream their canonical values without serializing the graph twice.
+    fingerprint = hashlib.sha256(b'{"graph_payload":')
+    fingerprint.update(payload_bytes)
+    fingerprint.update(b',"revision":')
+    fingerprint.update(canonical_json(revision.model_dump(mode="json")).encode("utf-8"))
+    fingerprint.update(b"}")
+    if fingerprint.hexdigest() != row["record_fingerprint"]:
         raise PersistenceIntegrityError("knowledge revision record_fingerprint drift")
     if revision.space_id != row["space_id"] or revision.revision_id != row["revision_id"]:
         raise PersistenceIntegrityError("knowledge revision identity column drift")
@@ -707,8 +714,7 @@ def _reconstruct(row: dict[str, Any]) -> StoredKnowledgeRevision:
         raise PersistenceIntegrityError("knowledge revision created_at column drift")
     # Validate the stored envelope directly. Rebuilding a publication command
     # recursively revalidates the entire graph even though this is a read.
-    payload_json = canonical_json(payload)
-    payload_sha256 = sha256_text(payload_json)
+    payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
     if payload_sha256 != revision.graph_payload_sha256:
         raise PersistenceIntegrityError("stored graph payload hash mismatch")
     expected_revision_id = compute_knowledge_revision_id(
