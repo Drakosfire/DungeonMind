@@ -39,6 +39,7 @@ from ...contracts.vnext.publication import KnowledgePublicationReceipt
 from ...contracts.vnext.space_provisioning import KnowledgeSpaceProvisioningReceipt
 from ...domain.canonical import canonical_json, canonical_sha256
 from ...domain.errors import PersistenceIntegrityError
+from ._graph_json import canonical_graph_json
 from .database import SCHEMA, PostgresDatabase, jsonb
 from .serialization import _normalize
 
@@ -52,7 +53,7 @@ _REVISION_SELECT = """
     schema_version,
     record_fingerprint,
     revision_payload,
-    graph_payload
+    graph_payload::text AS graph_payload
 """
 
 
@@ -687,9 +688,12 @@ def _reconstruct(row: dict[str, Any]) -> StoredKnowledgeRevision:
     except Exception as exc:
         raise PersistenceIntegrityError(f"failed to reconstruct KnowledgeRevision: {exc}") from exc
     payload = row["graph_payload"]
-    if not isinstance(payload, dict):
+    if isinstance(payload, str):
+        payload_json = canonical_graph_json(payload)
+    elif isinstance(payload, dict):
+        payload_json = canonical_json(payload)
+    else:
         raise PersistenceIntegrityError("knowledge revision graph_payload is not an object")
-    payload_json = canonical_json(payload)
     payload_bytes = payload_json.encode("utf-8")
     # These are the two sorted keys of the existing canonical fingerprint
     # object. Stream their canonical values without serializing the graph twice.

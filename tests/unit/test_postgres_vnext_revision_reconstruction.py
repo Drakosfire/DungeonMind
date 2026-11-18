@@ -67,7 +67,8 @@ def test_reconstruction_rejects_payload_drift_even_with_updated_record_fingerpri
         vnext_knowledge._reconstruct(row)
 
 
-def test_reconstruction_rejects_revision_identity_drift_with_updated_fingerprint():
+@pytest.mark.parametrize("text_payload", [False, True])
+def test_reconstruction_rejects_revision_identity_drift_with_updated_fingerprint(text_payload):
     row, _, _ = _row()
     row["revision_id"] = "rev:forged"
     row["revision_payload"]["revision_id"] = row["revision_id"]
@@ -75,6 +76,8 @@ def test_reconstruction_rejects_revision_identity_drift_with_updated_fingerprint
         "graph_payload": row["graph_payload"],
         "revision": row["revision_payload"],
     })
+    if text_payload:
+        row["graph_payload"] = canonical_json(row["graph_payload"])
     with pytest.raises(PersistenceIntegrityError, match="recomputed native revision id"):
         vnext_knowledge._reconstruct(row)
 
@@ -113,3 +116,35 @@ def test_reconstruction_serializes_the_graph_only_once(monkeypatch):
     monkeypatch.setattr(vnext_knowledge, "canonical_json", counted)
     vnext_knowledge._reconstruct(row)
     assert len(graph_passes) == 1
+
+
+@pytest.mark.parametrize("field", [
+    "space_id", "revision_id", "parent_revision_id", "graph_schema",
+    "graph_payload_sha256", "schema_version", "created_at", "record_fingerprint",
+])
+def test_text_reconstruction_preserves_column_drift_failures(field):
+    row, _, _ = _row()
+    row["graph_payload"] = canonical_json(row["graph_payload"])
+    row[field] = "tampered"
+    with pytest.raises(PersistenceIntegrityError):
+        vnext_knowledge._reconstruct(row)
+
+
+def test_text_and_dict_reconstruction_preserve_complete_verified_record():
+    row, _, _ = _row()
+    expected = vnext_knowledge._reconstruct(row)
+    row["graph_payload"] = canonical_json(row["graph_payload"])
+    actual = vnext_knowledge._reconstruct(row)
+    assert actual == expected
+    assert actual._payload_json == expected._payload_json
+
+
+def test_text_payload_drift_with_updated_fingerprint_still_fails():
+    row, revision, payload = _row()
+    payload["entities"] = []
+    row["graph_payload"] = canonical_json(payload)
+    row["record_fingerprint"] = canonical_sha256({
+        "graph_payload": payload, "revision": revision.model_dump(mode="json"),
+    })
+    with pytest.raises(PersistenceIntegrityError, match="payload hash mismatch"):
+        vnext_knowledge._reconstruct(row)

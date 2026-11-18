@@ -506,3 +506,61 @@ def test_conflicting_envelope_and_corrupt_rows_fail_closed(migrated_database: st
         conn.commit()
     with pytest.raises(PersistenceIntegrityError, match="stored graph payload hash mismatch"):
         repo.get_revision(SPACE, expected.revision_id)
+
+
+@pytest.mark.parametrize("payload", [
+    {"entities": [{"id": "雪", "v": [True, 1, 1.0, 1.25, 2**100]}],
+     "assertions": [], "aliases": [], "evidence": []},
+    {"opaque": [{"z": "😀\\quoted", "a": [1e-20, 1.25, None]}]},
+    {"entities": [], "assertions": [], "aliases": [], "evidence": []},
+])
+def test_jsonb_text_read_matches_ordinary_source_reconstruction(migrated_database, pg, payload):
+    from dungeonmind.domain.canonical import canonical_json
+    from dungeonmind.infrastructure.postgres.vnext_knowledge import _REVISION_SELECT, _reconstruct
+
+    del pg
+    repo = _repo(migrated_database)
+    published = repo.publish_revision(genesis_command(origin=None, payload=payload))
+    with PostgresDatabase(migrated_database).connect() as conn:
+        row = conn.execute(
+            f"SELECT {_REVISION_SELECT} FROM dungeonmind.knowledge_revisions "
+            "WHERE space_id=%s AND revision_id=%s",
+            (SPACE, published.revision.revision_id),
+        ).fetchone()
+        ordinary = conn.execute(
+            "SELECT graph_payload FROM dungeonmind.knowledge_revisions "
+            "WHERE space_id=%s AND revision_id=%s", (SPACE, published.revision.revision_id),
+        ).fetchone()
+    assert row is not None and ordinary is not None
+    assert isinstance(row["graph_payload"], str)
+    expected_json = canonical_json(ordinary["graph_payload"])
+    text_stored = _reconstruct(row)
+    row["graph_payload"] = ordinary["graph_payload"]
+    assert text_stored == _reconstruct(row)
+    assert text_stored._payload_json == expected_json
+    assert repo.get_revision(SPACE, published.revision.revision_id) == published
+
+
+@pytest.mark.parametrize("number", [-0.0, 1e20])
+def test_jsonb_numeric_normalization_preserves_integrity_rejection(migrated_database, pg, number):
+    from dungeonmind.infrastructure.postgres.vnext_knowledge import _REVISION_SELECT, _reconstruct
+
+    del pg
+    repo = _repo(migrated_database)
+    published = repo.publish_revision(genesis_command(origin=None, payload={"value": number}))
+    with PostgresDatabase(migrated_database).connect() as conn:
+        row = conn.execute(
+            f"SELECT {_REVISION_SELECT} FROM dungeonmind.knowledge_revisions "
+            "WHERE space_id=%s AND revision_id=%s", (SPACE, published.revision.revision_id),
+        ).fetchone()
+        ordinary = conn.execute(
+            "SELECT graph_payload FROM dungeonmind.knowledge_revisions "
+            "WHERE space_id=%s AND revision_id=%s", (SPACE, published.revision.revision_id),
+        ).fetchone()
+    assert row is not None and ordinary is not None
+    with pytest.raises(PersistenceIntegrityError) as text_error:
+        _reconstruct(row)
+    row["graph_payload"] = ordinary["graph_payload"]
+    with pytest.raises(PersistenceIntegrityError) as dict_error:
+        _reconstruct(row)
+    assert str(text_error.value) == str(dict_error.value)
