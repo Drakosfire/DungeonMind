@@ -25,27 +25,28 @@ _TERM = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*:[a-z0-9]+(?:[._-][a-z0-9]+)*$
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
-def _json_value(value: Any) -> Any:
-    def check(item: Any) -> None:
-        if item is None or isinstance(item, (str, bool, int)):
-            return
-        if isinstance(item, float):
-            if not math.isfinite(item):
-                raise ValueError("JSON values must contain finite numbers")
-            return
-        if isinstance(item, list):
-            for child in item:
-                check(child)
-            return
-        if isinstance(item, dict):
-            if any(not isinstance(key, str) for key in item):
-                raise ValueError("JSON object keys must be strings")
-            for child in item.values():
-                check(child)
-            return
-        raise ValueError("value is not canonical JSON-compatible")
+def _check_json_value(item: Any) -> None:
+    if item is None or isinstance(item, (str, bool, int)):
+        return
+    if isinstance(item, float):
+        if not math.isfinite(item):
+            raise ValueError("JSON values must contain finite numbers")
+        return
+    if isinstance(item, list):
+        for child in item:
+            _check_json_value(child)
+        return
+    if isinstance(item, dict):
+        if any(not isinstance(key, str) for key in item):
+            raise ValueError("JSON object keys must be strings")
+        for child in item.values():
+            _check_json_value(child)
+        return
+    raise ValueError("value is not canonical JSON-compatible")
 
-    check(value)
+
+def _json_value(value: Any) -> Any:
+    _check_json_value(value)
     return value
 
 
