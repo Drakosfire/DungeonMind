@@ -95,7 +95,11 @@ class PostgresKnowledgeRevisionRepository:
             return _read_revision(conn, space_id, revision_id)
 
     def get_native_read_artifact(self, stored: StoredKnowledgeRevision) -> bytes | None:
-        """Optional accelerator after the caller's full source revision verification."""
+        """Return only current-version bound rows after full source verification.
+
+        Absent/unsupported stored versions return None. A returned body must
+        decode as the current format; the consumer rejects manifest mismatch.
+        """
         with self._database.transaction() as conn:
             return _read_artifact(conn, stored)
 

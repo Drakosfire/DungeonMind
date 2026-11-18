@@ -81,8 +81,8 @@ def test_artifact_memory_hit_reverifies_revision_and_refreshes_withdrawal(monkey
     assert len(reads) == 1 and len(revisions) == 2
 
 
-@pytest.mark.parametrize("blob", [None, b'{"format":"future"}'])
-def test_absent_or_unsupported_artifact_falls_back(monkeypatch, blob):
+def test_absent_or_unsupported_stored_artifact_falls_back(monkeypatch):
+    blob = None
     repo, args, _, _ = _open_args()
     monkeypatch.setattr(repo, "get_native_read_artifact", lambda stored: blob, raising=False)
     context = access.open_native_text_source_access_context(**args)
@@ -109,4 +109,13 @@ def test_optional_reader_storage_failure_is_not_fallback(monkeypatch):
 
     monkeypatch.setattr(repo, "get_native_read_artifact", offline, raising=False)
     with pytest.raises(PersistenceUnavailableError):
+        access.open_native_text_source_access_context(**args)
+
+
+def test_current_reader_body_with_future_format_is_integrity_failure(monkeypatch):
+    repo, args, _, _ = _open_args()
+    monkeypatch.setattr(
+        repo, "get_native_read_artifact", lambda stored: b'{"format":"future"}', raising=False
+    )
+    with pytest.raises(PersistenceIntegrityError, match="format mismatch"):
         access.open_native_text_source_access_context(**args)

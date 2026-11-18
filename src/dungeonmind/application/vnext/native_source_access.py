@@ -76,14 +76,17 @@ def _parse_verified_revision(
     stored: StoredKnowledgeRevision,
 ) -> ParsedKnowledgeRevision:
     # Optional structural capability: existing repositories and locked views need
-    # no new method or PostgreSQL dependency. No read path generates artifacts.
+    # no new method or PostgreSQL dependency. Readers return current-version rows
+    # only; absent/unsupported stored versions return None. A returned body that
+    # claims another version violates that binding. No read generates artifacts.
     reader = getattr(repository, "get_native_read_artifact", None)
     if callable(reader):
         body = reader(stored)
         if body is not None:
             parsed = decode_read_artifact(body, stored)
-            if parsed is not None:
-                return parsed
+            if parsed is None:
+                raise PersistenceIntegrityError("current artifact row/body format mismatch")
+            return parsed
     return _parse_revision(stored)
 
 

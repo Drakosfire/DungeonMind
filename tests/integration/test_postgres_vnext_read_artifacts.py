@@ -285,3 +285,160 @@ def test_postgres_artifact_memory_hit_refreshes_withdrawal_and_source_verificati
         conn.commit()
     with pytest.raises(PersistenceIntegrityError, match="fingerprint"):
         open_native_text_source_access_context(**args)
+
+
+@pytest.mark.parametrize("field", ["format", "parsed_format"])
+def test_current_row_with_future_body_manifest_fails_closed(migrated_database, pg, field):
+    from dungeonmind.application.vnext.native_source_access import _parse_verified_revision
+
+    repo = _repo(migrated_database)
+    stored = repo.publish_revision(genesis_command())
+    packet = json.loads(repo.get_native_read_artifact(stored))
+    packet[field] = "future"
+    body = canonical_json(packet).encode()
+    with PostgresDatabase(migrated_database).connect() as conn:
+        conn.execute(
+            "UPDATE dungeonmind.knowledge_native_read_artifacts "
+            "SET artifact_bytes=%s,artifact_length=%s,artifact_sha256=%s",
+            (body, len(body), hashlib.sha256(body).hexdigest()),
+        )
+        conn.commit()
+    with pytest.raises(PersistenceIntegrityError, match="format mismatch"):
+        _parse_verified_revision(repo, repo.get_revision(SPACE, stored.revision.revision_id))
+
+
+@pytest.mark.parametrize("field", ["codec_version", "parsed_format"])
+def test_genuinely_future_stored_version_is_absent_to_current_reader(migrated_database, pg, field):
+    from psycopg import sql
+
+    from dungeonmind.application.vnext.native_source_access import (
+        _parse_revision,
+        _parse_verified_revision,
+    )
+
+    repo = _repo(migrated_database)
+    stored = repo.publish_revision(genesis_command())
+    with PostgresDatabase(migrated_database).connect() as conn:
+        conn.execute(
+            sql.SQL("UPDATE dungeonmind.knowledge_native_read_artifacts SET {}=%s").format(
+                sql.Identifier(field)
+            ),
+            ("future",),
+        )
+        conn.commit()
+    assert repo.get_native_read_artifact(stored) is None
+    assert _parse_verified_revision(repo, stored) == _parse_revision(stored)
+
+
+def test_backfill_holds_exact_source_lock_until_artifact_write(migrated_database, pg, monkeypatch):
+    from threading import Event
+
+    from psycopg.errors import LockNotAvailable
+
+    repo = _repo(migrated_database)
+    stored = repo.publish_revision(genesis_command())
+    entered, release = Event(), Event()
+    generate = artifacts._generate
+
+    def blocked(source):
+        entered.set()
+        assert release.wait(10)
+        return generate(source)
+
+    monkeypatch.setattr(artifacts, "_generate", blocked)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(repo.backfill_native_read_artifact, SPACE, stored.revision.revision_id)
+        try:
+            assert entered.wait(10)
+            with PostgresDatabase(migrated_database).connect() as conn:
+                conn.execute("SET LOCAL lock_timeout = '150ms'")
+                with pytest.raises(LockNotAvailable):
+                    conn.execute(
+                        "UPDATE dungeonmind.knowledge_revisions "
+                        "SET revision_payload=revision_payload "
+                        "WHERE space_id=%s AND revision_id=%s",
+                        (SPACE, stored.revision.revision_id),
+                    )
+                conn.rollback()
+        finally:
+            release.set()
+        assert future.result(timeout=10)
+    assert repo.get_native_read_artifact(stored)
+
+
+def test_head_advance_does_not_retarget_historical_backfill(migrated_database, pg, monkeypatch):
+    from threading import Event
+
+    repo = _repo(migrated_database)
+    parent = repo.publish_revision(genesis_command())
+    entered, release = Event(), Event()
+    generate = artifacts._generate
+
+    def blocked(source):
+        if source.revision.revision_id == parent.revision.revision_id:
+            entered.set()
+            assert release.wait(10)
+        return generate(source)
+
+    monkeypatch.setattr(artifacts, "_generate", blocked)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(repo.backfill_native_read_artifact, SPACE, parent.revision.revision_id)
+        try:
+            assert entered.wait(10)
+            child = repo.publish_revision(
+                genesis_command(
+                    parent_revision_id=parent.revision.revision_id,
+                    expected_parent_revision_id=parent.revision.revision_id,
+                    operation_ids=["op:descendant"],
+                )
+            )
+        finally:
+            release.set()
+        assert future.result(timeout=10)
+    assert repo.get_head(SPACE).head_revision_id == child.revision.revision_id
+    for source in (parent, child):
+        assert (
+            decode_read_artifact(repo.get_native_read_artifact(source), source).revision_id
+            == source.revision.revision_id
+        )
+    assert _count(migrated_database, "knowledge_native_read_artifacts") == 2
+
+
+def test_prospective_result_failure_rolls_back_child_artifact(migrated_database, pg):
+    from dungeonmind.application.vnext.errors import KnowledgePublicationOutcomeUnknownError
+    from tests.integration.test_postgres_vnext_prospective_publication import _publish, _setup
+    from tests.unit.test_vnext_prospective_publication import _contribution, _entity
+
+    setup, parent = _setup(migrated_database)
+    before = setup.get_native_read_artifact(setup.get_revision(SPACE, parent.revision_id))
+
+    def boom():
+        raise RuntimeError("prospective result failure")
+
+    repo = PostgresKnowledgeRevisionRepository(
+        PostgresDatabase(migrated_database), after_prospective_result_insert=boom
+    )
+    with pytest.raises(KnowledgePublicationOutcomeUnknownError):
+        _publish(repo, parent, _contribution([_entity()]), "prepared:artifact-rollback")
+    assert _count(migrated_database, "knowledge_native_read_artifacts") == 1
+    assert setup.get_native_read_artifact(setup.get_revision(SPACE, parent.revision_id)) == before
+    assert setup.get_head(SPACE).head_revision_id == parent.revision_id
+    for table in ("knowledge_publication_receipts", "knowledge_prospective_publication_results"):
+        assert _count(migrated_database, table) == 0
+
+
+def test_old_valid_source_without_artifact_falls_back_without_read_side_write(
+    migrated_database, pg
+):
+    from dungeonmind.application.vnext.native_source_access import (
+        _parse_revision,
+        _parse_verified_revision,
+    )
+
+    repo = _repo(migrated_database)
+    stored = repo.publish_revision(genesis_command())
+    with PostgresDatabase(migrated_database).connect() as conn:
+        conn.execute("DELETE FROM dungeonmind.knowledge_native_read_artifacts")
+        conn.commit()
+    assert _parse_verified_revision(repo, stored) == _parse_revision(stored)
+    assert _count(migrated_database, "knowledge_native_read_artifacts") == 0
