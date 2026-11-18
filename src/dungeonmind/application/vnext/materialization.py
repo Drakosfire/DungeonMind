@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, NoReturn
 
+from pydantic import TypeAdapter
+
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.common import (
     DomainMetadataEntry,
@@ -84,6 +86,11 @@ from .records import (
 )
 
 NATIVE_VNEXT_GRAPH_SCHEMA = "dm_vnext_graph_v1"
+
+_ENTITY_LIST_ADAPTER = TypeAdapter(list[Entity])
+_ASSERTION_LIST_ADAPTER = TypeAdapter(list[Assertion])
+_ALIAS_LIST_ADAPTER = TypeAdapter(list[IdentityAlias])
+_EVIDENCE_LIST_ADAPTER = TypeAdapter(list[EvidenceRefV3])
 _CHILD_VALIDATION_REVISION_ID = "rev:v5-1-child-validation"
 _FINALIZED = "finalized"
 _MATERIALIZABLE_IDENTITY = frozenset(
@@ -276,10 +283,10 @@ def encode_native_graph_payload(
 def decode_native_graph_payload(payload: Mapping[str, Any]) -> DecodedKnowledgeContent:
     """Contract-validate a native-vNext graph payload."""
     try:
-        entities = [Entity.model_validate(item) for item in payload["entities"]]
-        assertions = [Assertion.model_validate(item) for item in payload["assertions"]]
-        aliases = [IdentityAlias.model_validate(item) for item in payload["aliases"]]
-        evidence = [EvidenceRefV3.model_validate(item) for item in payload["evidence"]]
+        entities = _ENTITY_LIST_ADAPTER.validate_python(list(payload["entities"]))
+        assertions = _ASSERTION_LIST_ADAPTER.validate_python(list(payload["assertions"]))
+        aliases = _ALIAS_LIST_ADAPTER.validate_python(list(payload["aliases"]))
+        evidence = _EVIDENCE_LIST_ADAPTER.validate_python(list(payload["evidence"]))
     except (KeyError, TypeError, ValueError) as exc:
         _fail("native_payload_decode", message=str(exc))
     return DecodedKnowledgeContent(
