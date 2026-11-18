@@ -152,3 +152,85 @@ def test_isolated_entities_and_evidence_allocate_no_mutable_index_buckets(shape,
         assert counts == [0, 0]
     else:
         assert counts[0] > 0
+
+
+@pytest.mark.parametrize("shape", ["empty", "sparse", "self-loop", "dense", "aliases"])
+def test_dense_indexes_share_only_immutable_empty_entries_and_preserve_hashes(shape):
+    import copy
+    import pickle
+
+    from dungeonmind.application.vnext.frozen_json import FrozenDict
+
+    payload = _graph(shape, 12)
+    parsed = _parsed(_source(payload), payload)
+    _assert_complete_indexes(parsed)
+    names = (
+        "assertions_by_subject",
+        "entity_ref_outgoing",
+        "entity_ref_incoming",
+        "entity_ref_outgoing_assertions",
+        "entity_ref_incoming_assertions",
+        "entity_adjacency",
+        "aliases_by_entity",
+    )
+    empty_pairs = {}
+    for name in names:
+        index = getattr(parsed, name)
+        reference = FrozenDict(dict(index.items()))
+        assert type(index) is FrozenDict
+        assert list(index.items()) == list(reference.items())
+        assert index == reference and hash(index) == hash(reference)
+        assert index._hash_ready  # Index construction retains eager hash behavior.
+        assert copy.copy(index) is index and copy.deepcopy(index) is index
+        restored = pickle.loads(pickle.dumps(index))
+        assert restored == reference and hash(restored) == hash(reference)
+        for pair in index._items:
+            if pair[1] == ():
+                previous = empty_pairs.setdefault(pair[0], pair)
+                assert pair is previous, "one immutable empty pair per key across all indexes"
+        with pytest.raises(TypeError):
+            index._items = ()
+        with pytest.raises(TypeError):
+            index._proxy["ent:injected"] = ()
+    assert set(empty_pairs) == set(parsed.entities_by_id)
+    restored = pickle.loads(pickle.dumps(parsed))
+    assert restored == parsed and hash(restored) == hash(parsed)
+
+
+def test_private_dense_index_copies_buckets_and_preserves_empty_domain_order():
+    from dungeonmind.application.vnext.frozen_json import FrozenDict, _frozen_dense_index
+
+    empty = (("ent:a", ()), ("ent:b", ()), ("ent:c", ()))
+    buckets = {"ent:b": ["assertion:z", "assertion:a"]}
+    actual = _frozen_dense_index(empty, buckets)
+    expected = FrozenDict({"ent:a": (), "ent:b": ("assertion:a", "assertion:z"), "ent:c": ()})
+    buckets["ent:b"].clear()
+    buckets["ent:c"] = ["assertion:later"]
+    assert actual == expected and hash(actual) == hash(expected)
+    assert actual._items[0] is empty[0] and actual._items[2] is empty[2]
+    assert actual._items[1] is not empty[1]
+    assert _frozen_dense_index(empty, {})._items is empty
+    assert _frozen_dense_index((), {}) == FrozenDict()
+
+
+def test_shared_empty_entries_are_local_to_each_concurrent_build():
+    from concurrent.futures import ThreadPoolExecutor
+
+    payload = _graph("sparse", 20)
+    source = _source(payload)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lambda _: _parsed(source, payload), range(12)))
+    assert all(parsed == results[0] for parsed in results)
+    for parsed in results:
+        _assert_complete_indexes(parsed)
+    left = results[0].aliases_by_entity._items
+    right = results[1].aliases_by_entity._items
+    assert left == right and left is not right
+    assert all(a is not b for a, b in zip(left, right, strict=True))
+
+
+def test_dense_index_rejects_memberships_outside_its_primary_domain():
+    from dungeonmind.application.vnext.frozen_json import _frozen_dense_index
+
+    with pytest.raises(ValueError, match="outside primary key domain"):
+        _frozen_dense_index((("ent:a", ()),), {"ent:unknown": ["assertion:one"]})

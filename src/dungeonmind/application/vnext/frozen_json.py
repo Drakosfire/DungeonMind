@@ -7,7 +7,7 @@ cannot mutate, poison, or leak state into or out of `ParsedKnowledgeRevision`.
 from __future__ import annotations
 
 import json
-from collections.abc import ItemsView, Iterator, KeysView, Mapping, ValuesView
+from collections.abc import Collection, ItemsView, Iterator, KeysView, Mapping, ValuesView
 from types import MappingProxyType
 from typing import Any, TypeVar, overload
 
@@ -154,6 +154,40 @@ def _deferred_frozen_dict(mapping: Mapping[KT, VT]) -> FrozenDict[KT, VT]:
     object.__setattr__(result, "_items", tuple(sorted_items))
     object.__setattr__(result, "_hash", None)
     object.__setattr__(result, "_hash_ready", False)
+    return result
+
+
+def _frozen_dense_index(
+    empty_items: tuple[tuple[str, tuple[str, ...]], ...],
+    memberships: Mapping[str, Collection[str]],
+) -> FrozenDict[str, tuple[str, ...]]:
+    """Freeze owner-validated index buckets over a complete sorted key domain.
+
+    The builder validates references first and supplies one immutable empty pair
+    per primary key, sorted by the public constructor's str(key) ordering. Reuse
+    those pairs without exposing mutable buckets or changing dense index values.
+    Public FrozenDict construction remains unchanged; index hashes remain eager.
+    """
+    if memberships:
+        pairs: list[tuple[str, tuple[str, ...]]] = []
+        for empty in empty_items:
+            values = memberships.get(empty[0])
+            pairs.append((empty[0], tuple(sorted(values))) if values else empty)
+        items = tuple(pairs)
+    else:
+        items = empty_items
+    items_dict = dict(items)
+    if not memberships.keys() <= items_dict.keys():
+        raise ValueError("index membership outside primary key domain")
+    result: FrozenDict[str, tuple[str, ...]] = object.__new__(FrozenDict)
+    object.__setattr__(result, "_proxy", MappingProxyType(items_dict))
+    object.__setattr__(result, "_items", items)
+    try:
+        computed_hash = hash(items)
+    except TypeError:
+        computed_hash = None
+    object.__setattr__(result, "_hash", computed_hash)
+    object.__setattr__(result, "_hash_ready", True)
     return result
 
 
