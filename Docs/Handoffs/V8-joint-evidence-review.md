@@ -13,13 +13,25 @@ Buddy `e7e892808dbfbb39016f59aba42becfb6be39655` with installed Core `45d04fb669
 - The paired 10k HTTP governed write created two locations and one directed relationship in each arm. Each replay returned the same committed revision. The citation excerpt matched byte for byte. Prepare and confirm took 677 ms and 3,632 ms classic versus 191 ms and 706 ms native in single isolated samples.
 - Native 50k synthetic diagnostics passed structural checks for entity reads, neighborhood, search, evidence, anchors, and publication. These isolate Core work in memory. The separate 50k World-like and Rules-like diagnostic measured classic APIs.
 
-## Cold neighborhood disposition for review
+## Cold neighborhood performance gate
 
 On the paired 10k fixture, the first native request took 2.12 s versus 0.54 s classic, with exact citation parity. Repeat native requests took 378–387 ms versus 522–541 ms classic. Earlier profiling places the cold cost in revision reconstruction and context preparation before traversal.
 
-The proposal is to carry the cold cost explicitly for scoped Elderwyld, capture deployed cold and repeat timings at V11, and prioritize reducing whole-revision preparation in the post-vNext performance program. Restarts, eviction, and new pinned revisions can expose the first-request cost again.
+The operator requires optimization before cutover preparation. V8 performance
+acceptance requires a comparable native cold neighborhood read to meet or beat
+the retained approximately 540 ms classic reference, preserve the native warm
+advantage, and preserve ordered results, visibility, source withdrawal and
+exact citations. Measure affected routes for regressions. Restarts, eviction
+and new pinned revisions must be represented in the evidence.
 
-The [versioned evidence artifact](dm_vnext_contract_acceptance_v1.json) records candidate-pin outputs for Buddy preservation, organizational memory, and adversarial identity. Joint acceptance still requires a decision on the measured cold neighborhood cost. V9 follows joint acceptance and requires the deployment rollback rehearsal.
+Core #211 and #215 are accepted reconstruction optimizations. A file-backed
+derived-snapshot test-hook prototype measured 519 ms cold and 198–202 ms warm
+on the retained 10k native fixture, with complete response and citation parity.
+This is feasibility evidence. Production artifact storage, source binding,
+write costs and exact deployed pins remain pending. The active bounded design
+is [source-bound read artifacts](../Plans/HANDOFF-MIND-source-bound-read-artifact.md).
+
+The [versioned evidence artifact](dm_vnext_contract_acceptance_v1.json) records candidate-pin outputs for Buddy preservation, organizational memory, and adversarial identity. Joint acceptance requires the cold-read performance gate above. V9 follows joint acceptance and requires the deployment rollback rehearsal.
 
 ## Later Buddy route evidence
 
@@ -143,8 +155,8 @@ relationship direction, exact cited bytes and replay. Both tested player
 views omitted the edge. The route timings characterize those observed
 outputs. Full read DTO equivalence is unverified.
 
-Carry the observed cold neighborhood cost as an explicit rollout tradeoff
-for this scope, subject to joint acceptance. The paired 10k sample took
+Keep V8 open until the native cold neighborhood route satisfies the
+performance gate above. The retained paired 10k sample took
 2.12 seconds native versus 0.54 seconds classic on first read, with exact
 citation parity. Native repeat reads took 378–387 ms. At V11, record cold
 and repeat latency at the deployed Buddy and installed Core pins, with
@@ -152,7 +164,7 @@ the World binding, revision, and hop depth held fixed. Verify ordered
 results and reopened citation bytes in both conditions. Include revision
 reconstruction and context preparation in the performance handoff.
 
-V8 remains open pending joint acceptance of these dispositions.
+V8 remains open pending performance proof and joint acceptance.
 
 ## Isolated Elderwyld route attestation
 
