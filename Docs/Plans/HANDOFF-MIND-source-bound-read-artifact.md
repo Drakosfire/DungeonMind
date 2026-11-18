@@ -233,3 +233,11 @@ No new worktree, environment, database or standalone output was allocated for
 this unit. The existing task-owned worktree and environments remain retained for
 active implementation/review; cleanup follows delivery under the existing
 retention rules. No artifacts were removed and no reclaimed bytes are claimed.
+
+The next codec commit extracts the existing evidence, alias, assertion-metadata
+and revision-identity conversions into private static builder helpers. Ordinary
+builder reference checks and failure order stay in place. The ordinary builder
+uses these helpers directly; the future fast factory will share them without
+runtime AST extraction or global function substitution. The same 149 checks,
+focused Ruff and diff checks pass after extraction. Independent review remains
+required for the cumulative codec implementation.
