@@ -77,7 +77,8 @@ are included without changing their admission semantics.
 
 ## Reviewable slice and paths
 
-This is one serial PR based on accepted #217. The table, generation, cache/read
+This is one serial PR with codec origin #217 and current Git base accepted #221
+(6c61e8e73faf6d02c0d1f73692f185a55c050a4f). The table, generation, cache/read
 integration and owning transaction tests form one capability; Buddy adoption is
 separate. Intended paths: one new migration, one private Postgres artifact helper,
 vnext_knowledge.py, native_source_access.py, private factory eligibility error
