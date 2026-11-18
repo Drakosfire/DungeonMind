@@ -127,3 +127,32 @@ def test_fast_factory_removes_record_hashes_until_requested():
     assertion = next(iter(parsed.assertions_by_id.values()))
     with pytest.raises((TypeError, FrozenInstanceError)):
         assertion.metadata.claim_mode = "test:changed"
+
+
+@pytest.mark.parametrize("size", [0, 10, 50_000])
+def test_private_record_maps_do_not_retain_pair_tuples(size):
+    source = {f"entity:{i}": i for i in range(size)}
+    expected = FrozenDict(source)
+    actual = _deferred_frozen_dict(source)
+    source.clear()
+    assert actual._items is None  # Removed work: no second per-record pair graph.
+    assert list(actual.items()) == list(expected.items())
+    assert dict(actual) == dict(expected)
+    assert hash(actual) == hash(expected)
+    assert actual._items is None
+    assert copy.copy(actual) is actual and copy.deepcopy(actual) is actual
+    restored = pickle.loads(pickle.dumps(actual))
+    assert restored == expected and hash(restored) == hash(expected)
+    assert actual._items is None
+
+
+@pytest.mark.parametrize("protocol", range(pickle.HIGHEST_PROTOCOL + 1))
+def test_private_pair_elision_preserves_pickle_representation(protocol):
+    source = {"z": (True, -0.0), "a": FrozenDict({"nested": (1, False)})}
+    expected = FrozenDict(source)
+    actual = _deferred_frozen_dict(source)
+    assert pickle.dumps(actual, protocol) == pickle.dumps(expected, protocol)
+    assert actual._items is None and not actual._hash_ready
+    assert hash(actual) == hash(expected)
+    assert pickle.dumps(actual, protocol) == pickle.dumps(expected, protocol)
+    assert actual._items is None
