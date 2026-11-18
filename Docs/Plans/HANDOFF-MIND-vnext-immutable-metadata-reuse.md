@@ -1,6 +1,6 @@
 # Reuse immutable parsed assertion metadata
 
-Status — implemented, candidate measurement and independent review pending.
+Status — implemented, candidate route verified, independent review pending.
 
 ## Scope and topology
 
@@ -40,8 +40,21 @@ digests for shared versus separately allocated immutable metadata. The
 full-variant fixture retains the exact parent digest. A direct comparison
 against the parent builder also produced equal parsed revisions.
 
-Native candidate route timing and exact-head CI remain pending. Reuse the
-retained 10k native fixture and compare against the retained reference.
+At Core f75bc88d607a79973fb8e2815bad89828267ef3f and retained Buddy
+ca5a0450489a94cd364183af1c53d3f041ad7d0f, the native-only 10k candidate
+measured 1683.04 ms cold and 316.52, 337.93, 304.10 and 310.19 ms warm.
+Ordered labels, two relationships, identical repeat responses and exact cited
+bytes matched the parent candidate. Citation SHA-256 remains
+a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc.
+The cold value overlaps prior candidate variation, so latency improvement
+remains unproved. The removed construction work has a deterministic regression.
+The cold-read acceptance gate remains open.
+
+The parent CI passed lint, typing and minimal imports before unit failures
+on inherited PDF import-policy/optional-dependency tests and stale classic
+NeighborhoodResult field assertions. The adjacent read cohort reproduced the
+latter failures. These require a separate bounded prerequisite repair.
+Exact-head CI and independent review remain pending.
 
 ## Workspace retention
 
@@ -51,3 +64,9 @@ The task owns the worktree and retains it for the stack, review and delivery.
 Existing environment and scratch are reused. Cleanup follows review after
 dirty-worktree and unique-commit checks. Candidate scratch cleanup follows
 diagnosis, as recorded in the parent handoff.
+
+The task retains test_v8_native_cold_candidate_f75bc88.py,
+native-cold-candidate-f75bc88.json, native-cold-candidate-f75bc88.log and
+candidate-f75bc88-pytest under the existing v8-core scratch directory for
+diagnosis. Cleanup follows candidate verification. Fixture-owned databases
+were dropped by the existing teardown. No baseline run was performed.
