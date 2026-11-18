@@ -13,6 +13,7 @@ from tests.unit.test_vnext_cas_publication import genesis_command
 pytest.importorskip("psycopg")
 vnext_knowledge = import_module("dungeonmind.infrastructure.postgres.vnext_knowledge")
 
+
 def _row():
     command = genesis_command(origin=None)
     revision = revision_from_command(command)
