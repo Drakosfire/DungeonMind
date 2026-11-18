@@ -1,6 +1,6 @@
 # Implement exact current-source verification proof reuse
 
-Status: ACTIVE. Owner: Elderwyld pre-cutover optimization lane.
+Status: COMPLETE, accepted Core227. Owner: Elderwyld pre-cutover optimization lane.
 Authority: operator goal and implementation/review/merge authority; design226
 24a8bdf58c8c1a5c45f1d6dbdfec2a6b1eec08a6 independently APPROVED, no blockers.
 Parent design226 merged as0dc8c357f05d884d01a9fdd720a20f33d0f52fa0. This PR
@@ -56,3 +56,18 @@ Direct PG tests use an owned disposable database, confirmed idle before drop.
 Eligible reads use one fresh full SELECT; deep/nonstandard bypass returns to the
 ordinary path and performs a second full SELECT. This preserves call-depth/error
 behavior at an explicit bypass cost; no route-speed acceptance is claimed.
+
+Acceptance: exact8a5b6b2e307a4c819eeb3a4b4f65a15524a45877 merged as
+ a9e308fe5b208f7ee447bf483a252d08ed04ea0b. Cumulative runtime reviewf1ab007 and
+annotation delta8a5b6b2 approved, no findings; all CI44415286696 jobs passed.
+Initial locked-Ruff union-order failure44414694940 retained, corrected annotation
+only.44unit and27PG checks pass. Native10k verification component:6fresh source
+reads/1fullreconstruct, cold225.80ms, warm52.78–57.06ms, exactordinaryrecordparity.
+Content28357004bytes under tested64MiBcap; canonical source13787171bytes.
+This is API/work-removal acceptance, not jointHTTP/RSS/Buddy/V8 acceptance.
+Buddy adoption remains a separate accepted-API-dependent slice. Storage218 is
+rebased on this merge; defaultuncached behavior unchanged until explicit wiring.
+Componentprobe/log/JSON/pytestdir and priorPGresource receipt retained by thislane
+forreview/integration with existing cleanupfollowup. All probes terminal; source
+fixture801f9bf6393b and ownedPG3439c0e2c5 dropped whenidle. No newworktree/env/cache,
+manual removals, serving/dependency deployment orbaseline rerun.

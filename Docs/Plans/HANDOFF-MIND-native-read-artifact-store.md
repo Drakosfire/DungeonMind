@@ -3,11 +3,11 @@
 Status: ACTIVE, draft Core PR #218. Owner: Elderwyld pre-cutover performance lane.
 Authority: operator optimization-before-cutover goal with implementation, review
 and merge authorization; accepted source-bound artifact design #216/#217.
-Current Git base: accepted #224 mergef174923bf7962f78d14faeb36a41f77004520676.
+Current Git base: accepted #227 mergea9e308fe5b208f7ee447bf483a252d08ed04ea0b.
 Codec origin: #217 aef8883238cc7c9c993e42ed666cd99bdfb1847f.
 Storage implementation evidence anchor:74f24c23d70e8b39c3f884cddc80cd10ddd33275.
-Current source matches measured local compositionb2263ae03d661668592e61c8c4b05e336894ba5e;
-its code tree is unchanged by the rebase on accepted224. This handoff is living
+Current source adds accepted227 proof-reuse API to measured compositionb2263ae.
+Storage-owned behavior is unchanged, but a joint new-source HTTP proof is pending. This handoff is living
 state; detailed trial history belongs in PRs and the retained scratch ledger.
 
 ## Outcome, scope and ordering
@@ -22,12 +22,12 @@ One coherent storage PR owns migration0022, private BYTEA store helper,
 PostgresKnowledgeRevisionRepository optional reader/identity-only backfill and
 new-publication insertion hook, native context/cache integration, owning tests,
 affected migration expectations and current handoff. Bounded control-plane
-settlement of accepted #217/#222/#223/#224 handoffs brings the current slice to13 paths.
-Rebrief: the additional paths only seal accepted223/224; no storage runtime expansion.
+settlement of accepted #217/#222/#223/#224/#227 handoffs brings the current slice to14 paths.
+Rebrief: the additional paths only seal accepted223/224/227; no storage runtime expansion.
 No Buddy runtime, public/frozen contract or required protocol changes, authority
 redesign, index semantics, serving data, cutover or production GC policy changes.
 
-Serial order: accepted compute #219/#220/#221/#222/#223/#224 -> storage #218 acceptance ->
+Serial order: accepted compute #219/#220/#221/#222/#223/#224/#227 -> storage #218 acceptance ->
 separate current Buddy adoption -> joint V8 evidence -> V9 preparation.
 #219 removes unrequested primary-map hashes, #220 removes per-value callable
 cycles, #221 releases private models at last use, #222 sparsifies temporary
@@ -37,7 +37,10 @@ The current task-owned Projects checkout/env is reused; no new worktree/env.
 
 ## Mandatory read and write invariants
 
-- Full get_revision verification precedes every parsed-memory lookup. The key
+- Full get_revision integrity validation precedes every parsed-memory lookup.
+  Accepted226/227 permits explicitly injected pure proof reuse only after a fresh
+  complete raw-row SELECT and exact all-field representation equality. Changed/
+  missing/corrupt rows cannot hide behind reuse; provenance remains fresh. The key
   snapshots complete canonical envelope representation, declared graph SHA and
   canonical source text; mutable models and Python-equality keys are forbidden.
 - Optional BYTEA fetch occurs only on parsed miss. SQL size-check and conditional
@@ -207,10 +210,15 @@ Measured actual full-app composition5e0d6f2 retained verification225–234ms,
 warm253–263ms, eviction712–713ms and historical720–731ms; fullGC206–212ms
 persisted. Independent review found deep-fallback recursion compatibility loss.
 Do not incorporate its parser. Source/tests/migrations here remainb2263ae.
-Next exact-source proof-reuse design is separate: it must explicitly rebrief the
-prior no-verification-cache constraint, retain complete fresh source reads/exact
-representation keys/corruption detection, and never cache admission. No such
-change is authorized by this storage handoff or implemented in this PR.
+Exact-source proof reuse is separately accepted as226design/227implementation
+(mergea9e308f),44unit/27PG and all exactCI44415286696 green, independent review
+approved. This rebriefs the earlier no-verification-cache condition: complete
+fresh raw source reads plus exact complete representation equality may reuse a
+successful immutable pure proof; no admission or source freshness is cached.
+The implementation belongs to accepted227, not this storage patch. Buddy must
+explicitly inject it; no current deployment wiring or jointHTTP speed acceptance.
+Its native10k component takes225.80ms first,52.78–57.06ms next5reads,6freshSELECTs/
+1fullverify and exact ordinaryrecordparity; content28357004bytes/64MiBtestedcap.
 
 Remaining gates: independent review of the latest actual-code socket evidence;
 consistent representative cold/new-revision/eviction latency; affected route,
@@ -280,3 +288,7 @@ Its unique codex_vnext_stream_a4c3a5faa2 DB was idle and dropped; full-app fixtu
 also dropped its owned source DB. Preserve failed CI44411006825 and independent
 review rejection; final225 follow-up only closes disposition/fixes test imports.
 All probes terminal; cleanup follow-up remains lane-owned after explicit scope.
+
+Retain source-proof-cache-component-8a5b6b2 probe/JSON/log/pytestdir and consumer
+preflight for dependent Buddy adoption. Measured component is not RSS/route proof.
+Source fixture801f9bf6393b dropped; all localprobes terminal. No serving changes.
