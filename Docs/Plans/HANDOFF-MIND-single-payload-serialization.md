@@ -1,6 +1,8 @@
 # Single canonical payload pass during revision reconstruction
 
-Status — implemented, independent review and candidate timing pending.
+Status — accepted and merged as Core #215 at
+3025ac182ebdaae3544dd52f965bb3c472bad514 after independent review and
+all exact-head CI jobs passed.
 
 ## Outcome and scope
 
@@ -31,8 +33,11 @@ canonical call paths and requires exactly one traversal of the graph payload.
 
 All 14 PostgreSQL publication integration cases passed in the task-owned
 codex_vnext_cold_20261118 database, including persisted read, replay and
-corruption checks. Focused lint and diff checks passed. Independent review,
-exact-head CI and native-only candidate route timing remain pending.
+corruption checks. Focused lint and diff checks passed. Independent review and
+all CI jobs passed. At runtime e8f70e45 with retained Buddy ca5a045,
+the native-only 10k route measured 1599 ms cold and 194–206 ms warm.
+Verified revision retrieval took 175–183 ms. Complete response and exact
+citation checks passed. The original baseline was reused.
 
 ## Successors and retention
 
