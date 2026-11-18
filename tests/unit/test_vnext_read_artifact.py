@@ -183,3 +183,17 @@ def test_manifest_fallback_and_malformed_header():
     packet.pop("parsed_format")
     with pytest.raises(PersistenceIntegrityError):
         decode_read_artifact(_bytes(packet), source)
+
+
+def test_source_proof_finishes_before_index_construction():
+    source = _source(_payload())
+    packet = _packet(source)
+    reference = packet["entities"][0]
+    text = packet["strings"][reference]
+    packet["strings"][reference] = text[:-1] + ("x" if text[-1] != "x" else "y")
+    with (
+        patch.object(artifact_module, "_build_parsed_knowledge_revision_from_records") as build,
+        pytest.raises(PersistenceIntegrityError, match="reconstructed source"),
+    ):
+        decode_read_artifact(_bytes(packet), source)
+    build.assert_not_called()

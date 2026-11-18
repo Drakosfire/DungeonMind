@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from json.encoder import encode_basestring
 from typing import Any
 
@@ -210,7 +210,11 @@ def _rows(packet: dict[str, Any]) -> Iterator[tuple[str, dict[str, Any], bytes]]
         raise ValueError("unused wire table entries")
 
 
-def _expand(packet: dict[str, Any], source: StoredKnowledgeRevision) -> dict[str, Any]:
+def _expand(
+    packet: dict[str, Any],
+    source: StoredKnowledgeRevision,
+    consume: Callable[[str, dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
     if set(packet) != _FIELDS:
         raise ValueError("unexpected wire fields")
     if packet["envelope_sha256"] != canonical_sha256(source.revision.model_dump(mode="json")):
@@ -253,7 +257,10 @@ def _expand(packet: dict[str, Any], source: StoredKnowledgeRevision) -> dict[str
             # This exact row is hashed, then returned to contract validation.
             encoded = pending[2]
             emit((b"" if first else b",") + encoded)
-            result[key].append(row)
+            if consume is None:
+                result[key].append(row)
+            else:
+                consume(key, row)
             first = False
             pending = next(rows, None)
         emit(b"]")
@@ -330,7 +337,11 @@ def encode_source_wire(source: StoredKnowledgeRevision) -> bytes:
         raise UnsupportedSourceWire(str(exc)) from exc
 
 
-def _decode_source_wire(data: bytes, source: StoredKnowledgeRevision) -> dict[str, Any] | None:
+def _decode_source_wire(
+    data: bytes,
+    source: StoredKnowledgeRevision,
+    consume: Callable[[str, dict[str, Any]], None] | None = None,
+) -> dict[str, Any] | None:
     """Return verified source facts, or None for an unsupported format.
 
     This is not a parsed-model factory. The caller must still apply the ordinary
@@ -360,7 +371,7 @@ def _decode_source_wire(data: bytes, source: StoredKnowledgeRevision) -> dict[st
             raise ValueError("invalid parsed format header")
         if packet["parsed_format"] != PARSED_REVISION_FORMAT_VERSION:
             return None
-        return _expand(packet, source)
+        return _expand(packet, source, consume)
     except (ValueError, TypeError, KeyError, UnicodeError, RecursionError) as exc:
         raise PersistenceIntegrityError(f"native source wire integrity failure: {exc}") from exc
 
