@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Callable, Iterator
 from json.encoder import encode_basestring
 from typing import Any
@@ -49,6 +50,7 @@ _ASSERTION_FIELDS = frozenset(
     }
 )
 _MAX_CHUNK_DEPTH = 64
+_STRUCTURE_TOKEN = re.compile(r'["{}\[\]]')
 
 
 class UnsupportedSourceWire(ValueError):
@@ -83,9 +85,12 @@ def _depth(text: str, limit: int) -> int:
     json.loads subsequently checks the full syntax and bracket types.
     """
     depth = maximum = position = 0
-    length = len(text)
-    while position < length:
-        char = text[position]
+    while True:
+        token = _STRUCTURE_TOKEN.search(text, position)
+        if token is None:
+            return maximum
+        position = token.start()
+        char = token[0]
         if char == '"':
             start = position + 1
             while True:
@@ -102,13 +107,13 @@ def _depth(text: str, limit: int) -> int:
             continue
         if char in "[{":
             depth += 1
-            maximum = max(maximum, depth)
+            if depth > maximum:
+                maximum = depth
             if depth > limit:
                 raise ValueError("JSON nesting limit exceeded")
         elif char in "]}":
             depth -= 1
         position += 1
-    return maximum
 
 
 def _load(text: str, depth: int) -> Any:
