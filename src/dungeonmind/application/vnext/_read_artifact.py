@@ -72,7 +72,9 @@ def decode_read_artifact(
         ] = {}
         assertions: list[ParsedAssertion] = []
 
-        def consume(key: str, row: dict[str, Any]) -> None:
+        def consume(
+            key: str, row: dict[str, Any], last_value: bool, last_metadata: bool
+        ) -> None:
             if key == "entities":
                 entities.append(ParsedEntity(Entity.model_validate(row).entity_id))
             elif key == "aliases":
@@ -122,6 +124,12 @@ def decode_read_artifact(
                         frozen_meta,
                     )
                 )
+                # Frozen records remain in assertions; mutable public models are
+                # useful only until this exact source chunk's last assertion use.
+                if last_value:
+                    del values[value_key]
+                if last_metadata:
+                    del metadata[meta_key]
 
         # Consume the proof's exact rows into local immutable records rather than
         # retaining a second whole mutable graph. Only a completed proof can

@@ -197,3 +197,100 @@ def test_source_proof_finishes_before_index_construction():
     ):
         decode_read_artifact(_bytes(packet), source)
     build.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "order", [list(range(40)), [0, 1, 0, 2, 1, 3, 2, 3], [3, 2, 3, 1, 2, 0, 1, 0]]
+)
+def test_validation_models_release_at_last_use_without_revalidation(order, monkeypatch):
+    import weakref
+
+    from dungeonmind.domain.canonical import canonical_json
+
+    payload = _payload()
+    template = payload["assertions"][0]
+    payload["assertions"] = []
+    for index, value in enumerate(order):
+        row = dict(template, assertion_id=f"assertion:{index}")
+        row["value"] = {"kind": "literal", "value": {"number": value}}
+        row["metadata"] = {
+            **template["metadata"],
+            "domain_metadata": [{"schema": "test:pool", "payload": value}],
+        }
+        payload["assertions"].append(row)
+    source = _source(payload)
+    body = encode_source_wire(source)
+    expected = _parsed(source, payload)
+    value_refs = {}
+    metadata_refs = {}
+    value_validation = artifact_module._VALUE_ADAPTER.validate_python
+    metadata_validation = artifact_module.AssertionMetadata.model_validate
+    assertion_validation = artifact_module.Assertion.model_validate
+    build = artifact_module._build_parsed_knowledge_revision_from_records
+    seen = 0
+
+    def validate_value(raw):
+        key = canonical_json(raw)
+        assert key not in value_refs, "each distinct source value validates once"
+        validated = value_validation(raw)
+        value_refs[key] = weakref.ref(validated)
+        return validated
+
+    def validate_metadata(raw):
+        key = canonical_json(raw)
+        assert key not in metadata_refs, "each distinct metadata chunk validates once"
+        validated = metadata_validation(raw)
+        metadata_refs[key] = weakref.ref(validated)
+        return validated
+
+    def validate_assertion(raw):
+        nonlocal seen
+        # At the next row, every previously final-used public model is already
+        # gone. No gc.collect or heap/timing threshold is needed to prove this.
+        remaining = payload["assertions"][seen:]
+        for key, ref in value_refs.items():
+            assert (ref() is not None) == any(canonical_json(r["value"]) == key for r in remaining)
+        for key, ref in metadata_refs.items():
+            assert (ref() is not None) == any(
+                canonical_json(r["metadata"]) == key for r in remaining
+            )
+        seen += 1
+        return assertion_validation(raw)
+
+    def build_after_release(*args, **kwargs):
+        assert seen == len(order)
+        assert len(value_refs) == len(set(order))
+        assert len(metadata_refs) == len(set(order))
+        assert all(ref() is None for ref in [*value_refs.values(), *metadata_refs.values()])
+        return build(*args, **kwargs)
+
+    monkeypatch.setattr(artifact_module._VALUE_ADAPTER, "validate_python", validate_value)
+    monkeypatch.setattr(artifact_module.AssertionMetadata, "model_validate", validate_metadata)
+    monkeypatch.setattr(artifact_module.Assertion, "model_validate", validate_assertion)
+    monkeypatch.setattr(
+        artifact_module, "_build_parsed_knowledge_revision_from_records", build_after_release
+    )
+    parsed = decode_read_artifact(body, source)
+    assert parsed == expected
+    assert parsed.semantic_digest == compute_semantic_digest(*_digest_arguments(expected))
+    for left, row in enumerate(payload["assertions"]):
+        for right, other in enumerate(payload["assertions"]):
+            if row["value"] == other["value"]:
+                first = parsed.assertions_by_id[f"assertion:{left}"]
+                second = parsed.assertions_by_id[f"assertion:{right}"]
+                assert first.value is second.value
+                assert first.metadata is second.metadata
+
+
+@pytest.mark.parametrize("column", [3, 4])
+@pytest.mark.parametrize("reference", [True, -1, 999999, "0", None, 0.0])
+def test_lifetime_prepass_rejects_malformed_references_before_indexes(column, reference):
+    source = _source(_payload())
+    packet = _packet(source)
+    packet["assertions"][-1][column] = reference
+    with (
+        patch.object(artifact_module, "_build_parsed_knowledge_revision_from_records") as build,
+        pytest.raises(PersistenceIntegrityError, match="invalid wire reference"),
+    ):
+        decode_read_artifact(_bytes(packet), source)
+    build.assert_not_called()
