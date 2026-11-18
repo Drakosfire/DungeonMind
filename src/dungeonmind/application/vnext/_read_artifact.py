@@ -7,6 +7,7 @@ parser; shared mutable validation models never escape this function.
 
 from __future__ import annotations
 
+from json.encoder import encode_basestring
 from typing import Annotated, Any
 
 from pydantic import Field, TypeAdapter, ValidationError
@@ -100,7 +101,11 @@ def decode_read_artifact(
                     else:
                         frozen_value = ParsedLiteralValue(
                             freeze_json_value(public_value.value),
-                            canonical_json_text(public_value.value),
+                            (
+                                encode_basestring(public_value.value)
+                                if isinstance(public_value.value, str)
+                                else canonical_json_text(public_value.value)
+                            ),
                         )
                     values[value_key] = (public_value, frozen_value)
                 public_meta, frozen_meta = metadata[meta_key]

@@ -372,6 +372,26 @@ def compute_semantic_digest(
     )
 
 
+def _canonical_assertion_value_bytes(assertion: ParsedAssertion) -> bytes:
+    """Serialize common immutable values directly, with the same canonical fields.
+
+    Read actual values, never their caller-supplied canonical-text/index fields.
+    Complex literals retain the complete reference normalizer.
+    """
+    value = assertion.value
+    if value.kind == "entity_ref":
+        return (
+            b'{"entity_id":'
+            + encode_basestring(value.entity_id).encode("utf-8")
+            + b',"kind":"entity_ref"}'
+        )
+    if value.kind == "term_ref":
+        return b'{"kind":"term_ref","term":' + encode_basestring(value.term).encode("utf-8") + b"}"
+    if value.kind == "literal" and isinstance(value.value, str):
+        return b'{"kind":"literal","value":' + encode_basestring(value.value).encode("utf-8") + b"}"
+    return canonical_json_bytes(_normalized_assertion_value(assertion))
+
+
 def _stream_semantic_digest(
     identity: ParsedKnowledgeRevisionIdentity,
     entities_by_id: dict[str, ParsedEntity],
@@ -400,7 +420,7 @@ def _stream_semantic_digest(
                 _normalized_assertion_metadata(assertion.metadata)
             )
         if value_key not in value_bytes:
-            value_bytes[value_key] = canonical_json_bytes(_normalized_assertion_value(assertion))
+            value_bytes[value_key] = _canonical_assertion_value_bytes(assertion)
         if index:
             digest.update(b",")
         digest.update(
