@@ -58,6 +58,7 @@ from ...application.vnext.records import StoredKnowledgeRevision
 from .database import SCHEMA, PostgresDatabase, jsonb
 from .vnext_knowledge import (
     PostgresKnowledgeRevisionRepository,
+    VerifiedKnowledgeRevisionCache,
     _advance_head,
     _insert_receipt,
     _insert_revision,
@@ -334,6 +335,7 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
         self,
         database: PostgresDatabase,
         *,
+        verification_cache: VerifiedKnowledgeRevisionCache | None = None,
         after_revision_insert: Callable[[], None] | None = None,
         after_receipt_insert: Callable[[], None] | None = None,
         after_native_source_insert: Callable[[], None] | None = None,
@@ -342,6 +344,7 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
     ) -> None:
         super().__init__(
             database,
+            verification_cache=verification_cache,
             after_revision_insert=after_revision_insert,
             after_receipt_insert=after_receipt_insert,
         )

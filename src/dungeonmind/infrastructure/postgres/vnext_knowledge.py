@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Callable, Sequence
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 
 from psycopg import Connection, sql
 
@@ -39,6 +41,7 @@ from ...contracts.vnext.publication import KnowledgePublicationReceipt
 from ...contracts.vnext.space_provisioning import KnowledgeSpaceProvisioningReceipt
 from ...domain.canonical import canonical_json, canonical_sha256
 from ...domain.errors import PersistenceIntegrityError
+from ._revision_verification_cache import VerifiedKnowledgeRevisionCache, _SourceKey
 from .database import SCHEMA, PostgresDatabase, jsonb
 from .serialization import _normalize
 
@@ -63,12 +66,14 @@ class PostgresKnowledgeRevisionRepository:
         self,
         database: PostgresDatabase,
         *,
+        verification_cache: VerifiedKnowledgeRevisionCache | None = None,
         after_revision_insert: Callable[[], None] | None = None,
         after_receipt_insert: Callable[[], None] | None = None,
         after_prospective_result_insert: Callable[[], None] | None = None,
         after_space_provisioning_commit: Callable[[], None] | None = None,
     ) -> None:
         self._database = database
+        self._verification_cache = verification_cache
         self._after_revision_insert = after_revision_insert
         self._after_receipt_insert = after_receipt_insert
         self._after_prospective_result_insert = after_prospective_result_insert
@@ -80,6 +85,12 @@ class PostgresKnowledgeRevisionRepository:
 
     def get_revision(self, space_id: str, revision_id: str) -> StoredKnowledgeRevision | None:
         with self._database.transaction() as conn:
+            if self._verification_cache is not None:
+                result = _read_verified_revision(
+                    conn, space_id, revision_id, self._verification_cache
+                )
+                if result is not False:
+                    return result
             return _read_revision(conn, space_id, revision_id)
 
     def head_events(self, space_id: str) -> tuple[KnowledgeHeadEvent, ...]:
@@ -428,6 +439,75 @@ def _read_revision(
         return None
     return _reconstruct(row)
 
+
+
+_VERIFIER_VERSION = "knowledge-revision/python-canonical/1"
+_RAW_REVISION_SELECT = _REVISION_SELECT.replace(
+    "revision_payload,", "revision_payload::text AS revision_payload,"
+).replace("    graph_payload\n", "    graph_payload::text AS graph_payload\n")
+_KEY_FIELDS = (
+    "space_id", "revision_id", "parent_revision_id", "created_at", "graph_schema",
+    "graph_payload_sha256", "schema_version", "record_fingerprint",
+    "revision_payload", "graph_payload",
+)
+
+
+def _source_key(row: dict[str, Any], space_id: str, revision_id: str) -> _SourceKey | None:
+    if any(type(value) is not str for value in (_VERIFIER_VERSION, space_id, revision_id)):
+        return None
+    values: list[str | None] = [_VERIFIER_VERSION, space_id, revision_id]
+    for name in _KEY_FIELDS:
+        value = row[name]
+        if name == "created_at" and type(value) is datetime:
+            value = value.isoformat()
+        if type(value) is not str and not (name == "parent_revision_id" and value is None):
+            return None
+        values.append(value)
+    return tuple(values)
+
+
+def _bounded_depth(value: Any, depth: int = 0) -> bool:
+    if type(value) not in (dict, list):
+        return True
+    if depth >= 64:
+        return False
+    return all(_bounded_depth(item, depth + 1) for item in (
+        value.values() if type(value) is dict else value
+    ))
+
+
+def _read_verified_revision(
+    conn: Connection[Any], space_id: str, revision_id: str, cache: VerifiedKnowledgeRevisionCache,
+) -> StoredKnowledgeRevision | Literal[False] | None:
+    row = conn.execute(
+        sql.SQL(
+            f"SELECT {_RAW_REVISION_SELECT} FROM {{}}.knowledge_revisions "
+            "WHERE space_id = %s AND revision_id = %s"
+        ).format(sql.Identifier(SCHEMA)), (space_id, revision_id),
+    ).fetchone()
+    if row is None:
+        return None
+    key = _source_key(row, space_id, revision_id)
+    if key is None:
+        return False
+    proof, generation = cache._lookup(key)
+    if proof is not None:
+        return proof.restore()
+    decoded = dict(row)
+    try:
+        decoded["graph_payload"] = json.loads(row["graph_payload"])
+        decoded["revision_payload"] = json.loads(row["revision_payload"])
+        if not _bounded_depth(decoded["graph_payload"]) or not _bounded_depth(
+            decoded["revision_payload"]
+        ):
+            return False
+    except RecursionError:
+        return False
+    # Same active serialization depth as _read_revision -> _reconstruct. For
+    # deep/nonstandard rows return first, then use the ORIGINAL read path.
+    stored = _reconstruct(decoded)
+    cache._store(key, stored, generation)
+    return stored
 
 def _insert_revision(conn: Connection[Any], stored: StoredKnowledgeRevision) -> None:
     revision = stored.revision
