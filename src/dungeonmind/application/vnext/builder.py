@@ -20,6 +20,7 @@ from dungeonmind.contracts.vnext.common import (
 )
 from dungeonmind.contracts.vnext.domain import (
     Assertion,
+    AssertionMetadata,
     Entity,
     EntityRefValue,
     LiteralValue,
@@ -39,6 +40,7 @@ from .frozen_json import (
 )
 from .model import (
     ParsedKnowledgeRevision,
+    _stream_semantic_digest,
     compute_compatibility_key,
     compute_semantic_digest,
 )
@@ -138,32 +140,7 @@ def build_parsed_knowledge_revision(
         ev_id = str(ev.evidence_ref_id)
         if ev_id in evidence_dict:
             raise RevisionStructuralIntegrityError(f"Duplicate evidence_ref_id: {ev_id!r}")
-        dm_entries = tuple(
-            sorted(
-                (
-                    ParsedDomainMetadataEntry(
-                        schema_term=str(dm.schema_term),
-                        payload=freeze_json_value(dm.payload),
-                    )
-                    for dm in ev.domain_metadata
-                ),
-                key=lambda d: d.schema_term,
-            )
-        )
-        evidence_dict[ev_id] = ParsedEvidenceRef(
-            evidence_ref_id=ev_id,
-            source_artifact_id=str(ev.source_artifact_id),
-            source_revision_id=str(ev.source_revision_id) if ev.source_revision_id else None,
-            evidence_role=str(ev.evidence_role),
-            can_open_source=bool(ev.can_open_source),
-            can_highlight_span=bool(ev.can_highlight_span),
-            locator=str(ev.locator) if ev.locator else None,
-            uri=str(ev.uri) if ev.uri else None,
-            source_locator=str(ev.source_locator) if ev.source_locator else None,
-            line_ref=str(ev.line_ref) if ev.line_ref else None,
-            source_span_ref_id=str(ev.source_span_ref_id) if ev.source_span_ref_id else None,
-            domain_metadata=dm_entries,
-        )
+        evidence_dict[ev_id] = _parse_evidence(ev)
 
     # --- 3. Aliases ---
     aliases_dict: dict[str, ParsedIdentityAlias] = {}
@@ -183,13 +160,7 @@ def build_parsed_knowledge_revision(
                     f"Alias {al_id!r} references missing evidence {ev_str!r}"
                 )
 
-        aliases_dict[al_id] = ParsedIdentityAlias(
-            alias_id=al_id,
-            entity_id=target_eid,
-            alias_text=str(al.alias_text),
-            evidence_ref_ids=tuple(sorted(str(eid) for eid in al.evidence_ref_ids)),
-            standing=al.standing,
-        )
+        aliases_dict[al_id] = _parse_alias(al)
 
     # --- 4. Assertions ---
     assertions_dict: dict[str, ParsedAssertion] = {}
@@ -234,72 +205,7 @@ def build_parsed_knowledge_revision(
                     f"Assertion {aid!r} references missing evidence {ev_str!r}"
                 )
 
-        parsed_scope = tuple(
-            sorted(
-                (ParsedScopeBinding(axis=str(sb.axis), value=str(sb.value)) for sb in meta.scope),
-                key=lambda b: (b.axis, b.value),
-            )
-        )
-
-        vis = meta.visibility
-        parsed_vis: ParsedVisibility
-        if isinstance(vis, LabelsAnyVisibility):
-            sorted_labels = tuple(sorted(str(lbl) for lbl in vis.labels))
-            parsed_vis = ParsedLabelsAnyVisibility(labels=sorted_labels)
-        elif isinstance(vis, LabelsAllVisibility):
-            sorted_labels = tuple(sorted(str(lbl) for lbl in vis.labels))
-            parsed_vis = ParsedLabelsAllVisibility(labels=sorted_labels)
-        elif isinstance(vis, PublicVisibility):
-            parsed_vis = ParsedPublicVisibility()
-        else:
-            raise RevisionStructuralIntegrityError(
-                f"Assertion {aid!r} has invalid or unknown visibility variant: {vis!r}"
-            )
-
-        temporal = meta.temporal_scope
-        parsed_temporal: ParsedTemporalScope
-        if isinstance(temporal, UtcIntervalTemporalScope):
-            parsed_temporal = ParsedUtcIntervalTemporalScope(
-                valid_from=temporal.valid_from,
-                valid_until=temporal.valid_until,
-            )
-        elif isinstance(temporal, DomainTemporalScope):
-            parsed_temporal = ParsedDomainTemporalScope(
-                schema_term=str(temporal.schema_term),
-                payload=freeze_json_value(temporal.payload),
-            )
-        elif isinstance(temporal, UnknownTemporalScope):
-            parsed_temporal = ParsedUnknownTemporalScope()
-        elif isinstance(temporal, TimelessTemporalScope):
-            parsed_temporal = ParsedTimelessTemporalScope()
-        else:
-            raise RevisionStructuralIntegrityError(
-                f"Assertion {aid!r} has invalid or unknown temporal scope variant: {temporal!r}"
-            )
-
-        dm_entries = tuple(
-            sorted(
-                (
-                    ParsedDomainMetadataEntry(
-                        schema_term=str(dm.schema_term),
-                        payload=freeze_json_value(dm.payload),
-                    )
-                    for dm in meta.domain_metadata
-                ),
-                key=lambda d: d.schema_term,
-            )
-        )
-
-        parsed_metadata = ParsedAssertionMetadata(
-            scope=parsed_scope,
-            visibility=parsed_vis,
-            epistemic_basis=str(meta.epistemic_basis),
-            claim_mode=str(meta.claim_mode),
-            standing=meta.standing,
-            evidence_ref_ids=tuple(sorted(str(eid) for eid in meta.evidence_ref_ids)),
-            temporal_scope=parsed_temporal,
-            domain_metadata=dm_entries,
-        )
+        parsed_metadata = _parse_assertion_metadata(meta, assertion_id=aid)
 
         assertions_dict[aid] = ParsedAssertion(
             assertion_id=aid,
@@ -310,35 +216,7 @@ def build_parsed_knowledge_revision(
         )
 
     # --- 5. Identity ---
-    parent_rev_id = str(revision.parent_revision_id) if revision.parent_revision_id else None
-    identity = ParsedKnowledgeRevisionIdentity(
-        space_id=str(revision.space_id),
-        revision_id=str(revision.revision_id),
-        parent_revision_id=parent_rev_id,
-        created_at=revision.created_at,
-        operation_ids=tuple(str(op) for op in revision.operation_ids),
-        graph_schema=str(revision.graph_schema),
-        graph_payload_sha256=str(revision.graph_payload_sha256),
-        domain_contract_ref=ParsedDomainContractRef(
-            domain_id=str(revision.domain_contract_ref.domain_id),
-            domain_revision=str(revision.domain_contract_ref.domain_revision),
-            descriptor_sha256=str(revision.domain_contract_ref.descriptor_sha256),
-        ),
-        semantic_profile_ref=ParsedSemanticProfileRef(
-            profile_id=str(revision.semantic_profile_ref.profile_id),
-            profile_revision=str(revision.semantic_profile_ref.profile_revision),
-            descriptor_sha256=str(revision.semantic_profile_ref.descriptor_sha256),
-        ),
-        migration_origin_ref=ParsedMigrationOriginRef(
-            source_system=str(revision.migration_origin_ref.source_system),
-            source_root_id=str(revision.migration_origin_ref.source_root_id),
-            source_revision_id=str(revision.migration_origin_ref.source_revision_id),
-            source_payload_sha256=str(revision.migration_origin_ref.source_payload_sha256),
-            migration_manifest_sha256=str(revision.migration_origin_ref.migration_manifest_sha256),
-        )
-        if revision.migration_origin_ref
-        else None,
-    )
+    identity = _parse_revision_identity(revision)
 
     return build_parsed_knowledge_revision_from_records(
         identity=identity,
@@ -356,6 +234,29 @@ def build_parsed_knowledge_revision_from_records(
     assertions: Mapping[str, ParsedAssertion] | Sequence[ParsedAssertion] = (),
     aliases: Mapping[str, ParsedIdentityAlias] | Sequence[ParsedIdentityAlias] = (),
     evidence: Mapping[str, ParsedEvidenceRef] | Sequence[ParsedEvidenceRef] = (),
+) -> ParsedKnowledgeRevision:
+    """Build a deterministic, immutable ParsedKnowledgeRevision from internal immutable records.
+
+    Raises:
+        RevisionStructuralIntegrityError: if duplicate IDs exist or referential integrity fails.
+    """
+    return _build_parsed_knowledge_revision_from_records(
+        identity,
+        entities=entities,
+        assertions=assertions,
+        aliases=aliases,
+        evidence=evidence,
+    )
+
+
+def _build_parsed_knowledge_revision_from_records(
+    identity: ParsedKnowledgeRevisionIdentity,
+    *,
+    entities: Mapping[str, ParsedEntity] | Sequence[ParsedEntity] = (),
+    assertions: Mapping[str, ParsedAssertion] | Sequence[ParsedAssertion] = (),
+    aliases: Mapping[str, ParsedIdentityAlias] | Sequence[ParsedIdentityAlias] = (),
+    evidence: Mapping[str, ParsedEvidenceRef] | Sequence[ParsedEvidenceRef] = (),
+    _stream_digest: bool = False,
 ) -> ParsedKnowledgeRevision:
     """Build a deterministic, immutable ParsedKnowledgeRevision from internal immutable records.
 
@@ -568,7 +469,8 @@ def build_parsed_knowledge_revision_from_records(
         {term: tuple(sorted(aids)) for term, aids in term_ref_assertion_builder.items()}
     )
 
-    semantic_digest = compute_semantic_digest(
+    digest_builder = _stream_semantic_digest if _stream_digest else compute_semantic_digest
+    semantic_digest = digest_builder(
         identity,
         entities_dict,
         assertions_dict,
@@ -601,3 +503,155 @@ def build_parsed_knowledge_revision_from_records(
         semantic_digest=semantic_digest,
         compatibility_key=compatibility_key,
     )
+
+
+def _parse_assertion_metadata(
+    meta: AssertionMetadata,
+    *,
+    assertion_id: str,
+) -> ParsedAssertionMetadata:
+    aid = assertion_id
+    parsed_scope = tuple(
+        sorted(
+            (ParsedScopeBinding(axis=str(sb.axis), value=str(sb.value)) for sb in meta.scope),
+            key=lambda b: (b.axis, b.value),
+        )
+    )
+
+    vis = meta.visibility
+    parsed_vis: ParsedVisibility
+    if isinstance(vis, LabelsAnyVisibility):
+        sorted_labels = tuple(sorted(str(lbl) for lbl in vis.labels))
+        parsed_vis = ParsedLabelsAnyVisibility(labels=sorted_labels)
+    elif isinstance(vis, LabelsAllVisibility):
+        sorted_labels = tuple(sorted(str(lbl) for lbl in vis.labels))
+        parsed_vis = ParsedLabelsAllVisibility(labels=sorted_labels)
+    elif isinstance(vis, PublicVisibility):
+        parsed_vis = ParsedPublicVisibility()
+    else:
+        raise RevisionStructuralIntegrityError(
+            f"Assertion {aid!r} has invalid or unknown visibility variant: {vis!r}"
+        )
+
+    temporal = meta.temporal_scope
+    parsed_temporal: ParsedTemporalScope
+    if isinstance(temporal, UtcIntervalTemporalScope):
+        parsed_temporal = ParsedUtcIntervalTemporalScope(
+            valid_from=temporal.valid_from,
+            valid_until=temporal.valid_until,
+        )
+    elif isinstance(temporal, DomainTemporalScope):
+        parsed_temporal = ParsedDomainTemporalScope(
+            schema_term=str(temporal.schema_term),
+            payload=freeze_json_value(temporal.payload),
+        )
+    elif isinstance(temporal, UnknownTemporalScope):
+        parsed_temporal = ParsedUnknownTemporalScope()
+    elif isinstance(temporal, TimelessTemporalScope):
+        parsed_temporal = ParsedTimelessTemporalScope()
+    else:
+        raise RevisionStructuralIntegrityError(
+            f"Assertion {aid!r} has invalid or unknown temporal scope variant: {temporal!r}"
+        )
+
+    dm_entries = tuple(
+        sorted(
+            (
+                ParsedDomainMetadataEntry(
+                    schema_term=str(dm.schema_term),
+                    payload=freeze_json_value(dm.payload),
+                )
+                for dm in meta.domain_metadata
+            ),
+            key=lambda d: d.schema_term,
+        )
+    )
+
+    parsed_metadata = ParsedAssertionMetadata(
+        scope=parsed_scope,
+        visibility=parsed_vis,
+        epistemic_basis=str(meta.epistemic_basis),
+        claim_mode=str(meta.claim_mode),
+        standing=meta.standing,
+        evidence_ref_ids=tuple(sorted(str(eid) for eid in meta.evidence_ref_ids)),
+        temporal_scope=parsed_temporal,
+        domain_metadata=dm_entries,
+    )
+
+    return parsed_metadata
+
+
+def _parse_evidence(ev: EvidenceRefV3) -> ParsedEvidenceRef:
+    ev_id = str(ev.evidence_ref_id)
+    dm_entries = tuple(
+        sorted(
+            (
+                ParsedDomainMetadataEntry(
+                    schema_term=str(dm.schema_term),
+                    payload=freeze_json_value(dm.payload),
+                )
+                for dm in ev.domain_metadata
+            ),
+            key=lambda d: d.schema_term,
+        )
+    )
+    return ParsedEvidenceRef(
+        evidence_ref_id=ev_id,
+        source_artifact_id=str(ev.source_artifact_id),
+        source_revision_id=str(ev.source_revision_id) if ev.source_revision_id else None,
+        evidence_role=str(ev.evidence_role),
+        can_open_source=bool(ev.can_open_source),
+        can_highlight_span=bool(ev.can_highlight_span),
+        locator=str(ev.locator) if ev.locator else None,
+        uri=str(ev.uri) if ev.uri else None,
+        source_locator=str(ev.source_locator) if ev.source_locator else None,
+        line_ref=str(ev.line_ref) if ev.line_ref else None,
+        source_span_ref_id=str(ev.source_span_ref_id) if ev.source_span_ref_id else None,
+        domain_metadata=dm_entries,
+    )
+
+
+def _parse_alias(al: IdentityAlias) -> ParsedIdentityAlias:
+    al_id = str(al.alias_id)
+    target_eid = str(al.entity_id)
+    return ParsedIdentityAlias(
+        alias_id=al_id,
+        entity_id=target_eid,
+        alias_text=str(al.alias_text),
+        evidence_ref_ids=tuple(sorted(str(eid) for eid in al.evidence_ref_ids)),
+        standing=al.standing,
+    )
+
+
+def _parse_revision_identity(revision: KnowledgeRevision) -> ParsedKnowledgeRevisionIdentity:
+    parent_rev_id = str(revision.parent_revision_id) if revision.parent_revision_id else None
+    identity = ParsedKnowledgeRevisionIdentity(
+        space_id=str(revision.space_id),
+        revision_id=str(revision.revision_id),
+        parent_revision_id=parent_rev_id,
+        created_at=revision.created_at,
+        operation_ids=tuple(str(op) for op in revision.operation_ids),
+        graph_schema=str(revision.graph_schema),
+        graph_payload_sha256=str(revision.graph_payload_sha256),
+        domain_contract_ref=ParsedDomainContractRef(
+            domain_id=str(revision.domain_contract_ref.domain_id),
+            domain_revision=str(revision.domain_contract_ref.domain_revision),
+            descriptor_sha256=str(revision.domain_contract_ref.descriptor_sha256),
+        ),
+        semantic_profile_ref=ParsedSemanticProfileRef(
+            profile_id=str(revision.semantic_profile_ref.profile_id),
+            profile_revision=str(revision.semantic_profile_ref.profile_revision),
+            descriptor_sha256=str(revision.semantic_profile_ref.descriptor_sha256),
+        ),
+        migration_origin_ref=ParsedMigrationOriginRef(
+            source_system=str(revision.migration_origin_ref.source_system),
+            source_root_id=str(revision.migration_origin_ref.source_root_id),
+            source_revision_id=str(revision.migration_origin_ref.source_revision_id),
+            source_payload_sha256=str(revision.migration_origin_ref.source_payload_sha256),
+            migration_manifest_sha256=str(revision.migration_origin_ref.migration_manifest_sha256),
+        )
+        if revision.migration_origin_ref
+        else None,
+    )
+
+    return identity
