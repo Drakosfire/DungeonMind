@@ -17,6 +17,7 @@ from .frozen_json import (
 )
 from .records import (
     ParsedAssertion,
+    ParsedAssertionMetadata,
     ParsedDomainContractRef,
     ParsedDomainTemporalScope,
     ParsedEntity,
@@ -138,8 +139,7 @@ class ParsedKnowledgeRevision:
 
     def get_entity_aliases(self, entity_id: str) -> tuple[ParsedIdentityAlias, ...]:
         return tuple(
-            self.aliases_by_id[alias_id]
-            for alias_id in self.get_entity_alias_ids(entity_id)
+            self.aliases_by_id[alias_id] for alias_id in self.get_entity_alias_ids(entity_id)
         )
 
     def get_evidence(self, evidence_ref_id: str) -> ParsedEvidenceRef | None:
@@ -187,117 +187,67 @@ class ParsedKnowledgeRevision:
         return self.term_ref_assertion_index.get(term, ())
 
 
-def compute_semantic_digest(
+def _semantic_payload(
     identity: ParsedKnowledgeRevisionIdentity,
     entities_by_id: dict[str, ParsedEntity],
     assertions_by_id: dict[str, ParsedAssertion],
     aliases_by_id: dict[str, ParsedIdentityAlias],
     evidence_by_id: dict[str, ParsedEvidenceRef],
-) -> str:
-    """Compute deterministic canonical digest over normalized semantic content."""
+) -> dict[str, object]:
+    """Normalize the existing semantic payload without changing its representation."""
     normalized_entities = sorted(entities_by_id.keys())
 
     normalized_assertions = []
     for aid in sorted(assertions_by_id.keys()):
         a = assertions_by_id[aid]
         m = a.metadata
-        vis: dict[str, object]
-        if isinstance(m.visibility, ParsedPublicVisibility):
-            vis = {"kind": "public"}
-        elif isinstance(m.visibility, ParsedLabelsAnyVisibility):
-            vis = {"kind": "labels_any", "labels": list(m.visibility.labels)}
-        elif isinstance(m.visibility, ParsedLabelsAllVisibility):
-            vis = {"kind": "labels_all", "labels": list(m.visibility.labels)}
-        else:
-            vis = {"kind": "unknown"}
-
-        temporal: dict[str, object]
-        if isinstance(m.temporal_scope, ParsedUtcIntervalTemporalScope):
-            valid_from_iso = (
-                m.temporal_scope.valid_from.isoformat()
-                if m.temporal_scope.valid_from
-                else None
-            )
-            valid_until_iso = (
-                m.temporal_scope.valid_until.isoformat()
-                if m.temporal_scope.valid_until
-                else None
-            )
-            temporal = {
-                "kind": "utc_interval",
-                "valid_from": valid_from_iso,
-                "valid_until": valid_until_iso,
+        normalized_assertions.append(
+            {
+                "assertion_id": a.assertion_id,
+                "subject_entity_id": a.subject_entity_id,
+                "predicate": a.predicate,
+                "value": _normalized_assertion_value(a),
+                "metadata": _normalized_assertion_metadata(m),
             }
-        elif isinstance(m.temporal_scope, ParsedDomainTemporalScope):
-            temporal = {
-                "kind": "domain_ref",
-                "schema": m.temporal_scope.schema_term,
-                "payload": thaw_json_value(m.temporal_scope.payload),
-            }
-        else:
-            temporal = {"kind": m.temporal_scope.kind}
-
-        val: dict[str, object]
-        if a.value.kind == "entity_ref":
-            val = {"kind": "entity_ref", "entity_id": a.value.entity_id}
-        elif a.value.kind == "literal":
-            val = {"kind": "literal", "value": thaw_json_value(a.value.value)}
-        elif a.value.kind == "term_ref":
-            val = {"kind": "term_ref", "term": a.value.term}
-        else:
-            val = {"kind": "unknown"}
-
-        normalized_assertions.append({
-            "assertion_id": a.assertion_id,
-            "subject_entity_id": a.subject_entity_id,
-            "predicate": a.predicate,
-            "value": val,
-            "metadata": {
-                "scope": [{"axis": b.axis, "value": b.value} for b in m.scope],
-                "visibility": vis,
-                "epistemic_basis": m.epistemic_basis,
-                "claim_mode": m.claim_mode,
-                "standing": str(m.standing.value if hasattr(m.standing, "value") else m.standing),
-                "evidence_ref_ids": list(m.evidence_ref_ids),
-                "temporal_scope": temporal,
-                "domain_metadata": [
-                    {"schema": dm.schema_term, "payload": thaw_json_value(dm.payload)}
-                    for dm in m.domain_metadata
-                ],
-            },
-        })
+        )
 
     normalized_aliases = []
     for al_id in sorted(aliases_by_id.keys()):
         al = aliases_by_id[al_id]
-        normalized_aliases.append({
-            "alias_id": al.alias_id,
-            "entity_id": al.entity_id,
-            "alias_text": al.alias_text,
-            "evidence_ref_ids": list(al.evidence_ref_ids),
-            "standing": str(al.standing.value if hasattr(al.standing, "value") else al.standing),
-        })
+        normalized_aliases.append(
+            {
+                "alias_id": al.alias_id,
+                "entity_id": al.entity_id,
+                "alias_text": al.alias_text,
+                "evidence_ref_ids": list(al.evidence_ref_ids),
+                "standing": str(
+                    al.standing.value if hasattr(al.standing, "value") else al.standing
+                ),
+            }
+        )
 
     normalized_evidence = []
     for ev_id in sorted(evidence_by_id.keys()):
         ev = evidence_by_id[ev_id]
-        normalized_evidence.append({
-            "evidence_ref_id": ev.evidence_ref_id,
-            "source_artifact_id": ev.source_artifact_id,
-            "source_revision_id": ev.source_revision_id,
-            "evidence_role": ev.evidence_role,
-            "can_open_source": ev.can_open_source,
-            "can_highlight_span": ev.can_highlight_span,
-            "locator": ev.locator,
-            "uri": ev.uri,
-            "source_locator": ev.source_locator,
-            "line_ref": ev.line_ref,
-            "source_span_ref_id": ev.source_span_ref_id,
-            "domain_metadata": [
-                {"schema": dm.schema_term, "payload": thaw_json_value(dm.payload)}
-                for dm in ev.domain_metadata
-            ],
-        })
+        normalized_evidence.append(
+            {
+                "evidence_ref_id": ev.evidence_ref_id,
+                "source_artifact_id": ev.source_artifact_id,
+                "source_revision_id": ev.source_revision_id,
+                "evidence_role": ev.evidence_role,
+                "can_open_source": ev.can_open_source,
+                "can_highlight_span": ev.can_highlight_span,
+                "locator": ev.locator,
+                "uri": ev.uri,
+                "source_locator": ev.source_locator,
+                "line_ref": ev.line_ref,
+                "source_span_ref_id": ev.source_span_ref_id,
+                "domain_metadata": [
+                    {"schema": dm.schema_term, "payload": thaw_json_value(dm.payload)}
+                    for dm in ev.domain_metadata
+                ],
+            }
+        )
 
     payload = {
         "space_id": identity.space_id,
@@ -316,7 +266,7 @@ def compute_semantic_digest(
         "aliases": normalized_aliases,
         "evidence": normalized_evidence,
     }
-    return _sha256(canonical_json_bytes(payload))
+    return payload
 
 
 def compute_compatibility_key(identity: ParsedKnowledgeRevisionIdentity) -> str:
@@ -336,3 +286,142 @@ def compute_compatibility_key(identity: ParsedKnowledgeRevisionIdentity) -> str:
         },
     }
     return _sha256(canonical_json_bytes(payload))
+
+
+def _normalized_assertion_metadata(m: ParsedAssertionMetadata) -> dict[str, object]:
+    vis: dict[str, object]
+    if isinstance(m.visibility, ParsedPublicVisibility):
+        vis = {"kind": "public"}
+    elif isinstance(m.visibility, ParsedLabelsAnyVisibility):
+        vis = {"kind": "labels_any", "labels": list(m.visibility.labels)}
+    elif isinstance(m.visibility, ParsedLabelsAllVisibility):
+        vis = {"kind": "labels_all", "labels": list(m.visibility.labels)}
+    else:
+        vis = {"kind": "unknown"}
+
+    temporal: dict[str, object]
+    if isinstance(m.temporal_scope, ParsedUtcIntervalTemporalScope):
+        valid_from_iso = (
+            m.temporal_scope.valid_from.isoformat() if m.temporal_scope.valid_from else None
+        )
+        valid_until_iso = (
+            m.temporal_scope.valid_until.isoformat() if m.temporal_scope.valid_until else None
+        )
+        temporal = {
+            "kind": "utc_interval",
+            "valid_from": valid_from_iso,
+            "valid_until": valid_until_iso,
+        }
+    elif isinstance(m.temporal_scope, ParsedDomainTemporalScope):
+        temporal = {
+            "kind": "domain_ref",
+            "schema": m.temporal_scope.schema_term,
+            "payload": thaw_json_value(m.temporal_scope.payload),
+        }
+    else:
+        temporal = {"kind": m.temporal_scope.kind}
+
+    return {
+        "scope": [{"axis": b.axis, "value": b.value} for b in m.scope],
+        "visibility": vis,
+        "epistemic_basis": m.epistemic_basis,
+        "claim_mode": m.claim_mode,
+        "standing": str(m.standing.value if hasattr(m.standing, "value") else m.standing),
+        "evidence_ref_ids": list(m.evidence_ref_ids),
+        "temporal_scope": temporal,
+        "domain_metadata": [
+            {"schema": dm.schema_term, "payload": thaw_json_value(dm.payload)}
+            for dm in m.domain_metadata
+        ],
+    }
+
+
+def _normalized_assertion_value(a: ParsedAssertion) -> dict[str, object]:
+    val: dict[str, object]
+    if a.value.kind == "entity_ref":
+        val = {"kind": "entity_ref", "entity_id": a.value.entity_id}
+    elif a.value.kind == "literal":
+        val = {"kind": "literal", "value": thaw_json_value(a.value.value)}
+    elif a.value.kind == "term_ref":
+        val = {"kind": "term_ref", "term": a.value.term}
+    else:
+        val = {"kind": "unknown"}
+
+    return val
+
+
+def compute_semantic_digest(
+    identity: ParsedKnowledgeRevisionIdentity,
+    entities_by_id: dict[str, ParsedEntity],
+    assertions_by_id: dict[str, ParsedAssertion],
+    aliases_by_id: dict[str, ParsedIdentityAlias],
+    evidence_by_id: dict[str, ParsedEvidenceRef],
+) -> str:
+    """Compute the unchanged canonical digest over normalized semantic content."""
+    return _sha256(
+        canonical_json_bytes(
+            _semantic_payload(
+                identity,
+                entities_by_id,
+                assertions_by_id,
+                aliases_by_id,
+                evidence_by_id,
+            )
+        )
+    )
+
+
+def _stream_semantic_digest(
+    identity: ParsedKnowledgeRevisionIdentity,
+    entities_by_id: dict[str, ParsedEntity],
+    assertions_by_id: dict[str, ParsedAssertion],
+    aliases_by_id: dict[str, ParsedIdentityAlias],
+    evidence_by_id: dict[str, ParsedEvidenceRef],
+) -> str:
+    """Hash the same canonical stream, normalizing each immutable pool item once.
+
+    Object identities are safe only within this call: the input dictionaries keep
+    every record alive. Equality-based keys would conflate bool/int/float/offsets.
+    No supplied literal canonical-text or digest field establishes authority.
+    """
+    remaining = _semantic_payload(identity, entities_by_id, {}, aliases_by_id, evidence_by_id)
+    metadata_bytes: dict[int, bytes] = {}
+    value_bytes: dict[int, bytes] = {}
+    digest = hashlib.sha256(b'{"aliases":')
+    digest.update(canonical_json_bytes(remaining["aliases"]))
+    digest.update(b',"assertions":[')
+    for index, aid in enumerate(sorted(assertions_by_id)):
+        assertion = assertions_by_id[aid]
+        meta_key = id(assertion.metadata)
+        value_key = id(assertion.value)
+        if meta_key not in metadata_bytes:
+            metadata_bytes[meta_key] = canonical_json_bytes(
+                _normalized_assertion_metadata(assertion.metadata)
+            )
+        if value_key not in value_bytes:
+            value_bytes[value_key] = canonical_json_bytes(_normalized_assertion_value(assertion))
+        if index:
+            digest.update(b",")
+        digest.update(
+            b"".join(
+                (
+                    b'{"assertion_id":',
+                    canonical_json_bytes(assertion.assertion_id),
+                    b',"metadata":',
+                    metadata_bytes[meta_key],
+                    b',"predicate":',
+                    canonical_json_bytes(assertion.predicate),
+                    b',"subject_entity_id":',
+                    canonical_json_bytes(assertion.subject_entity_id),
+                    b',"value":',
+                    value_bytes[value_key],
+                    b"}",
+                )
+            )
+        )
+    digest.update(b"]")
+    for key in ("domain_contract_ref", "entities", "evidence", "semantic_profile_ref", "space_id"):
+        digest.update(b"," + canonical_json_bytes(key) + b":")
+        digest.update(canonical_json_bytes(remaining[key]))
+    digest.update(b"}")
+    return digest.hexdigest()

@@ -8,6 +8,7 @@ from dataclasses import replace
 
 import pytest
 
+from dungeonmind.application.vnext._read_artifact import decode_read_artifact
 from dungeonmind.application.vnext._source_wire import (
     UnsupportedSourceWire,
     decode_source_wire,
@@ -69,6 +70,7 @@ def test_complete_source_and_parsed_index_digest_equality():
     restored = decode_source_wire(wire, source)
     assert canonical_json(restored) == source._payload_json
     assert _parsed(source, restored) == _parsed(source, source.graph_payload)
+    assert decode_read_artifact(wire, source) == _parsed(source, source.graph_payload)
     assert encode_source_wire(source) == wire
     restored["entities"].clear()
     assert decode_source_wire(wire, source)["entities"]
@@ -85,6 +87,7 @@ def test_pooling_preserves_numeric_representation(values):
     for original, actual in zip(payload["assertions"], restored["assertions"], strict=True):
         assert canonical_json(original) == canonical_json(actual)
     assert _parsed(source, restored) == _parsed(source, payload)
+    assert decode_read_artifact(encode_source_wire(source), source) == _parsed(source, payload)
     assert canonical_json(restored) == canonical_json(payload)
 
 
@@ -119,6 +122,7 @@ def test_lossless_source_forms(variant):
     restored = decode_source_wire(encode_source_wire(source), source)
     assert canonical_json(restored) == canonical_json(payload)
     assert _parsed(source, restored) == _parsed(source, payload)
+    assert decode_read_artifact(encode_source_wire(source), source) == _parsed(source, payload)
 
 
 @pytest.mark.parametrize("variant", ["root", "entity", "assertion", "schema", "deep"])

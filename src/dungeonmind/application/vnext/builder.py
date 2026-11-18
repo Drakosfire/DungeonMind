@@ -40,6 +40,7 @@ from .frozen_json import (
 )
 from .model import (
     ParsedKnowledgeRevision,
+    _stream_semantic_digest,
     compute_compatibility_key,
     compute_semantic_digest,
 )
@@ -233,6 +234,29 @@ def build_parsed_knowledge_revision_from_records(
     assertions: Mapping[str, ParsedAssertion] | Sequence[ParsedAssertion] = (),
     aliases: Mapping[str, ParsedIdentityAlias] | Sequence[ParsedIdentityAlias] = (),
     evidence: Mapping[str, ParsedEvidenceRef] | Sequence[ParsedEvidenceRef] = (),
+) -> ParsedKnowledgeRevision:
+    """Build a deterministic, immutable ParsedKnowledgeRevision from internal immutable records.
+
+    Raises:
+        RevisionStructuralIntegrityError: if duplicate IDs exist or referential integrity fails.
+    """
+    return _build_parsed_knowledge_revision_from_records(
+        identity,
+        entities=entities,
+        assertions=assertions,
+        aliases=aliases,
+        evidence=evidence,
+    )
+
+
+def _build_parsed_knowledge_revision_from_records(
+    identity: ParsedKnowledgeRevisionIdentity,
+    *,
+    entities: Mapping[str, ParsedEntity] | Sequence[ParsedEntity] = (),
+    assertions: Mapping[str, ParsedAssertion] | Sequence[ParsedAssertion] = (),
+    aliases: Mapping[str, ParsedIdentityAlias] | Sequence[ParsedIdentityAlias] = (),
+    evidence: Mapping[str, ParsedEvidenceRef] | Sequence[ParsedEvidenceRef] = (),
+    _stream_digest: bool = False,
 ) -> ParsedKnowledgeRevision:
     """Build a deterministic, immutable ParsedKnowledgeRevision from internal immutable records.
 
@@ -445,7 +469,8 @@ def build_parsed_knowledge_revision_from_records(
         {term: tuple(sorted(aids)) for term, aids in term_ref_assertion_builder.items()}
     )
 
-    semantic_digest = compute_semantic_digest(
+    digest_builder = _stream_semantic_digest if _stream_digest else compute_semantic_digest
+    semantic_digest = digest_builder(
         identity,
         entities_dict,
         assertions_dict,
