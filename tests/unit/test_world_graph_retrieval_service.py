@@ -1636,7 +1636,10 @@ def test_neighborhood_discovery_edges_exclude_edges_between_seeds_and_bounded_ed
     )
     assert object_bounded.object_limit_pruned_ids == ("obj:beta-crypt", "obj:world-gate")
     assert object_bounded.object_limit_pruned_count == 2
-    assert all(hop.to_object_id in object_bounded.object_depths for hop in object_bounded.discovery_hops)
+    assert all(
+        hop.to_object_id in object_bounded.object_depths
+        for hop in object_bounded.discovery_hops
+    )
 
     reverse = service.get_neighborhood(_cross(), seed_object_ids=["obj:beta-crypt"], depth=1)
     assert reverse.discovery_hops[0].from_object_id == "obj:beta-crypt"

@@ -217,8 +217,8 @@ def validate_native_pdf_body(body: bytes) -> int:
     """Validate a PDF before provisioning or retaining it and return its page count."""
     from io import BytesIO
 
-    from pypdf import PdfReader
-    from pypdf.errors import PdfReadError
+    from pypdf import PdfReader  # pyright: ignore[reportMissingImports]
+    from pypdf.errors import PdfReadError  # pyright: ignore[reportMissingImports]
 
     try:
         pdf = PdfReader(BytesIO(body), strict=True)
