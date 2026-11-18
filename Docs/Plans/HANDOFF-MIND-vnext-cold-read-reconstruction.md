@@ -13,8 +13,8 @@ ordered results, authorization, source withdrawal and exact citation bytes.
 Core #213 merged as 5a3158d5e90a50701948e29cf3be01e088e0edbf and restored
 current validation. This PR is rebased onto that accepted main. Its own scope
 is the PostgreSQL reconstruction adapter, reconstruction regressions and this
-handoff. Merge this slice before #212's immutable metadata work and #214's
-bulk decoding. Buddy adopts accepted Core pins in its own lane.
+handoff. Bulk decoding #214 follows this slice directly. Metadata reuse #212
+was withdrawn after review. Buddy adopts accepted Core pins in its own lane.
 
 ## Implementation
 
