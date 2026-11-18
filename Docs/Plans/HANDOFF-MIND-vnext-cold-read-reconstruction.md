@@ -1,117 +1,73 @@
 # vNext cold read reconstruction
 
-Status — implemented, awaiting independent review and candidate route measurement.
+Status — implemented and independently reviewed before rebase; exact-head
+CI and rebase delta review pending.
 
-## Objective and gate
+## Scope and dependency
 
-Optimize Elderwyld's native vNext experience before preparing cutover.
-V8 performance acceptance requires the native cold neighborhood request to
-meet or beat the retained comparable classic reference, preserve the native
-warm advantage, and preserve ordered results, authorization, source withdrawal
-and exact citation bytes. V9 preparation follows accepted V8 evidence.
+Optimize Elderwyld's native vNext experience before cutover preparation.
+V8 requires a comparable native cold neighborhood read at or below the retained
+approximately 540 ms classic reference, preservation of warm performance,
+ordered results, authorization, source withdrawal and exact citation bytes.
 
-The retained paired 10k route reference is approximately 2.12 seconds native
-and 0.54 seconds classic cold, with native repeat reads of 378–387 ms.
-Reuse the retained baseline and measure candidates.
+Core #213 merged as 5a3158d5e90a50701948e29cf3be01e088e0edbf and restored
+current validation. This PR is rebased onto that accepted main. Its own scope
+is the PostgreSQL reconstruction adapter, reconstruction regressions and this
+handoff. Merge this slice before #212's immutable metadata work and #214's
+bulk decoding. Buddy adopts accepted Core pins in its own lane.
 
-## Evidence and ownership
+## Implementation
 
-The retained shared-route-cold profile places 2.885 of 2.910 profiled seconds
-inside pinned context preparation. Parsing accounts for 1.994 seconds and
-repository retrieval for 0.887 seconds. These nested timings describe a separate
-profiled run and cannot be added to the unprofiled 2.12-second sample.
+Stored reads recompute payload hash and revision ID directly using existing
+canonical functions. The canonical payload text is serialized once and reused
+for hashing and the immutable snapshot. The full publication command and its
+redundant recursive JSON validation are removed from the read path.
 
-Retained evidence is under
-/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/,
-including shared-route-cold-profile.log and shared-native-profile.log.
+Envelope validation, record fingerprint, column consistency, payload hash
+and revision identity checks remain enforced. PostgreSQL JSONB already
+supplies canonical JSON-compatible value types. The old command construction
+did not perform domain graph-schema validation.
 
-Core owns revision reconstruction, integrity and parsed indexes. Buddy owns
-route composition and deployment adoption. Current source authority must be
-opened afresh even when immutable revision work is reused.
+## Verified evidence
 
-## Serial slices
+37 focused author unit cases and all 14 PostgreSQL publication cases passed.
+The new reconstruction tests cover removed command-validation work and
+payload, identity and column corruption. They skip when psycopg is absent.
 
-1. Core repository reconstruction, based on main a672791. Replace construction
-   of a publication command during reads with direct payload hash and revision
-   ID recomputation. Serialize canonical payload once for both hashing and the
-   stored snapshot. Preserve fingerprint, envelope, column and identity checks.
-   Include integrity tests and a regression rejecting publication-command
-   validation during reads. This PR has no parent implementation PR.
-2. Reassess remaining parsing work using retained profiles and current code.
-   Deliver further independently reviewable Core changes as evidence warrants.
-3. Buddy adopts accepted Core pins and measures candidate cold and warm routes
-   against the retained baseline, checking affected routes and citation parity.
-   Exact pins, outputs and latency evidence determine V8 acceptance.
+Independent read-only review of exact 7d8d150c against a672791b found no
+actionable issues. The reviewer ran 11 reconstruction cases and compared old
+and new reconstruction across 24 payload/envelope combinations including
+Unicode, numeric, parent and migration-origin variants. Canonical hash/text
+reuse was equivalent. The adapter and reconstruction-test blobs remain
+unchanged by the rebase onto #213.
 
-The first slice alone does not establish latency acceptance.
+At runtime a04245cb with retained Buddy ca5a0450489a94cd364183af1c53d3f041ad7d0f,
+the native-only 10k fixture measured 1840 ms cold and 264–296 ms repeated.
+A separate run measured 1666 ms cold. Both retained the ordered three-node,
+two-relationship response and exact citation SHA-256
+a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc.
+These diagnostic runs remain above the cold gate and do not establish serving
+performance. The retained baseline was not rerun.
 
-## Validation
+The candidate parse profile reports 1.048 cumulative seconds in parsed-model
+construction, including 0.407 in semantic digest computation, plus 0.511 in
+contract decoding and 0.121 loading/checking the stored payload. These are
+nested profile timings from a separate run.
 
-37 focused unit cases passed, including publication, source-context refresh
-and 11 reconstruction integrity/work cases. All 14 PostgreSQL publication
-integration cases passed in the disposable codex_vnext_cold_20261118 database.
-Focused Ruff and git diff checks passed.
+## Retention and continuation
 
-At Core a04245cb5886d17e4335611dcbf435a13aa4a060 and retained Buddy
-ca5a0450489a94cd364183af1c53d3f041ad7d0f, a native-only candidate probe
-using the retained 10k PostgreSQL fixture measured 1840.18 ms first request
-and 267.78, 266.05, 296.01 and 263.77 ms repeats. Ordered labels were
-Object 0, Endpoint, Object 1, with two relationships and one source anchor.
-All repeated response bodies matched. The citation reopened exactly and
-had SHA-256 a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc.
-The candidate uses a retained Buddy pin to isolate Core work. This single
-diagnostic run remains above the cold-read gate and establishes no current
-serving latency claim.
+Task owner retains the existing Core worktree under
+/home/drakosfire/Projects/.codex/v7-elderwyld-scope/worktrees/DungeonMind
+for review and stack delivery. Existing environment and caches are reused.
+The disposable codex_vnext_cold_20261118 database on container 4df9d2e50d09
+is retained for verification; remove it after database checks and active users
+finish.
 
-The native-only probe, JSON result and log are retained in the evidence
-directory as test_v8_native_cold_candidate.py,
-native-cold-candidate-a04245c.json and native-cold-candidate-a04245c.log.
-Its temporary pytest output directory candidate-a04245c-pytest is retained
-for diagnosis and should be removed after candidate verification. Fixture
-Core and APP databases were created and dropped by their existing test
-fixtures. The original baseline was not rerun.
-
-## Workspace retention
-
-Reuse the existing task-owned Core worktree at
-/home/drakosfire/Projects/.codex/v7-elderwyld-scope/worktrees/DungeonMind.
-Retain it for this PR and subsequent serial optimization work. Cleanup follows
-review and delivery, after dirty-data and unique-commit checks.
-
-The disposable database codex_vnext_cold_20261118 is retained on container
-4df9d2e50d09 for candidate verification. Remove it after this task's database
-checks and any active users finish. No new worktree, cache or environment was
-allocated. Existing task environment and retained evidence were reused.
-
-## CI scope amendment
-
-The initial core CI job stopped on three inherited E501 violations in
-world_graph_retrieval.py and its unit test. The repair wraps exactly those
-three expressions in a separate commit. Python ASTs match before and after.
-These two additional paths unblock validation and add no behavioral scope.
-
-The next core job exposed two inherited missing-import diagnostics for the
-optional pypdf extra. Targeted Pyright annotations on those imports preserve
-runtime behavior in minimal installations. Reconstruction tests explicitly
-skip when psycopg is absent, preserving the optional PostgreSQL dependency.
-
-## Remaining parse profile
-
-A separate candidate run at runtime-equivalent 6f4e32b measured 1665.54 ms
-for its first HTTP request and preserved the same ordered result and citation.
-A direct cProfile of that revision's parse reported 1.721 cumulative seconds:
-1.048 in build_parsed_knowledge_revision, including 0.594 in the internal
-record/index builder and 0.407 in compute_semantic_digest; 0.511 in contract
-decoding; and 0.121 loading and checking the stored payload. These are nested
-profile timings and are not additive end-to-end latency measurements.
-
-The next slice should address complete-revision parsing and normalization,
-with equality of immutable records, indexes and semantic digests established
-against the current builder. Shared mutable contract state must not escape
-through decoded results. This profile does not establish the cold-read gate.
-
-Profile probe, result and log are retained as test_v8_native_cold_candidate_profile.py,
-native-cold-candidate-6f4e32b-profile.json and
-native-cold-candidate-6f4e32b-profile.log. The task owns the retained temporary
-candidate-6f4e32b-profile-pytest directory; cleanup follows diagnosis. Both
-fixture databases were dropped by their existing fixture teardown.
+Evidence remains under the task's scratch/v8-core directory. Retain
+test_v8_native_cold_candidate.py, native-cold-candidate-a04245c.json/log,
+test_v8_native_cold_candidate_profile.py and
+native-cold-candidate-6f4e32b-profile.json/log for diagnosis.
+candidate-a04245c-pytest and candidate-6f4e32b-profile-pytest are disposable
+task outputs pending cleanup after diagnosis. Fixture-created databases were
+dropped by teardown. Worktree cleanup follows review/delivery after checking
+active processes, dirty data and unique commits.
