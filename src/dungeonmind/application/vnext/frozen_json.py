@@ -26,15 +26,15 @@ class FrozenDict(Mapping[KT, VT]):
     All mutation methods and attribute assignments raise ``TypeError``.
     """
 
-    __slots__ = ("_hash", "_items", "_proxy")
+    __slots__ = ("_hash", "_hash_ready", "_items", "_proxy")
+
+    _hash: int | None
+    _hash_ready: bool
 
     def __init__(
         self,
         mapping_or_iterable: (
-            Mapping[KT, VT]
-            | list[tuple[KT, VT]]
-            | tuple[tuple[KT, VT], ...]
-            | None
+            Mapping[KT, VT] | list[tuple[KT, VT]] | tuple[tuple[KT, VT], ...] | None
         ) = None,
     ) -> None:
         if mapping_or_iterable is None:
@@ -56,6 +56,7 @@ class FrozenDict(Mapping[KT, VT]):
         except TypeError:
             computed_hash = None
         object.__setattr__(self, "_hash", computed_hash)
+        object.__setattr__(self, "_hash_ready", True)
 
     def __getitem__(self, key: KT) -> VT:
         return self._proxy[key]
@@ -75,6 +76,15 @@ class FrozenDict(Mapping[KT, VT]):
         return False
 
     def __hash__(self) -> int:
+        if not self._hash_ready:
+            try:
+                computed_hash = hash(self._items)
+            except TypeError:
+                computed_hash = None
+            # Only a private optimization cache changes; mapping data stays
+            # immutable. Concurrent computations produce the same result.
+            object.__setattr__(self, "_hash", computed_hash)
+            object.__setattr__(self, "_hash_ready", True)
         if self._hash is None:
             raise TypeError(
                 f"unhashable type: '{self.__class__.__name__}' (contains unhashable values)"
@@ -129,6 +139,22 @@ class FrozenDict(Mapping[KT, VT]):
     def to_dict(self) -> dict[KT, Any]:
         """Convert recursively back to mutable python dictionaries and lists."""
         return thaw_json_value(self)
+
+
+def _deferred_frozen_dict(mapping: Mapping[KT, VT]) -> FrozenDict[KT, VT]:
+    """Freeze owner-validated immutable records without unrequested hashing.
+
+    This private path copies the same sorted items/proxy as the public Mapping
+    constructor. It is not for caller-owned mutable payloads. Public construction
+    remains eager; copy/pickle/equality and requested hash semantics are unchanged.
+    """
+    sorted_items = sorted(mapping.items(), key=lambda item: str(item[0]))
+    result: FrozenDict[KT, VT] = object.__new__(FrozenDict)
+    object.__setattr__(result, "_proxy", MappingProxyType(dict(sorted_items)))
+    object.__setattr__(result, "_items", tuple(sorted_items))
+    object.__setattr__(result, "_hash", None)
+    object.__setattr__(result, "_hash_ready", False)
+    return result
 
 
 FrozenJsonValue = (

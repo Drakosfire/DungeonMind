@@ -35,6 +35,7 @@ from dungeonmind.contracts.vnext.source import EvidenceRefV3
 from .errors import RevisionStructuralIntegrityError
 from .frozen_json import (
     FrozenDict,
+    _deferred_frozen_dict,
     canonical_json_text,
     freeze_json_value,
 )
@@ -478,13 +479,14 @@ def _build_parsed_knowledge_revision_from_records(
         evidence_dict,
     )
     compatibility_key = compute_compatibility_key(identity)
+    freeze_records = _deferred_frozen_dict if _stream_digest else FrozenDict
 
     return ParsedKnowledgeRevision(
         identity=identity,
-        entities_by_id=FrozenDict(entities_dict),
-        assertions_by_id=FrozenDict(assertions_dict),
-        aliases_by_id=FrozenDict(aliases_dict),
-        evidence_by_id=FrozenDict(evidence_dict),
+        entities_by_id=freeze_records(entities_dict),
+        assertions_by_id=freeze_records(assertions_dict),
+        aliases_by_id=freeze_records(aliases_dict),
+        evidence_by_id=freeze_records(evidence_dict),
         assertions_by_subject=assertions_by_subject,
         entity_ref_outgoing=entity_ref_outgoing,
         entity_ref_incoming=entity_ref_incoming,
