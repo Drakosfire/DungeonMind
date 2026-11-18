@@ -1,14 +1,16 @@
 # Source-bound compact native read artifacts
 
-Status — active design and implementation lease. Independent review found
-no fundamental blocker; promotion obligations are specified below.
+Status — design accepted in #216; private codec implementation #217 has runtime review approval.
+Core store integration and Buddy adoption remain pending.
 Owner — the active Elderwyld pre-cutover performance lane.
 
 ## Authority and outcome
 
 The operator requires optimization before V8 acceptance and V9 cutover
-preparation. Authoritative base is Core main
+preparation. The design base is Core
 3025ac182ebdaae3544dd52f965bb3c472bad514, the accepted #215 merge.
+Implementation is re-anchored to accepted design #216 merge
+46274422d46f2d27a8d576ce81d357a529ac941a.
 Core #211 and #213 are also accepted. Metadata reuse #212 and bulk decoding
 #214 are closed without merge. The source family remains the frozen generic
 vNext contracts and the current parsed-model/read-context semantics.
@@ -197,56 +199,93 @@ rebuilds all indexes and recomputes the semantic digest. An offline diagnostic
 under a synthetic lab envelope produced complete ordinary-parser equality and
 rejected a forged fact after its artifact checksum was recalculated.
 Hash/decode samples ranged from 185 to 458 ms, including object replacement.
-Its matched HTTP probe remains a feasibility experiment. Production framing,
-static helpers, actual-store measurements and full acceptance remain pending.
+Its matched HTTP probe remains a feasibility experiment. The current private
+implementation below replaces the scratch reflection/substitution path.
+Actual-store measurements and full production acceptance remain pending.
 
-## Codec implementation checkpoint
+## Current codec implementation
 
-The codec implementation branch is stacked on design PR #216 exact head
-63d24166f40dcd1823b5a560c1c02d38162234cc. Merge/rebase order is design #216,
-complete private codec/builder implementation, Core store integration, then
-Buddy adoption. The implementation PR remains draft until its complete slice
-passes independent review and candidate-route verification.
+PR #217 is based on accepted design #216 merge 46274422. The latest runtime
+candidate is df070d8689841ffcfe9f8c3e61f171a08005709b. Merge order is complete
+codec implementation, separate Core store integration, then Buddy adoption.
+Final documentation review, exact-head CI and merge remain pending.
 
-The first implementation unit adds `_source_wire.py` and its owning unit tests.
-It losslessly encodes the supported primary wire, binds the complete fresh
-revision envelope and graph SHA, and reconstructs that source through one
-proof/consumption dataflow. It rejects duplicate JSON keys, nonfinite numbers,
-wrong table references, unused/duplicate pool entries, oversized packets,
-deep chunks, expansion overflow and altered facts. Source forms outside the
-lossless representation are explicitly unsupported. Unknown codec versions
-return fallback; malformed matching versions raise PersistenceIntegrityError.
+`_source_wire.py` implements lossless primary-wire encoding, complete fresh
+revision-envelope/graph/parsed-format binding, strict JSON framing and
+source-relative preparse/expansion bounds. Unsupported versions fall back;
+malformed matching artifacts fail closed. Full source SHA reconstruction
+proves canonicality, including raw chunks. Version identification has generic
+allocation limits before matching-v1 packet shape validation. Metadata/value
+pools key exact source bytes; they never use Python value equality.
 
-This unit returns verified mutable primary wire, not a parsed snapshot or an
-admitted result. The ordinary contract/parser/index/digest checks remain required.
-It is private and unconnected to runtime reads. The fast immutable parsed factory,
-static builder helpers, source-relative work checks and candidate-route measurement
-are still required within this implementation slice before promotion.
+`_read_artifact.py` validates those exact proof rows through ordinary Python-mode
+contracts and freezes them into immutable records. It shares static conversion
+helpers with the ordinary builder. A private builder seam reuses all structural
+checks and indexes. Its streamed semantic digest uses the same normalizers and
+canonical bytes, caching only immutable object identities within one call.
+There is no runtime AST extraction, global substitution, copied index or supplied
+semantic digest. The inspection wrapper de-pools mutable occurrences.
 
-Validation at this checkpoint: 53 new source-wire checks pass; 149 checks pass
-across source wire, parsed revision, governed materialization and PostgreSQL
-revision reconstruction unit suites. Focused Ruff passes. The original baseline
-was not rerun. The existing 472 ms scratch HTTP observation is feasibility evidence
-only; it does not establish production performance acceptance.
+The latest allocation change consumes proof rows into local immutable records
+without retaining another whole mutable graph. The proof generator holds raw
+pool objects alive. No parsed result or index construction proceeds before the
+complete source hash succeeds. Admission/source authority is not cached.
+The private codec remains unconnected to production read/write composition.
 
-No new worktree, environment, database or standalone output was allocated for
-this unit. The existing task-owned worktree and environments remain retained for
-active implementation/review; cleanup follows delivery under the existing
-retention rules. No artifacts were removed and no reclaimed bytes are claimed.
+The coherent review scope is seven paths: this handoff, the two private codec
+modules, builder/model helpers, and two owning test files. Review source proof
+and consumption together, then builder/index/digest equivalence, then the owning
+failure/representation/work-count tests. Separating the proof and its consumer
+would obscure the invariant that exactly the hashed facts build the result.
+Store/migration/writer/backfill and Buddy changes stay in their own serial PRs.
 
-The next codec commit extracts the existing evidence, alias, assertion-metadata
-and revision-identity conversions into private static builder helpers. Ordinary
-builder reference checks and failure order stay in place. The ordinary builder
-uses these helpers directly; the future fast factory will share them without
-runtime AST extraction or global function substitution. The same 149 checks,
-focused Ruff and diff checks pass after extraction. Independent review remains
-required for the cumulative codec implementation.
+Validation: 195 combined owner checks pass, including 66 source-wire and 33
+immutable-factory checks, plus existing parsed/materialization/reconstruction
+cohorts. Focused Ruff and cumulative diff checks pass. Work-count checks prove
+one metadata conversion and normalization for 30 exact-byte-shared assertions.
+Differentials cover complete records/indexes/digests, numeric representations,
+source ordering/defaults/coercions, visibility/temporal variants, concurrency,
+source forgeries, framing/resource limits and mutable isolation.
 
-Independent checkpoint review of258363fc found one P2 fallback issue: v1 packet
-depth was enforced before version identification. The repair uses a generic
-64-level preparse allocation bound for version identification, then applies
-v1's three-level packet shape only to matching versions. Future-version packets
-with deeper shapes now use ordinary-parser fallback. Generic byte/allocation
-bounds continue to apply to every version. 56 source-wire and152 combined
-owner checks pass after this repair; focused Ruff remains clean. This is
-checkpoint review, not acceptance of the unfinished fast factory.
+Independent review of 0c2c5a01 found mutable inspection aliasing; the JSON-roundtrip
+repair was approved at edba47a, with 193 checks excluding one benchmark-artifact
+check, 1555 escape/bracket scanner cases and canonical-byte comparisons.
+Earlier streamed-digest bytes matched the original implementation byte-for-byte.
+The allocation and scanner deltas were approved at 7338b6b and dd3a4de.
+Cumulative runtime approval at df070d8 includes 138 canonical-byte comparisons,
+46 additional factory roundtrips, actual-value authority and complex-literal
+fallback. The reviewer independently ran 194 checks, excluding one existing
+benchmark-artifact check. No actionable findings remain in runtime code.
+
+The final hardened HTTP candidate at df070d8 measured 539 ms cold and
+203–217 ms warm. The preceding scanner candidate measured 538 ms cold;
+the allocation candidate measured 559 ms. Complete ordered responses and exact
+reopened citation bytes passed. Artifact size is 2291524 bytes; citation SHA is
+a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc.
+All use retained Buddy ca5a0450489a94cd364183af1c53d3f041ad7d0f and precomputed
+file artifacts with warm OS cache. These diagnostic candidate-route results
+have little margin against the retained approximately 540 ms reference.
+They do not prove actual-store, restart/eviction or production acceptance.
+The V8 performance gate remains open. The frozen baseline has not been rerun.
+
+Next primary question: can the same source proof and immutable preparation
+sustain acceptable cold latency through the actual PostgreSQL artifact store
+and current Buddy deployment, with sufficient margin? The next serial slice
+owns the store/migration, optional read integration, publication/backfill
+atomicity and representation-safe memory-cache keys. It must measure actual
+store IO, write costs, fresh source withdrawal, read-only roles, fallback,
+concurrency, historical/new-revision reads and corruption before Buddy adoption.
+Remaining false: no artifact store or writer/backfill integration is installed;
+no current Buddy adoption/deployment or production performance acceptance has
+occurred; V9 cutover preparation remains gated.
+
+Retention: this lane retains its existing Projects worktree and shared
+verification environment for implementation/review/delivery. Newly retained
+scratch evidence comprises `test_v8_source_bound_hardened_http*_candidate.py`,
+`source-bound-hardened-http*-candidate.{json,log}`, the associated pytest
+output directories, `source-bound-hardened-route*-candidate.bin`, and
+`source-bound-hardened-decoder-profile.json` under the task's scratch/v8-core.
+The candidate fixture databases were created and dropped by their fixtures.
+No new worktree or environment was allocated; no files were removed and no
+reclaimed bytes are claimed. Cleanup follows delivery after active-process,
+mount, dirty-data and unique-commit checks, with explicit removal scope.
