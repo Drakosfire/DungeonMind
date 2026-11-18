@@ -17,6 +17,7 @@ from .frozen_json import (
 )
 from .records import (
     ParsedAssertion,
+    ParsedAssertionMetadata,
     ParsedDomainContractRef,
     ParsedDomainTemporalScope,
     ParsedEntity,
@@ -198,44 +199,63 @@ def compute_semantic_digest(
     normalized_entities = sorted(entities_by_id.keys())
 
     normalized_assertions = []
+    metadata_cache: tuple[ParsedAssertionMetadata, dict[str, object]] | None = None
     for aid in sorted(assertions_by_id.keys()):
         a = assertions_by_id[aid]
         m = a.metadata
-        vis: dict[str, object]
-        if isinstance(m.visibility, ParsedPublicVisibility):
-            vis = {"kind": "public"}
-        elif isinstance(m.visibility, ParsedLabelsAnyVisibility):
-            vis = {"kind": "labels_any", "labels": list(m.visibility.labels)}
-        elif isinstance(m.visibility, ParsedLabelsAllVisibility):
-            vis = {"kind": "labels_all", "labels": list(m.visibility.labels)}
+        if metadata_cache is not None and m is metadata_cache[0]:
+            normalized_metadata = metadata_cache[1]
         else:
-            vis = {"kind": "unknown"}
+            vis: dict[str, object]
+            if isinstance(m.visibility, ParsedPublicVisibility):
+                vis = {"kind": "public"}
+            elif isinstance(m.visibility, ParsedLabelsAnyVisibility):
+                vis = {"kind": "labels_any", "labels": list(m.visibility.labels)}
+            elif isinstance(m.visibility, ParsedLabelsAllVisibility):
+                vis = {"kind": "labels_all", "labels": list(m.visibility.labels)}
+            else:
+                vis = {"kind": "unknown"}
 
-        temporal: dict[str, object]
-        if isinstance(m.temporal_scope, ParsedUtcIntervalTemporalScope):
-            valid_from_iso = (
-                m.temporal_scope.valid_from.isoformat()
-                if m.temporal_scope.valid_from
-                else None
-            )
-            valid_until_iso = (
-                m.temporal_scope.valid_until.isoformat()
-                if m.temporal_scope.valid_until
-                else None
-            )
-            temporal = {
-                "kind": "utc_interval",
-                "valid_from": valid_from_iso,
-                "valid_until": valid_until_iso,
+            temporal: dict[str, object]
+            if isinstance(m.temporal_scope, ParsedUtcIntervalTemporalScope):
+                valid_from_iso = (
+                    m.temporal_scope.valid_from.isoformat()
+                    if m.temporal_scope.valid_from
+                    else None
+                )
+                valid_until_iso = (
+                    m.temporal_scope.valid_until.isoformat()
+                    if m.temporal_scope.valid_until
+                    else None
+                )
+                temporal = {
+                    "kind": "utc_interval",
+                    "valid_from": valid_from_iso,
+                    "valid_until": valid_until_iso,
+                }
+            elif isinstance(m.temporal_scope, ParsedDomainTemporalScope):
+                temporal = {
+                    "kind": "domain_ref",
+                    "schema": m.temporal_scope.schema_term,
+                    "payload": thaw_json_value(m.temporal_scope.payload),
+                }
+            else:
+                temporal = {"kind": m.temporal_scope.kind}
+
+            normalized_metadata: dict[str, object] = {
+                "scope": [{"axis": b.axis, "value": b.value} for b in m.scope],
+                "visibility": vis,
+                "epistemic_basis": m.epistemic_basis,
+                "claim_mode": m.claim_mode,
+                "standing": str(m.standing.value if hasattr(m.standing, "value") else m.standing),
+                "evidence_ref_ids": list(m.evidence_ref_ids),
+                "temporal_scope": temporal,
+                "domain_metadata": [
+                    {"schema": dm.schema_term, "payload": thaw_json_value(dm.payload)}
+                    for dm in m.domain_metadata
+                ],
             }
-        elif isinstance(m.temporal_scope, ParsedDomainTemporalScope):
-            temporal = {
-                "kind": "domain_ref",
-                "schema": m.temporal_scope.schema_term,
-                "payload": thaw_json_value(m.temporal_scope.payload),
-            }
-        else:
-            temporal = {"kind": m.temporal_scope.kind}
+            metadata_cache = (m, normalized_metadata)
 
         val: dict[str, object]
         if a.value.kind == "entity_ref":
@@ -252,19 +272,7 @@ def compute_semantic_digest(
             "subject_entity_id": a.subject_entity_id,
             "predicate": a.predicate,
             "value": val,
-            "metadata": {
-                "scope": [{"axis": b.axis, "value": b.value} for b in m.scope],
-                "visibility": vis,
-                "epistemic_basis": m.epistemic_basis,
-                "claim_mode": m.claim_mode,
-                "standing": str(m.standing.value if hasattr(m.standing, "value") else m.standing),
-                "evidence_ref_ids": list(m.evidence_ref_ids),
-                "temporal_scope": temporal,
-                "domain_metadata": [
-                    {"schema": dm.schema_term, "payload": thaw_json_value(dm.payload)}
-                    for dm in m.domain_metadata
-                ],
-            },
+            "metadata": normalized_metadata,
         })
 
     normalized_aliases = []

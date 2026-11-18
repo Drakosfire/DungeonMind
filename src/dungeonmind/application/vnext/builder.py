@@ -20,6 +20,7 @@ from dungeonmind.contracts.vnext.common import (
 )
 from dungeonmind.contracts.vnext.domain import (
     Assertion,
+    AssertionMetadata,
     Entity,
     EntityRefValue,
     LiteralValue,
@@ -193,6 +194,7 @@ def build_parsed_knowledge_revision(
 
     # --- 4. Assertions ---
     assertions_dict: dict[str, ParsedAssertion] = {}
+    metadata_cache: tuple[AssertionMetadata, ParsedAssertionMetadata] | None = None
     for a in raw_assertions:
         aid = str(a.assertion_id)
         if aid in assertions_dict:
@@ -234,72 +236,81 @@ def build_parsed_knowledge_revision(
                     f"Assertion {aid!r} references missing evidence {ev_str!r}"
                 )
 
-        parsed_scope = tuple(
-            sorted(
-                (ParsedScopeBinding(axis=str(sb.axis), value=str(sb.value)) for sb in meta.scope),
-                key=lambda b: (b.axis, b.value),
-            )
-        )
-
-        vis = meta.visibility
-        parsed_vis: ParsedVisibility
-        if isinstance(vis, LabelsAnyVisibility):
-            sorted_labels = tuple(sorted(str(lbl) for lbl in vis.labels))
-            parsed_vis = ParsedLabelsAnyVisibility(labels=sorted_labels)
-        elif isinstance(vis, LabelsAllVisibility):
-            sorted_labels = tuple(sorted(str(lbl) for lbl in vis.labels))
-            parsed_vis = ParsedLabelsAllVisibility(labels=sorted_labels)
-        elif isinstance(vis, PublicVisibility):
-            parsed_vis = ParsedPublicVisibility()
+        if metadata_cache is not None and meta == metadata_cache[0]:
+            parsed_metadata = metadata_cache[1]
         else:
-            raise RevisionStructuralIntegrityError(
-                f"Assertion {aid!r} has invalid or unknown visibility variant: {vis!r}"
+            parsed_scope = tuple(
+                sorted(
+                    (
+                        ParsedScopeBinding(axis=str(sb.axis), value=str(sb.value))
+                        for sb in meta.scope
+                    ),
+                    key=lambda b: (b.axis, b.value),
+                )
             )
 
-        temporal = meta.temporal_scope
-        parsed_temporal: ParsedTemporalScope
-        if isinstance(temporal, UtcIntervalTemporalScope):
-            parsed_temporal = ParsedUtcIntervalTemporalScope(
-                valid_from=temporal.valid_from,
-                valid_until=temporal.valid_until,
-            )
-        elif isinstance(temporal, DomainTemporalScope):
-            parsed_temporal = ParsedDomainTemporalScope(
-                schema_term=str(temporal.schema_term),
-                payload=freeze_json_value(temporal.payload),
-            )
-        elif isinstance(temporal, UnknownTemporalScope):
-            parsed_temporal = ParsedUnknownTemporalScope()
-        elif isinstance(temporal, TimelessTemporalScope):
-            parsed_temporal = ParsedTimelessTemporalScope()
-        else:
-            raise RevisionStructuralIntegrityError(
-                f"Assertion {aid!r} has invalid or unknown temporal scope variant: {temporal!r}"
+            vis = meta.visibility
+            parsed_vis: ParsedVisibility
+            if isinstance(vis, LabelsAnyVisibility):
+                sorted_labels = tuple(sorted(str(lbl) for lbl in vis.labels))
+                parsed_vis = ParsedLabelsAnyVisibility(labels=sorted_labels)
+            elif isinstance(vis, LabelsAllVisibility):
+                sorted_labels = tuple(sorted(str(lbl) for lbl in vis.labels))
+                parsed_vis = ParsedLabelsAllVisibility(labels=sorted_labels)
+            elif isinstance(vis, PublicVisibility):
+                parsed_vis = ParsedPublicVisibility()
+            else:
+                raise RevisionStructuralIntegrityError(
+                    f"Assertion {aid!r} has invalid or unknown visibility variant: {vis!r}"
+                )
+
+            temporal = meta.temporal_scope
+            parsed_temporal: ParsedTemporalScope
+            if isinstance(temporal, UtcIntervalTemporalScope):
+                parsed_temporal = ParsedUtcIntervalTemporalScope(
+                    valid_from=temporal.valid_from,
+                    valid_until=temporal.valid_until,
+                )
+            elif isinstance(temporal, DomainTemporalScope):
+                parsed_temporal = ParsedDomainTemporalScope(
+                    schema_term=str(temporal.schema_term),
+                    payload=freeze_json_value(temporal.payload),
+                )
+            elif isinstance(temporal, UnknownTemporalScope):
+                parsed_temporal = ParsedUnknownTemporalScope()
+            elif isinstance(temporal, TimelessTemporalScope):
+                parsed_temporal = ParsedTimelessTemporalScope()
+            else:
+                raise RevisionStructuralIntegrityError(
+                    f"Assertion {aid!r} has invalid or unknown temporal scope variant: {temporal!r}"
+                )
+
+            dm_entries = tuple(
+                sorted(
+                    (
+                        ParsedDomainMetadataEntry(
+                            schema_term=str(dm.schema_term),
+                            payload=freeze_json_value(dm.payload),
+                        )
+                        for dm in meta.domain_metadata
+                    ),
+                    key=lambda d: d.schema_term,
+                )
             )
 
-        dm_entries = tuple(
-            sorted(
-                (
-                    ParsedDomainMetadataEntry(
-                        schema_term=str(dm.schema_term),
-                        payload=freeze_json_value(dm.payload),
-                    )
-                    for dm in meta.domain_metadata
-                ),
-                key=lambda d: d.schema_term,
+            parsed_metadata = ParsedAssertionMetadata(
+                scope=parsed_scope,
+                visibility=parsed_vis,
+                epistemic_basis=str(meta.epistemic_basis),
+                claim_mode=str(meta.claim_mode),
+                standing=meta.standing,
+                evidence_ref_ids=tuple(sorted(str(eid) for eid in meta.evidence_ref_ids)),
+                temporal_scope=parsed_temporal,
+                domain_metadata=dm_entries,
             )
-        )
-
-        parsed_metadata = ParsedAssertionMetadata(
-            scope=parsed_scope,
-            visibility=parsed_vis,
-            epistemic_basis=str(meta.epistemic_basis),
-            claim_mode=str(meta.claim_mode),
-            standing=meta.standing,
-            evidence_ref_ids=tuple(sorted(str(eid) for eid in meta.evidence_ref_ids)),
-            temporal_scope=parsed_temporal,
-            domain_metadata=dm_entries,
-        )
+            # Snapshot the mutable contract key. Only the deeply immutable parsed
+            # value is shared, and the one-entry cache lives for this build.
+            metadata_cache = (meta.model_copy(deep=True), parsed_metadata)
 
         assertions_dict[aid] = ParsedAssertion(
             assertion_id=aid,
