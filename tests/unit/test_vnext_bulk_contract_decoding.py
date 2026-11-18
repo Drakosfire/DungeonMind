@@ -4,12 +4,14 @@ from copy import deepcopy
 
 import pytest
 
+from dungeonmind.application.vnext.builder import build_parsed_knowledge_revision
 from dungeonmind.application.vnext.errors import GovernedMaterializationIntegrityError
 from dungeonmind.application.vnext.materialization import decode_native_graph_payload
 from dungeonmind.contracts.vnext.domain import Assertion, Entity
 from dungeonmind.contracts.vnext.knowledge import IdentityAlias
 from dungeonmind.contracts.vnext.source import EvidenceRefV3
 from tests.unit.test_vnext_parsed_knowledge_revision import (
+    _make_base_revision,
     _make_sample_aliases,
     _make_sample_assertions,
     _make_sample_entities,
@@ -90,3 +92,28 @@ def test_bulk_decoding_keeps_separate_mutable_contract_metadata():
     decoded = decode_native_graph_payload(payload)
     decoded.assertions[0].metadata.domain_metadata[0].payload["approved"] = False
     assert decoded.assertions[1].metadata.domain_metadata[0].payload["approved"] is True
+
+
+@pytest.mark.parametrize("values", [(True, 1), (1, 1.0), (0.0, -0.0)])
+def test_bulk_decode_and_parse_preserve_numeric_metadata_representation(values):
+    payload = _payload()
+    first = deepcopy(payload["assertions"][0])
+    second = deepcopy(first)
+    second["assertion_id"] = "asrt:second"
+    payload["assertions"] = [first, second]
+    for row, value in zip(payload["assertions"], values, strict=True):
+        row["metadata"]["domain_metadata"][0]["payload"] = {"value": value}
+    decoded = decode_native_graph_payload(payload)
+    parsed = build_parsed_knowledge_revision(
+        _make_base_revision(), entities=decoded.entities,
+        assertions=decoded.assertions, aliases=decoded.aliases, evidence=decoded.evidence,
+    )
+    for row, expected in zip(decoded.assertions, values, strict=True):
+        actual = parsed.assertions_by_id[row.assertion_id].metadata.domain_metadata[0].payload[
+            "value"
+        ]
+        assert type(actual) is type(expected)
+        if isinstance(expected, float):
+            assert actual.hex() == expected.hex()
+        else:
+            assert actual == expected
