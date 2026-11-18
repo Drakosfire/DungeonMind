@@ -478,7 +478,7 @@ def _bounded_depth(value: Any, depth: int = 0) -> bool:
 
 def _read_verified_revision(
     conn: Connection[Any], space_id: str, revision_id: str, cache: VerifiedKnowledgeRevisionCache,
-) -> StoredKnowledgeRevision | None | Literal[False]:
+) -> StoredKnowledgeRevision | Literal[False] | None:
     row = conn.execute(
         sql.SQL(
             f"SELECT {_RAW_REVISION_SELECT} FROM {{}}.knowledge_revisions "
