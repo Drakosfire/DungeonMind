@@ -3,11 +3,11 @@
 Status: ACTIVE, draft Core PR #218. Owner: Elderwyld pre-cutover performance lane.
 Authority: operator optimization-before-cutover goal with implementation, review
 and merge authorization; accepted source-bound artifact design #216/#217.
-Current Git base: accepted #223 mergead87ab1a42ed6d311e8f30e1536dbad12a94dfa4.
+Current Git base: accepted #224 mergef174923bf7962f78d14faeb36a41f77004520676.
 Codec origin: #217 aef8883238cc7c9c993e42ed666cd99bdfb1847f.
 Storage implementation evidence anchor:74f24c23d70e8b39c3f884cddc80cd10ddd33275.
-Current source matches measured local composition9b6b582d8ddcc90c36d74218ff6d1b85ce332271;
-its code tree is unchanged by the rebase on accepted223. This handoff is living
+Current source matches measured local compositionb2263ae03d661668592e61c8c4b05e336894ba5e;
+its code tree is unchanged by the rebase on accepted224. This handoff is living
 state; detailed trial history belongs in PRs and the retained scratch ledger.
 
 ## Outcome, scope and ordering
@@ -22,16 +22,17 @@ One coherent storage PR owns migration0022, private BYTEA store helper,
 PostgresKnowledgeRevisionRepository optional reader/identity-only backfill and
 new-publication insertion hook, native context/cache integration, owning tests,
 affected migration expectations and current handoff. Bounded control-plane
-settlement of accepted #217/#222/#223 handoffs brings the current slice to12 paths.
-Rebrief: the additional path only seals accepted223; no storage runtime expansion.
+settlement of accepted #217/#222/#223/#224 handoffs brings the current slice to13 paths.
+Rebrief: the additional paths only seal accepted223/224; no storage runtime expansion.
 No Buddy runtime, public/frozen contract or required protocol changes, authority
 redesign, index semantics, serving data, cutover or production GC policy changes.
 
-Serial order: accepted compute #219/#220/#221/#222/#223 -> storage #218 acceptance ->
+Serial order: accepted compute #219/#220/#221/#222/#223/#224 -> storage #218 acceptance ->
 separate current Buddy adoption -> joint V8 evidence -> V9 preparation.
 #219 removes unrequested primary-map hashes, #220 removes per-value callable
 cycles, #221 releases private models at last use, #222 sparsifies temporary
-index buckets; #223 shares immutable empty final entries. Those compute PRs passed independent review and exact CI.
+index buckets; #223 shares immutable empty final entries and #224 removes
+retained private primary-map pair tuples. Those compute PRs passed independent review and exact CI.
 The current task-owned Projects checkout/env is reused; no new worktree/env.
 
 ## Mandatory read and write invariants
@@ -190,10 +191,19 @@ passed in86.08s: first reads452–514ms, warm200–244ms, eviction647–718ms,
 new revision659–737ms, historical return462–490ms, first citations187–207ms with no
 duplicate artifact fetch. Exact responses/citations and fresh revision/source
 checks passed. This is not a stable latency improvement or V8 acceptance.
-Passive traces locate193–241ms full-heap collections in eviction/new-revision
-index construction. Attribution is allocation-trigger phase, not an inventory of
-objects scanned. Next work must measure retained object/lifetime costs before
-another compute change; no GC tuning, prewarm or verification bypass.
+Accepted compute224 (mergef174923) removes30002/150002 retained primary-map pairs
+on synthetic10k/50k entity graphs with complete ordinary model/hash parity.
+Reviewedba0d024 passed231 focused checks and all CI44408031871 jobs. Its actual
+full-app compositionb2263ae/Buddy174639d passed exact response/citation/authority
+and new/historical lifecycle assertions. Candidate-only run91.42s: first447–548ms,
+warm201–266ms, eviction664–757ms, newrevision470–513ms, historical710–846ms,
+firstcitations193–262ms,0duplicatefetch. Earlier same-source probe timings were
+excluded for count-process overlap. No stable end-to-end improvement established.
+Eviction fullGC207–217ms and historical fullGC216–248ms remain; trigger phase
+is not an inventory of objects causing scan cost. Next investigate whole source
+JSON reconstruction allocation without weakening independent integrity checks.
+A scratch streaming prototype preserves synthetic canonical bytes and avoids GC
+events in its component, but takes similar wall time; not production or acceptance.
 
 Remaining gates: independent review of the latest actual-code socket evidence;
 consistent representative cold/new-revision/eviction latency; affected route,
@@ -249,3 +259,10 @@ postgres-artifact-shared-empty-9b6b582 probe/JSON/log/pytest directory, plus loc
 combined verification ref9b6b582. Owner and cleanup follow-up remain this lane's
 review/integration record. Probe is terminal; fixtures dropped owned databases.
 No new manual worktree/mirror/env/cache, manual removal or serving mutation.
+
+Retain deferred-record-items-count-ba0d024.json; deferred-items and deferred-items-
+uncontended-b2263ae probes/JSON/log/pytest directories; local combinedrefb2263ae;
+and stream-source-json-preflight.py/json. Owner is optimization lane, for review/
+integration; cleanup follow-up follows explicit scope and process/mount/dirty/
+unique-data checks. All local probes/count processes terminal, fixture DBs dropped.
+No new worktree/mirror/env/cache, manual removals or serving changes.
