@@ -83,6 +83,8 @@ def _parse_verified_revision(
     if callable(reader):
         body = reader(stored)
         if body is not None:
+            if not isinstance(body, bytes):
+                raise PersistenceIntegrityError("artifact reader returned a non-byte body")
             parsed = decode_read_artifact(body, stored)
             if parsed is None:
                 raise PersistenceIntegrityError("current artifact row/body format mismatch")

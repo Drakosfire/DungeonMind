@@ -119,3 +119,11 @@ def test_current_reader_body_with_future_format_is_integrity_failure(monkeypatch
     )
     with pytest.raises(PersistenceIntegrityError, match="format mismatch"):
         access.open_native_text_source_access_context(**args)
+
+
+@pytest.mark.parametrize("body", [object(), [], bytearray(b"bad")])
+def test_optional_reader_rejects_non_bytes_as_integrity_failure(monkeypatch, body):
+    repo, args, _, _ = _open_args()
+    monkeypatch.setattr(repo, "get_native_read_artifact", lambda stored: body, raising=False)
+    with pytest.raises(PersistenceIntegrityError, match="non-byte"):
+        access.open_native_text_source_access_context(**args)
