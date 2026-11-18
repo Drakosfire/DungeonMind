@@ -5,13 +5,16 @@ from __future__ import annotations
 import json
 import random
 from concurrent.futures import ThreadPoolExecutor
+from importlib import import_module
 from unittest.mock import patch
 
 import pytest
 
 from dungeonmind.domain.canonical import canonical_json
 from dungeonmind.domain.errors import PersistenceIntegrityError
-from dungeonmind.infrastructure.postgres import _graph_json as graph
+
+pytest.importorskip("psycopg")
+graph = import_module("dungeonmind.infrastructure.postgres._graph_json")
 
 
 def _native(rows):
