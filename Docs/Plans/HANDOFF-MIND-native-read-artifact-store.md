@@ -85,10 +85,38 @@ head expectations and this handoff. Record material expansion before absorbing i
 
 ## Current state and next question
 
-No artifact table, generation, backfill or reader integration exists yet. The
-codec-only539ms file-backed result has not established actual-store/current Buddy
-acceptance. Next question: can this slice provide atomic, read-only-safe derived
-artifact use without new authority or unacceptable read/write latency?
+The migration, bounded BYTEA reader, synchronous transaction-bound generation,
+identity-only locked backfill and optional context/cache integration are implemented.
+The private generator classifies only known unsupported wire forms, expected
+contract-validation failures and structural failures as artifact-ineligible.
+Source verification and unexpected faults remain typed failures/rollback.
+
+Initial verification: 73 affected PostgreSQL checks passed across artifact,
+publication/prospective, source admission/extension and migration cohorts. Four
+additional owning checks subsequently passed, for a 12-check artifact cohort:
+SQL/receipt rollback, transactional SELECT-only role (rolled back afterward),
+source withdrawal across actual artifact memory hits, and ordinary source
+corruption detection before a memory hit. The initial seven cache tests plus
+12 source-refresh checks pass. Focused Ruff and cumulative diff checks pass.
+
+Still required before acceptance: source-update/head-advance backfill races,
+historical/descendant/prospective artifact rollback details, actual-store native
+HTTP cold/warm parity and write-generation costs, complete independent review
+and exact-head CI. The codec-only539ms file-backed result has not established
+actual-store/current Buddy acceptance. Next question: does the complete SQL path
+preserve the same result and meet latency requirements?
 
 Retain this handoff as living state and replace stale sections as implementation
 and review evidence arrives. Detailed history stays in PRs and task evidence.
+
+## Retained verification resources
+
+The existing task-owned codex_vnext_cold_20261118 database was confirmed present
+and idle (zero clients) before destructive isolated-test fixtures ran. Those
+fixtures migrated/truncated only that verification database. The temporary
+SELECT-only role and grants were rolled back; the test checked role absence.
+No serving data, new worktrees, environments or containers were changed.
+The existing worktree/env/database and preflight draft in scratch/v8-core remain
+retained by this active lane for delivery/review. Cleanup follows delivery with
+explicit scope and active-process/mount/dirty-data/unique-commit checks; no removals
+or reclaimed bytes.

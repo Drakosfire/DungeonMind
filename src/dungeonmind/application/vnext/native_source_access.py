@@ -15,9 +15,10 @@ from dungeonmind.contracts.vnext.native_source import (
     NativeTextSourceOriginV1,
 )
 from dungeonmind.contracts.vnext.source import SourceArtifactV3, SourceRevisionV2
-from dungeonmind.domain.canonical import canonical_sha256
+from dungeonmind.domain.canonical import canonical_json, canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnavailableError
 
+from ._read_artifact import decode_read_artifact
 from .admission import _contract_visibility_visible
 from .builder import build_parsed_knowledge_revision
 from .errors import KnowledgeReadContextIntegrityError, NativeTextSourceAccessIntegrityError
@@ -45,15 +46,45 @@ class NativeParsedRevisionCache:
 
     def __init__(self) -> None:
         self._lock = Lock()
-        self._entry: tuple[StoredKnowledgeRevision, ParsedKnowledgeRevision] | None = None
+        self._entry: tuple[tuple[str, str, str], ParsedKnowledgeRevision] | None = None
 
     def parse(self, stored: StoredKnowledgeRevision) -> ParsedKnowledgeRevision:
+        return self._parse_using(stored, lambda: _parse_revision(stored))
+
+    def _parse_using(
+        self,
+        stored: StoredKnowledgeRevision,
+        load: Callable[[], ParsedKnowledgeRevision],
+    ) -> ParsedKnowledgeRevision:
+        # Snapshot representation rather than retaining a mutable envelope model.
+        # Equal-instant offsets and bool/int JSON must not collapse into one key.
+        key = (
+            canonical_json(stored.revision.model_dump(mode="json")),
+            stored.graph_payload_sha256,
+            stored._payload_json,
+        )
         with self._lock:
-            if self._entry is not None and self._entry[0] == stored:
+            if self._entry is not None and self._entry[0] == key:
                 return self._entry[1]
-            parsed = _parse_revision(stored)
-            self._entry = (stored, parsed)
+            parsed = load()
+            self._entry = (key, parsed)
             return parsed
+
+
+def _parse_verified_revision(
+    repository: NativeSourceEvidenceRepository,
+    stored: StoredKnowledgeRevision,
+) -> ParsedKnowledgeRevision:
+    # Optional structural capability: existing repositories and locked views need
+    # no new method or PostgreSQL dependency. No read path generates artifacts.
+    reader = getattr(repository, "get_native_read_artifact", None)
+    if callable(reader):
+        body = reader(stored)
+        if body is not None:
+            parsed = decode_read_artifact(body, stored)
+            if parsed is not None:
+                return parsed
+    return _parse_revision(stored)
 
 
 def _parse_revision(stored: StoredKnowledgeRevision) -> ParsedKnowledgeRevision:
@@ -101,7 +132,11 @@ def open_native_text_source_access_context(
         != stored.revision.domain_contract_ref.descriptor_sha256
     ):
         raise KnowledgeReadContextIntegrityError("native source context domain pin mismatch")
-    parsed = _parse_revision(stored) if parsed_cache is None else parsed_cache.parse(stored)
+    parsed = (
+        _parse_verified_revision(repository, stored)
+        if parsed_cache is None
+        else parsed_cache._parse_using(stored, lambda: _parse_verified_revision(repository, stored))
+    )
     view = repository.open_native_source_view(space_id)
     return NativeTextSourceAccessContext(
         space_id=space_id,

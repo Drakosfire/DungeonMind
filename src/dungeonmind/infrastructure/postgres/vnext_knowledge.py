@@ -44,6 +44,7 @@ from ...domain.errors import PersistenceIntegrityError
 from ._revision_verification_cache import VerifiedKnowledgeRevisionCache, _SourceKey
 from .database import SCHEMA, PostgresDatabase, jsonb
 from .serialization import _normalize
+from .vnext_read_artifacts import _insert_artifact, _read_artifact
 
 _REVISION_SELECT = """
     space_id,
@@ -92,6 +93,19 @@ class PostgresKnowledgeRevisionRepository:
                 if result is not False:
                     return result
             return _read_revision(conn, space_id, revision_id)
+
+    def get_native_read_artifact(self, stored: StoredKnowledgeRevision) -> bytes | None:
+        """Optional accelerator after the caller's full source revision verification."""
+        with self._database.transaction() as conn:
+            return _read_artifact(conn, stored)
+
+    def backfill_native_read_artifact(self, space_id: str, revision_id: str) -> bool:
+        """Explicitly regenerate derived data from the exact locked verified source."""
+        with self._database.transaction() as conn:
+            stored = _read_revision(conn, space_id, revision_id, lock=True)
+            if stored is None:
+                raise PersistenceIntegrityError("artifact backfill source revision missing")
+            return _insert_artifact(conn, stored, replace=True)
 
     def head_events(self, space_id: str) -> tuple[KnowledgeHeadEvent, ...]:
         with self._database.transaction() as conn:
@@ -423,7 +437,11 @@ def _read_head(conn: Connection[Any], space_id: str) -> KnowledgeHead | None:
 
 
 def _read_revision(
-    conn: Connection[Any], space_id: str, revision_id: str
+    conn: Connection[Any],
+    space_id: str,
+    revision_id: str,
+    *,
+    lock: bool = False,
 ) -> StoredKnowledgeRevision | None:
     row = conn.execute(
         sql.SQL(
@@ -432,6 +450,7 @@ def _read_revision(
             FROM {{}}.knowledge_revisions
             WHERE space_id = %s AND revision_id = %s
             """
+            + (" FOR SHARE" if lock else "")
         ).format(sql.Identifier(SCHEMA)),
         (space_id, revision_id),
     ).fetchone()
@@ -544,6 +563,8 @@ def _insert_revision(conn: Connection[Any], stored: StoredKnowledgeRevision) -> 
             jsonb(payload),
         ),
     )
+
+    _insert_artifact(conn, stored)
 
 
 def _advance_head(conn: Connection[Any], head: KnowledgeHead, event: KnowledgeHeadEvent) -> None:
