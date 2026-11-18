@@ -1,6 +1,6 @@
 # Remove per-value JSON validator closure cycles
 
-Status: ACTIVE compute slice. Owner: Elderwyld pre-cutover performance lane.
+Status: ACCEPTED compute slice (#220 merge8f686bf4c21944a9564c76d24386de660aef6673). Owner: Elderwyld pre-cutover performance lane.
 Base: accepted #219 merge371930d307be0dbaf946df06a7438b23ee3dd521.
 
 Outcome: reuse a static recursive JSON checker rather than allocate a self-cycling
@@ -38,3 +38,5 @@ json-validator-cycle-preflight.json and the existing local verification branch
 remain owned by this performance lane for review/integration. Record subsequent
 paths/refs; retain for delivery and remove only under explicit cleanup scope after
 active-process/mount/dirty-data/unique-commit checks. No removals authorized here.
+
+Accepted evidence: independent cumulative approval at7572c080a8b3929496238cde9923f95acfe8c1f9 and all CI44381886553 jobs green. 219 author checks and292 combined storage checks passed. The checker AST matches after recursion-reference renaming; 1000 scalar checks allocate zero recursive callable cycles instead of1000. Combined verification19eb48cd98eff716284605c0e40248f4b85e3de2 measured551/562/559ms cold and206–212ms warm, with complete DTO/citation parity. Garbage collected fell sharply but full collections still took93–94ms scanning the live heap. No cold-latency acceptance: the next separate slice addresses unnecessary validation-model retention.
