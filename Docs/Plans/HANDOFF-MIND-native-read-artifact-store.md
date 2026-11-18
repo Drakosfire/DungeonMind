@@ -134,12 +134,12 @@ improvements or regressions. No frozen baseline rerun, write parity, current Bud
 adoption, V8 acceptance or cutover. Keep the PR draft until remaining performance
 and integration obligations are satisfied.
 
-Next primary question: which remaining source verification/decoding allocations
-and live-heap scans can be removed while preserving full independent verification,
-and can repeated actual SQL/current Buddy cold and warm reads meet the retained
-reference without shifting cost into publication or latency outliers? Required
-successor evidence includes restart/eviction/new-revision, affected routes and
-matched writes, then the current deployment and V8 joint record.
+Next primary question: can the fresh-worker matched-fixture result survive a new
+revision and representative server composition, with child-loaded runtime pins,
+affected-route authorization/history/withdrawal and matched write costs proved?
+Source verification/GC costs remain measured optimization candidates, but do not
+weaken independent verification or add speculative decoder changes. Current
+Buddy adoption and the V8 joint record follow accepted evidence.
 
 Retain this handoff as living state; detailed history belongs in PRs and scratch.
 
@@ -201,8 +201,8 @@ for the active lane, with the existing explicit-scope cleanup follow-up.
 ## Fresh-process matched-fixture candidate
 
 Coreae360f173f64f933d1e11c916834cb15e57b2fdb (src exactly9de8566) with retained
-Buddyca5a045 ran three fresh child processes importing no fixture/publication
-modules. Each process built a FastAPI TestClient for the current neighborhood
+Buddyca5a045 ran three fresh child processes with no test-fixture imports or construction of
+fixture/publication runtime objects. Each process built a FastAPI TestClient for the current neighborhood
 route, used the production read-only native repository against explicitly passed
 disposable fixture DSNs, and supplied only the same managed-world binding.
 Cold first requests measured500/469/460ms; the12 warm requests measured201–216ms.
@@ -223,3 +223,32 @@ Retain native_fresh_worker_probe.py, test_v8_postgres_artifact_fresh_worker_cand
 native-postgres-artifact-fresh-worker-ae360f1.{json,log} and its pytest directory;
 the active lane owns them for validation, with cleanup after delivery under the
 existing process/mount/dirty-data/unique-commit checks and explicit removal scope.
+
+Method review of the fresh-worker probe confirmed timing arithmetic and narrow
+response/citation/401 evidence, with no inherited parent monkeypatches found.
+Timing excludes process startup/imports/app/client construction, and includes the
+request/response path. Production transitive imports may load publication modules;
+only test-fixture imports and fixture/publication-runtime construction are excluded.
+Before acceptance, record child-loaded module paths/fingerprints rather than
+relying only on harness pins, plus explicit artifact-hit/bytes and ordinary
+verification/source-open counts. Then lifecycle/new-revision, representative
+server composition, affected authorization/routes/history/withdrawal and matched
+write/repeated-latency evidence remain required.
+
+## Explicit artifact and eviction proof
+
+At Coreca1b3c5 (same runtime source tree), a second three-worker probe observed the
+production adapter without replacing SQL, validation or source-view behavior.
+Each worker's first five neighborhood requests performed exactly5 get_revision
+calls and5 fresh source-view opens, with1 persisted artifact fetch of2291524bytes
+for the exact requested revision. Cold464/467/450ms; warm196–216ms. After explicit
+parsed-cache eviction, one new artifact fetch returned an identical response;
+eviction reads measured515/513/536ms and the following warm read fetched no new
+artifact. Source reopening separately accounted for the intervening artifact read.
+Full response equality, exact citation SHA and anonymous401 checks all passed.
+This closes the sampled artifact-hit/warm-freshness/eviction proof, not child
+module fingerprint, new-revision, deployed-server, affected-route or write gates.
+Independent review of this instrumented probe remains requested. Retain
+native_fresh_worker_proof_probe.py, test_v8_postgres_artifact_fresh_worker_proof.py,
+native-postgres-artifact-fresh-worker-proof-ca1b3c5.{json,log} and pytest directory
+in task scratch/v8-core under the active lane's existing cleanup follow-up.
