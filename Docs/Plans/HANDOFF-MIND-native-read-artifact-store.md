@@ -187,7 +187,7 @@ reviewed9602774 passed222 focused tests and all CI44405940347 jobs. Complete10k
 model/hash parity proves60014 empty entries use10004 pairs, removing50010.
 The actual13-module-attested socket composition9b6b582 with accepted Buddy174639d
 passed in86.08s: first reads452–514ms, warm200–244ms, eviction647–718ms,
-new revision659–737ms, historical return462–490ms, citations187–207ms with no
+new revision659–737ms, historical return462–490ms, first citations187–207ms with no
 duplicate artifact fetch. Exact responses/citations and fresh revision/source
 checks passed. This is not a stable latency improvement or V8 acceptance.
 Passive traces locate193–241ms full-heap collections in eviction/new-revision

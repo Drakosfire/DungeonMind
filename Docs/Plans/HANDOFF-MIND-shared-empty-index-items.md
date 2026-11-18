@@ -23,11 +23,10 @@ handoff only. No PostgreSQL, cache/read-source authority, Buddy, public contract
 profile, GC policy, prewarming or cutover changes. Existing sparse accumulation
 and referential-validation ordering remain unchanged.
 
-One serial compute PR from the pinned accepted base; no behavioral dependency
-on unmerged storage218. After independent cumulative review and exact CI, accept
-this compute PR, then rebase storage218 and measure the combined actual socket
-path with accepted Buddy cache reuse. Pinned local combination may verify before
-acceptance. Do not silently fold the compute change into the storage PR.
+Delivered as a serial compute PR from the pinned accepted base, independent
+of storage218. Independent review and exact CI passed;223 is accepted and
+storage218 is rebased on its merge. Continue remaining performance investigation
+and actual socket verification; this allocation result does not accept V8.
 
 Proof: empty/sparse/dense/self-loop/alias/input-permutation graphs retain all
 index keys/memberships and hashes; immutable sharing removes duplicate pair
@@ -52,6 +51,6 @@ removing50010 allocations. This is a work-reduction acceptance, not V8 acceptanc
 Actual full-app composition9b6b582 with Buddy174639d passed exact response/citation,
 fresh source/revision and lifecycle assertions. First reads452–514ms, warm200–244ms,
 eviction647–718ms and new revision659–737ms; historical return462–490ms.
-Citations187–207ms fetch no duplicate artifact. Full-heap GC193–241ms remains in
+First citations187–207ms fetch no duplicate artifact. Full-heap GC193–241ms remains in
 miss tails. No stable latency benefit established; frozen baseline not rerun.
-Storage218 rebases on this merge; performance/cutover gates remain open.
+Storage218 is rebased on this merge; performance/cutover gates remain open.
