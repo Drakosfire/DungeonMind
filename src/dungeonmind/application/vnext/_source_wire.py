@@ -76,29 +76,40 @@ def _constant(text: str) -> Any:
     raise ValueError(f"nonfinite JSON constant {text}")
 
 
-def _depth(text: str, limit: int) -> None:
-    """Bound nesting before json.loads allocates nested Python containers."""
-    depth = 0
-    quoted = False
-    escaped = False
-    for char in text:
-        if quoted:
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == '"':
-                quoted = False
-        elif char == '"':
-            quoted = True
-        elif char in "[{":
+def _depth(text: str, limit: int) -> int:
+    """Bound nesting before allocation, skipping string bodies in C via find.
+
+    Escaped quotes are identified by the immediately preceding backslash run.
+    The scanner is linear and allocates no nested containers or token list.
+    json.loads subsequently checks the full syntax and bracket types.
+    """
+    depth = maximum = position = 0
+    length = len(text)
+    while position < length:
+        char = text[position]
+        if char == '"':
+            start = position + 1
+            while True:
+                end = text.find('"', start)
+                if end < 0:
+                    return maximum  # json.loads reports the unterminated string.
+                back = end - 1
+                while back >= start and text[back] == "\\":
+                    back -= 1
+                if (end - 1 - back) % 2 == 0:
+                    break
+                start = end + 1
+            position = end + 1
+            continue
+        if char in "[{":
             depth += 1
+            maximum = max(maximum, depth)
             if depth > limit:
                 raise ValueError("JSON nesting limit exceeded")
         elif char in "]}":
             depth -= 1
-    # Syntax completeness, matching bracket types and control characters are
-    # checked by json.loads, after this allocation bound has been established.
+        position += 1
+    return maximum
 
 
 def _load(text: str, depth: int) -> Any:
@@ -115,10 +126,9 @@ def _text(value: Any) -> bytes:
 def _chunk(value: Any) -> Any:
     if type(value) is not str:
         raise ValueError("wire JSON chunk required")
-    parsed = _load(value, _MAX_CHUNK_DEPTH)
-    if canonical_json(parsed) != value:
-        raise ValueError("noncanonical JSON chunk")
-    return parsed
+    # Complete canonical source equivalence is proved by the reconstructed root
+    # hash. Re-serializing each chunk here repeats that proof without adding it.
+    return _load(value, _MAX_CHUNK_DEPTH)
 
 
 def _reference(table: list[Any], index: Any, used: set[int]) -> Any:
@@ -334,12 +344,19 @@ def _decode_source_wire(data: bytes, source: StoredKnowledgeRevision) -> dict[st
         # Generic allocation bounds apply before identifying the version; v1
         # packet framing must not constrain an otherwise unsupported version.
         text = data.decode("utf-8")
-        packet = _load(text, _MAX_CHUNK_DEPTH)
+        maximum = _depth(text, _MAX_CHUNK_DEPTH)
+        packet = json.loads(
+            text,
+            object_pairs_hook=_pairs,
+            parse_float=_float,
+            parse_constant=_constant,
+        )
         if type(packet) is not dict or type(packet.get("format")) is not str:
             raise ValueError("invalid wire format header")
         if packet["format"] != _FORMAT:
             return None
-        _depth(text, 3)
+        if maximum > 3:
+            raise ValueError("JSON nesting limit exceeded")
         if type(packet.get("parsed_format")) is not str:
             raise ValueError("invalid parsed format header")
         if packet["parsed_format"] != PARSED_REVISION_FORMAT_VERSION:

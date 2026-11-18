@@ -301,3 +301,22 @@ def test_no_source_or_packet_mutation():
     wire = encode_source_wire(source)
     decode_source_wire(wire, source)
     assert source == before
+
+
+@pytest.mark.parametrize("slashes", range(8))
+def test_preparse_scanner_ignores_escaped_quotes_and_brackets_in_strings(slashes):
+    from dungeonmind.application.vnext._source_wire import _depth
+
+    text = canonical_json({"value": ("\\" * slashes + '"[{}]🧙') * 20, "nested": [[0]]})
+    assert _depth(text, 3) == 3
+    with pytest.raises(ValueError, match="nesting"):
+        _depth(text, 2)
+
+
+def test_chunk_canonicality_is_enforced_by_complete_source_proof():
+    source = _source(_payload())
+    packet = _packet(source)
+    original = packet["metadata"][0]
+    packet["metadata"][0] = json.dumps(json.loads(original), indent=1, ensure_ascii=False)
+    with pytest.raises(PersistenceIntegrityError, match=r"source|size"):
+        decode_source_wire(_bytes(packet), source)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime
+from json.encoder import encode_basestring
 
 from .frozen_json import (
     FrozenDict,
@@ -406,13 +407,13 @@ def _stream_semantic_digest(
             b"".join(
                 (
                     b'{"assertion_id":',
-                    canonical_json_bytes(assertion.assertion_id),
+                    encode_basestring(assertion.assertion_id).encode("utf-8"),
                     b',"metadata":',
                     metadata_bytes[meta_key],
                     b',"predicate":',
-                    canonical_json_bytes(assertion.predicate),
+                    encode_basestring(assertion.predicate).encode("utf-8"),
                     b',"subject_entity_id":',
-                    canonical_json_bytes(assertion.subject_entity_id),
+                    encode_basestring(assertion.subject_entity_id).encode("utf-8"),
                     b',"value":',
                     value_bytes[value_key],
                     b"}",
