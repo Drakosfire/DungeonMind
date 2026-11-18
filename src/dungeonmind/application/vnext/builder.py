@@ -6,6 +6,7 @@ without performing scope/visibility/domain admission or introducing domain/TTRPG
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -358,18 +359,16 @@ def _build_parsed_knowledge_revision_from_records(
                 )
 
     # --- Structural Indexes ---
-    assertions_by_subject_builder: dict[str, list[str]] = {eid: [] for eid in entities_dict}
-    entity_ref_outgoing_builder: dict[str, set[str]] = {eid: set() for eid in entities_dict}
-    entity_ref_incoming_builder: dict[str, set[str]] = {eid: set() for eid in entities_dict}
-    entity_ref_outgoing_assertions_builder: dict[str, list[str]] = {
-        eid: [] for eid in entities_dict
-    }
-    entity_ref_incoming_assertions_builder: dict[str, list[str]] = {
-        eid: [] for eid in entities_dict
-    }
+    # Sparse temporary buckets avoid retaining empty mutable containers for
+    # unrelated entities. Final indexes below still include every primary key.
+    assertions_by_subject_builder: dict[str, list[str]] = defaultdict(list)
+    entity_ref_outgoing_builder: dict[str, set[str]] = defaultdict(set)
+    entity_ref_incoming_builder: dict[str, set[str]] = defaultdict(set)
+    entity_ref_outgoing_assertions_builder: dict[str, list[str]] = defaultdict(list)
+    entity_ref_incoming_assertions_builder: dict[str, list[str]] = defaultdict(list)
     assertion_evidence_builder: dict[str, tuple[str, ...]] = {}
-    evidence_supporters_builder: dict[str, list[str]] = {evid: [] for evid in evidence_dict}
-    aliases_by_entity_builder: dict[str, list[str]] = {eid: [] for eid in entities_dict}
+    evidence_supporters_builder: dict[str, list[str]] = defaultdict(list)
+    aliases_by_entity_builder: dict[str, list[str]] = defaultdict(list)
     alias_exact_builder: dict[str, set[str]] = {}
     literal_exact_builder: dict[tuple[str, str], list[str]] = {}
     lexical_candidate_builder: dict[str, set[str]] = {}
@@ -418,37 +417,49 @@ def _build_parsed_knowledge_revision_from_records(
 
     # Finalize index structures with sorted tuples and wrap in FrozenDict
     assertions_by_subject = FrozenDict(
-        {eid: tuple(sorted(aids)) for eid, aids in assertions_by_subject_builder.items()}
+        {eid: tuple(sorted(assertions_by_subject_builder.get(eid, ()))) for eid in entities_dict}
     )
     entity_ref_outgoing = FrozenDict(
-        {eid: tuple(sorted(targets)) for eid, targets in entity_ref_outgoing_builder.items()}
+        {eid: tuple(sorted(entity_ref_outgoing_builder.get(eid, ()))) for eid in entities_dict}
     )
     entity_ref_incoming = FrozenDict(
-        {eid: tuple(sorted(sources)) for eid, sources in entity_ref_incoming_builder.items()}
+        {eid: tuple(sorted(entity_ref_incoming_builder.get(eid, ()))) for eid in entities_dict}
     )
     entity_ref_outgoing_assertions = FrozenDict(
-        {eid: tuple(sorted(aids)) for eid, aids in entity_ref_outgoing_assertions_builder.items()}
+        {
+            eid: tuple(sorted(entity_ref_outgoing_assertions_builder.get(eid, ())))
+            for eid in entities_dict
+        }
     )
     entity_ref_incoming_assertions = FrozenDict(
-        {eid: tuple(sorted(aids)) for eid, aids in entity_ref_incoming_assertions_builder.items()}
+        {
+            eid: tuple(sorted(entity_ref_incoming_assertions_builder.get(eid, ())))
+            for eid in entities_dict
+        }
     )
 
+    empty_neighbors: frozenset[str] = frozenset()
     entity_adjacency = FrozenDict(
         {
-            eid: tuple(sorted(entity_ref_outgoing_builder[eid] | entity_ref_incoming_builder[eid]))
+            eid: tuple(
+                sorted(
+                    entity_ref_outgoing_builder.get(eid, empty_neighbors)
+                    | entity_ref_incoming_builder.get(eid, empty_neighbors)
+                )
+            )
             for eid in entities_dict
         }
     )
 
     assertion_evidence = FrozenDict(assertion_evidence_builder)
     evidence_supporters = FrozenDict(
-        {evid: tuple(sorted(aids)) for evid, aids in evidence_supporters_builder.items()}
+        {evid: tuple(sorted(evidence_supporters_builder.get(evid, ()))) for evid in evidence_dict}
     )
 
     aliases_by_entity = FrozenDict(
         {
-            entity_id: tuple(sorted(alias_ids))
-            for entity_id, alias_ids in aliases_by_entity_builder.items()
+            entity_id: tuple(sorted(aliases_by_entity_builder.get(entity_id, ())))
+            for entity_id in entities_dict
         }
     )
     alias_exact_index = FrozenDict(
