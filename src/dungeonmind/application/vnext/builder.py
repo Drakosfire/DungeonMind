@@ -37,6 +37,7 @@ from .errors import RevisionStructuralIntegrityError
 from .frozen_json import (
     FrozenDict,
     _deferred_frozen_dict,
+    _frozen_dense_index,
     canonical_json_text,
     freeze_json_value,
 )
@@ -415,53 +416,34 @@ def _build_parsed_knowledge_revision_from_records(
         for tok in tokenize_search_text(al.alias_text):
             lexical_candidate_builder.setdefault(tok, set()).add(al.entity_id)
 
-    # Finalize index structures with sorted tuples and wrap in FrozenDict
-    assertions_by_subject = FrozenDict(
-        {eid: tuple(sorted(assertions_by_subject_builder.get(eid, ()))) for eid in entities_dict}
+    # Every per-entity index retains the complete primary key domain. Share the
+    # immutable empty entries instead of allocating the same (key, ()) repeatedly.
+    empty_index_items: tuple[tuple[str, tuple[str, ...]], ...] = tuple(
+        (eid, ()) for eid in sorted(entities_dict, key=str)
     )
-    entity_ref_outgoing = FrozenDict(
-        {eid: tuple(sorted(entity_ref_outgoing_builder.get(eid, ()))) for eid in entities_dict}
+    assertions_by_subject = _frozen_dense_index(empty_index_items, assertions_by_subject_builder)
+    entity_ref_outgoing = _frozen_dense_index(empty_index_items, entity_ref_outgoing_builder)
+    entity_ref_incoming = _frozen_dense_index(empty_index_items, entity_ref_incoming_builder)
+    entity_ref_outgoing_assertions = _frozen_dense_index(
+        empty_index_items, entity_ref_outgoing_assertions_builder
     )
-    entity_ref_incoming = FrozenDict(
-        {eid: tuple(sorted(entity_ref_incoming_builder.get(eid, ()))) for eid in entities_dict}
-    )
-    entity_ref_outgoing_assertions = FrozenDict(
-        {
-            eid: tuple(sorted(entity_ref_outgoing_assertions_builder.get(eid, ())))
-            for eid in entities_dict
-        }
-    )
-    entity_ref_incoming_assertions = FrozenDict(
-        {
-            eid: tuple(sorted(entity_ref_incoming_assertions_builder.get(eid, ())))
-            for eid in entities_dict
-        }
+    entity_ref_incoming_assertions = _frozen_dense_index(
+        empty_index_items, entity_ref_incoming_assertions_builder
     )
 
     empty_neighbors: frozenset[str] = frozenset()
-    entity_adjacency = FrozenDict(
-        {
-            eid: tuple(
-                sorted(
-                    entity_ref_outgoing_builder.get(eid, empty_neighbors)
-                    | entity_ref_incoming_builder.get(eid, empty_neighbors)
-                )
-            )
-            for eid in entities_dict
-        }
-    )
-
+    adjacency_memberships = {
+        eid: entity_ref_outgoing_builder.get(eid, empty_neighbors)
+        | entity_ref_incoming_builder.get(eid, empty_neighbors)
+        for eid in entity_ref_outgoing_builder.keys() | entity_ref_incoming_builder.keys()
+    }
+    entity_adjacency = _frozen_dense_index(empty_index_items, adjacency_memberships)
     assertion_evidence = FrozenDict(assertion_evidence_builder)
+    # Evidence has its own complete key domain, including unused references.
     evidence_supporters = FrozenDict(
         {evid: tuple(sorted(evidence_supporters_builder.get(evid, ()))) for evid in evidence_dict}
     )
-
-    aliases_by_entity = FrozenDict(
-        {
-            entity_id: tuple(sorted(aliases_by_entity_builder.get(entity_id, ())))
-            for entity_id in entities_dict
-        }
-    )
+    aliases_by_entity = _frozen_dense_index(empty_index_items, aliases_by_entity_builder)
     alias_exact_index = FrozenDict(
         {norm_text: tuple(sorted(eids)) for norm_text, eids in alias_exact_builder.items()}
     )
