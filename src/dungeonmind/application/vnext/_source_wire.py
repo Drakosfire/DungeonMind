@@ -12,7 +12,6 @@ import hashlib
 import json
 import math
 from collections.abc import Iterator
-from copy import deepcopy
 from json.encoder import encode_basestring
 from typing import Any
 
@@ -373,4 +372,6 @@ def decode_source_wire(data: bytes, source: StoredKnowledgeRevision) -> dict[str
     path may bypass the source proof or use separately supplied normalized facts.
     """
     payload = _decode_source_wire(data, source)
-    return deepcopy(payload) if payload is not None else None
+    # A deepcopy preserves aliases in the pooled graph. A JSON roundtrip gives
+    # every mutable occurrence its own container, like ordinary source loading.
+    return json.loads(canonical_json(payload)) if payload is not None else None

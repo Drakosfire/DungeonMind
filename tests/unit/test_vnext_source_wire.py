@@ -320,3 +320,17 @@ def test_chunk_canonicality_is_enforced_by_complete_source_proof():
     packet["metadata"][0] = json.dumps(json.loads(original), indent=1, ensure_ascii=False)
     with pytest.raises(PersistenceIntegrityError, match=r"source|size"):
         decode_source_wire(_bytes(packet), source)
+
+
+def test_mutable_inspection_de_pools_every_occurrence():
+    payload = _payload()
+    first = payload["assertions"][0]
+    first["metadata"]["domain_metadata"] = [{"schema": "test:flag", "payload": {"approved": True}}]
+    first["value"] = {"kind": "literal", "value": {"nested": []}}
+    payload["assertions"] = [first, dict(first, assertion_id="assertion:second")]
+    source = _source(payload)
+    result = decode_source_wire(encode_source_wire(source), source)
+    result["assertions"][0]["metadata"]["domain_metadata"][0]["payload"]["approved"] = False
+    result["assertions"][0]["value"]["value"]["nested"].append("changed")
+    assert result["assertions"][1]["metadata"]["domain_metadata"][0]["payload"]["approved"] is True
+    assert result["assertions"][1]["value"]["value"]["nested"] == []
