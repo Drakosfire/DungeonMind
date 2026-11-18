@@ -258,9 +258,19 @@ def test_size_bound_precedes_json_parsing(monkeypatch):
         decode_source_wire(b" " * 10000, source)
 
 
-def test_unknown_version_falls_back():
+@pytest.mark.parametrize("nesting", [0, 3, 40])
+def test_unknown_version_falls_back(nesting):
     source = _source(_payload())
-    assert decode_source_wire(b'{"format":"future"}', source) is None
+    body = b'{"format":"future","body":' + b"[" * nesting + b"0" + b"]" * nesting + b"}"
+    assert decode_source_wire(body, source) is None
+
+
+def test_matching_version_keeps_its_strict_packet_depth():
+    source = _source(_payload())
+    packet = _packet(source)
+    packet["entities"] = [[[]]]
+    with pytest.raises(PersistenceIntegrityError, match="nesting"):
+        decode_source_wire(_bytes(packet), source)
 
 
 @pytest.mark.parametrize(

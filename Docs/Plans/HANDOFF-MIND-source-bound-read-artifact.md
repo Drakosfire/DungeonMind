@@ -241,3 +241,12 @@ uses these helpers directly; the future fast factory will share them without
 runtime AST extraction or global function substitution. The same 149 checks,
 focused Ruff and diff checks pass after extraction. Independent review remains
 required for the cumulative codec implementation.
+
+Independent checkpoint review of258363fc found one P2 fallback issue: v1 packet
+depth was enforced before version identification. The repair uses a generic
+64-level preparse allocation bound for version identification, then applies
+v1's three-level packet shape only to matching versions. Future-version packets
+with deeper shapes now use ordinary-parser fallback. Generic byte/allocation
+bounds continue to apply to every version. 56 source-wire and152 combined
+owner checks pass after this repair; focused Ruff remains clean. This is
+checkpoint review, not acceptance of the unfinished fast factory.

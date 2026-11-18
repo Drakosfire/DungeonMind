@@ -286,11 +286,15 @@ def decode_source_wire(data: bytes, source: StoredKnowledgeRevision) -> dict[str
         byte_limit = 8 * len(source._payload_json.encode("utf-8")) + 4096
         if type(data) is not bytes or len(data) > byte_limit:
             raise ValueError("wire artifact byte limit exceeded")
-        packet = _load(data.decode("utf-8"), 3)
+        # Generic allocation bounds apply before identifying the version; v1
+        # packet framing must not constrain an otherwise unsupported version.
+        text = data.decode("utf-8")
+        packet = _load(text, _MAX_CHUNK_DEPTH)
         if type(packet) is not dict or type(packet.get("format")) is not str:
             raise ValueError("invalid wire format header")
         if packet["format"] != _FORMAT:
             return None
+        _depth(text, 3)
         return _expand(packet, source)
     except (ValueError, TypeError, KeyError, UnicodeError, RecursionError) as exc:
         raise PersistenceIntegrityError(f"native source wire integrity failure: {exc}") from exc
