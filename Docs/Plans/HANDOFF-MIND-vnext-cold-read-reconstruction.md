@@ -94,3 +94,24 @@ The next core job exposed two inherited missing-import diagnostics for the
 optional pypdf extra. Targeted Pyright annotations on those imports preserve
 runtime behavior in minimal installations. Reconstruction tests explicitly
 skip when psycopg is absent, preserving the optional PostgreSQL dependency.
+
+## Remaining parse profile
+
+A separate candidate run at runtime-equivalent 6f4e32b measured 1665.54 ms
+for its first HTTP request and preserved the same ordered result and citation.
+A direct cProfile of that revision's parse reported 1.721 cumulative seconds:
+1.048 in build_parsed_knowledge_revision, including 0.594 in the internal
+record/index builder and 0.407 in compute_semantic_digest; 0.511 in contract
+decoding; and 0.121 loading and checking the stored payload. These are nested
+profile timings and are not additive end-to-end latency measurements.
+
+The next slice should address complete-revision parsing and normalization,
+with equality of immutable records, indexes and semantic digests established
+against the current builder. Shared mutable contract state must not escape
+through decoded results. This profile does not establish the cold-read gate.
+
+Profile probe, result and log are retained as test_v8_native_cold_candidate_profile.py,
+native-cold-candidate-6f4e32b-profile.json and
+native-cold-candidate-6f4e32b-profile.log. The task owns the retained temporary
+candidate-6f4e32b-profile-pytest directory; cleanup follows diagnosis. Both
+fixture databases were dropped by their existing fixture teardown.
