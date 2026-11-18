@@ -197,3 +197,29 @@ Nested-pairs-hook and alternate JSON-decoder feasibility produced no reliable
 benefit/general equivalence proof; neither was implemented. Retain their negative
 evidence and the SQL attribution probe/JSON/log/pytest directory under scratch/v8-core
 for the active lane, with the existing explicit-scope cleanup follow-up.
+
+## Fresh-process matched-fixture candidate
+
+Coreae360f173f64f933d1e11c916834cb15e57b2fdb (src exactly9de8566) with retained
+Buddyca5a045 ran three fresh child processes importing no fixture/publication
+modules. Each process built a FastAPI TestClient for the current neighborhood
+route, used the production read-only native repository against explicitly passed
+disposable fixture DSNs, and supplied only the same managed-world binding.
+Cold first requests measured500/469/460ms; the12 warm requests measured201–216ms.
+Every complete response equaled the parent ordinary-parser correctness oracle,
+exact citation SHA remaineda64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc,
+and anonymous requests returned401. Fixture DBs were dropped afterward.
+
+All three fresh-worker cold samples meet the retained~540ms matched reference,
+and warm samples retain their advantage. DB/OS were warm; this is process-isolated
+in-process HTTP, not a deployed socket/server or current Elderwyld serving proof.
+Earlier test-process slow samples remain recorded above. Do not infer all their
+difference is fixture heap without a dedicated heap attribution proof.
+Remaining acceptance: independent method review; explicit child artifact-hit and
+eviction/new-revision/restart cases; affected current routes and matched write
+costs; current Buddy dependency/runtime adoption and joint V8 record. Keep this
+PR draft while those obligations remain. No frozen baseline rerun or cutover.
+Retain native_fresh_worker_probe.py, test_v8_postgres_artifact_fresh_worker_candidate.py,
+native-postgres-artifact-fresh-worker-ae360f1.{json,log} and its pytest directory;
+the active lane owns them for validation, with cleanup after delivery under the
+existing process/mount/dirty-data/unique-commit checks and explicit removal scope.

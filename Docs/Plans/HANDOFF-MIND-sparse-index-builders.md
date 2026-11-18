@@ -5,8 +5,8 @@ Authority: operator optimization-before-cutover goal. Parent: accepted #221 merg
 
 Outcome: allocate temporary per-entity/evidence lists/sets only for actual index
 entries. Final immutable indexes must still contain every entity/evidence key,
-including empty tuples, with unchanged order, semantics and digest. The builder
-currently creates six mutable collections per entity before populating indexes,
+including empty tuples, with unchanged order, semantics and digest. Before this change the builder
+created six mutable collections per entity before populating indexes,
 even with only two edges and no aliases in the retained10k fixture. Last-use
 model release alone leaves full-GC outliers (537/518/665ms cold candidate).
 
@@ -14,9 +14,10 @@ Scope: builder.py structural accumulation/finalization, owning unit regressions
 and this living handoff. No public signature/format/schema, primary records,
 validation, admission, storage, Buddy or GC configuration change. Maintain exact
 ordinary and artifact parser behavior, referential error order, sharing and hashes.
-One independently reviewable serial compute slice. #221 is accepted; this PR
-is rebased onto its merge. Review/test/merge it, then rebase storage #218. Pinned local combination may verify
-candidate route before acceptance. Storage and compute remain separate PRs.
+This serial compute slice was reviewed and merged after #221. Storage #218 is
+now rebased onto accepted #222; its end-to-end integration/performance obligations
+remain open. Pinned local verification preceded acceptance of compute only.
+Storage and compute remain separate PRs.
 
 Required proof: empty/sparse/dense/disconnected/self-loop/duplicate-neighbor graphs,
 all final index keys and sorted tuple contents, every index versus independent
