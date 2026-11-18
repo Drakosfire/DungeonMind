@@ -1,7 +1,8 @@
 # Native read-artifact PostgreSQL storage and integration
 
-Owner: active Elderwyld performance lane. Parent: Core #217 exact
-aef8883238cc7c9c993e42ed666cd99bdfb1847f, accepted #217 squash merge.
+Owner: active Elderwyld performance lane. Codec parent: accepted Core #217
+aef8883238cc7c9c993e42ed666cd99bdfb1847f. Current compute base: accepted #221
+6c61e8e73faf6d02c0d1f73692f185a55c050a4f; #219/#220 are also accepted.
 Status: ACTIVE implementation lease on codex/vnext-read-artifact-store.
 Execution authority: accepted source-bound read-artifact design #216 and operator
 optimization-before-cutover goal, with implementation/review/merge authorization.
@@ -20,7 +21,8 @@ owning unit/PostgreSQL proof, affected migration-head expectations and live hand
 No Buddy, source admission, public frozen wire contracts, authority redesign,
 index semantics, cutover or primary-runtime data changes.
 
-Ordering: #217 accepted merge -> store/read/write/backfill PR -> Buddy adoption.
+Ordering: accepted compute through #221 -> sparse compute #222 acceptance ->
+rebase store/read/write/backfill PR -> Buddy adoption after performance proof.
 The current task-owned worktree/env are reused on a new codex/ branch. No new
 worktree or dependency environment. No frozen baseline rerun.
 
@@ -48,9 +50,8 @@ through destructive test fixtures against serving databases. Then measure native
 parity, plus affected write costs. 539 ms file-backed feasibility has insufficient
 margin to claim V8 acceptance; actual-store/current Buddy evidence owns that gate.
 
-Retention: this draft stays in task scratch for handoff preparation/review. It
-will be incorporated into the owning PR's durable handoff and retained until
-store delivery. Cleanup only after active-process/mount/dirty-data/unique-commit
+Retention: this checked-in handoff is the current state; the task scratch
+preflight and unique verification evidence remain retained until store delivery. Cleanup only after active-process/mount/dirty-data/unique-commit
 checks and explicit removal scope; no removals authorized by this preflight.
 
 ## Settled implementation decisions
@@ -85,58 +86,61 @@ head expectations and this handoff. Record material expansion before absorbing i
 
 ## Current state and next question
 
-The migration, bounded BYTEA reader, synchronous transaction-bound generation,
-identity-only locked backfill and optional context/cache integration are implemented.
-The private generator classifies only known unsupported wire forms, expected
-contract-validation failures and structural failures as artifact-ineligible.
-Source verification and unexpected faults remain typed failures/rollback.
+Implementation is complete and independently code-approved. Migration0022,
+bounded BYTEA reader, transaction-bound generation, locked identity-only backfill,
+optional context integration and exact immutable cache keys preserve full source
+verification before lookup and fresh provenance on every opening. The current-row
+body-manifest mismatch and nonbytes-reader findings are repaired and independently
+approved. Future stored versions remain absent/fallback; malformed current rows
+fail closed. Exact storage head9f0b8062baced9803affd47a187e2d33e2883ec7 passed all
+CI44387731401 jobs before this rebase/documentation refresh.
 
-Current verification: 214 focused unit checks pass. The affected PostgreSQL
-publication/prospective, source admission/extension, artifact and migration
-cohort passed 84 checks; a subsequently added old-data fallback test brings the
-owning artifact cohort to 20 passing checks. Proof includes SQL/receipt/result
-rollback, SELECT-only role and read-only transaction, source withdrawal across
-memory hits, corruption before memory lookup, bounded transfer, explicit repair,
-source-update blocking during backfill and concurrent head advance preserving
-the historical target. Role/grants are rolled back and absence is checked.
+217 focused storage units passed;84 affected PostgreSQL publication/prospective,
+source admission/extension, artifact and migration checks passed before a final
+old-data fallback addition. The owning artifact cohort then passed20 tests.
+Proof includes SELECT-only/read-only access, withdrawal across memory hits,
+corruption before memory lookup, bounded transfer, forged bytes, atomic
+revision/head/event/receipt/result rollback, explicit repair, concurrent source
+update blocking and head advance preserving historical backfill. All role/grants
+were rolled back and role absence verified. Rebased exact-head CI remains required.
 
-Initial independent review found current-row/body manifest disagreement could
-fall back. The repair makes the optional reader's contract explicit: return only
-current-version bound rows, or None for absent/unsupported stored versions. A
-returned body's differing wire/parsed manifest now fails closed, without another
-full JSON parse. Unit/SQL cases distinguish inconsistent current rows from
-genuine future-version rows. Delta review and exact-head CI remain pending.
+Accepted compute work: #219 defers unrequested primary-record map hashes,
+#220 removes per-value recursive callable cycles, #221 releases private models
+at their last use. #222 separately sparsifies temporary index buckets; it has
+independent approval but remains pending exact final CI/acceptance. The source
+proof, public validation, structural checks and semantic digest remain mandatory.
 
-Actual-store candidate Core041e42d3dc5f37c28a362607b0b3a4a3457434f2 with retained
-Buddyca5a0450489a94cd364183af1c53d3f041ad7d0f measured 558 ms cold and209–212 ms
-warm, with full DTO parity against an untimed same-fixture ordinary-parser
-correctness oracle and exact reopened citation SHA
- a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc.
-The first artifact lookup/transfer/checksum took12 ms for2291524 bytes.
-The fixture used a fresh parsed cache and warm DB/OS; it is not restart/current
-serving deployment evidence. The successful read path is unchanged by the
-manifest-error repair; the candidate pin is recorded explicitly.
+Actual-store candidate evidence uses retained Buddyca5a0450489a94cd364183af1c53d3f041ad7d0f,
+fresh parsed caches and warm DB/OS. All candidates passed full DTO parity against
+an untimed same-fixture ordinary-parser correctness oracle and exact reopened
+citation SHA a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc.
+These are candidate fixtures, not serving restart/deployment acceptance.
 
-10k generation consumed0.82–1.09 seconds inside publication transactions.
-Second-hop prepare+commit took10.58 seconds, including0.82 seconds generation.
-Write parity is not established. Both cold latency against the retained540ms
-reference and generation costs require further optimization before adoption.
-The frozen baseline was not rerun. No production V8 acceptance or cutover.
+- Original actual-store Core041e42d:558ms cold,209–212ms warm;2.29MB transfer/
+  checksum12ms; generation0.82–1.09s; second-hop prepare+commit10.58s.
+- Combined accepted hash/validator verification19eb48c:551/562/559ms cold,
+ 206–212ms warm. Full GC still93–94ms despite sharply fewer cyclic objects.
+- Model-lifetime verificationa05e157:537/518/665ms cold;227–250ms warm plus346ms
+  full-GC outlier. Generation1.13/1.05s; second-hop13.31s.
+- Sparse-index verification9de8566:609/594/661ms cold,233–283ms warm;
+  generation1.26/0.63s; second-hop11.70s. A controlled builder-only comparison
+  on the same retained payload measured79–81ms sparse versus80–84ms parent,
+  with full parsed equality and fewer allocations. This is not route acceptance.
 
-A retained-payload component work count found20008 assertion hash calls and
-20008 metadata hash calls during immutable construction, with no explicit map
-hash request. Prior profiling attributed time to FrozenDict construction. This
-is the next bounded compute question; any change to hashing will be a separate
-reviewable PR, not silently absorbed into this persistence slice.
+The retained~540ms cold reference is not consistently met. Independent runs also
+vary in get_revision/database/GC costs, so they do not isolate causal timing
+improvements or regressions. No frozen baseline rerun, write parity, current Buddy
+adoption, V8 acceptance or cutover. Keep the PR draft until remaining performance
+and integration obligations are satisfied.
 
-Next question: can unnecessary immutable-map hash preparation be removed while
-preserving all hash/immutability behavior and improve actual SQL route/write
-costs enough for acceptance? Remaining obligations also include complete review,
-exact-head CI, current Buddy adoption, repeated/restart/eviction/new-revision
-performance checks and affected write-route comparison to retained evidence.
+Next primary question: which remaining source verification/decoding allocations
+and live-heap scans can be removed while preserving full independent verification,
+and can repeated actual SQL/current Buddy cold and warm reads meet the retained
+reference without shifting cost into publication or latency outliers? Required
+successor evidence includes restart/eviction/new-revision, affected routes and
+matched writes, then the current deployment and V8 joint record.
 
-Retain this handoff as living state and replace stale sections as implementation
-and review evidence arrives. Detailed history stays in PRs and task evidence.
+Retain this handoff as living state; detailed history belongs in PRs and scratch.
 
 ## Retained verification resources
 
@@ -158,3 +162,14 @@ its own databases. The component work count used the retained payload under a
 synthetic lab envelope; it is diagnostic only, not HTTP/authority acceptance.
 The active performance lane owns these resources for review/next optimization;
 cleanup follows delivery with the existing checks and explicit scope.
+
+Additional retained verification resources: codex/vnext-record-hash-store-verification
+atcb779c1, codex/vnext-json-cycle-store-verification at19eb48c,
+codex/vnext-lifetime-store-verification ata05e157 and
+codex/vnext-sparse-store-verification at9de8566; corresponding candidate probe
+scripts, JSON/logs and pytest directories in scratch/v8-core, plus the controlled
+hash/sparse component reports and allocation/lifetime diagnostics. The active
+performance lane owns them for integration/review; cleanup follows delivery with
+explicit removal scope and process/mount/dirty-data/unique-commit checks. No new
+worktrees/env/containers or removals. Fixture databases were created/dropped by
+the probes; serving data was untouched.
