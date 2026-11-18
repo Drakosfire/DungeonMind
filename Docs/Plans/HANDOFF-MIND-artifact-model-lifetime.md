@@ -1,6 +1,6 @@
 # Release private artifact validation models at last use
 
-Status: ACTIVE. Owner: Elderwyld pre-cutover performance lane.
+Status: ACCEPTED (#221 merge6c61e8e73faf6d02c0d1f73692f185a55c050a4f). Owner: Elderwyld pre-cutover performance lane.
 Authority: operator optimization-before-cutover goal and accepted source-bound
 artifact design #216/#217. Base: accepted #220 merge
 8f686bf4c21944a9564c76d24386de660aef6673.
@@ -36,3 +36,5 @@ Retained resources: existing worktree/env and scratch/v8-core lifetime preflight
 JSON, candidate probes/logs and local verification refs remain owned by this
 active lane for integration/review. Cleanup follows delivery with explicit scope
 and process/mount/dirty-data/unique-commit checks. No removals or reclaimed bytes.
+
+Accepted evidence: independent cumulative APPROVE18c8f901fd0fcf16fedc7a5b17ad1844212b0ccc; all exact-head CI44388926244 jobs passed. 199 author checks,198 independent checks and42 independently scheduled rows across eight concurrent decodes passed. Combined actual SQL verificationa05e157 measured537/518/665ms cold,227–250ms warm plus346ms full-GC outlier. Complete DTO/citation parity passed; model release is proved, performance gate remains open. Generation1.13/1.05s; second-hop13.31s. These independent samples establish neither causal speedup nor regression. No serving acceptance or baseline rerun. Scratch ledger retains exact pins/logs/probes and cleanup follow-up. Next separate compute slice is sparse temporary index allocation.
