@@ -81,7 +81,14 @@ rollback boundaries, concurrent repair, source update locks and historical backf
 Role/grants were rolled back and absence checked. Destructive fixtures use only
 verified idle task-owned databases, never serving databases.
 
-Consumer evidence uses retained Buddyca5a0450489a94cd364183af1c53d3f041ad7d0f.
+Earlier consumer evidence uses retained Buddyca5a0450489a94cd364183af1c53d3f041ad7d0f.
+The independently reviewed immutable anchor-preparation reuse is now accepted
+as Buddy #3994 merge415e9f0d52ff0396f765849b6807559af30ce124. Its actual code was
+measured at77354de; final docs-only head174639d passed248 auth-app checks,
+1408 hosted tests/build and canonical exact-source evidence validation. Its
+handler blob is unchanged by merge. This does not update the deployed Core pin.
+The Buddy handoff's post-merge disposition travels with the next dependent Buddy
+adoption slice, per its repository process.
 The independent review of the earlier instrumented minimal-worker proof approved
 its precise scope: five reads made5 ordinary revision verifications,5 fresh source
 views and1 persisted artifact fetch; eviction caused1 new fetch and the next warm
@@ -113,7 +120,8 @@ Anonymous calls return401. Reopened citation-content SHA remains
 The earlier isolated-object revision witness was weak for visible content and is
 superseded; its evidence remains retained rather than silently rewritten.
 
-Latest visible full-socket probe at74f24c2:
+Prior visible full-socket probe at74f24c2/Buddyca5a045, before readiness separation
+and the accepted anchor reuse:
 
 | Case | Observed latency |
 | --- | --- |
@@ -134,8 +142,16 @@ Publication generation at this probe took0.82–0.95s for the10k artifacts. The
 second-hop prepare+commit took12.71s; the visibly changing revision took10.72s.
 These include generation and are not matched classic/native write acceptance.
 
-Disposition: full-app cold latency still exceeds the retained reference. Keep
-#218 draft. No current Buddy adoption, V8 acceptance, V9 preparation or cutover.
+Current actual-code probe at Buddy77354de/Core77f20f8 used the full socket/lifespan
+composition after ordinary readiness, which performed zero graph/revision/source
+preparation. Cold neighborhood449–463ms, warm196–208ms, citation187–191ms with
+zero duplicate artifact fetches; visibly changed revision465–474ms, with full
+response/citation/401 and12 loaded-module hash proofs. However, explicit eviction
+642–655ms and historical-return696–707ms still exceed the retained reference.
+Readiness/startup cost is separate, not removed work or graph prewarming.
+
+Disposition: representative cache-miss latency is not consistently within the
+retained reference. Keep #218 draft. No current Buddy adoption, V8 acceptance, V9 preparation or cutover.
 A minimal-worker pass cannot override the stronger composition failure.
 
 ## Next primary question and acceptance obligations
@@ -157,14 +173,23 @@ Test-local reuse preserved complete results/citations and fresh authority while
 removing the duplicate artifact fetch: citation688ms became193ms; later new/
 historical citations743/736ms became212/213ms. These two arms are feasibility,
 not a production patch or causal cohort acceptance. Eviction/historical outliers
-still reached662/712ms, so performance acceptance remains open. The next bounded
-implementation belongs to Buddy: reuse only the immutable parse on this anchor
-path, retain ordinary revision verification and fresh provenance, and add denial/
-withdrawal/history regressions. Core's table/authority scope does not expand. Prior nested-hook/alternate-JSON-decoder
+still reached662/712ms, so performance acceptance remains open. That bounded Buddy implementation is accepted as #3994: six owning regressions
+prove parse reuse with fresh revision/source checks, withdrawal/scope denials,
+standalone default and visible new/historical restoration. Its required source-
+inspection player test seam was repaired without changing runtime authorization.
+Core's table/authority scope does not expand. Prior nested-hook/alternate-JSON-decoder
 experiments showed no reliable benefit or general equivalence proof and were not
 implemented. Do not add prewarming or tune production GC to hide the measured work.
 
-Remaining gates: independent review of the latest visible/socket evidence;
+Next separate compute candidate: the retained10k payload has60014 empty final
+index entries but only10004 keys, represented by60014 distinct immutable pairs.
+Sharing identical immutable (key,()) entries could remove50010 pair allocations.
+This is a deterministic work count, not a speed claim. It requires a bounded
+handoff, preservation of complete dense indexes/order/hash/copy/pickle/digests,
+independent review and actual socket measurement before acceptance. No such
+factory change is implemented in this storage slice.
+
+Remaining gates: independent review of the latest actual-code socket evidence;
 consistent representative cold/new-revision/eviction latency; affected route,
 scope/visibility, source withdrawal and historical checks; matched write costs;
 current Buddy dependency/runtime adoption; and the canonical joint V8 record.
@@ -201,3 +226,14 @@ not an alternative baseline. Exact gate state remains draft/optimization active.
 The GC stack identifies the allocation site triggering collection; it does not
 identify every object contributing to the scan cost. Core modules were imported
 for attestation before requests. Do not infer otherwise from request-phase labels.
+
+Additional retained evidence: final-empty-index-pair-work-count.json, actual
+anchor-cache socket helper/harness/JSON/log/pytest directory, both Core-pin248-case
+auth logs, hosted verifier77354de/174639d evidence and validation reports. The
+verifiers removed their own clean disposable roots (pqw13yx3/ficiikqt), reporting
+cleanup_complete; ficiikqt had596357120 allocated bytes in the last size sample,
+while exact final reclaimed sizes are not exposed. Same verified backing UUID.
+Task-local checksum-verified Node22.23/npm10.9.8 cache/archive and exact Corea672
+source mirror remain active for adoption/review with the existing cleanup follow-up.
+No unrelated processes or serving state were altered; the frontend lock released
+without intervention by this lane. The resource queue and all local probes ended.
