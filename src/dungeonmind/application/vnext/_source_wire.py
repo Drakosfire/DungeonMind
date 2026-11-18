@@ -218,7 +218,7 @@ def _rows(packet: dict[str, Any]) -> Iterator[tuple[str, dict[str, Any], bytes]]
 def _expand(
     packet: dict[str, Any],
     source: StoredKnowledgeRevision,
-    consume: Callable[[str, dict[str, Any]], None] | None = None,
+    consume: Callable[[str, dict[str, Any], bool, bool], None] | None = None,
 ) -> dict[str, Any]:
     if set(packet) != _FIELDS:
         raise ValueError("unexpected wire fields")
@@ -236,6 +236,23 @@ def _expand(
             raise ValueError("wire tables must contain strings")
         if len(set(packet[key])) != len(packet[key]):
             raise ValueError("duplicate wire table entries")
+
+    # Lifetime hints are derived locally, never accepted from the artifact. Each
+    # public validation model can leave its memo after its final exact reference;
+    # this does not skip row validation or the complete reconstructed-source proof.
+    last_values: dict[int, int] = {}
+    last_metadata: dict[int, int] = {}
+    if consume is not None:
+        for ordinal, row in enumerate(packet["assertions"]):
+            if type(row) is not list or len(row) != 5:
+                raise ValueError("invalid assertion wire row")
+            for reference, table, last in (
+                (row[3], packet["strings"], last_values),
+                (row[4], packet["metadata"], last_metadata),
+            ):
+                if type(reference) is not int or not 0 <= reference < len(table):
+                    raise ValueError("invalid wire reference")
+                last[reference] = ordinal
 
     # The canonical source text is the existing verifier's immutable snapshot.
     # Only read it here; do not replace get_revision or its independent checks.
@@ -257,6 +274,7 @@ def _expand(
     for index, key in enumerate(result):
         emit((b"," if index else b"") + _text(key) + b":[")
         first = True
+        ordinal = 0
         while pending is not None and pending[0] == key:
             row = pending[1]
             # This exact row is hashed, then returned to contract validation.
@@ -265,7 +283,16 @@ def _expand(
             if consume is None:
                 result[key].append(row)
             else:
-                consume(key, row)
+                if key == "assertions":
+                    refs = packet[key][ordinal]
+                    consume(
+                        key, row,
+                        last_values[refs[3]] == ordinal,
+                        last_metadata[refs[4]] == ordinal,
+                    )
+                else:
+                    consume(key, row, False, False)
+            ordinal += 1
             first = False
             pending = next(rows, None)
         emit(b"]")
@@ -345,7 +372,7 @@ def encode_source_wire(source: StoredKnowledgeRevision) -> bytes:
 def _decode_source_wire(
     data: bytes,
     source: StoredKnowledgeRevision,
-    consume: Callable[[str, dict[str, Any]], None] | None = None,
+    consume: Callable[[str, dict[str, Any], bool, bool], None] | None = None,
 ) -> dict[str, Any] | None:
     """Return verified source facts, or None for an unsupported format.
 
