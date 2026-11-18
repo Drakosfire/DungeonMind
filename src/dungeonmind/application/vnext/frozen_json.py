@@ -30,6 +30,7 @@ class FrozenDict(Mapping[KT, VT]):
 
     _hash: int | None
     _hash_ready: bool
+    _items: tuple[tuple[KT, VT], ...] | None
 
     def __init__(
         self,
@@ -78,7 +79,9 @@ class FrozenDict(Mapping[KT, VT]):
     def __hash__(self) -> int:
         if not self._hash_ready:
             try:
-                computed_hash = hash(self._items)
+                computed_hash = hash(
+                    self._items if self._items is not None else tuple(self._proxy.items())
+                )
             except TypeError:
                 computed_hash = None
             # Only a private optimization cache changes; mapping data stays
@@ -128,7 +131,8 @@ class FrozenDict(Mapping[KT, VT]):
         return self._proxy.items()
 
     def __reduce__(self) -> tuple[type, tuple[tuple[tuple[KT, VT], ...]]]:
-        return (self.__class__, (self._items,))
+        items = self._items if self._items is not None else tuple(self._proxy.items())
+        return (self.__class__, (items,))
 
     def __copy__(self) -> FrozenDict[KT, VT]:
         return self
@@ -144,14 +148,15 @@ class FrozenDict(Mapping[KT, VT]):
 def _deferred_frozen_dict(mapping: Mapping[KT, VT]) -> FrozenDict[KT, VT]:
     """Freeze owner-validated immutable records without unrequested hashing.
 
-    This private path copies the same sorted items/proxy as the public Mapping
-    constructor. It is not for caller-owned mutable payloads. Public construction
-    remains eager; copy/pickle/equality and requested hash semantics are unchanged.
+    This private path owns the same sorted dictionary as the public Mapping
+    constructor, without retaining redundant key/record pair tuples. Hash/pickle
+    requests materialize those pairs transiently. It is not for caller-owned
+    mutable payloads. Public construction remains eager and unchanged.
     """
-    sorted_items = sorted(mapping.items(), key=lambda item: str(item[0]))
+    sorted_mapping = {key: mapping[key] for key in sorted(mapping, key=str)}
     result: FrozenDict[KT, VT] = object.__new__(FrozenDict)
-    object.__setattr__(result, "_proxy", MappingProxyType(dict(sorted_items)))
-    object.__setattr__(result, "_items", tuple(sorted_items))
+    object.__setattr__(result, "_proxy", MappingProxyType(sorted_mapping))
+    object.__setattr__(result, "_items", None)
     object.__setattr__(result, "_hash", None)
     object.__setattr__(result, "_hash_ready", False)
     return result
