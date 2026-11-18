@@ -202,8 +202,15 @@ excluded for count-process overlap. No stable end-to-end improvement established
 Eviction fullGC207–217ms and historical fullGC216–248ms remain; trigger phase
 is not an inventory of objects causing scan cost. Next investigate whole source
 JSON reconstruction allocation without weakening independent integrity checks.
-A scratch streaming prototype preserves synthetic canonical bytes and avoids GC
-events in its component, but takes similar wall time; not production or acceptance.
+Record-at-a-time source JSON candidate225 was implemented and rejected unmerged.
+Measured actual full-app composition5e0d6f2 retained verification225–234ms,
+warm253–263ms, eviction712–713ms and historical720–731ms; fullGC206–212ms
+persisted. Independent review found deep-fallback recursion compatibility loss.
+Do not incorporate its parser. Source/tests/migrations here remainb2263ae.
+Next exact-source proof-reuse design is separate: it must explicitly rebrief the
+prior no-verification-cache constraint, retain complete fresh source reads/exact
+representation keys/corruption detection, and never cache admission. No such
+change is authorized by this storage handoff or implemented in this PR.
 
 Remaining gates: independent review of the latest actual-code socket evidence;
 consistent representative cold/new-revision/eviction latency; affected route,
@@ -266,3 +273,10 @@ and stream-source-json-preflight.py/json. Owner is optimization lane, for review
 integration; cleanup follow-up follows explicit scope and process/mount/dirty/
 unique-data checks. All local probes/count processes terminal, fixture DBs dropped.
 No new worktree/mirror/env/cache, manual removals or serving changes.
+
+Negative evidence retained: rejected225 branch3773333, measured combinedref5e0d6f2,
+stream-json candidate probe/JSON/log/pytest directory and unitPG resource receipt.
+Its unique codex_vnext_stream_a4c3a5faa2 DB was idle and dropped; full-app fixture
+also dropped its owned source DB. Preserve failed CI44411006825 and independent
+review rejection; final225 follow-up only closes disposition/fixes test imports.
+All probes terminal; cleanup follow-up remains lane-owned after explicit scope.
