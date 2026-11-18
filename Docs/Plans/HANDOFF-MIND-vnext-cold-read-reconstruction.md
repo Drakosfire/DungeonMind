@@ -1,7 +1,8 @@
 # vNext cold read reconstruction
 
-Status — implemented and independently reviewed before rebase; exact-head
-CI and rebase delta review pending.
+Status — accepted and merged in Core #211 at
+aba1652b38b111415d7cf078a9513a75b4d862ea. Independent review, rebase
+delta review and all exact-head CI jobs passed.
 
 ## Scope and dependency
 
