@@ -46,6 +46,11 @@ The current task-owned Projects checkout/env is reused; no new worktree/env.
   versions. Current-row/body manifest disagreement, nonbytes responses and
   malformed matching artifacts fail closed with typed integrity errors. Ordinary
   verifier and storage failures are never disguised as cache fallback.
+- Matching pins/checksums alone are insufficient. The exact consumed artifact
+  facts must reconstruct the independently verified canonical source SHA. Public
+  Python-mode contract validation and immutable freezing remain mandatory, as do
+  structural validation, index construction and semantic digest computation.
+  Index/digest construction and returned results follow successful source proof.
 - Every successful context opens fresh provenance after immutable preparation;
   revision-only graph reuse cannot preserve stale admission or withdrawn text.
 - Derive artifacts internally from the exact sealed source. Expected opaque
@@ -103,7 +108,7 @@ head advance require4 nodes/3 edges instead of the historical3 nodes/2 edges.
 Each child switches new/historical pins, fetches the exact revision's persisted
 artifact on miss, retains ordinary verification/fresh source views on repeats,
 reopens exact citations, and restores the old visible response historically.
-Anonymous calls return401. Source SHA remains
+Anonymous calls return401. Reopened citation-content SHA remains
  a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc.
 The earlier isolated-object revision witness was weak for visible content and is
 superseded; its evidence remains retained rather than silently rewritten.
@@ -121,7 +126,7 @@ Latest visible full-socket probe at74f24c2:
 First-read passive observations record177–196ms full GC scans. Initial GC windows
 also include response assertions, so they are diagnostic rather than exact causal
 attribution. A single-worker refinement located the first full scan during lazy AnyIO
-backend import before Core loading; production GC thresholds/tracking/collection policy are unchanged.
+backend import before request-stage revision/artifact work; production GC thresholds/tracking/collection policy are unchanged.
 Full DTO, citation, visibility/authority semantics remain protected. All probes
 closed their owned servers and fixture DBs. No frozen baseline rerun.
 
@@ -138,7 +143,7 @@ A minimal-worker pass cannot override the stronger composition failure.
 Which unnecessary allocations trigger the full-app scans, and can they be removed
 without weakening independent verification or shifting unacceptable cost to writes?
 The exact-window refinement located the first full scan during AnyIO's lazy
-async worker-backend import, before Core loading. Later lifecycle data still
+async worker-backend import, before request-stage revision/artifact work. Later lifecycle data still
 contained warm/citation windows and must not be attributed entirely to cold
 requests. A readiness-separated experiment follows the existing production
 Compose /health/ready flow and asserts zero revision/artifact/source-view work
@@ -192,3 +197,7 @@ Latest additional evidence families retained in task scratch: socket-GC-attribut
 and anchor-cache-experiment at74f24c2, their helper/harness scripts, JSON/logs and
 pytest directories. No frozen baseline was rerun; native-only feasibility arms are
 not an alternative baseline. Exact gate state remains draft/optimization active.
+
+The GC stack identifies the allocation site triggering collection; it does not
+identify every object contributing to the scan cost. Core modules were imported
+for attestation before requests. Do not infer otherwise from request-phase labels.
