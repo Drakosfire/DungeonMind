@@ -82,3 +82,10 @@ The disposable database codex_vnext_cold_20261118 is retained on container
 4df9d2e50d09 for candidate verification. Remove it after this task's database
 checks and any active users finish. No new worktree, cache or environment was
 allocated. Existing task environment and retained evidence were reused.
+
+## CI scope amendment
+
+The initial core CI job stopped on three inherited E501 violations in
+world_graph_retrieval.py and its unit test. The repair wraps exactly those
+three expressions in a separate commit. Python ASTs match before and after.
+These two additional paths unblock validation and add no behavioral scope.
