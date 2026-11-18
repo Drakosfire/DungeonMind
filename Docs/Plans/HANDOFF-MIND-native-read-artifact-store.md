@@ -1,254 +1,194 @@
 # Native read-artifact PostgreSQL storage and integration
 
-Owner: active Elderwyld performance lane. Codec parent: accepted Core #217
-aef8883238cc7c9c993e42ed666cd99bdfb1847f. Current compute base: accepted #222
-9f4e3469f2244e5c79ff04295e63d979b3251dbc; #219/#220/#221 are also accepted.
-Status: ACTIVE implementation lease on codex/vnext-read-artifact-store.
-Execution authority: accepted source-bound read-artifact design #216 and operator
-optimization-before-cutover goal, with implementation/review/merge authorization.
-The parent passed independent exact-head review and all CI jobs before merge.
+Status: ACTIVE, draft Core PR #218. Owner: Elderwyld pre-cutover performance lane.
+Authority: operator optimization-before-cutover goal with implementation, review
+and merge authorization; accepted source-bound artifact design #216/#217.
+Current Git base: accepted #222 merge9f4e3469f2244e5c79ff04295e63d979b3251dbc.
+Codec origin: #217 aef8883238cc7c9c993e42ed666cd99bdfb1847f.
+Implementation evidence anchor:74f24c23d70e8b39c3f884cddc80cd10ddd33275.
+Its complete src tree1ae6aecd548125136c72a8ed703232273849d4fc matches combined
+verification9de8566. This handoff is living state; detailed trial history is in
+PRs and the retained scratch ledger, not duplicated here.
 
-Outcome: ordinary source-context opening can consume a source-bound PostgreSQL
-artifact after unchanged full revision verification. Every context still opens
-fresh provenance authority. Repositories lacking the optional reader retain
-ordinary parsing. Memory hits snapshot complete envelope representation, declared
-graph SHA and canonical source text, without mutable/Python-equality keys.
+## Outcome, scope and ordering
 
-Scope: one derived BYTEA artifact table/migration, private artifact-store helper,
-PostgresKnowledgeRevisionRepository read/backfill methods and new-publication
-insertion hook, native source-context optional read integration/cache keys,
-owning unit/PostgreSQL proof, affected migration-head expectations and live handoff.
-No Buddy, source admission, public frozen wire contracts, authority redesign,
-index semantics, cutover or primary-runtime data changes.
+Consume a derived source-bound PostgreSQL artifact on an immutable parsed-cache
+miss, after unchanged full independent revision verification. Open fresh source
+and provenance authority on every context, including warm memory hits. Missing
+optional reader/row or genuinely unsupported stored versions use ordinary parsing.
+No read generates or repairs derived rows. Malformed current rows fail closed.
 
-Ordering: accepted compute through #222 ->
-store/read/write/backfill PR -> Buddy adoption after performance proof.
-The current task-owned worktree/env are reused on a new codex/ branch. No new
-worktree or dependency environment. No frozen baseline rerun.
+One coherent storage PR owns migration0022, private BYTEA store helper,
+PostgresKnowledgeRevisionRepository optional reader/identity-only backfill and
+new-publication insertion hook, native context/cache integration, owning tests,
+affected migration expectations and current handoff. Bounded control-plane
+settlement of accepted #217/#222 handoffs brings the current slice to11 paths.
+No Buddy runtime, public/frozen contract or required protocol changes, authority
+redesign, index semantics, serving data, cutover or production GC policy changes.
 
-Read invariants: full get_revision first; optional artifact fetch only on parsed
-memory miss; size bound before packet parsing; independent blob checksum and
-source/format binding; malformed matching artifacts fail closed; absent or
-unsupported versions fall back; no read-side cache writes. Preserve typed storage
-failures. Fresh source view opens after immutable preparation on every context.
+Serial order: accepted compute #219/#220/#221/#222 -> storage #218 acceptance ->
+separate current Buddy adoption -> joint V8 evidence -> V9 preparation.
+#219 removes unrequested primary-map hashes, #220 removes per-value callable
+cycles, #221 releases private models at last use, #222 sparsifies temporary
+index buckets. Those compute PRs passed independent review and exact CI.
+The current task-owned Projects checkout/env is reused; no new worktree/env.
 
-Write invariants: derive artifacts from exact internally loaded/sealed source.
-Known unsupported source shapes generate no artifact. Unexpected generation/SQL
-failures roll back revision, head, event, receipt and result together. Replay
-creates no implicit cache-generation work. Explicit backfill accepts only source
-identities, locks/revalidates that source, and changes derived rows alone. Head
-advance does not retarget a historical backfill; concurrent source updates are
-blocked/rechecked. Generated artifact byte size/cost must be measured.
+## Mandatory read and write invariants
 
-Validation: source proof/corruption, read-only role, missing/unsupported fallback,
-mutable and equal-instant-offset memory keys, source withdrawal at unchanged
-revision, historical/new-revision reads, concurrent backfill/publication,
-same-ID and descendant replay, complete publication/cache rollback and migration
-roundtrip. Run owning PG cohorts in a verified disposable task database, never
-through destructive test fixtures against serving databases. Then measure native
-10k actual-store cold/warm route with exact Core/Buddy pins and ordered DTO/citation
-parity, plus affected write costs. 539 ms file-backed feasibility has insufficient
-margin to claim V8 acceptance; actual-store/current Buddy evidence owns that gate.
+- Full get_revision verification precedes every parsed-memory lookup. The key
+  snapshots complete canonical envelope representation, declared graph SHA and
+  canonical source text; mutable models and Python-equality keys are forbidden.
+- Optional BYTEA fetch occurs only on parsed miss. SQL size-check and conditional
+  body selection share one snapshot; oversized bytes never transfer. Bind source
+  space/revision, codec/parsed versions, complete envelope digest, graph SHA,
+  artifact SHA and byte length. Packet bounds precede parsing (8x source+4096).
+- Readers return current-version bytes or None for absent/unsupported stored
+  versions. Current-row/body manifest disagreement, nonbytes responses and
+  malformed matching artifacts fail closed with typed integrity errors. Ordinary
+  verifier and storage failures are never disguised as cache fallback.
+- Every successful context opens fresh provenance after immutable preparation;
+  revision-only graph reuse cannot preserve stale admission or withdrawn text.
+- Derive artifacts internally from the exact sealed source. Expected opaque
+  source wire/contract/structural ineligibility produces no artifact, preserving
+  publication behavior. Source verifier failures and unexpected generator/SQL
+  errors remain failures and roll back revision/head/event/receipt/result together.
+- Common insertion covers governed/prospective publication and native source
+  admission/extension. Replay performs no implicit regeneration. New-publication
+  artifact insertion never silently accepts a conflicting existing row.
+- Explicit backfill accepts source identity alone, locks and fully revalidates that
+  exact revision before artifact write. Source-row then artifact-row lock order;
+  concurrent source updates block/recheck, and head advance cannot retarget the
+  historical revision. Explicit backfill may replace corrupt derived rows through
+  deterministic regeneration. Identical regeneration is idempotent.
 
-Retention: this checked-in handoff is the current state; the task scratch
-preflight and unique verification evidence remain retained until store delivery. Cleanup only after active-process/mount/dirty-data/unique-commit
-checks and explicit removal scope; no removals authorized by this preflight.
+## Current verification
 
-## Settled implementation decisions
+Storage code is independently approved through the current implementation anchor.
+The earlier manifest-fallback and nonbytes return findings are repaired. All exact
+CI44393764767 jobs passed at74f24c2, including core/integration/benchmark-smoke.
+Later evidence-only documentation updates require their own current-head CI.
+217 focused storage units passed. An84-test affected PostgreSQL cohort passed
+before the final old-data addition; the owning artifact cohort then passed20.
+Proof covers SELECT-only role/read-only transactions, absent/future fallback,
+mutable and equal-instant-offset keys, corruption before memory lookup, byte
+forgeries/bounded transfer, withdrawal across memory hits, all publication/cache
+rollback boundaries, concurrent repair, source update locks and historical backfill.
+Role/grants were rolled back and absence checked. Destructive fixtures use only
+verified idle task-owned databases, never serving databases.
 
-The row key is source(space,revision) plus codec/parsed-format versions. Bind full
-envelope digest, graph SHA, artifact byte length and artifact SHA independently.
-New-publication insertion never silently accepts a conflicting artifact. Explicit
-identity-only backfill may replace a corrupt derived row with deterministic
-regeneration from the locked, fully verified source; identical content is
-idempotent. Source-row -> artifact-row is the consistent lock order.
+Consumer evidence uses retained Buddyca5a0450489a94cd364183af1c53d3f041ad7d0f.
+The independent review of the earlier instrumented minimal-worker proof approved
+its precise scope: five reads made5 ordinary revision verifications,5 fresh source
+views and1 persisted artifact fetch; eviction caused1 new fetch and the next warm
+read none. Full response, exact citation and anonymous401 assertions passed.
 
-SQL fetch must combine size-check and conditional BYTEA selection in one snapshot
-so oversized data never transfers to Python; no separate check/fetch race.
-The optional reader remains separate from the required repository protocol.
-Existing public parser/cache method signatures stay intact.
+## Latest performance and correctness disposition
 
-Contract/structural rejection of otherwise publishable native opaque source
-means artifact-ineligible, not publication rejection. Source-verifier failures
-never become fallback. Unexpected generator faults and artifact SQL failures
-roll back the whole existing publication transaction. The common insertion hook
-also covers native source admission/extension; their rollback/eligibility paths
-are included without changing their admission semantics.
+The retained paired10k reference remains~540ms classic versus original~2.12s
+native. It was not rerun. Minimal fresh TestClient workers measured450–500ms
+first requests,196–216ms warm and513–536ms after eviction. That narrow fixture
+witness is insufficient to certify the complete serving application.
 
-## Reviewable slice and paths
+The stronger full-app probe uses Buddy main.app with its actual lifespan,
+uvicorn and real owned loopback sockets. It passes explicit disposable native/APP
+DSNs, uses the production read-only native repository, overrides only the fixture
+managed-world binding, and confines dotenv/session/world roots to task scratch.
+No provider worker is launched. Startup/import/app/client creation precedes request
+timing; DB/OS are warm. Twelve actually loaded module paths/SHA256s (including
+main) match committed Core/Buddy files. This is candidate local composition,
+not adoption by current deployment5202 or hosted identity certification.
 
-This is one serial PR with codec origin #217 and current Git base accepted #222
-(9f4e3469f2244e5c79ff04295e63d979b3251dbc). The table, generation, cache/read
-integration and owning transaction tests form one capability; Buddy adoption is
-separate. Intended paths: one new migration, one private Postgres artifact helper,
-vnext_knowledge.py, native_source_access.py, private factory eligibility error
-classification if necessary, owning unit and integration tests, affected migration
-head expectations and this handoff. Record material expansion before absorbing it.
+A new revision adds a reachable object and edge: ordinary-parser oracles after
+head advance require4 nodes/3 edges instead of the historical3 nodes/2 edges.
+Each child switches new/historical pins, fetches the exact revision's persisted
+artifact on miss, retains ordinary verification/fresh source views on repeats,
+reopens exact citations, and restores the old visible response historically.
+Anonymous calls return401. Source SHA remains
+ a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc.
+The earlier isolated-object revision witness was weak for visible content and is
+superseded; its evidence remains retained rather than silently rewritten.
 
-## Current state and next question
+Latest visible full-socket probe at74f24c2:
 
-Implementation is complete and independently code-approved. Migration0022,
-bounded BYTEA reader, transaction-bound generation, locked identity-only backfill,
-optional context integration and exact immutable cache keys preserve full source
-verification before lookup and fresh provenance on every opening. The current-row
-body-manifest mismatch and nonbytes-reader findings are repaired and independently
-approved. Future stored versions remain absent/fallback; malformed current rows
-fail closed. Exact storage head9f0b8062baced9803affd47a187e2d33e2883ec7 passed all
-CI44387731401 jobs before this rebase/documentation refresh.
+| Case | Observed latency |
+| --- | --- |
+| First request, three fresh servers |627/645/659ms |
+| Repeats |195–224ms |
+| Explicit parsed-cache eviction |449–468ms |
+| New visibly changed revision |665–715ms |
+| Return to exact historical revision |491–516ms |
 
-217 focused storage units passed;84 affected PostgreSQL publication/prospective,
-source admission/extension, artifact and migration checks passed before a final
-old-data fallback addition. The owning artifact cohort then passed20 tests.
-Proof includes SELECT-only/read-only access, withdrawal across memory hits,
-corruption before memory lookup, bounded transfer, forged bytes, atomic
-revision/head/event/receipt/result rollback, explicit repair, concurrent source
-update blocking and head advance preserving historical backfill. All role/grants
-were rolled back and role absence verified. Rebased exact-head CI remains required.
+First-read passive observations record177–196ms full GC scans. Initial GC windows
+also include response assertions, so they are diagnostic rather than exact causal
+attribution. A single-worker refinement located the first full scan during lazy AnyIO
+backend import before Core loading; production GC thresholds/tracking/collection policy are unchanged.
+Full DTO, citation, visibility/authority semantics remain protected. All probes
+closed their owned servers and fixture DBs. No frozen baseline rerun.
 
-Accepted compute work: #219 defers unrequested primary-record map hashes,
-#220 removes per-value recursive callable cycles, #221 releases private models
-at their last use. #222 separately sparsifies temporary index buckets; its independent approval
-and all exact-head CI44390677154 jobs passed before acceptance. The source
-proof, public validation, structural checks and semantic digest remain mandatory.
+Publication generation at this probe took0.82–0.95s for the10k artifacts. The
+second-hop prepare+commit took12.71s; the visibly changing revision took10.72s.
+These include generation and are not matched classic/native write acceptance.
 
-Actual-store candidate evidence uses retained Buddyca5a0450489a94cd364183af1c53d3f041ad7d0f,
-fresh parsed caches and warm DB/OS. All candidates passed full DTO parity against
-an untimed same-fixture ordinary-parser correctness oracle and exact reopened
-citation SHA a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc.
-These are candidate fixtures, not serving restart/deployment acceptance.
+Disposition: full-app cold latency still exceeds the retained reference. Keep
+#218 draft. No current Buddy adoption, V8 acceptance, V9 preparation or cutover.
+A minimal-worker pass cannot override the stronger composition failure.
 
-- Original actual-store Core041e42d:558ms cold,209–212ms warm;2.29MB transfer/
-  checksum12ms; generation0.82–1.09s; second-hop prepare+commit10.58s.
-- Combined accepted hash/validator verification19eb48c:551/562/559ms cold,
- 206–212ms warm. Full GC still93–94ms despite sharply fewer cyclic objects.
-- Model-lifetime verificationa05e157:537/518/665ms cold;227–250ms warm plus346ms
-  full-GC outlier. Generation1.13/1.05s; second-hop13.31s.
-- Sparse-index verification9de8566:609/594/661ms cold,233–283ms warm;
-  generation1.26/0.63s; second-hop11.70s. A controlled builder-only comparison
-  on the same retained payload measured79–81ms sparse versus80–84ms parent,
-  with full parsed equality and fewer allocations. This is not route acceptance.
+## Next primary question and acceptance obligations
 
-The retained~540ms cold reference is not consistently met. Independent runs also
-vary in get_revision/database/GC costs, so they do not isolate causal timing
-improvements or regressions. No frozen baseline rerun, write parity, current Buddy
-adoption, V8 acceptance or cutover. Keep the PR draft until remaining performance
-and integration obligations are satisfied.
+Which unnecessary allocations trigger the full-app scans, and can they be removed
+without weakening independent verification or shifting unacceptable cost to writes?
+The exact-window refinement located the first full scan during AnyIO's lazy
+async worker-backend import, before Core loading. Later lifecycle data still
+contained warm/citation windows and must not be attributed entirely to cold
+requests. A readiness-separated experiment follows the existing production
+Compose /health/ready flow and asserts zero revision/artifact/source-view work
+and an empty parsed cache after readiness; it does not prewarm knowledge.
+Readiness cost is recorded separately (~195–201ms). First graph reads then
+measured457–463ms on the full socket composition.
 
-Next primary question: can the fresh-worker matched-fixture result survive a new
-revision and representative server composition, with child-loaded runtime pins,
-affected-route authorization/history/withdrawal and matched write costs proved?
-Source verification/GC costs remain measured optimization candidates, but do not
-weaken independent verification or add speculative decoder changes. Current
-Buddy adoption and the V8 joint record follow accepted evidence.
+The same native-only controlled experiment found Buddy's source-anchor path
+calls inspect -> _pinned without the parsed cache already populated by neighborhood.
+Test-local reuse preserved complete results/citations and fresh authority while
+removing the duplicate artifact fetch: citation688ms became193ms; later new/
+historical citations743/736ms became212/213ms. These two arms are feasibility,
+not a production patch or causal cohort acceptance. Eviction/historical outliers
+still reached662/712ms, so performance acceptance remains open. The next bounded
+implementation belongs to Buddy: reuse only the immutable parse on this anchor
+path, retain ordinary revision verification and fresh provenance, and add denial/
+withdrawal/history regressions. Core's table/authority scope does not expand. Prior nested-hook/alternate-JSON-decoder
+experiments showed no reliable benefit or general equivalence proof and were not
+implemented. Do not add prewarming or tune production GC to hide the measured work.
 
-Retain this handoff as living state; detailed history belongs in PRs and scratch.
+Remaining gates: independent review of the latest visible/socket evidence;
+consistent representative cold/new-revision/eviction latency; affected route,
+scope/visibility, source withdrawal and historical checks; matched write costs;
+current Buddy dependency/runtime adoption; and the canonical joint V8 record.
+Only accepted V8 evidence permits V9 serving authority and rollback preparation.
 
-## Retained verification resources
+## Retention and cleanup
 
-The existing task-owned codex_vnext_cold_20261118 database was confirmed present
-and idle (zero clients) before destructive isolated-test fixtures ran. Those
-fixtures migrated/truncated only that verification database. The temporary
-SELECT-only role and grants were rolled back; the test checked role absence.
-No serving data, new worktrees, environments or containers were changed.
-The existing worktree/env/database and preflight draft in scratch/v8-core remain
-retained by this active lane for delivery/review. Cleanup follows delivery with
-explicit scope and active-process/mount/dirty-data/unique-commit checks; no removals
-or reclaimed bytes.
+All scratch is under /home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core;
+verified filesystem UUID48fa5d10-fe99-4557-9fc9-d8a2a4b41ac8. Existing Core/Buddy
+worktrees, shared env, task database and verification refs remain active. Retain
+unique refs cb779c1/19eb48c/a05e157/9de8566 and source/store preflights, candidate
+probes/JSON/logs/pytest directories, component/allocation/lifetime diagnostics,
+parsed-snapshot-findings.md and optimization-lifetime-sparse-turn-record.md.
 
-Actual-store probe resources under task scratch/v8-core are retained:
-`test_v8_postgres_artifact_http_candidate.py`,
-`native-postgres-artifact-candidate-041e42d.{json,log}`, its pytest directory and
-`native-artifact-eager-hash-work-count.json`. The probe fixture created/dropped
-its own databases. The component work count used the retained payload under a
-synthetic lab envelope; it is diagnostic only, not HTTP/authority acceptance.
-The active performance lane owns these resources for review/next optimization;
-cleanup follows delivery with the existing checks and explicit scope.
+Latest owning probe families: native_fresh_worker_revision_probe.py and
+native-postgres-artifact-revision-proof-74f24c2; native_socket_revision_probe.py and
+native-postgres-artifact-socket-proof-74f24c2; native_socket_visible_revision_probe.py
+and native-postgres-artifact-socket-visible-proof-74f24c2; corresponding test_v8
+harnesses plus single-worker socket-GC attribution probe/evidence. Retain owned
+socket-lifecycle-74f24c2 dotenv/session/world roots. Detailed paths/pins and earlier
+negative evidence are listed in the scratch resource record and ledger.
 
-Additional retained verification resources: codex/vnext-record-hash-store-verification
-atcb779c1, codex/vnext-json-cycle-store-verification at19eb48c,
-codex/vnext-lifetime-store-verification ata05e157 and
-codex/vnext-sparse-store-verification at9de8566; corresponding candidate probe
-scripts, JSON/logs and pytest directories in scratch/v8-core, plus the controlled
-hash/sparse component reports and allocation/lifetime diagnostics. The active
-performance lane owns them for integration/review; cleanup follows delivery with
-explicit removal scope and process/mount/dirty-data/unique-commit checks. No new
-worktrees/env/containers or removals. Fixture databases were created/dropped by
-the probes; serving data was untouched.
+The active performance lane owns all retained paths for review/reproduction and
+integration. Cleanup follows delivery with explicit scope, active-task/process/
+mount checks and protection of dirty/unique data and commits. No new worktree,
+dependency env or container; no serving-data/config writes, removals or reclaimed
+bytes. These instructions do not grant deletion permission.
 
-## Latest attribution and next verification boundary
-
-Candidate diagnostic5c73beb (runtime exactly matching lifetime verificationa05e157)
-used connection-local standard JSON decoding timing and nested verifier/factory
-stages. Ordinary get_revision took173–187ms without full GC: SQL JSON decode
-51–59ms, canonicalization49–54ms inside reconstruction60–65ms. Remaining
-connection/query/transfer/row handling is roughly50–70ms, not separately proved
-server execution time. A warm outlier332ms included SQL JSON decode183ms and
-~150ms GC; a cold559ms sample included~123ms GC. Other diagnostic cold reads
-were459/465ms. Times overlap nested stages; do not sum them as independent costs.
-Complete response/citation parity passed; no clean end-to-end acceptance.
-
-Next measurement should separate fixture-retained heap from a fresh isolated
-HTTP worker on the same disposable fixture databases, then verify process restart,
-cache eviction and new revision. Diagnostic in-process fixture/monkeypatch objects
-may retain extra historical parsed graphs, so their GC tail must not be assumed
-to describe current serving without checking worker lifetimes. This is an open
-question, not an established cause. Preserve ordinary source verification.
-Nested-pairs-hook and alternate JSON-decoder feasibility produced no reliable
-benefit/general equivalence proof; neither was implemented. Retain their negative
-evidence and the SQL attribution probe/JSON/log/pytest directory under scratch/v8-core
-for the active lane, with the existing explicit-scope cleanup follow-up.
-
-## Fresh-process matched-fixture candidate
-
-Coreae360f173f64f933d1e11c916834cb15e57b2fdb (src exactly9de8566) with retained
-Buddyca5a045 ran three fresh child processes with no test-fixture imports or construction of
-fixture/publication runtime objects. Each process built a FastAPI TestClient for the current neighborhood
-route, used the production read-only native repository against explicitly passed
-disposable fixture DSNs, and supplied only the same managed-world binding.
-Cold first requests measured500/469/460ms; the12 warm requests measured201–216ms.
-Every complete response equaled the parent ordinary-parser correctness oracle,
-exact citation SHA remaineda64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc,
-and anonymous requests returned401. Fixture DBs were dropped afterward.
-
-All three fresh-worker cold samples meet the retained~540ms matched reference,
-and warm samples retain their advantage. DB/OS were warm; this is process-isolated
-in-process HTTP, not a deployed socket/server or current Elderwyld serving proof.
-Earlier test-process slow samples remain recorded above. Do not infer all their
-difference is fixture heap without a dedicated heap attribution proof.
-Remaining acceptance: independent method review; explicit child artifact-hit and
-eviction/new-revision/restart cases; affected current routes and matched write
-costs; current Buddy dependency/runtime adoption and joint V8 record. Keep this
-PR draft while those obligations remain. No frozen baseline rerun or cutover.
-Retain native_fresh_worker_probe.py, test_v8_postgres_artifact_fresh_worker_candidate.py,
-native-postgres-artifact-fresh-worker-ae360f1.{json,log} and its pytest directory;
-the active lane owns them for validation, with cleanup after delivery under the
-existing process/mount/dirty-data/unique-commit checks and explicit removal scope.
-
-Method review of the fresh-worker probe confirmed timing arithmetic and narrow
-response/citation/401 evidence, with no inherited parent monkeypatches found.
-Timing excludes process startup/imports/app/client construction, and includes the
-request/response path. Production transitive imports may load publication modules;
-only test-fixture imports and fixture/publication-runtime construction are excluded.
-Before acceptance, record child-loaded module paths/fingerprints rather than
-relying only on harness pins, plus explicit artifact-hit/bytes and ordinary
-verification/source-open counts. Then lifecycle/new-revision, representative
-server composition, affected authorization/routes/history/withdrawal and matched
-write/repeated-latency evidence remain required.
-
-## Explicit artifact and eviction proof
-
-At Coreca1b3c5 (same runtime source tree), a second three-worker probe observed the
-production adapter without replacing SQL, validation or source-view behavior.
-Each worker's first five neighborhood requests performed exactly5 get_revision
-calls and5 fresh source-view opens, with1 persisted artifact fetch of2291524bytes
-for the exact requested revision. Cold464/467/450ms; warm196–216ms. After explicit
-parsed-cache eviction, one new artifact fetch returned an identical response;
-eviction reads measured515/513/536ms and the following warm read fetched no new
-artifact. Source reopening separately accounted for the intervening artifact read.
-Full response equality, exact citation SHA and anonymous401 checks all passed.
-This closes the sampled artifact-hit/warm-freshness/eviction proof, not child
-module fingerprint, new-revision, deployed-server, affected-route or write gates.
-Independent review of this instrumented probe remains requested. Retain
-native_fresh_worker_proof_probe.py, test_v8_postgres_artifact_fresh_worker_proof.py,
-native-postgres-artifact-fresh-worker-proof-ca1b3c5.{json,log} and pytest directory
-in task scratch/v8-core under the active lane's existing cleanup follow-up.
+Latest additional evidence families retained in task scratch: socket-GC-attribution
+and anchor-cache-experiment at74f24c2, their helper/harness scripts, JSON/logs and
+pytest directories. No frozen baseline was rerun; native-only feasibility arms are
+not an alternative baseline. Exact gate state remains draft/optimization active.
