@@ -14,8 +14,8 @@ pytest.importorskip("psycopg")
 vnext_knowledge = import_module("dungeonmind.infrastructure.postgres.vnext_knowledge")
 
 
-def _row():
-    command = genesis_command(origin=None)
+def _row(payload=None):
+    command = genesis_command(origin=None, payload=payload)
     revision = revision_from_command(command)
     payload = deepcopy(command.graph_payload)
     row = revision.model_dump(mode="python")
@@ -77,3 +77,39 @@ def test_reconstruction_rejects_revision_identity_drift_with_updated_fingerprint
     })
     with pytest.raises(PersistenceIntegrityError, match="recomputed native revision id"):
         vnext_knowledge._reconstruct(row)
+
+
+@pytest.mark.parametrize("payload", [
+    {"value": None},
+    {"value": [True, False, 1, 1.0, 0.0, -0.0]},
+    {"value": [1e-20, 1e20, 1.2345678901234567]},
+    {"Ω": "雪\n\u2028", "a": {"z": [], "b": {}}},
+    {"value": '","revision":{"space_id":"forged"}'},
+    {"value": [{"nested": {"b": 2, "a": 1}}, "é", "😀"]},
+])
+def test_streamed_record_fingerprint_matches_canonical_wrapper(payload):
+    row, revision, expected_payload = _row(payload)
+    # _row uses the unchanged canonical_sha256 wrapper used by persisted rows.
+    stored = vnext_knowledge._reconstruct(row)
+    assert stored.revision == revision
+    assert stored._payload_json == canonical_json(expected_payload)
+    assert stored.graph_payload_sha256 == canonical_sha256(expected_payload)
+
+
+def test_reconstruction_serializes_the_graph_only_once(monkeypatch):
+    canonical = import_module("dungeonmind.domain.canonical")
+    row, _, _ = _row()
+    serialize = canonical.canonical_json
+    graph_passes = []
+
+    def counted(value):
+        if value is row["graph_payload"] or (
+            isinstance(value, dict) and value.get("graph_payload") is row["graph_payload"]
+        ):
+            graph_passes.append(value)
+        return serialize(value)
+
+    monkeypatch.setattr(canonical, "canonical_json", counted)
+    monkeypatch.setattr(vnext_knowledge, "canonical_json", counted)
+    vnext_knowledge._reconstruct(row)
+    assert len(graph_passes) == 1
