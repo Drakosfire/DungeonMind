@@ -1,6 +1,7 @@
 # Source-bound compact native read artifacts
 
-Status — active design and implementation lease; independent design review pending.
+Status — active design and implementation lease. Independent review found
+no fundamental blocker; promotion obligations are specified below.
 Owner — the active Elderwyld pre-cutover performance lane.
 
 ## Authority and outcome
@@ -65,6 +66,19 @@ structural indexes and the semantic digest from the verified primary facts
 using shared current builder logic or a proven equivalent canonical stream.
 The production fast path must establish complete record/index/digest equality.
 
+The exact expanded chunks used in the source-hash proof are also the inputs
+validated and converted into parsed facts. A parallel supplied decoded value
+cannot establish authority. Test an artifact that keeps the proof stream
+unchanged while attempting to alter separately supplied normalized data.
+
+Version-one eligibility is explicit. Preserve actual source array order and
+raw canonical metadata/value chunks, including timestamp spelling and coercible
+wire values. Root extensions and omitted entity/assertion schema fields are
+unsupported until the codec can represent their exact presence. The producer
+checks complete payload reconstruction against the source SHA before storing.
+Raw source chunks must validate as complete records through the same contract
+validation mode as the ordinary parser.
+
 The artifact checksum protects its byte representation. The separate source
 payload proof establishes graph equivalence. Current source/provenance
 authority opens afresh after immutable graph preparation.
@@ -86,12 +100,25 @@ source byte count. Artifact-size/framing limits must cover every output of
 the supported encoder. Unsupported cache representation preserves the ordinary
 read fallback for otherwise supported source data.
 
+Apply the verified-source-relative byte limit before packet parsing. Require
+the format's fixed nesting shape, bounded reference counts and referenced
+string/metadata tables. Reject unused entries and stop repeated-reference
+expansion at the verified source byte ceiling before constructing records.
+
 Persisted-source timestamps are validated through the same current wire
 contracts. A general Python ZoneInfo roundtrip is outside this codec's
 persisted-source interface; test that boundary explicitly.
 
 A matching-version malformed artifact raises a typed persistence-integrity
 failure. An absent or unsupported-version artifact uses the ordinary parser.
+
+Known unsupported source representation produces no cache row and preserves
+ordinary publication/read behavior. Unexpected generation faults or artifact
+write failures roll back the new publication transaction. Receipt replay adds
+no implicit cache-generation work. Explicit backfill takes source identities,
+locks/revalidates that exact source and writes only its derived artifact.
+Test backfill races with head advance and source-row updates. Read-only
+consumers perform no cache writes.
 
 ## Serial PR slices
 
@@ -155,3 +182,20 @@ remain retained for diagnosis. Existing fixture databases were dropped.
 The named codex_vnext_cold_20261118 verification database remains retained.
 Cleanup follows delivery after active-process, dirty-data, mount and
 unique-commit checks, with explicit scope for each removal.
+
+## Design review and newer feasibility evidence
+
+Independent review of 2c189898 against the pinned base found no fundamental
+design blocker and confirmed the full revision/source freshness boundary.
+The review required explicit lossless eligibility, shared proof/consumption
+dataflow, complete canonical reconstruction, pre-expansion resource bounds and
+defined fallback/store failures. These obligations are now part of the lease.
+
+A newer scratch wire representation is 2291486 bytes for the same retained
+10k payload. It proves the original source SHA, validates primary contracts,
+rebuilds all indexes and recomputes the semantic digest. An offline diagnostic
+under a synthetic lab envelope produced complete ordinary-parser equality and
+rejected a forged fact after its artifact checksum was recalculated.
+Hash/decode samples ranged from 185 to 458 ms, including object replacement.
+Its matched HTTP probe remains a feasibility experiment. Production framing,
+static helpers, actual-store measurements and full acceptance remain pending.
