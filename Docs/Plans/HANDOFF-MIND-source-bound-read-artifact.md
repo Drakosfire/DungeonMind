@@ -199,3 +199,37 @@ rejected a forged fact after its artifact checksum was recalculated.
 Hash/decode samples ranged from 185 to 458 ms, including object replacement.
 Its matched HTTP probe remains a feasibility experiment. Production framing,
 static helpers, actual-store measurements and full acceptance remain pending.
+
+## Codec implementation checkpoint
+
+The codec implementation branch is stacked on design PR #216 exact head
+63d24166f40dcd1823b5a560c1c02d38162234cc. Merge/rebase order is design #216,
+complete private codec/builder implementation, Core store integration, then
+Buddy adoption. The implementation PR remains draft until its complete slice
+passes independent review and candidate-route verification.
+
+The first implementation unit adds `_source_wire.py` and its owning unit tests.
+It losslessly encodes the supported primary wire, binds the complete fresh
+revision envelope and graph SHA, and reconstructs that source through one
+proof/consumption dataflow. It rejects duplicate JSON keys, nonfinite numbers,
+wrong table references, unused/duplicate pool entries, oversized packets,
+deep chunks, expansion overflow and altered facts. Source forms outside the
+lossless representation are explicitly unsupported. Unknown codec versions
+return fallback; malformed matching versions raise PersistenceIntegrityError.
+
+This unit returns verified mutable primary wire, not a parsed snapshot or an
+admitted result. The ordinary contract/parser/index/digest checks remain required.
+It is private and unconnected to runtime reads. The fast immutable parsed factory,
+static builder helpers, source-relative work checks and candidate-route measurement
+are still required within this implementation slice before promotion.
+
+Validation at this checkpoint: 53 new source-wire checks pass; 149 checks pass
+across source wire, parsed revision, governed materialization and PostgreSQL
+revision reconstruction unit suites. Focused Ruff passes. The original baseline
+was not rerun. The existing 472 ms scratch HTTP observation is feasibility evidence
+only; it does not establish production performance acceptance.
+
+No new worktree, environment, database or standalone output was allocated for
+this unit. The existing task-owned worktree and environments remain retained for
+active implementation/review; cleanup follows delivery under the existing
+retention rules. No artifacts were removed and no reclaimed bytes are claimed.
