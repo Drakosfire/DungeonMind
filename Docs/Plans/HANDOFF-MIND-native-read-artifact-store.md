@@ -1,8 +1,8 @@
 # Native read-artifact PostgreSQL storage and integration
 
 Owner: active Elderwyld performance lane. Codec parent: accepted Core #217
-aef8883238cc7c9c993e42ed666cd99bdfb1847f. Current compute base: accepted #221
-6c61e8e73faf6d02c0d1f73692f185a55c050a4f; #219/#220 are also accepted.
+aef8883238cc7c9c993e42ed666cd99bdfb1847f. Current compute base: accepted #222
+9f4e3469f2244e5c79ff04295e63d979b3251dbc; #219/#220/#221 are also accepted.
 Status: ACTIVE implementation lease on codex/vnext-read-artifact-store.
 Execution authority: accepted source-bound read-artifact design #216 and operator
 optimization-before-cutover goal, with implementation/review/merge authorization.
@@ -21,8 +21,8 @@ owning unit/PostgreSQL proof, affected migration-head expectations and live hand
 No Buddy, source admission, public frozen wire contracts, authority redesign,
 index semantics, cutover or primary-runtime data changes.
 
-Ordering: accepted compute through #221 -> sparse compute #222 acceptance ->
-rebase store/read/write/backfill PR -> Buddy adoption after performance proof.
+Ordering: accepted compute through #222 ->
+store/read/write/backfill PR -> Buddy adoption after performance proof.
 The current task-owned worktree/env are reused on a new codex/ branch. No new
 worktree or dependency environment. No frozen baseline rerun.
 
@@ -77,8 +77,8 @@ are included without changing their admission semantics.
 
 ## Reviewable slice and paths
 
-This is one serial PR with codec origin #217 and current Git base accepted #221
-(6c61e8e73faf6d02c0d1f73692f185a55c050a4f). The table, generation, cache/read
+This is one serial PR with codec origin #217 and current Git base accepted #222
+(9f4e3469f2244e5c79ff04295e63d979b3251dbc). The table, generation, cache/read
 integration and owning transaction tests form one capability; Buddy adoption is
 separate. Intended paths: one new migration, one private Postgres artifact helper,
 vnext_knowledge.py, native_source_access.py, private factory eligibility error
@@ -107,8 +107,8 @@ were rolled back and role absence verified. Rebased exact-head CI remains requir
 
 Accepted compute work: #219 defers unrequested primary-record map hashes,
 #220 removes per-value recursive callable cycles, #221 releases private models
-at their last use. #222 separately sparsifies temporary index buckets; it has
-independent approval but remains pending exact final CI/acceptance. The source
+at their last use. #222 separately sparsifies temporary index buckets; its independent approval
+and all exact-head CI44390677154 jobs passed before acceptance. The source
 proof, public validation, structural checks and semantic digest remain mandatory.
 
 Actual-store candidate evidence uses retained Buddyca5a0450489a94cd364183af1c53d3f041ad7d0f,
@@ -174,3 +174,26 @@ performance lane owns them for integration/review; cleanup follows delivery with
 explicit removal scope and process/mount/dirty-data/unique-commit checks. No new
 worktrees/env/containers or removals. Fixture databases were created/dropped by
 the probes; serving data was untouched.
+
+## Latest attribution and next verification boundary
+
+Candidate diagnostic5c73beb (runtime exactly matching lifetime verificationa05e157)
+used connection-local standard JSON decoding timing and nested verifier/factory
+stages. Ordinary get_revision took173–187ms without full GC: SQL JSON decode
+51–59ms, canonicalization49–54ms inside reconstruction60–65ms. Remaining
+connection/query/transfer/row handling is roughly50–70ms, not separately proved
+server execution time. A warm outlier332ms included SQL JSON decode183ms and
+~150ms GC; a cold559ms sample included~123ms GC. Other diagnostic cold reads
+were459/465ms. Times overlap nested stages; do not sum them as independent costs.
+Complete response/citation parity passed; no clean end-to-end acceptance.
+
+Next measurement should separate fixture-retained heap from a fresh isolated
+HTTP worker on the same disposable fixture databases, then verify process restart,
+cache eviction and new revision. Diagnostic in-process fixture/monkeypatch objects
+may retain extra historical parsed graphs, so their GC tail must not be assumed
+to describe current serving without checking worker lifetimes. This is an open
+question, not an established cause. Preserve ordinary source verification.
+Nested-pairs-hook and alternate JSON-decoder feasibility produced no reliable
+benefit/general equivalence proof; neither was implemented. Retain their negative
+evidence and the SQL attribution probe/JSON/log/pytest directory under scratch/v8-core
+for the active lane, with the existing explicit-scope cleanup follow-up.
