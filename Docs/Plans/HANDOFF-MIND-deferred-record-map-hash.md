@@ -1,6 +1,7 @@
 # Defer unrequested immutable record-map hashes
 
-Status: ACTIVE bounded compute slice. Owner: Elderwyld pre-cutover performance lane.
+Status: ACCEPTED in #219 merge371930d307be0dbaf946df06a7438b23ee3dd521.
+Owner: Elderwyld pre-cutover performance lane.
 Base: accepted codec #217 merge aef8883238cc7c9c993e42ed666cd99bdfb1847f.
 
 ## Outcome and scope
@@ -48,3 +49,20 @@ Evidence and any local verification branch remain owned by this active lane for
 review and store integration. Record exact paths/refs and cleanup follow-up.
 No removal is authorized here; cleanup follows delivery after active-process,
 mount, dirty-data and unique-commit checks with explicit scope.
+
+## Accepted evidence and successor
+
+Exact44693c853d53f2a82766497115ada1f9c219eefe passed independent review and all
+CI44378135459 jobs. 205 owning checks pass;227 combined store/compute checks pass.
+Record/metadata hash counts fall from20008 each tozero until explicitly requested.
+Controlled component trials show a modest saving, but combined staged SQL cold
+reads546/547/560ms still miss the retained~540ms reference. GC2 costs89–99ms per
+staged cold read. The JSON validator allocation handoff owns that next finding.
+No performance/V8 acceptance or current Buddy deployment is claimed.
+
+Retain local verification branch codex/vnext-record-hash-store-verification at
+cb779c1cf95dcb168629fd38c6b92905e96678a7 (parents218f9ea1a3 and21944693c8),
+controlled-component/staged HTTP JSON/log/probe outputs under task scratch/v8-core
+for diagnosis and store integration. Fixtures dropped their test databases. No
+new worktree/environment or removals; cleanup follows delivery with existing checks
+and explicit scope.
