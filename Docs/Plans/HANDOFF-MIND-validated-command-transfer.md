@@ -1,6 +1,6 @@
 # MIND: transfer the validated prospective command once
 
-Status: ACTIVE. Owner: Elderwyld pre-cutover optimization lane.
+Status: COMPLETE — accepted Core #228. Owner: Elderwyld pre-cutover optimization lane.
 Authority: operator optimization-before-cutover goal with implementation/review/
 merge authorization. Serial successor to accepted Core #218 and Buddy #4024.
 Base: e8b05965bb43df370a1292149c8c809aec0e7fb9, fetched Core main.
@@ -61,11 +61,13 @@ acceptance plus the canonical joint artifact still gate V9. No serving switch.
 
 ## Current implementation evidence
 
-The owning prospective/materialization/extension unit cohort passes, including
-new restoration-count, forged-binding and repository-mutation regressions. Ruff
-passes on both runtime and owning test files. These are precommit working-tree
-checks; exact-head CI and independent cumulative review remain merge gates.
-No end-to-end latency improvement is claimed from unit counts alone.
+Accepted exact head `8c5b29188e27c7ef1f55c3ada9dccdc131f7c7db` merged as
+`4b6516e2c0dfd81acaa4410b9b9bb9da18894c90`. Independent cumulative review
+approved; exact-head CI run44432180173 passed. Owning prospective/materialization/
+extension regressions include restoration counts, forged bindings and repository
+mutation. Buddy #4029 adopted that Core pin. The later native-only matched HTTP
+receipt is recorded in the V8 optimized evidence report with single-sample and
+setup/display limits; unit counts alone are not an end-to-end speedup claim.
 
 ## Resources and settlement
 

@@ -1,159 +1,83 @@
-# V8 joint acceptance checkpoint
+# V8 — optimized acceptance checkpoint
 
-V8 remains open. Core #169 merged at `41c74076a27abfcbbf7a8c84ede0f784fd75a3dd`.
-Buddy #3203 merged at `73d3968b97f4f1a36c4bf2dc78a6f02c87b7be5d` and
-pins that Core revision. Core #170 repaired the CAS benchmark at
-`9ad499ccb73ddef8cd5dd740e5203ff4532f5350`.
+Status: **PROPOSED FOR ACCEPTANCE — independent cumulative review pending**.
+Owner: Elderwyld pre-cutover optimization lane. Execution authority: operator's
+optimization-before-cutover goal, including implementation/review/merge authority.
 
-Use the [V7 fresh-native scope](HANDOFF-v7-elderwyld-fresh-native-scope.md)
-as the provenance anchor for Elderwyld. Serving authority has its own V9 gate.
+## Current anchor and phase
 
-| Evidence | Observed scope |
-| --- | --- |
-| Native source withdrawal | Core PostgreSQL tests cover rollback, retry, concurrent withdrawal, PDF withholding, pinned source views, and fixed graph history. Buddy's mounted inspection test verifies exact text before withdrawal and no text at the same graph pin afterward. |
-| Buddy semantics | 296 native route tests passed on the locked #3203 PR head. They cover inspection, explorer storage, hosted access, governed-write behavior, and historical passages. |
-| Core scale | The six native 10k harnesses passed their structural checks at the Core package pin. CAS used the #170 harness change. |
-| Mounted inspection timing | At the Buddy merge commit, synthetic in-process warm medians were 7.11 ms for catalog, 6.53 ms for entity detail, and 3.89 ms for exact source. Each route returned a stable response digest across 21 requests. |
-| Full native listing | The 10k synthetic fixture returned 3,354 entities and 10,000 admitted assertions at a 628 ms median over five calls against an already parsed revision. |
+- Core runtime: `4b6516e2c0dfd81acaa4410b9b9bb9da18894c90` — accepted #228.
+- Buddy runtime: `0a746752da32324256d83b018e884aa7cb8ad692` — accepted #4029,
+  pinning that Core. Buddy main separately observed at `532ef4e4742afaebb3ac5e994402b699457bee77`.
+- Phase: V8 joint acceptance proposal; V9 not activated, no serving switch.
+- Scope: [V7 fresh-native Elderwyld](HANDOFF-v7-elderwyld-fresh-native-scope.md),
+  accepted Core #174,47-session published source cohort. Legacy bridge out of scope.
+- Owning bounded lease: [V8 acceptance handoff](../Plans/HANDOFF-MIND-v8-optimized-acceptance.md).
 
-The remaining V8 work is to finish the capped scale diagnostic, verify
-semantic-equivalent comparisons on the intended serving routes, and assemble
-`dm_vnext_contract_acceptance_v1` with exact descriptor, fixture, and result
-digests. Core owns the benchmark and joint record. Buddy owns route evidence
-and its dependency pin. V9 follows only after joint acceptance and an approved
-authority switch with rehearsed rollback.
+Read the [canonical acceptance artifact](dm_vnext_contract_acceptance_v1.json),
+[decision review](V8-joint-evidence-review.md), then the
+[portable evidence report](../Reports/V8-optimized-evidence-v1.json).
+The artifact binds contract/domain/profile/scope/fixture/result digests and each
+required operation to its actual evidence. Prior outputs remain at their original
+pins through linked Git history; old prose is not current runtime truth.
 
-## Buddy complete-object candidate and serving evidence
+## What has been proved
 
-Buddy #3224 merged at `ffb666db75c388c5d3d2943eeeec616937136626` and
-retains the Core package pin above. At that merge, 18 mounted inspection
-tests and 29 preservation tests passed. The synthetic mounted complete-object
-route returned response SHA-256
-`ce456fb84f3938741c3242793b9a2974bb5f02b7295ad7f0a61d7177af4d234d`
-across 21 reads, with a 4.01 ms median over the 20 warm reads.
+- Comparable first native neighborhood484.92–492.57ms versus retained approximately
+  540ms classic; warm77.80–84.04ms. No frozen classic baseline rerun.
+- Parsed eviction509.63–512.21ms, new revision505.31–514.38ms. Historical return
+  includes554.24ms above-reference sample, explicitly retained for disposition/V11.
+- Exact current-candidate Buddy GM/player, organizational-memory and adversarial
+  fixture outputs.269 Core semantic,117 Core bounded-work and94 Buddy owning checks
+  passed, zero skips. Report names authority/work cases and source hashes.
+- Exact citations and fresh scope/withdrawal checks survive immutable parse/proof
+  reuse. Current parsed/citation cache ownership is bounded; no admitted-result cache.
+- Matched10000-entity tiny-delta native prepare+confirm908.15ms versus retained
+  classic4626.42ms; exact44-byte citation/replay/direction/player-withholding proof.
+- Both full-input practical ladders passed100/1k/10k;50k failed primary JSONB
+  insertion before artifact generation;100k unattempted. Metadata duplication and
+  cold9.4–9.6s are explicit limits, not hidden or generalized capacity claims.
+- Isolated Elderwyld's18 completed mounted route cases and six citations are
+  preserved with the original final harness failure plus independent bound head
+  check. No deployed process qualification is inferred from that composite.
 
-The signed-in Graph surface on port 5202 displayed Elderwyld at
-`rev:9a457bfed6bc517af83a7a719644970c`. It loaded 3,005 objects and
-reported 3,828 omitted assertions with zero unexamined. The serving API
-environment's installed Core distribution reported
-`855f23bd8b20c3b91c27d0d065c3a3cfb0fef917`. Its OpenAPI schema lacked
-the candidate complete-object endpoint.
+## What remains false
 
-The capped classic scale diagnostic terminated with exit 137 during
-100,000-item World-like setup. It emitted no timing report. Buddy owns the
-remaining proof for Elderwyld's authorized complete-object results, historical
-pins, exact citations and timings on the candidate route. Use independent
-expectations for Elderwyld and matched fixtures for classic/native timing
-comparisons. Core owns the final joint artifact after that route evidence
-and all required fixture semantics are verified.
+V8 is not accepted until independent review, exact-head checks and merge settle
+this proposal. The554.24ms historical sample is not below the point reference.
+Universal classic/native DTO, secondary search order and capped citation selection
+parity are not proved or promised. Rules-like equivalent-work performance parity
+is not established.50k full-input publication and100k full-input reads did not pass.
+A repository pin is not proof of loaded serving code. V9 rollback/cutover, V10
+retirement and V11 deployed baseline are not complete.
 
-## Elderwyld PostgreSQL candidate evidence
+## Next primary question and blockers
 
-Core main was `fe01182432e2cbca9864fa9965b7be8db726045c`. Buddy #3303
-merged at `d9e56d6858632ee952e03eb5665f3cf8c397c484`, with Core pinned
-to `b1fadd145a90565ae5938837e5bd67b6dc6e004b`. The runs used the Buddy
-PR head `b7c2870de35c4ee5e092b60f84652d7f698d784e`.
+Can independent review accept the complete evidence map and explicit historical
+tail/presentation/search/capped-citation/Rules-comparison dispositions for this
+fresh-native Elderwyld candidate without weakening the matched cold-route gate?
+No missing runtime contract is currently identified. Pending review and exact-head
+CI are the remaining acceptance gates; unverified findings must reopen the relevant
+claim rather than be converted into approval by prose.
 
-- The shared complete-object endpoint returned stable semantic fingerprints
-  and two source bindings at the Elderwyld snapshot head and parent. Five
-  in-process HTTP calls per revision had medians of 1,650.49 ms and
-  1,598.02 ms, respectively, using read-only PostgreSQL and a fixture
-  managed-world binding. Anonymous calls returned 401.
-- Elderwyld's classic head is an empty reset. A separate synthetic fixture
-  with equal graph cardinality exercised both complete-object branches
-  against disposable PostgreSQL. Twelve alternating requests per branch
-  yielded medians of 17.10 ms classic and 20.28 ms native. The selected
-  location facts and directed relationship matched. The ledgers retained
-  their respective existence and classification/name assertions.
-- The paired persisted campaign recap citation returned a 38-byte classic
-  paragraph and the exact 40-byte native span including CRLF. Both paths
-  withheld source text for a foreign campaign.
+After V8 acceptance, dispatch V9 as its own bounded serving-composition/rollback
+slice. Verify actual loaded Core/Buddy code, managed World binding/native head,
+source authority and consumer cohorts before switching. Rehearse rollback without
+rewriting history or resurrecting the retired World. V10 and V11 follow serially.
 
-V8 remains open. The paired timing covers one synthetic selected-object
-workload. The retained native listing and classic full projection have
-different result contracts and timing boundaries. The Core operation
-comparisons and canonical joint artifact remain prerequisites for V9.
+## Safe parallel work and resources
 
-## Fresh-native Elderwyld replay at the serving head
+Other existing product/hosted/combat lanes may continue within their own scopes.
+Do not seize their service ports or treat their serving processes as this lane's.
+Core #158 retains its roadmap/standing-role index files; this dedicated checkpoint
+provides current V8 continuity without overlapping its write set.
 
-V8 remains open. Buddy #3370 merged at
-`02b613c68727e9be852cd86065b0476ea8ba5a7a` with Core
-`ab330d49864738ae54157fcaf2c95071ff072180`. The restored Elderwyld
-head `rev:2320336c2bf9b6d3f5cf514f8e2dc9b6` reconciled 288 revisions
-to one root, with one matching receipt and publish event per revision.
-
-The authenticated candidate managed projection returned 3,008 nodes at
-the head and 3,007 at parent `rev:643a89642dcd9ab74a63056fb0fa1e1c`,
-with 2,651 relationships at both pins. The head response digest matched
-across standalone HTTP and in-process HTTP. One retained citation opened
-the same 1,276 bytes at both pins. Anonymous requests returned 401.
-A separate authenticated scope check rejected stale binding and unrelated
-campaign requests with 409 and withheld source content.
-
-The serving build returned `revision_not_bridged` for managed projection
-at the live native head. Both managed projection and shared complete-object
-returned 404, then 200, then 404 when their candidate dispatch flags were
-toggled off, on, and off against the isolated restore. A deployment
-rollback rehearsal remains required. The restored classic head is empty,
-so use matched synthetic workloads for comparative timing.
-
-Buddy #3370 restored related-object search matching. A paired 10k
-PostgreSQL fixture returned the same two mapped hits in order for one
-exact-label query.
-
-## Shared neighborhood and governed publication evidence
-
-Core #184 merged at `45d04fb6691cb084b1d50feb1ddb7ab18f15a95d`.
-Buddy #3409 merged at `7ab97e95680b17a042f7b90c5d45b31c1221ce53` and
-pins that Core commit. The shared native World neighborhood route is opt-in.
-
-The isolated paired PostgreSQL check on Buddy's reviewed head `4a3282f0d`
-and the locked Core install returned the same three labels, two edges, one
-shared-evidence anchor, and byte-identical UTF-8 source excerpt. The fixture
-had no standalone attributes. A mounted native regression separately proves
-standalone term-reference attributes under Buddy's native semantic profile.
-
-The first observed two-hop request took 514 ms classic and 2,093 ms native.
-Four repeats took 514–529 ms classic and 348–360 ms native. The profile
-attributes the first native request primarily to loading and parsing the
-immutable revision. Retain both observations for joint acceptance.
-
-Separate 10k write diagnostics recorded 577 ms for classic finalized review
-(two added nodes) and 3,059 ms for native parent load through governed
-publication (one added entity). Both replayed exactly. Their parent assertion
-shapes and accepted deltas differ. A matched write comparison remains open, as does disposition of
-the first-request latency gap. V8 joint acceptance and V9 cutover are pending.
-
-## Managed projection at 10k
-
-An isolated PostgreSQL pair using Buddy `4a3282f0d` and locked Core
-`45d04fb6` returned 10,003 mapped nodes, one directed relationship,
-one evidence reference and one source artifact on each route, without
-truncation. Display fields, mapped node and edge provenance, and campaign
-scope matched. The fixture had no standalone attributes. Median HTTP latency
-over five requests per arm was 1,118 ms classic and 644 ms native.
-
-## Joint acceptance decisions pending
-
-The [joint evidence review](V8-joint-evidence-review.md) and
-[retained fixture evidence](dm_vnext_contract_acceptance_v1.json) record
-the later witnesses at their individual Core and Buddy pins. The rollout
-scope is fresh-native Elderwyld under Core PR #174.
-
-- Decide whether to carry the measured cold neighborhood cost into
-  rollout. The paired 10k witness measured 2.12 s native and 0.54 s
-  classic with exact citation parity. Repeat native requests took
-  378–387 ms. Record deployed cold and repeat timings at V11.
-- Decide whether to retain the native complete-object presentation.
-  The paired relationship write preserved endpoints, direction, replay,
-  and exact cited bytes. Both tested player views withheld the
-  relationship. The complete-object ledgers differ, which limits the
-  read timing comparison.
-- Verify the intended serving search cap. Ordered labels and reopened
-  citations matched at two nodes. Secondary results differed at eight.
-- Record whether native Rules-like performance is required for Elderwyld
-  acceptance. The 50k native structural diagnostic and PostgreSQL World
-  projection cover different workloads.
-
-V8 stays open pending joint acceptance. V9 owns the serving authority
-switch and deployment rollback rehearsal.
+Owner: optimization lane. Existing Projects task root
+`/home/drakosfire/Projects/.codex/v7-elderwyld-scope` retains source refs, fixtures,
+logs, cache and V8 PostgreSQL container/clone for acceptance/V9 integration. All
+new fuller-ladder/proof workers are terminal; their three unique databases were
+dropped only after zero connections. Logical DB sizes are not reclaimed filesystem
+bytes. No manual worktree/cache/file removal occurred. Cleanup follow-up: scoped
+reproducible artifacts only after explicit cleanup authorization and active task,
+process/mount/connection, dirty-worktree and unique-data/commit checks. No blanket
+cleanup, new worktree/environment/container or serving mutation in this slice.
