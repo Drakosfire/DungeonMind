@@ -222,3 +222,45 @@ def test_postgres_governed_extension_rolls_back_both_changes(pg):
     with pytest.raises(RuntimeError, match="injected combined"):
         publish(repo, domain, profile, request)
     assert snapshot(pg) == before
+
+
+@pytest.mark.parametrize("governed", [False, True])
+def test_postgres_metadata_recovery_after_withdrawal(pg, governed):
+    from tests.unit.test_vnext_native_source_evidence_extension import exercise_metadata_recovery
+
+    repo = repository(pg)
+    request, receipt = exercise_metadata_recovery(repo, governed=governed)
+    # The helper asserts head/event conservation; all tables remain unchanged
+    # across an additional recovery using original immutable descriptors.
+    from dungeonmind.application.vnext.native_source_extension import (
+        recover_native_source_evidence_extension,
+    )
+    from tests.unit.test_vnext_native_source_evidence_extension import _domain, _profile
+
+    domain, profile = _domain(), _profile()
+    domain.claim_modes = ["test:source"]
+    from dungeonmind.contracts.vnext.domain import SemanticProfilePredicate
+
+    profile.predicates = [
+        SemanticProfilePredicate(term="test:name", allowed_value_kinds=["literal"])
+    ]
+    before = snapshot(pg)
+    assert (
+        recover_native_source_evidence_extension(
+            repository=repository(pg),
+            request=request,
+            domain_contract=domain,
+            semantic_profile=profile,
+        )
+        == receipt
+    )
+    assert snapshot(pg) == before
+
+
+@pytest.mark.parametrize("corruption", ["missing_root", "missing_ancestor", "wrong_row", "cycle"])
+def test_postgres_recovery_verifies_immutable_ancestry(pg, corruption):
+    from tests.unit.test_vnext_native_source_evidence_extension import (
+        exercise_corrupt_recovery_ancestry,
+    )
+
+    exercise_corrupt_recovery_ancestry(repository(pg), corruption)

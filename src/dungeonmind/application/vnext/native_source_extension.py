@@ -7,6 +7,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from pydantic import ValidationError
+
 from dungeonmind.contracts.vnext.domain import (
     DomainContractDescriptor,
     SemanticProfileDescriptorV2,
@@ -28,6 +30,7 @@ from dungeonmind.contracts.vnext.source import EvidenceRefV3
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
 
+from .authority import verify_stored_revision
 from .builder import build_parsed_knowledge_revision
 from .errors import KnowledgePublicationIdempotencyConflictError, KnowledgeStaleParentRevisionError
 from .materialization import (
@@ -45,7 +48,7 @@ from .native_source_admission import (
     allocate_native_source_id,
 )
 from .prospective import _plan_prospective_publication
-from .publication import _verify_receipt
+from .publication import _verify_receipt, get_publication_receipt
 
 
 @dataclass(frozen=True)
@@ -86,8 +89,10 @@ def _require_original_ancestor(
             stored is None
             or stored.revision.space_id != space_id
             or stored.revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA
+            or stored.revision.revision_id != current
         ):
             _fail("extension_source_lineage_missing")
+        verify_stored_revision(stored)
         current = stored.revision.parent_revision_id
         if current is None:
             _fail("extension_original_admission_not_ancestor")
@@ -157,9 +162,45 @@ def extension_plan(
         _require_original_ancestor(
             repository, request.space_id, root.published_revision_id, head.head_revision_id
         )
+    plan = _reconstruct_extension_plan(
+        repository=repository,
+        request=request,
+        domain_contract=domain_contract,
+        semantic_profile=semantic_profile,
+        root=root,
+        intent=intent,
+        body=body,
+        registered_intervals=registered_intervals,
+        prior=prior,
+    )
+    if prior is not None:
+        verify_extension_receipt(repository, prior, plan)
+        return prior.model_copy(deep=True)
+    return plan
+
+
+def _reconstruct_extension_plan(
+    *,
+    repository: Any,
+    request: NativeSourceEvidenceExtensionV1,
+    domain_contract: DomainContractDescriptor,
+    semantic_profile: SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
+    root: NativeSourceAdmissionReceiptV1,
+    intent: str,
+    body: bytes | None,
+    registered_intervals: set[tuple[int, int]],
+    prior: NativeSourceEvidenceExtensionReceiptV1 | None,
+) -> ExtensionPlan:
+    """Reconstruct immutable intent; only publication revalidates source bytes."""
     parent = repository.get_revision(request.space_id, request.expected_parent_revision_id)
     if parent is None or parent.revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA:
         _fail("extension_parent_missing")
+    if (parent.revision.space_id, parent.revision.revision_id) != (
+        request.space_id,
+        request.expected_parent_revision_id,
+    ):
+        raise PersistenceIntegrityError("extension parent identity drift")
+    verify_stored_revision(parent)
     _require_original_ancestor(
         repository,
         request.space_id,
@@ -180,9 +221,10 @@ def extension_plan(
     for span in request.spans:
         if prior is None and (span.start_byte, span.end_byte) in registered_intervals:
             _fail("extension_interval_already_registered")
-        selected = _span_slice(body, span)
-        if hashlib.sha256(selected).hexdigest() != span.expected_slice_sha256:
-            _fail("extension_slice_digest_mismatch")
+        if body is not None:
+            selected = _span_slice(body, span)
+            if hashlib.sha256(selected).hexdigest() != span.expected_slice_sha256:
+                _fail("extension_slice_digest_mismatch")
         if not _metadata_declared(
             span.domain_metadata, declared=frozenset(domain_contract.source_annotation_schemas)
         ):
@@ -261,11 +303,7 @@ def extension_plan(
             admitted_evidence=tuple(evidence[binding.evidence_ref_id] for binding in bindings),
         )
         result_bindings = resolved.committed_result_bindings
-    plan = ExtensionPlan(command, root, tuple(proofs), tuple(bindings), intent, result_bindings)
-    if prior is not None:
-        verify_extension_receipt(repository, prior, plan)
-        return prior.model_copy(deep=True)
-    return plan
+    return ExtensionPlan(command, root, tuple(proofs), tuple(bindings), intent, result_bindings)
 
 
 def make_extension_receipt(
@@ -393,3 +431,116 @@ def publish_native_source_evidence_extension(
         semantic_profile=profile,
         audience_labels=tuple(audience_labels),
     )
+
+
+def _recover_native_source_evidence_extension(
+    *,
+    repository: Any,
+    request: NativeSourceEvidenceExtensionV1,
+    domain_contract: DomainContractDescriptor,
+    semantic_profile: SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
+) -> NativeSourceEvidenceExtensionReceiptV1 | None:
+    """Verify an exact committed outcome without source access or writes.
+
+    The trusted host must authorize current principal/World ownership before
+    calling. This privileged receipt capability grants no source-reading rights.
+    It verifies retained committed metadata, not fresh source byte boundaries.
+    Absence is an observation, never permission to retry a publication here.
+    """
+    request, domain, profile = snapshot_extension_inputs(request, domain_contract, semantic_profile)
+    receipt = repository.get_native_source_evidence_extension_receipt(
+        request.space_id, request.extension_id
+    )
+    publication = get_publication_receipt(
+        request.space_id, request.extension_id, repository=repository
+    )
+    if receipt is None:
+        if publication is None:
+            return None
+        # An atomic commit may have completed between the two observations.
+        receipt = repository.get_native_source_evidence_extension_receipt(
+            request.space_id, request.extension_id
+        )
+        if receipt is None:
+            raise PersistenceIntegrityError("publication missing extension receipt")
+    intent = extension_intent(request, domain, profile)
+    if receipt.intent_sha256 != intent:
+        raise KnowledgePublicationIdempotencyConflictError(
+            space_id=request.space_id, publication_id=request.extension_id
+        )
+    if receipt.source_authority_epoch != request.expected_source_authority_epoch + 1:
+        raise PersistenceIntegrityError("extension committed source epoch drift")
+    if publication is None or publication != receipt.publication_receipt:
+        raise PersistenceIntegrityError("extension publication receipt drift")
+    root = repository.get_native_source_admission_receipt(
+        request.space_id, request.original_admission_id
+    )
+    if root is None or (
+        root.space_id,
+        root.admission_id,
+        root.source_artifact_id,
+        root.source_revision_id,
+    ) != (
+        request.space_id,
+        request.original_admission_id,
+        request.source_artifact_id,
+        request.source_revision_id,
+    ):
+        raise PersistenceIntegrityError("extension original admission missing or mismatched")
+    original = get_publication_receipt(request.space_id, root.admission_id, repository=repository)
+    if original is None or original != root.publication_receipt:
+        raise PersistenceIntegrityError("extension original publication drift")
+    for revision_id in (root.published_revision_id, publication.published_revision_id):
+        stored = repository.get_revision(request.space_id, revision_id)
+        if stored is None or (stored.revision.space_id, stored.revision.revision_id) != (
+            request.space_id,
+            revision_id,
+        ):
+            raise PersistenceIntegrityError("extension immutable revision missing or mismatched")
+        verify_stored_revision(stored)
+    try:
+        plan = _reconstruct_extension_plan(
+            repository=repository,
+            request=request,
+            domain_contract=domain,
+            semantic_profile=profile,
+            root=root,
+            intent=intent,
+            body=None,
+            registered_intervals=set(),
+            prior=receipt,
+        )
+    except KnowledgePublicationIdempotencyConflictError:
+        raise
+    except PersistenceIntegrityError:
+        raise
+    except Exception as exc:
+        raise PersistenceIntegrityError("extension immutable reconstruction failed") from exc
+    if receipt != make_extension_receipt(plan, receipt.source_authority_epoch, publication):
+        raise PersistenceIntegrityError("extension immutable proof or result mapping drift")
+    _verify_receipt(
+        publication, plan.command, publication_id=request.extension_id, repository=repository
+    )
+    return receipt.model_copy(deep=True)
+
+
+def recover_native_source_evidence_extension(
+    *,
+    repository: Any,
+    request: NativeSourceEvidenceExtensionV1,
+    domain_contract: DomainContractDescriptor,
+    semantic_profile: SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
+) -> NativeSourceEvidenceExtensionReceiptV1 | None:
+    """Recover verified committed metadata; host authorizes ownership before IO.
+
+    No source views, source bytes, current head, writes or retries are opened.
+    This verifies the committed result, not fresh citation/source availability.
+    """
+    # Validate caller inputs separately from malformed persisted model data.
+    request, domain, profile = snapshot_extension_inputs(request, domain_contract, semantic_profile)
+    try:
+        return _recover_native_source_evidence_extension(
+            repository=repository, request=request, domain_contract=domain, semantic_profile=profile
+        )
+    except ValidationError as exc:
+        raise PersistenceIntegrityError("extension persisted metadata invalid") from exc

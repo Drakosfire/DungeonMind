@@ -101,3 +101,30 @@ scratch, if needed, stays task-owned beneath Projects after storage revalidation
 Retain active evidence, caches and checkouts under MIND ownership; cleanup awaits
 approved scope and process/mount/dirty/unique-commit checks. No deletion or
 reclaimed bytes. Full vNext deployment and V11 acceptance remain open.
+
+
+## Implementation checkpoint — pending exact review and qualification
+
+New public recover_native_source_evidence_extension reconstructs immutable
+extension intent/command/proofs and governed result mappings without reading
+current head or source views/body. It verifies original admission/publication,
+root/parent/child and traversed ancestry envelopes, exact descriptors, committed
+epoch and companion receipt. A companion re-read handles commit interleaving;
+missing companion with durable publication fails closed. Existing publication
+still authorizes current source before replay. No adapter/port/migration changes.
+
+Owning memory38 pass on current implementation. Initial PostgreSQL26 pass;
+expanded30-case cohort running separately after ancestry/interleaving repairs.
+Whole-source Pyright with explicit task interpreter reports0 errors; first run
+without interpreter could not resolve dependencies, and initial launcher lacked
+Node on PATH. Existing task Node resolves it; no installation/config change.
+Whole-suite unit/conformance attempt has two failures pending investigation:
+revision-verification cache reconstruct-call count and package smoke subprocess
+missing uv on PATH. No whole-suite green or inherited-failure claim yet.
+
+Exact cumulative independent review, final owning SQL, full regressions, CI,
+commit/push/PR remain required. Buddy declaration PR4152 is independent and under
+review; consumers/adoption/profile transition remain excluded. Task evidence at
+scratch/v10-core/native-extension-recovery retained under active MIND ownership.
+Disposable SQL database v10_extension_recovery_7ddbd32feff0 removed only after
+zero active connections; no filesystem deletion/reclaimed-byte claim.

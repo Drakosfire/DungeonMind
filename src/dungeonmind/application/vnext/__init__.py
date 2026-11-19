@@ -94,6 +94,7 @@ from .native_source_admission import (
 from .native_source_extension import (
     preview_native_source_evidence_extension,
     publish_native_source_evidence_extension,
+    recover_native_source_evidence_extension,
 )
 from .neighborhood import (
     MAX_NEIGHBORHOOD_SEED_COUNT,
@@ -268,6 +269,7 @@ __all__ = [
     "publish_native_source_evidence_extension",
     "publish_native_text_source_evidence",
     "publish_prospective_contribution",
+    "recover_native_source_evidence_extension",
     "refresh_native_text_source_access_context",
     "resolve_prospective_contribution",
     "thaw_json_value",
