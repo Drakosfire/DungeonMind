@@ -246,7 +246,7 @@ def extension_plan(
             revision=parent.revision,
             decoded_content=content,
         )
-        materialization, resolved = _plan_prospective_publication(
+        _materialization, resolved, command = _plan_prospective_publication(
             parent=parsed_parent,
             prospective_contribution=request.contribution,
             dispositions=request.dispositions,
@@ -260,7 +260,6 @@ def extension_plan(
             semantic_profile=semantic_profile,
             admitted_evidence=tuple(evidence[binding.evidence_ref_id] for binding in bindings),
         )
-        command = materialization.command
         result_bindings = resolved.committed_result_bindings
     plan = ExtensionPlan(command, root, tuple(proofs), tuple(bindings), intent, result_bindings)
     if prior is not None:

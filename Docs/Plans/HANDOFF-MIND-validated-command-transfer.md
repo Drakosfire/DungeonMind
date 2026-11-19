@@ -59,6 +59,14 @@ may be removed to make a timer smaller.
 V8 remains open: current-route/citation/visibility/withdrawal and memory/scale/write
 acceptance plus the canonical joint artifact still gate V9. No serving switch.
 
+## Current implementation evidence
+
+The owning prospective/materialization/extension unit cohort passes, including
+new restoration-count, forged-binding and repository-mutation regressions. Ruff
+passes on both runtime and owning test files. These are precommit working-tree
+checks; exact-head CI and independent cumulative review remain merge gates.
+No end-to-end latency improvement is claimed from unit counts alone.
+
 ## Resources and settlement
 
 Reuse task-owned Core/Buddy checkouts and existing owning Python environment.

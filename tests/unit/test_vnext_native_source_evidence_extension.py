@@ -541,3 +541,54 @@ def test_extension_preview_is_read_only_and_matches_committed_evidence():
     receipt = publish(repo, domain, profile, request)
     assert preview.evidence_ref_id == receipt.bindings[0].evidence_ref_id
     assert preview.source_span_ref_id == receipt.bindings[0].span_id
+
+
+def test_governed_extension_and_replay_restore_command_once_per_plan(monkeypatch):
+    from dungeonmind.application.vnext.materialization import GovernedMaterializationResult
+
+    repo = InMemoryNativeSourceEvidenceRepository()
+    domain, profile, _, root = setup_source(repo)
+    request = governed_extension(repo, root)
+    getter = GovernedMaterializationResult.command.fget
+    restores = []
+
+    def counted(result):
+        command = getter(result)
+        restores.append(command)
+        return command
+
+    monkeypatch.setattr(GovernedMaterializationResult, "command", property(counted))
+    receipt = publish(repo, domain, profile, request)
+    assert len(restores) == 1
+    head = repo.get_head(root.space_id)
+    assert publish(repo, domain, profile, request) == receipt
+    assert len(restores) == 2
+    assert repo.get_head(root.space_id) == head
+
+
+def test_governed_extension_rejects_forged_planner_binding_before_mutation(monkeypatch):
+    from dataclasses import replace
+
+    from dungeonmind.application.vnext import prospective
+    from dungeonmind.application.vnext.errors import ProspectivePublicationIntegrityError
+
+    repo = InMemoryNativeSourceEvidenceRepository()
+    domain, profile, _, root = setup_source(repo)
+    request = governed_extension(repo, root)
+    before = (repo.get_head(root.space_id), repo.head_events(root.space_id),
+              repo.open_native_source_view(root.space_id).epoch)
+    resolve = prospective.resolve_prospective_contribution
+
+    def forged(**kwargs):
+        result = resolve(**kwargs)
+        binding = result.committed_result_bindings[0].model_copy(
+            update={"durable_id": "asrt:forged"}
+        )
+        return replace(result, committed_result_bindings=(binding,))
+
+    monkeypatch.setattr(prospective, "resolve_prospective_contribution", forged)
+    with pytest.raises(ProspectivePublicationIntegrityError):
+        publish(repo, domain, profile, request)
+    assert (repo.get_head(root.space_id), repo.head_events(root.space_id),
+            repo.open_native_source_view(root.space_id).epoch) == before
+    assert repo.get_publication_receipt(root.space_id, request.extension_id) is None
