@@ -133,7 +133,8 @@ extras, environment, failing ID and assertion0!=1. Standalone cache passes.
 Package smoke passes corrected process-local PATH/task UV environment. This is
 bounded failure attribution, not a relabeled whole-suite pass or test exemption.
 
-Buddy must pin the exact accepted merge in a separate dependency PR and authorize
+Buddy must pin accepted capability-plus-cost merge
+a685da4cbe5daf36d88dac62e6a85378f5323058 in a separate dependency PR and authorize
 current principal/World ownership/binding before receipt IO. It must submit the
 original signed request/descriptors for recovery, preserve changed-intent conflict
 and integrity failures, and never interpret absence as automatic write authority.
