@@ -148,3 +148,16 @@ smoke environment for the active full goal. No filesystem deletion or reclaimed
 bytes; cleanup follow-up requires approved scope plus process/mount/dirty/unique
 commit/data checks. This settlement changes only this handoff; it does not change
 the accepted implementation, contracts, dependencies, tests or serving state.
+
+
+## Accepted normal-path cost correction
+
+Core236 mergeda685da4cbe5daf36d88dac62e6a85378f5323058 after independent review
+5984326859 and green CI44626559988. Strict recovery envelope verification is now
+explicitly recovery-only: normal preview/publication rely on repository envelope
+verification while preserving requested-ID/space/schema/cycle/ancestry checks.
+The owning work guard removes2/8 redundant application verification calls at
+zero/three intermediate ancestors and proves recovery still checks every row.
+This is structural work evidence, not measured latency. Buddy4154 should adopt
+a685da4 rather than the initial2f743 capability merge. Existing immutable recovery
+contract and source withdrawal semantics remain unchanged; deployment stays open.
