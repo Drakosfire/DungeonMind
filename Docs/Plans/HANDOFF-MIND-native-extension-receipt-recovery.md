@@ -1,6 +1,6 @@
 # MIND — verified native extension receipt recovery
 
-ACTIVE design prerequisite under explicit operator full-lane implementation,
+COMPLETE capability prerequisite under explicit operator full-lane implementation,
 review and merge authorization. Owner MIND; independent review required. Base
 fdcf65435b25e49ad24789a6ed66ab8abb3bad87 on origin/main; branch
 codex/v10-native-extension-receipt-recovery in existing task Core checkout.
@@ -103,28 +103,48 @@ approved scope and process/mount/dirty/unique-commit checks. No deletion or
 reclaimed bytes. Full vNext deployment and V11 acceptance remain open.
 
 
-## Implementation checkpoint — pending exact review and qualification
+## Accepted implementation and consumer obligation
 
-New public recover_native_source_evidence_extension reconstructs immutable
-extension intent/command/proofs and governed result mappings without reading
-current head or source views/body. It verifies original admission/publication,
-root/parent/child and traversed ancestry envelopes, exact descriptors, committed
-epoch and companion receipt. A companion re-read handles commit interleaving;
-missing companion with durable publication fails closed. Existing publication
+Core PR234 merged2f743c0d85abe3901994ba2b8be7a3d75d649426. Exact accepted
+code headcfe6eca54990c5acb2bdf868d590e4b964fc5ab2; independent Hubble source
+PASS and final bounded qualification ACCEPTED, review5984045258. CI44622778769
+succeeded: core3087passed/11skipped, integration526passed/1skipped, actual
+WorldKeeper source admission, whole-source types/lint/import and benchmark smoke.
+CI merge tree matches accepted code. Acceptance is this capability, not rollout.
+
+Public recover_native_source_evidence_extension reconstructs immutable extension
+intent/command/proofs and governed result mappings without current head, source
+views or body reads. It verifies original admission/publication, root/parent/child
+and traversed ancestry envelopes, exact descriptors, committed epoch and companion
+receipt. Companion re-read handles an atomic commit between observations.
+Malformed or missing referenced committed state fails closed. Existing publisher
 still authorizes current source before replay. No adapter/port/migration changes.
 
-Owning memory38 pass on current implementation. Initial PostgreSQL26 pass;
-expanded30-case cohort running separately after ancestry/interleaving repairs.
-Whole-source Pyright with explicit task interpreter reports0 errors; first run
-without interpreter could not resolve dependencies, and initial launcher lacked
-Node on PATH. Existing task Node resolves it; no installation/config change.
-Whole-suite unit/conformance attempt has two failures pending investigation:
-revision-verification cache reconstruct-call count and package smoke subprocess
-missing uv on PATH. No whole-suite green or inherited-failure claim yet.
+Owning memory38 pass independently; owning PostgreSQL30 pass with withdrawal,
+later head, governed mapping and zero-write checks. Disposable databases
+v10_extension_recovery_7ddbd32feff0 and v10_extension_recovery_4a1b0dfbdc8e were
+removed after zero active connections. Task scratch retains all logs/lifecycle
+receipts and original failures. First static launches lacked task Node or explicit
+interpreter; corrected task-owned runtime reports0 errors without installation.
 
-Exact cumulative independent review, final owning SQL, full regressions, CI,
-commit/push/PR remain required. Buddy declaration PR4152 is independent and under
-review; consumers/adoption/profile transition remain excluded. Task evidence at
-scratch/v10-core/native-extension-recovery retained under active MIND ownership.
-Disposable SQL database v10_extension_recovery_7ddbd32feff0 removed only after
-zero active connections; no filesystem deletion/reclaimed-byte claim.
+The failed local full unit/conformance run remains failed: cache-test import
+cleanup interference reproduces on exact basefdcf654 with matching interpreter,
+extras, environment, failing ID and assertion0!=1. Standalone cache passes.
+Package smoke passes corrected process-local PATH/task UV environment. This is
+bounded failure attribution, not a relabeled whole-suite pass or test exemption.
+
+Buddy must pin the exact accepted merge in a separate dependency PR and authorize
+current principal/World ownership/binding before receipt IO. It must submit the
+original signed request/descriptors for recovery, preserve changed-intent conflict
+and integrity failures, and never interpret absence as automatic write authority.
+Recovery grants no source/body/citation authority or fresh UTF-8/slice verification.
+Buddy profile declaration PR4152 merged3836a2c74e7e5bf67e86d060e8b14cffe63bab3a;
+consumer capability-awareness, explicit profile transition and native manual
+backend/UI remain separate unfinished slices. No serving deployment or baseline
+rerun occurred. V10 retirement and V11 deployed acceptance remain open.
+
+Resource owner MIND retains existing checkouts, task scratch/cache and package
+smoke environment for the active full goal. No filesystem deletion or reclaimed
+bytes; cleanup follow-up requires approved scope plus process/mount/dirty/unique
+commit/data checks. This settlement changes only this handoff; it does not change
+the accepted implementation, contracts, dependencies, tests or serving state.
