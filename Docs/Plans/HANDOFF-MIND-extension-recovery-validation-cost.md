@@ -1,6 +1,6 @@
 # MIND — preserve normal extension publication validation cost
 
-ACTIVE under operator full-lane implementation/review/merge authority. Base
+COMPLETE under operator full-lane implementation/review/merge authority. Base
 cd290296bde2cb1264a830882a89c76ac15e3c8f, existing task Core checkout, branch
 codex/v10-extension-recovery-validation-cost. Root owns implementation; independent
 Hubble review and owning tests/types/lint/CI required before merge.
@@ -41,7 +41,7 @@ before new allocation. Cleanup requires approved scope/process/mount/dirty/uniqu
 commit/data checks. No deletion or reclaimed bytes.
 
 
-## Implemented checkpoint, pending independent review/CI
+## Accepted correction and consumer obligation
 
 Explicit verify_envelopes policy defaults false for ordinary reconstruction and
 ancestry traversal; metadata recovery alone enables it. Source byte availability
@@ -53,8 +53,27 @@ The new public preview/publication work regression fails accepted parent code:
 8 at three generations. Corrected code removes those repeats, while the same
 regression proves recovery explicitly verifies every ancestor/root/child.
 Owning40 plus revision-cache26 tests pass together (66 total). Whole-repo Ruff
-and diff check pass; focused types0. PostgreSQL30 owning cohort is running on a
-unique disposable database with lifecycle record under existing task scratch
+and diff check pass; focused types0. PostgreSQL30 owning cases passed on a
+unique disposable database, removed after zero active connections, with lifecycle record under existing task scratch
 v10-core/native-extension-recovery (cost-* artifacts). No runtime timing claim,
 no frozen baseline rerun and no full-goal completion. Existing caches/checkouts/
 logs remain active MIND resources; no filesystem deletion.
+
+
+Core PR236 mergeda685da4cbe5daf36d88dac62e6a85378f5323058 from reviewed head
+685a3dacd4aaec07663e9c6ba878165053bcdd40. Independent Hubble source PASS and
+bounded qualification ACCEPTED, review5984326859. CI44626559988 all jobs passed:
+core3089passed/11skipped, integration526passed/1skipped, actual WK source admission,
+lint/types/import and benchmark smoke. Independent66 focused tests also pass.
+No measured latency or deployed performance claim follows from the work-count
+regression. The prior failed local full-suite cache test remains separately
+exact-base attributed, not relabeled green.
+
+Buddy PR4154 must select this accepted correction merge, preserving all unrelated
+packages and WK pin, before final adoption acceptance. Initial2f743 installation
+and smoke evidence remains retained as historical qualification. Profile transition,
+native manual backend/UI, current-route retirement, serving rollout/rollback and
+V11 acceptance remain open. Full goal stays active; no baseline rerun/deployment.
+
+This settlement changes documentation only; runtime/test/dependency inputs match
+accepted PR236. Task MIND resources remain retained for the active full goal.
