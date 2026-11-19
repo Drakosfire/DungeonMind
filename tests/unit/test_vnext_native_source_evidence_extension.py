@@ -814,3 +814,40 @@ def test_recovery_refuses_changed_descriptor_and_isolates_space():
         )
         is None
     )
+
+
+@pytest.mark.parametrize("ancestor_count", [0, 3])
+def test_publication_does_not_repeat_repository_envelope_hashing(monkeypatch, ancestor_count):
+    from unittest.mock import Mock
+
+    from dungeonmind.application.vnext import native_source_extension as service
+
+    repo = InMemoryNativeSourceEvidenceRepository()
+    domain, profile, _, root = setup_source(repo)
+    ancestors = {root.published_revision_id}
+    for index, (start, end) in enumerate([(2, 8), (9, 12), (16, 20)][:ancestor_count]):
+        receipt = publish(
+            repo,
+            domain,
+            profile,
+            extension(repo, root, operation=f"extension:cost:{index}", start=start, end=end),
+        )
+        ancestors.add(receipt.publication_receipt.published_revision_id)
+    request = extension(repo, root, operation="extension:cost:target", start=21, end=24)
+    verify = Mock(wraps=service.verify_stored_revision)
+    monkeypatch.setattr(service, "verify_stored_revision", verify)
+    service.preview_native_source_evidence_extension(
+        repository=repo, request=request, domain_contract=domain, semantic_profile=profile
+    )
+    receipt = publish(repo, domain, profile, request)
+    # Repository reads still verify envelopes; publication must not duplicate
+    # their full-payload hashing at the application ancestry layer.
+    assert verify.call_count == 0
+    assert (
+        service.recover_native_source_evidence_extension(
+            repository=repo, request=request, domain_contract=domain, semantic_profile=profile
+        )
+        == receipt
+    )
+    checked = {call.args[0].revision.revision_id for call in verify.call_args_list}
+    assert ancestors | {receipt.publication_receipt.published_revision_id} <= checked
