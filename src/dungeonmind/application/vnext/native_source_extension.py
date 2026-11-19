@@ -76,7 +76,12 @@ def extension_intent(
 
 
 def _require_original_ancestor(
-    repository: Any, space_id: str, root_revision: str, revision_id: str
+    repository: Any,
+    space_id: str,
+    root_revision: str,
+    revision_id: str,
+    *,
+    verify_envelopes: bool = False,
 ) -> None:
     seen = set()
     current = revision_id
@@ -92,7 +97,8 @@ def _require_original_ancestor(
             or stored.revision.revision_id != current
         ):
             _fail("extension_source_lineage_missing")
-        verify_stored_revision(stored)
+        if verify_envelopes:
+            verify_stored_revision(stored)
         current = stored.revision.parent_revision_id
         if current is None:
             _fail("extension_original_admission_not_ancestor")
@@ -190,6 +196,7 @@ def _reconstruct_extension_plan(
     body: bytes | None,
     registered_intervals: set[tuple[int, int]],
     prior: NativeSourceEvidenceExtensionReceiptV1 | None,
+    verify_envelopes: bool = False,
 ) -> ExtensionPlan:
     """Reconstruct immutable intent; only publication revalidates source bytes."""
     parent = repository.get_revision(request.space_id, request.expected_parent_revision_id)
@@ -200,12 +207,14 @@ def _reconstruct_extension_plan(
         request.expected_parent_revision_id,
     ):
         raise PersistenceIntegrityError("extension parent identity drift")
-    verify_stored_revision(parent)
+    if verify_envelopes:
+        verify_stored_revision(parent)
     _require_original_ancestor(
         repository,
         request.space_id,
         root.published_revision_id,
         request.expected_parent_revision_id,
+        verify_envelopes=verify_envelopes,
     )
     domain_ref, profile_ref = _descriptor_refs(domain_contract, semantic_profile)
     if (
@@ -509,6 +518,7 @@ def _recover_native_source_evidence_extension(
             body=None,
             registered_intervals=set(),
             prior=receipt,
+            verify_envelopes=True,
         )
     except KnowledgePublicationIdempotencyConflictError:
         raise
