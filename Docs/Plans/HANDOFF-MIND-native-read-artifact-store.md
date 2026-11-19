@@ -1,6 +1,12 @@
 # Native read-artifact PostgreSQL storage and integration
 
-Status: ACTIVE, draft Core PR #218. Owner: Elderwyld pre-cutover performance lane.
+Status: COMPLETE, accepted Core PR #218. Owner: Elderwyld pre-cutover performance lane.
+Merge: e8b05965bb43df370a1292149c8c809aec0e7fb9 from reviewed f392a330.
+All exact-head CI44428259747 jobs passed, including integration and actual
+WorldKeeper consumer. Cumulative runtime, documentation and fixture repair approved.
+Buddy #4024 adopted this merge at3ec5c8bf04a8889c052b54e685704a4ec4c63fbd,
+with78 native/253auth/1410frontend/build checks, automatic CI and review passing.
+Repository adoption is complete; V8 and serving adoption remain unaccepted.
 Authority: operator optimization-before-cutover goal with implementation, review
 and merge authorization; accepted source-bound artifact design #216/#217.
 Current Git base: accepted #227 mergea9e308fe5b208f7ee447bf483a252d08ed04ea0b.
@@ -250,7 +256,7 @@ still contributes202â€“218ms historically. Candidate prepare/commit costs10.55â€
 lack matched-write acceptance. No V8 or current deployment acceptance is claimed.
 The frozen baseline was not rerun.
 
-Remaining gates: current documentation delta review and exact-head CI;
+Remaining joint V8 gates (storage component accepted):
 consistent representative cold/new-revision/eviction latency; affected route,
 scope/visibility, source withdrawal and historical checks; matched write costs;
 current Elderwyld snapshot and broader route/memory/scale evidence; and the

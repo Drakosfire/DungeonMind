@@ -685,3 +685,63 @@ def test_result_corruption_fails_closed() -> None:
     )
     with pytest.raises(PersistenceIntegrityError, match="allocation drift"):
         get_prospective_publication(SPACE, "prepared:corrupt", repository=repo)
+
+
+def test_publication_and_replay_restore_command_only_twice(monkeypatch) -> None:
+    from dungeonmind.application.vnext.materialization import GovernedMaterializationResult
+
+    repo, parent = _setup()
+    getter = GovernedMaterializationResult.command.fget
+    restores = []
+
+    def counted(result):
+        command = getter(result)
+        restores.append(command)
+        return command
+
+    monkeypatch.setattr(GovernedMaterializationResult, "command", property(counted))
+    contribution = _contribution([_entity()])
+    first = _publish(repo, parent, contribution, _accepted("create-1"))
+    assert len(restores) == 2
+    assert restores[0] is not restores[1]  # Fresh sealed expectation after repository access.
+    assert _publish(repo, parent, contribution, _accepted("create-1")) == first
+    assert len(restores) == 4
+
+
+def test_repository_command_mutation_cannot_redefine_expected_receipt(monkeypatch) -> None:
+    repo, parent = _setup()
+    publish = repo.publish_prospective_publication
+
+    def mutate(command, *args):
+        command.operation_ids.append("op:repository-mutation")
+        return publish(command, *args)
+
+    monkeypatch.setattr(repo, "publish_prospective_publication", mutate)
+    with pytest.raises(PersistenceIntegrityError):
+        _publish(repo, parent, _contribution([_entity()]), _accepted("create-1"))
+
+
+def test_forged_planner_binding_rejected_before_publication(monkeypatch) -> None:
+    from dataclasses import replace
+
+    from dungeonmind.application.vnext import prospective
+
+    repo, parent = _setup()
+    before = (repo.get_head(SPACE), repo.head_events(SPACE))
+    resolve = prospective.resolve_prospective_contribution
+
+    def forged(**kwargs):
+        result = resolve(**kwargs)
+        binding = result.committed_result_bindings[0].model_copy(
+            update={"durable_id": "ent:forged"}
+        )
+        return replace(result, committed_result_bindings=(binding,))
+
+    def forbidden(*args):
+        pytest.fail("invalid local plan reached repository publication")
+
+    monkeypatch.setattr(prospective, "resolve_prospective_contribution", forged)
+    monkeypatch.setattr(repo, "publish_prospective_publication", forbidden)
+    with pytest.raises(ProspectivePublicationIntegrityError):
+        _publish(repo, parent, _contribution([_entity()]), _accepted("create-1"))
+    assert (repo.get_head(SPACE), repo.head_events(SPACE)) == before

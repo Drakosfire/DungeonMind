@@ -19,6 +19,7 @@ from dungeonmind.contracts.vnext.domain import (
     EntityRefValue,
     SemanticProfileDescriptorV2,
 )
+from dungeonmind.contracts.vnext.knowledge import PublishKnowledgeRevisionCommand
 from dungeonmind.contracts.vnext.prospective import (
     DurableEntityRef,
     KnowledgeProspectivePublication,
@@ -350,7 +351,9 @@ def _plan_prospective_publication(
     domain_contract: DomainContractDescriptor,
     semantic_profile: SemanticProfileDescriptorV2,
     admitted_evidence: Sequence[EvidenceRefV3] = (),
-) -> tuple[GovernedMaterializationResult, ResolvedProspectiveContribution]:
+) -> tuple[
+    GovernedMaterializationResult, ResolvedProspectiveContribution, PublishKnowledgeRevisionCommand
+]:
     """Resolve and validate the prospective graph change before persistence."""
     resolved = resolve_prospective_contribution(
         prospective_contribution=prospective_contribution,
@@ -375,7 +378,8 @@ def _plan_prospective_publication(
         publication_id=publication_id,
         result_bindings=resolved.committed_result_bindings,
     )
-    return materialization, resolved
+    # Transfer this validated local command; callers need not restore it again.
+    return materialization, resolved, command
 
 
 def publish_prospective_contribution(
@@ -390,7 +394,7 @@ def publish_prospective_contribution(
     repository: KnowledgeRevisionRepository,
 ) -> KnowledgeProspectivePublication:
     """Resolve, validate, and atomically publish one prospective contribution."""
-    materialization, resolved = _plan_prospective_publication(
+    materialization, resolved, command = _plan_prospective_publication(
         parent=parent,
         prospective_contribution=prospective_contribution,
         dispositions=dispositions,
@@ -399,7 +403,6 @@ def publish_prospective_contribution(
         domain_contract=domain_contract,
         semantic_profile=semantic_profile,
     )
-    command = materialization.command
     expected_revision_id = revision_from_command(command).revision_id
     try:
         aggregate = repository.publish_prospective_publication(
