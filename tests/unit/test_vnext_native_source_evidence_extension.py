@@ -575,8 +575,11 @@ def test_governed_extension_rejects_forged_planner_binding_before_mutation(monke
     repo = InMemoryNativeSourceEvidenceRepository()
     domain, profile, _, root = setup_source(repo)
     request = governed_extension(repo, root)
-    before = (repo.get_head(root.space_id), repo.head_events(root.space_id),
-              repo.open_native_source_view(root.space_id).epoch)
+    before = (
+        repo.get_head(root.space_id),
+        repo.head_events(root.space_id),
+        repo.open_native_source_view(root.space_id).epoch,
+    )
     resolve = prospective.resolve_prospective_contribution
 
     def forged(**kwargs):
@@ -589,6 +592,225 @@ def test_governed_extension_rejects_forged_planner_binding_before_mutation(monke
     monkeypatch.setattr(prospective, "resolve_prospective_contribution", forged)
     with pytest.raises(ProspectivePublicationIntegrityError):
         publish(repo, domain, profile, request)
-    assert (repo.get_head(root.space_id), repo.head_events(root.space_id),
-            repo.open_native_source_view(root.space_id).epoch) == before
+    assert (
+        repo.get_head(root.space_id),
+        repo.head_events(root.space_id),
+        repo.open_native_source_view(root.space_id).epoch,
+    ) == before
     assert repo.get_publication_receipt(root.space_id, request.extension_id) is None
+
+
+def exercise_metadata_recovery(repo, *, governed=False):
+    from dungeonmind.application.vnext.native_source_extension import (
+        recover_native_source_evidence_extension,
+    )
+
+    domain, profile, _, root = setup_source(repo)
+    request = governed_extension(repo, root) if governed else extension(repo, root)
+    assert (
+        recover_native_source_evidence_extension(
+            repository=repo, request=request, domain_contract=domain, semantic_profile=profile
+        )
+        is None
+    )
+    receipt = publish(repo, domain, profile, request)
+    # Advance the head before withdrawal; recovery returns the original child.
+    publish(
+        repo, domain, profile, extension(repo, root, operation="extension:later", start=9, end=12)
+    )
+    repo.withdraw_native_source(
+        space_id=root.space_id,
+        source_artifact_id=root.source_artifact_id,
+        source_revision_id=root.source_revision_id,
+    )
+    with pytest.raises(NativeTextSourceAdmissionIntegrityError):
+        publish(repo, domain, profile, request)
+    head, events = repo.get_head(root.space_id), repo.head_events(root.space_id)
+    original_open = repo.open_native_source_view
+    original_head = repo.get_head
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("recovery must not open source authority or body")
+
+    repo.open_native_source_view = forbidden
+    repo.get_head = forbidden
+    try:
+        recovered = recover_native_source_evidence_extension(
+            repository=repo, request=request, domain_contract=domain, semantic_profile=profile
+        )
+        assert recovered == receipt
+        changed = request.model_copy(
+            update={"created_at": request.created_at + timedelta(seconds=1)}
+        )
+        with pytest.raises(KnowledgePublicationIdempotencyConflictError):
+            recover_native_source_evidence_extension(
+                repository=repo, request=changed, domain_contract=domain, semantic_profile=profile
+            )
+    finally:
+        repo.open_native_source_view = original_open
+        repo.get_head = original_head
+    assert repo.get_head(root.space_id) == head
+    assert repo.head_events(root.space_id) == events
+    assert access(repo, domain, root, receipt.bindings[0].evidence_ref_id).status != "available"
+    return request, receipt
+
+
+@pytest.mark.parametrize("governed", [False, True])
+def test_metadata_recovery_after_withdrawal_without_source_open(governed):
+    exercise_metadata_recovery(InMemoryNativeSourceEvidenceRepository(), governed=governed)
+
+
+@pytest.mark.parametrize("corruption", ["mapping", "proof", "missing_child", "missing_companion"])
+def test_metadata_recovery_fails_closed_on_corrupt_committed_state(corruption):
+    from dungeonmind.application.vnext.native_source_extension import (
+        recover_native_source_evidence_extension,
+    )
+    from dungeonmind.domain.canonical import canonical_sha256
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+
+    repo = InMemoryNativeSourceEvidenceRepository()
+    domain, profile, _, root = setup_source(repo)
+    request = governed_extension(repo, root)
+    receipt = publish(repo, domain, profile, request)
+    key = (root.space_id, request.extension_id)
+    if corruption == "missing_companion":
+        del repo._extension_receipts[key]
+    elif corruption == "missing_child":
+        del repo._revisions[(root.space_id, receipt.publication_receipt.published_revision_id)]
+    else:
+        altered = receipt.model_copy(deep=True)
+        if corruption == "mapping":
+            altered.result_bindings[0].durable_id = "asrt:" + "a" * 64
+        else:
+            altered.proofs[0].slice_sha256 = "a" * 64
+        repo._extension_receipts[key] = (altered, canonical_sha256(altered.model_dump(mode="json")))
+    with pytest.raises(PersistenceIntegrityError):
+        recover_native_source_evidence_extension(
+            repository=repo, request=request, domain_contract=domain, semantic_profile=profile
+        )
+
+
+def test_recovery_observes_commit_between_companion_and_publication_reads():
+    from dungeonmind.application.vnext.native_source_extension import (
+        recover_native_source_evidence_extension,
+    )
+
+    repo = InMemoryNativeSourceEvidenceRepository()
+    domain, profile, _, root = setup_source(repo)
+    request = extension(repo, root)
+    original = repo.get_native_source_evidence_extension_receipt
+    committed = []
+
+    def interleave(space, operation):
+        if not committed:
+            committed.append(True)
+            publish(repo, domain, profile, request)
+            return None
+        return original(space, operation)
+
+    repo.get_native_source_evidence_extension_receipt = interleave
+    recovered = recover_native_source_evidence_extension(
+        repository=repo, request=request, domain_contract=domain, semantic_profile=profile
+    )
+    assert recovered == original(root.space_id, request.extension_id)
+
+
+def test_lost_response_recovers_original_governed_result():
+    from dungeonmind.application.vnext.native_source_extension import (
+        recover_native_source_evidence_extension,
+    )
+
+    repo = InMemoryNativeSourceEvidenceRepository()
+    domain, profile, _, root = setup_source(repo)
+    request = governed_extension(repo, root)
+
+    def lost():
+        raise ConnectionError("response lost after atomic commit")
+
+    repo._after_publication_commit = lost
+    with pytest.raises(KnowledgePublicationOutcomeUnknownError):
+        publish(repo, domain, profile, request)
+    receipt = repo.get_native_source_evidence_extension_receipt(root.space_id, request.extension_id)
+    assert (
+        recover_native_source_evidence_extension(
+            repository=repo, request=request, domain_contract=domain, semantic_profile=profile
+        )
+        == receipt
+    )
+
+
+def exercise_corrupt_recovery_ancestry(repo, corruption):
+    from dataclasses import replace
+
+    from dungeonmind.application.vnext.native_source_extension import (
+        recover_native_source_evidence_extension,
+    )
+    from dungeonmind.domain.errors import PersistenceIntegrityError
+
+    domain, profile, _, root = setup_source(repo)
+    middle = publish(repo, domain, profile, extension(repo, root, operation="extension:middle"))
+    middle_id = middle.publication_receipt.published_revision_id
+    publish(
+        repo, domain, profile, extension(repo, root, operation="extension:parent", start=9, end=12)
+    )
+    request = extension(repo, root, operation="extension:target", start=16, end=20)
+    publish(repo, domain, profile, request)
+    original = repo.get_revision
+    original_root = repo.get_native_source_admission_receipt
+    if corruption == "missing_root":
+        repo.get_native_source_admission_receipt = lambda *args: None
+    else:
+
+        def corrupt(space, revision):
+            stored = original(space, revision)
+            if revision != middle_id:
+                return stored
+            if corruption == "missing_ancestor":
+                return None
+            if corruption == "wrong_row":
+                return original(space, root.published_revision_id)
+            envelope = stored.revision.model_copy(update={"parent_revision_id": middle_id})
+            return replace(stored, revision=envelope)
+
+        repo.get_revision = corrupt
+    try:
+        with pytest.raises(PersistenceIntegrityError):
+            recover_native_source_evidence_extension(
+                repository=repo, request=request, domain_contract=domain, semantic_profile=profile
+            )
+    finally:
+        repo.get_revision = original
+        repo.get_native_source_admission_receipt = original_root
+
+
+@pytest.mark.parametrize("corruption", ["missing_root", "missing_ancestor", "wrong_row", "cycle"])
+def test_recovery_verifies_every_immutable_ancestor(corruption):
+    exercise_corrupt_recovery_ancestry(InMemoryNativeSourceEvidenceRepository(), corruption)
+
+
+def test_recovery_refuses_changed_descriptor_and_isolates_space():
+    from dungeonmind.application.vnext.native_source_extension import (
+        recover_native_source_evidence_extension,
+    )
+
+    repo = InMemoryNativeSourceEvidenceRepository()
+    domain, profile, _, root = setup_source(repo)
+    request = extension(repo, root)
+    publish(repo, domain, profile, request)
+    changed_profile = profile.model_copy(update={"profile_revision": "another"})
+    with pytest.raises(KnowledgePublicationIdempotencyConflictError):
+        recover_native_source_evidence_extension(
+            repository=repo,
+            request=request,
+            domain_contract=domain,
+            semantic_profile=changed_profile,
+        )
+    assert (
+        recover_native_source_evidence_extension(
+            repository=repo,
+            request=request.model_copy(update={"space_id": "space:other"}),
+            domain_contract=domain,
+            semantic_profile=profile,
+        )
+        is None
+    )
