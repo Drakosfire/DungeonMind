@@ -24,6 +24,17 @@ import tests.unit.test_graph_snapshot_v6 as tu6
 import tests.unit.test_semantic_profile_graph as tsp
 import tests.unit.test_union_graph_v4 as tu4
 import tests.unit.test_union_graph_v5 as tu5
+from dungeonmind.application.compatibility import (
+    COMPATIBILITY_MANIFEST_SHA256,
+    LegacyCompatibilityManifest,
+    compute_legacy_compatibility_key,
+    compute_mapping_implementation_digest,
+    decode_legacy_graph_revision,
+    load_legacy_world_compat_manifest,
+    validate_stored_legacy_graph_revision,
+    verify_historical_semantic_parity,
+)
+from dungeonmind.application.compatibility.legacy_graph import DOCS_MANIFEST_AUDIT_PATH
 from dungeonmind.application.graph_snapshot import (
     GRAPH_SCHEMA_V1,
     GRAPH_SCHEMA_V2,
@@ -40,17 +51,6 @@ from dungeonmind.application.vnext.errors import (
     LegacyCompatibilityIntegrityError,
 )
 from dungeonmind.application.vnext.frozen_json import FrozenDict
-from dungeonmind.application.vnext.legacy_compat import (
-    COMPATIBILITY_MANIFEST_SHA256,
-    DOCS_MANIFEST_AUDIT_PATH,
-    LegacyCompatibilityManifest,
-    compute_legacy_compatibility_key,
-    compute_mapping_implementation_digest,
-    decode_legacy_graph_revision,
-    load_legacy_world_compat_manifest,
-    validate_stored_legacy_graph_revision,
-    verify_historical_semantic_parity,
-)
 from dungeonmind.application.vnext.model import PARSED_REVISION_FORMAT_VERSION
 from dungeonmind.application.vnext.records import (
     ParsedDomainTemporalScope,
@@ -586,7 +586,7 @@ def test_17f_mapping_implementation_digest_seals_translator_source() -> None:
     # Mutating alias-admission source alone must change the sealed digest.
     import inspect
 
-    from dungeonmind.application.vnext import legacy_compat as lc
+    from dungeonmind.application.compatibility import legacy_graph as lc
 
     full_sources = {
         name: inspect.getsource(getattr(lc, name))

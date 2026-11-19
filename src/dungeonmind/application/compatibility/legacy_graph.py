@@ -47,14 +47,14 @@ from ..graph_snapshot import (
     VersionedUnionGraphSnapshotReader,
     effective_endpoint_kind,
 )
-from .builder import build_parsed_knowledge_revision_from_records
-from .errors import LegacyCompatibilityIntegrityError
-from .frozen_json import (
+from ..vnext.builder import build_parsed_knowledge_revision_from_records
+from ..vnext.errors import LegacyCompatibilityIntegrityError
+from ..vnext.frozen_json import (
     freeze_json_value,
     thaw_json_value,
 )
-from .model import PARSED_REVISION_FORMAT_VERSION, ParsedKnowledgeRevision
-from .records import (
+from ..vnext.model import PARSED_REVISION_FORMAT_VERSION, ParsedKnowledgeRevision
+from ..vnext.records import (
     ParsedAssertion,
     ParsedAssertionMetadata,
     ParsedDomainContractRef,
@@ -181,7 +181,7 @@ class LegacyCompatibilityManifest:
 
 
 def _read_packaged_manifest_bytes() -> bytes:
-    package = resources.files("dungeonmind.application.vnext.data")
+    package = resources.files("dungeonmind.application.compatibility.data")
     resource = package.joinpath(_PACKAGED_MANIFEST_RESOURCE)
     with resources.as_file(resource) as path:
         return path.read_bytes()

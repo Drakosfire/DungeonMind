@@ -11,6 +11,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from dungeonmind.application.compatibility import (
+    COMPATIBILITY_MANIFEST_SHA256,
+    COMPATIBILITY_MAPPING_REVISION,
+    build_historical_semantic_witness,
+    build_parsed_revision_semantic_witness,
+    decode_legacy_graph_revision,
+)
 from dungeonmind.application.graph_snapshot import (
     GRAPH_SCHEMA_V1,
     GRAPH_SCHEMA_V2,
@@ -19,13 +26,6 @@ from dungeonmind.application.graph_snapshot import (
     GRAPH_SCHEMA_V5,
     GRAPH_SCHEMA_V6,
     VersionedUnionGraphSnapshotReader,
-)
-from dungeonmind.application.vnext.legacy_compat import (
-    COMPATIBILITY_MANIFEST_SHA256,
-    COMPATIBILITY_MAPPING_REVISION,
-    build_historical_semantic_witness,
-    build_parsed_revision_semantic_witness,
-    decode_legacy_graph_revision,
 )
 from dungeonmind.application.vnext.records import ParsedEntityRefValue
 from dungeonmind.contracts.graph import WorldGraphRevision
