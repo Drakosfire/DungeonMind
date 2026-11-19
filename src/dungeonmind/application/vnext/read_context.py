@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -158,7 +158,16 @@ class KnowledgeReadContext:
 
         Public ``admit_candidates`` remains the V2 contract and ignores the snapshot.
         """
+        return self._evaluate_candidates(candidate_assertion_ids)
 
+    def _evaluate_candidates(
+        self,
+        candidate_assertion_ids: Sequence[str],
+        *,
+        project_provenance: Callable[
+            [tuple[str, ...], tuple[str, ...]], KnowledgeProvenanceSnapshot
+        ] | None = None,
+    ) -> tuple[CandidateAdmissionResult, KnowledgeProvenanceSnapshot]:
         self._evidence_memo.store.clear()
         request = self.request
         domain_contract = self.domain_contract
@@ -179,20 +188,22 @@ class KnowledgeReadContext:
             revision_ids,
         ) = collect_evidence_dependencies(self.parsed, evaluation_order)
 
-        snapshot_calls_before = getattr(self.source_reader, "snapshot_call_count", None)
-        provenance = self.source_reader.get_provenance_snapshot(
-            artifact_ids=artifact_ids,
-            revision_ids=revision_ids,
-        )
+        if project_provenance is None:
+            snapshot_calls_before = getattr(self.source_reader, "snapshot_call_count", None)
+            provenance = self.source_reader.get_provenance_snapshot(
+                artifact_ids=artifact_ids, revision_ids=revision_ids,
+            )
+            snapshot_calls = 1
+            if snapshot_calls_before is not None:
+                snapshot_calls = self.source_reader.snapshot_call_count - snapshot_calls_before
+        else:
+            provenance = project_provenance(artifact_ids, revision_ids)
+            snapshot_calls = 0
         validate_provenance_snapshot_integrity(
             provenance,
             expected_artifact_ids=artifact_ids,
             expected_revision_ids=revision_ids,
         )
-        snapshot_calls = 1
-        if snapshot_calls_before is not None:
-            snapshot_calls_after = getattr(self.source_reader, "snapshot_call_count", 0)
-            snapshot_calls = snapshot_calls_after - snapshot_calls_before
 
         audience = frozenset(request.audience_labels)
         declared_labels = frozenset(domain_contract.visibility_labels)

@@ -2192,3 +2192,33 @@ def test_entity_listing_batches_alias_provenance(alias_source_status: str) -> No
         for entity_id in ids
         for alias in _SVC.get_complete_entity(context, entity_id).aliases
     )
+
+
+@pytest.mark.parametrize("retracted", [False, True])
+def test_complete_entity_batch_preserves_exact_results_and_withdrawal(org_context, retracted):
+    context, reader = org_context
+    if retracted:
+        artifact = reader._artifacts["src:ownership-document"]
+        reader._artifacts["src:ownership-document"] = artifact.model_copy(
+            update={"status": "retracted"}
+        )
+        context = _refresh_org_context(context, reader)
+    ids = ("priya", "retrieval-evaluation", "missing-entity", "priya")
+    expected = tuple(_SVC.get_complete_entity(context, entity_id) for entity_id in ids)
+    before = context.source_reader.snapshot_call_count
+    actual = _SVC.get_complete_entities(context, ids)
+    assert context.source_reader.snapshot_call_count - before == (
+        1 + sum(item.work.provenance_snapshot_calls for item in actual)
+    )
+    for single, batched in zip(expected, actual, strict=True):
+        assert replace(single, work=batched.work) == batched
+    assert ("asrt:priya-owns-retrieval-apr" in {a.assertion_id for a in actual[0].assertions}) is not retracted
+
+
+def test_complete_entity_batch_misses_do_not_load_provenance(org_context):
+    context, _ = org_context
+    before = context.source_reader.snapshot_call_count
+    result = _SVC.get_complete_entities(context, ("missing-1", "missing-2"))
+    assert tuple(item.identity.entity_id for item in result) == ("missing-1", "missing-2")
+    assert not any(item.found for item in result)
+    assert context.source_reader.snapshot_call_count == before
