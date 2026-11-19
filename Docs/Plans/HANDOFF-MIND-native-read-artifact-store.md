@@ -7,7 +7,8 @@ Current Git base: accepted #227 mergea9e308fe5b208f7ee447bf483a252d08ed04ea0b.
 Codec origin: #217 aef8883238cc7c9c993e42ed666cd99bdfb1847f.
 Storage implementation evidence anchor:74f24c23d70e8b39c3f884cddc80cd10ddd33275.
 Current source adds accepted227 proof-reuse API to measured compositionb2263ae.
-Storage-owned behavior is unchanged, but a joint new-source HTTP proof is pending. This handoff is living
+Storage-owned behavior is unchanged. The new-source HTTP proof is complete at
+Core8931b854/Buddy5dcd5ff, with limits recorded below. This handoff is living
 state; detailed trial history belongs in PRs and the retained scratch ledger.
 
 ## Outcome, scope and ordering
@@ -28,7 +29,8 @@ No Buddy runtime, public/frozen contract or required protocol changes, authority
 redesign, index semantics, serving data, cutover or production GC policy changes.
 
 Serial order: accepted compute #219/#220/#221/#222/#223/#224/#227 -> storage #218 acceptance ->
-separate current Buddy adoption -> joint V8 evidence -> V9 preparation.
+joint V8 evidence -> V9 preparation. Buddy adoption #4013 depends only on
+accepted227 and is independently merged; it did not require unmerged218.
 #219 removes unrequested primary-map hashes, #220 removes per-value callable
 cycles, #221 releases private models at last use, #222 sparsifies temporary
 index buckets; #223 shares immutable empty final entries and #224 removes
@@ -40,9 +42,10 @@ The current task-owned Projects checkout/env is reused; no new worktree/env.
 - Full get_revision integrity validation precedes every parsed-memory lookup.
   Accepted226/227 permits explicitly injected pure proof reuse only after a fresh
   complete raw-row SELECT and exact all-field representation equality. Changed/
-  missing/corrupt rows cannot hide behind reuse; provenance remains fresh. The key
-  snapshots complete canonical envelope representation, declared graph SHA and
-  canonical source text; mutable models and Python-equality keys are forbidden.
+  missing/corrupt rows cannot hide behind reuse; provenance remains fresh.
+  The parsed-cache key snapshots complete canonical envelope representation, declared graph SHA and
+  canonical source text. It is distinct from the complete raw-row proof key.
+  Mutable models and Python-equality keys are forbidden.
 - Optional BYTEA fetch occurs only on parsed miss. SQL size-check and conditional
   body selection share one snapshot; oversized bytes never transfer. Bind source
   space/revision, codec/parsed versions, complete envelope digest, graph SHA,
@@ -209,21 +212,44 @@ Record-at-a-time source JSON candidate225 was implemented and rejected unmerged.
 Measured actual full-app composition5e0d6f2 retained verification225–234ms,
 warm253–263ms, eviction712–713ms and historical720–731ms; fullGC206–212ms
 persisted. Independent review found deep-fallback recursion compatibility loss.
-Do not incorporate its parser. Source/tests/migrations here remainb2263ae.
+Do not incorporate its parser. Storage-owned source/tests/migration blobs remain
+unchanged from b2263ae; the complete source tree also includes accepted227.
 Exact-source proof reuse is separately accepted as226design/227implementation
 (mergea9e308f),44unit/27PG and all exactCI44415286696 green, independent review
 approved. This rebriefs the earlier no-verification-cache condition: complete
 fresh raw source reads plus exact complete representation equality may reuse a
 successful immutable pure proof; no admission or source freshness is cached.
-The implementation belongs to accepted227, not this storage patch. Buddy must
-explicitly inject it; no current deployment wiring or jointHTTP speed acceptance.
-Its native10k component takes225.80ms first,52.78–57.06ms next5reads,6freshSELECTs/
+The implementation belongs to accepted227, not this storage patch. Buddy #4013
+explicitly adopts it, merged at8be0a02841014f1661145f8b1bcab1556d55a98d
+from reviewed4e8709a. Runtime5dcd5ff passed78 focused checks; final4e passed
+253 auth-app checks,1410 hosted frontend tests/build/canonical receipt validation
+and all three automatic workflows. Cumulative runtime and final docs reviews
+approved. The serving deployment is unchanged; this is repository adoption.
+The Core proof-cache native10k component takes225.80ms first,52.78–57.06ms next5reads,6freshSELECTs/
 1fullverify and exact ordinaryrecordparity; content28357004bytes/64MiBtestedcap.
 
-Remaining gates: independent review of the latest actual-code socket evidence;
+Latest actual full-app/socket proof uses Core8931b854 and Buddy5dcd5ff.
+Fourteen loaded module hashes match the pinned sources. Readiness performs no
+knowledge preparation; database/OS are warm and identity uses local fixture auth.
+Three fresh workers measured first reads485–493ms, warm78–84ms, parsed eviction
+510–512ms, new revision505–514ms, historical536–554ms (median539ms), and first
+citations67–70ms. Complete DTOs, exact citation bytes, anonymous401, visible new
+revision and historical restoration pass. Every read obtains fresh complete source
+and provenance; old/new/old requires two full proofs. Retained proof content is
+56,721,035bytes, below64MiB; end process RSS is approximately595MiB. The content
+budget does not bound total RSS or detached in-flight request memory.
+Independent review approved runtime composition and this bounded evidence at893.
+One historical sample554.2ms exceeds retained~540ms classic reference. FullGC
+still contributes202–218ms historically. Candidate prepare/commit costs10.55–10.75s
+lack matched-write acceptance. No V8 or current deployment acceptance is claimed.
+The frozen baseline was not rerun.
+
+Remaining gates: current documentation delta review and exact-head CI;
 consistent representative cold/new-revision/eviction latency; affected route,
 scope/visibility, source withdrawal and historical checks; matched write costs;
-current Buddy dependency/runtime adoption; and the canonical joint V8 record.
+current Elderwyld snapshot and broader route/memory/scale evidence; and the
+canonical joint V8 record. Buddy repository dependency adoption is now merged,
+but serving adoption remains a later explicit gate.
 Only accepted V8 evidence permits V9 serving authority and rollback preparation.
 
 ## Retention and cleanup
@@ -292,3 +318,11 @@ All probes terminal; cleanup follow-up remains lane-owned after explicit scope.
 Retain source-proof-cache-component-8a5b6b2 probe/JSON/log/pytestdir and consumer
 preflight for dependent Buddy adoption. Measured component is not RSS/route proof.
 Source fixture801f9bf6393b dropped; all localprobes terminal. No serving changes.
+
+Latest retained evidence: native-postgres-artifact-source-proof-pool-8931b85-5dcd5ff
+JSON/log/pytest directory and socket helper/harness; completed Buddy final4e
+auth log/pytest and source-proof-hosted-4e8709a-attempt1 receipt/logs. The verifier
+removed its own clean root frontend-verification-squ8n3px with cleanup_complete;
+exact reclaimed bytes unavailable. Its queue is terminal. Owned source fixture
+dmb_recap_source_test_794732f99a8f was dropped. No manual removal. Retain these
+paths for optimization-lane integration/review with the existing cleanup follow-up.
