@@ -37,6 +37,7 @@ imports classic modules; this slice does not claim total current-path retirement
 - move vnext/data/__init__.py and dm_legacy_world_compat_v1.json to compatibility/data;
 - pyproject.toml packaged-resource locator only;
 - scripts/generate_legacy_compatibility_parity_artifact.py imports only;
+- benchmarks/vnext_legacy_v6_compatibility_10k.py imports only (bounded rebrief below);
 - tests/unit/test_vnext_legacy_compatibility.py actual compatibility import migration;
 - new tests/unit/test_historical_compatibility_boundary.py.
 
@@ -45,6 +46,14 @@ publication/provenance changes. Existing Buddy/Core immutable serving mirrors st
 pinned. PR158 owns global Steward/roadmap paths; do not edit them. Checked open Core
 143/145–150/158 path leases: no overlap with this bounded write set. Existing consumer
 classic imports are later serial work, not silently removed by this package move.
+
+## Bounded rebrief
+
+Full repository reference/lint inventory found the retained historical benchmark
+caller outside the initial src/scripts/tests inventory. Owner and independent design
+review explicitly extend this lease by that one benchmark import migration only.
+No benchmark execution, inputs, timings or retained outputs change. This repairs a
+required caller rather than introducing a new capability. All other boundaries hold.
 
 ## Verification and review map
 
