@@ -442,3 +442,73 @@ def test_old_valid_source_without_artifact_falls_back_without_read_side_write(
         conn.commit()
     assert _parse_verified_revision(repo, stored) == _parse_revision(stored)
     assert _count(migrated_database, "knowledge_native_read_artifacts") == 0
+
+
+
+def test_existing_verified_artifact_supports_lazy_authorized_alias_read_without_mutation(
+    migrated_database,
+    pg,
+):
+    from dataclasses import asdict
+
+    from dungeonmind.application.vnext.alias_search import AliasSearchReadService
+    from dungeonmind.application.vnext.alias_search_index import AliasSearchIndexCache
+    from dungeonmind.application.vnext.materialization import encode_native_graph_payload
+    from dungeonmind.application.vnext.provenance import InMemoryKnowledgeSourceReader
+    from dungeonmind.application.vnext.read_context import KnowledgeReadContext
+    from dungeonmind.contracts.semantic_profile import SemanticProfileRef
+    from dungeonmind.contracts.vnext.domain import DomainContractRef, Entity
+    from dungeonmind.infrastructure.postgres.vnext_knowledge import _read_revision
+    from tests.unit.test_vnext_alias_search import alias, context
+
+    item = alias("alias:artifact", "Cobalt keeper")
+    template, _ = context([item], evidence=[], artifacts={}, revisions={})
+    payload = encode_native_graph_payload(
+        entities={"ent:one": Entity(entity_id="ent:one")},
+        assertions={},
+        aliases={item.alias_id: item},
+        evidence={},
+    )
+    command = genesis_command(payload=payload).model_copy(
+        update={
+            "domain_contract_ref": DomainContractRef(**asdict(template.parsed.domain_contract_ref)),
+            "semantic_profile_ref": SemanticProfileRef(
+                **asdict(template.parsed.semantic_profile_ref)
+            ),
+        }
+    )
+    repo = _repo(migrated_database)
+    stored = repo.publish_revision(command)
+    head, events = repo.get_head(SPACE), repo.head_events(SPACE)
+    tables = (
+        "knowledge_revisions",
+        "knowledge_native_read_artifacts",
+        "knowledge_heads",
+        "knowledge_head_events",
+    )
+    counts = {table: _count(migrated_database, table) for table in tables}
+    with PostgresDatabase(migrated_database).connect() as conn:
+        conn.execute("SET TRANSACTION READ ONLY")
+        verified = _read_revision(conn, SPACE, stored.revision.revision_id)
+        wire = artifacts._read_artifact(conn, verified)
+        parsed = decode_read_artifact(wire, verified)
+    assert parsed is not None
+    reader = InMemoryKnowledgeSourceReader()
+    ctx = KnowledgeReadContext(
+        parsed=parsed,
+        request=template.request.model_copy(
+            update={"space_id": SPACE, "revision_id": stored.revision.revision_id}
+        ),
+        domain_contract=template.domain_contract,
+        semantic_profile=template.semantic_profile,
+        domain_policy=template.domain_policy,
+        source_reader=reader,
+    )
+    structural = AliasSearchIndexCache(max_entries=1, max_postings=10_000)
+    result = AliasSearchReadService().search_aliases(ctx, "cobalt", index_cache=structural)
+    (hit,) = result.hits
+    assert hit.alias.alias_id == item.alias_id and result.completeness.status == "complete"
+    assert reader.snapshot_call_count == 0  # evidence-less identities preserve existing semantics
+    assert repo.get_head(SPACE) == head and repo.head_events(SPACE) == events
+    assert {table: _count(migrated_database, table) for table in tables} == counts
+    assert repo.get_native_read_artifact(stored) == wire

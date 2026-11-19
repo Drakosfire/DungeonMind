@@ -15,6 +15,8 @@ from .admission import (
     DomainAdmissionPolicyRegistry,
     ExcludeByAssertionIdPolicy,
 )
+from .alias_search import AliasSearchHit, AliasSearchReadService, AliasSearchResult
+from .alias_search_index import AliasSearchIndexCache
 from .builder import (
     DecodedKnowledgeContent,
     build_parsed_knowledge_revision,
@@ -156,6 +158,10 @@ __all__ = [
     "NATIVE_VNEXT_GRAPH_SCHEMA",
     "PARSED_REVISION_FORMAT_VERSION",
     "AdmissionWorkCounts",
+    "AliasSearchHit",
+    "AliasSearchIndexCache",
+    "AliasSearchReadService",
+    "AliasSearchResult",
     "AlwaysAdmitPolicy",
     "AssertionEvidenceResult",
     "CandidateAdmissionIntegrityError",

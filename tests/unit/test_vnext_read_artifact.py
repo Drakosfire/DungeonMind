@@ -294,3 +294,72 @@ def test_lifetime_prepass_rejects_malformed_references_before_indexes(column, re
     ):
         decode_read_artifact(_bytes(packet), source)
     build.assert_not_called()
+
+
+
+def test_alias_search_reuses_existing_artifact_without_eager_index_work(monkeypatch):
+    from dataclasses import asdict
+
+    from dungeonmind.application.vnext import alias_search as reads
+    from dungeonmind.application.vnext import alias_search_index as indexes
+    from dungeonmind.application.vnext.materialization import encode_native_graph_payload
+    from dungeonmind.application.vnext.neighborhood import NeighborhoodReadService
+    from dungeonmind.application.vnext.provenance import InMemoryKnowledgeSourceReader
+    from dungeonmind.application.vnext.read_context import KnowledgeReadContext
+    from dungeonmind.application.vnext.records import StoredKnowledgeRevision
+    from dungeonmind.contracts.vnext.domain import Entity
+    from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
+    from dungeonmind.domain.canonical import canonical_sha256
+    from tests.unit.test_vnext_alias_search import alias, context
+
+    item = alias("alias:artifact", "Cobalt keeper")
+    template, _ = context([item], evidence=[], artifacts={}, revisions={})
+    payload = encode_native_graph_payload(
+        entities={"ent:one": Entity(entity_id="ent:one")},
+        assertions={},
+        aliases={item.alias_id: item},
+        evidence={},
+    )
+    header = asdict(template.parsed.identity)
+    header["graph_payload_sha256"] = canonical_sha256(payload)
+    source = StoredKnowledgeRevision.seal(KnowledgeRevision.model_validate(header), payload)
+    wire = encode_source_wire(source)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("ordinary/artifact preparation eagerly built alias-search index")
+
+    with monkeypatch.context() as guard:
+        guard.setattr(indexes, "_build_alias_search_index", forbidden)
+        guard.setattr(reads, "_build_alias_search_index", forbidden)
+        decoded = decode_read_artifact(wire, source)
+        ordinary = _parsed(source, payload)
+        assert decoded is not None
+        prepared = KnowledgeReadContext(
+            parsed=decoded, request=template.request,
+            domain_contract=template.domain_contract, semantic_profile=template.semantic_profile,
+            domain_policy=template.domain_policy, source_reader=InMemoryKnowledgeSourceReader(),
+        )
+        neighborhood = NeighborhoodReadService().get_neighborhood(prepared, ["ent:one"])
+        assert neighborhood.found_seed_entity_ids == ("ent:one",)
+    assert decoded is not None and decoded == ordinary
+    assert decoded.compatibility_key == ordinary.compatibility_key
+    assert decoded.semantic_digest == ordinary.semantic_digest
+    assert decoded.format_version == ordinary.format_version == model.PARSED_REVISION_FORMAT_VERSION
+    structural = indexes.AliasSearchIndexCache(max_entries=1, max_postings=10_000)
+
+    def read(parsed):
+        ctx = KnowledgeReadContext(
+            parsed=parsed,
+            request=template.request,
+            domain_contract=template.domain_contract,
+            semantic_profile=template.semantic_profile,
+            domain_policy=template.domain_policy,
+            source_reader=InMemoryKnowledgeSourceReader(),
+        )
+        return reads.AliasSearchReadService().search_aliases(ctx, "cobalt", index_cache=structural)
+
+    with reads._capture_alias_search_trace() as traces:
+        from_ordinary, from_artifact = read(ordinary), read(decoded)
+    assert from_ordinary == from_artifact and from_artifact.hits[0].alias.alias_id == item.alias_id
+    assert not traces[0].index_cache_hit and traces[1].index_cache_hit
+    assert encode_source_wire(source) == wire

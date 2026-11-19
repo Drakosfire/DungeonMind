@@ -147,3 +147,17 @@ proof resources for active goal; no manual removal/reclaimedbytes claim. Cleanup
 follow-up needs approvedscope, active task/process/mount/DB, dirty/unique-data and
 protected-commit checks at goal completion. Full optimization/deployment/rollback/
 V10/V11 remains active; no ARCHITECTURE wait or narrowed completion token.
+
+
+## Implementation checkpoint
+
+Index/cache and public read are implemented with the documented split. Structural
+worker47 tests pass; combined index/read/artifact diagnostic passes, and the actual
+PostgreSQL artifact cohort21 passes in new owned DB
+codex_v10_alias_search_a8e1c12f223a on32903. The actual neighborhood read also passes
+while alias-index construction is forbidden. Full Ruff and source Pyright
+diagnostics pass. These are working-tree diagnostics, not exact-head acceptance.
+The reused Core unit environment is synced to unchanged uv.lock with postgres/api
+extras (Python3.12.12, psycopg3.3.4, Pydantic2.13.4); no new environment or dependency
+source change. Full committed-source core/integration/type/lint and independent
+review remain required. No serving, source storage format or baseline change.
