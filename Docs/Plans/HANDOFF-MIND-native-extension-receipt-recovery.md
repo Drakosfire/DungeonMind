@@ -59,6 +59,24 @@ or integrity error, never permission to publish. Return only verified receipt an
 mapping; no body/source text. Successful recovery must not make withdrawn
 citations available or allow fresh extension publication.
 
+## Metadata-only verification decision
+
+Independent readiness review selected metadata-only committed-outcome verification.
+Reconstruct span proofs from the exact original request and validate them against
+immutable committed evidence/receipt/child and original admission linkage. Do not
+open source views/body readers or reauthorize projection access. This proves the
+committed operation and mapping, not independent recomputation of source byte
+slices or UTF-8 boundaries. Those were publication admission obligations; do not
+claim fresh body verification after withdrawal. No persistence adapter expansion
+is authorized for internal body access.
+
+Verify revision envelope identity, payload digest, descriptor refs and command
+linkage for original admission, expected parent and committed child. Absence is
+an observation before a concurrent commit, not a promise that no later commit can
+occur; completed atomic commits must never be classified absent. No receipt plus
+a publication is corruption/conflict. SQL/memory public-boundary tests must cover
+these distinctions without inventing a write retry.
+
 ## Required proof
 
 Memory and disposable PostgreSQL public-boundary tests: exact recovery, governed
