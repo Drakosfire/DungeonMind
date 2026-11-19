@@ -1,6 +1,6 @@
 # V8 — optimized acceptance checkpoint
 
-Status: **PROPOSED FOR ACCEPTANCE — independent cumulative review pending**.
+Status: **V8 ACCEPTED by independent review — effective on PR #229 merge after final-head CI**.
 Owner: Elderwyld pre-cutover optimization lane. Execution authority: operator's
 optimization-before-cutover goal, including implementation/review/merge authority.
 
@@ -9,7 +9,8 @@ optimization-before-cutover goal, including implementation/review/merge authorit
 - Core runtime: `4b6516e2c0dfd81acaa4410b9b9bb9da18894c90` — accepted #228.
 - Buddy runtime: `0a746752da32324256d83b018e884aa7cb8ad692` — accepted #4029,
   pinning that Core. Buddy main separately observed at `532ef4e4742afaebb3ac5e994402b699457bee77`.
-- Phase: V8 joint acceptance proposal; V9 not activated, no serving switch.
+- Phase: V8 accepted candidate; finalization delta/CI/merge gate effectiveness.
+  V9 not activated; no serving switch.
 - Scope: [V7 fresh-native Elderwyld](HANDOFF-v7-elderwyld-fresh-native-scope.md),
   accepted Core #174,47-session published source cohort. Legacy bridge out of scope.
 - Owning bounded lease: [V8 acceptance handoff](../Plans/HANDOFF-MIND-v8-optimized-acceptance.md).
@@ -43,8 +44,8 @@ pins through linked Git history; old prose is not current runtime truth.
 
 ## What remains false
 
-V8 is not accepted until independent review, exact-head checks and merge settle
-this proposal. The554.24ms historical sample is not below the point reference.
+V8 acceptance is effective only when finalization delta review, exact-head checks
+and PR #229 merge settle this record. The554.24ms historical sample is not below the point reference.
 Universal classic/native DTO, secondary search order and capped citation selection
 parity are not proved or promised. Rules-like equivalent-work performance parity
 is not established.50k full-input publication and100k full-input reads did not pass.
@@ -53,12 +54,15 @@ retirement and V11 deployed baseline are not complete.
 
 ## Next primary question and blockers
 
-Can independent review accept the complete evidence map and explicit historical
-tail/presentation/search/capped-citation/Rules-comparison dispositions for this
-fresh-native Elderwyld candidate without weakening the matched cold-route gate?
-No missing runtime contract is currently identified. Pending review and exact-head
-CI are the remaining acceptance gates; unverified findings must reopen the relevant
-claim rather than be converted into approval by prose.
+Independent review accepted the complete evidence map and all five scoped
+dispositions at proposal head `4357a91f78edb45abe7f5b6b247279e2cfba763d`,
+recorded in review5968294321 on PR #229. Finalization delta review and final-head
+CI remain before merge. No missing runtime contract is currently identified.
+Unverified findings must reopen the relevant claim.
+
+Next primary question after merge: can the actual Buddy serving composition use
+the accepted native authority with verified loaded pins and a rehearsed process
+rollback, without a hidden legacy current runtime?
 
 After V8 acceptance, dispatch V9 as its own bounded serving-composition/rollback
 slice. Verify actual loaded Core/Buddy code, managed World binding/native head,

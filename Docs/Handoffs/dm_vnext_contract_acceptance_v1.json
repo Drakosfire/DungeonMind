@@ -1,7 +1,7 @@
 {
   "schema": "dm_vnext_contract_acceptance_v1",
-  "status": "proposed_for_acceptance",
-  "disposition": "V8_JOINT_SEMANTIC_PERFORMANCE_ACCEPTANCE_PENDING_REVIEW",
+  "status": "accepted",
+  "disposition": "V8_JOINT_SEMANTIC_PERFORMANCE_ACCEPTED",
   "candidate": {
     "core": "4b6516e2c0dfd81acaa4410b9b9bb9da18894c90",
     "buddy": "0a746752da32324256d83b018e884aa7cb8ad692"
@@ -19,7 +19,7 @@
     "document_disposition": "Merged scoped V7 disposition in Core PR #174"
   },
   "scope_manifest_role": "Accepted V7 fresh-native47-session scope manifest replaces an inapplicable legacy bridge/migration manifest for Elderwyld. No old-name bridge or history rewrite.",
-  "effective_on": "Independent cumulative review, exact-head required checks and merge of this acceptance PR; this proposal does not activate V9.",
+  "effective_on": "Merge of PR229 after approved finalization delta and required exact-head CI. No V9 serving authority is changed by this record.",
   "historical_record": {
     "repository": "Drakosfire/DungeonMind",
     "commit": "4b6516e2c0dfd81acaa4410b9b9bb9da18894c90",
@@ -29,8 +29,8 @@
   },
   "evidence_report": {
     "path": "Docs/Reports/V8-optimized-evidence-v1.json",
-    "sha256": "27f83c46dd819ad8a46ef60b9975fd5a144a1836089771ebc5b1bc6369709b6b",
-    "status": "assembled_for_independent_review"
+    "sha256": "8db09f3b3408b0840d6f800702ac9d21ce0b045194f00e54ae7d6ff92b36a7b4",
+    "status": "independently_reviewed"
   },
   "fixture_evidence": {
     "buddy_preservation": {
@@ -282,9 +282,20 @@
     "V10": "Retire old current/public paths, retain necessary historical compatibility.",
     "V11": "Record deployed loaded pins and cold/warm/lifecycle timings, historical554.24ms tail, memory observation, scope/head and exact cited bytes; carry measured capacity/Rules-comparison debt into optimization handoff."
   },
-  "open": [
-    "Independent cumulative evidence/disposition review and exact-head CI",
-    "Merge the accepted checkpoint before V9 preparation"
-  ],
-  "frozen_classic_baseline_rerun": false
+  "open": [],
+  "frozen_classic_baseline_rerun": false,
+  "acceptance_review": {
+    "proposal_head": "4357a91f78edb45abe7f5b6b247279e2cfba763d",
+    "base": "4b6516e2c0dfd81acaa4410b9b9bb9da18894c90",
+    "reviewer": "independent Aristotle agent; recorded through operator GitHub account, not distinct-user approval",
+    "verdict": "APPROVE",
+    "review_id": 5968294321,
+    "review_url": "https://github.com/Drakosfire/DungeonMind/pull/229#pullrequestreview-5968294321",
+    "effectiveness": "Finalization delta review, required final-head CI and merge of PR229; no V9 activation"
+  },
+  "merge_gates": [
+    "Independent review of the bounded finalization delta",
+    "Required CI on final exact head",
+    "Authorized PR229 merge"
+  ]
 }

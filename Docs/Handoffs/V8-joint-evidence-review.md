@@ -1,6 +1,6 @@
 # V8 — optimized joint evidence review
 
-Status: **proposed for acceptance; independent cumulative review pending**.
+Status: **ACCEPTED by independent review; effective on PR #229 merge after final-head CI**.
 The [canonical artifact](dm_vnext_contract_acceptance_v1.json) is the decision
 record. The [portable evidence report](../Reports/V8-optimized-evidence-v1.json)
 contains current fixture outputs, selected test cases, exact measurements,
@@ -49,7 +49,7 @@ exhaustive dependency attestation.
 | Historical return |536.18 /538.71 /554.24 |
 | First citation open |66.56–69.93 |
 
-Proposed decision: accept the comparable first-request gate and preserved warm
+Accepted decision: accept the comparable first-request gate and preserved warm
 advantage. Retain554.24ms as an above-reference historical sample and explicit
 V11 follow-up. Do not hide it behind a median or claim an all-sample/p95 guarantee.
 Three workers do not establish a latency distribution. Larger Elderwyld route
@@ -121,7 +121,7 @@ All nine originally attested module files are unchanged at the candidate. This
 composite supplies the completed cases plus independent final check, not a green
 original run or a deployed/full-lifespan attestation.
 
-## Explicit semantic decisions for review
+## Accepted scoped semantic decisions
 
 1. Keep native complete-object reviewed labels/context, assertion ledger and
    completeness. Shared endpoints, direction, admitted facts and exact cited bytes
@@ -161,8 +161,10 @@ for these encodings, not a twelve-operation scale qualification.
 
 ## Continuation and historical evidence
 
-V8 acceptance requires independent cumulative review, required exact-head checks
-and merge of the canonical record. Then V9 qualifies serving composition, rehearses
+Independent cumulative review approved proposal head
+`4357a91f78edb45abe7f5b6b247279e2cfba763d` against Core4b, recorded as
+[review5968294321](https://github.com/Drakosfire/DungeonMind/pull/229#pullrequestreview-5968294321).
+Finalization delta review, required final-head checks and merge still gate effect. Then V9 qualifies serving composition, rehearses
 process rollback and switches authority; V10 retires old current/public paths;
 V11 records the deployed baseline and optimization handoff. Carry the historical
 tail, metadata-heavy cold preparation, JSONB capacity and unmatched Rules comparison

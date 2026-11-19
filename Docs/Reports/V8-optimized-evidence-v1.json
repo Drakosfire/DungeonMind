@@ -1,6 +1,6 @@
 {
   "schema": "dm_v8_optimized_evidence_v1",
-  "status": "assembled_for_independent_review",
+  "status": "independently_reviewed",
   "candidate": {
     "core": "4b6516e2c0dfd81acaa4410b9b9bb9da18894c90",
     "buddy": "0a746752da32324256d83b018e884aa7cb8ad692"
@@ -2259,7 +2259,13 @@
       "limit": "All original attested modules unchanged at candidate; not exhaustive process/dependency attestation or a new route run"
     }
   },
-  "proposed_dispositions": {
+  "not_claimed": [
+    "Deployed serving qualification",
+    "Universal classic/native DTO, ordering or capped selection parity",
+    "Equivalent-work Rules classic/native speed ratio",
+    "All operation or100k coverage from neighborhood-only scale ladder"
+  ],
+  "accepted_dispositions": {
     "cold_and_lifecycle": {
       "decision": "accept the comparable first-read gate and recorded lifecycle evidence, with historical tail explicitly retained for V11 observation",
       "basis": "three first reads485\u2013493ms below retained~540ms; warm78\u201384ms; eviction510\u2013512ms and new505\u2013514ms; historical536\u2013554ms median539",
@@ -2283,10 +2289,13 @@
       "remaining_debt": "A future Rules consumer needs matched route/representation qualification; no Rules-domain rollout is authorized here."
     }
   },
-  "not_claimed": [
-    "Deployed serving qualification",
-    "Universal classic/native DTO, ordering or capped selection parity",
-    "Equivalent-work Rules classic/native speed ratio",
-    "All operation or100k coverage from neighborhood-only scale ladder"
-  ]
+  "acceptance_review": {
+    "proposal_head": "4357a91f78edb45abe7f5b6b247279e2cfba763d",
+    "base": "4b6516e2c0dfd81acaa4410b9b9bb9da18894c90",
+    "reviewer": "independent Aristotle agent; recorded through operator GitHub account, not distinct-user approval",
+    "verdict": "APPROVE",
+    "review_id": 5968294321,
+    "review_url": "https://github.com/Drakosfire/DungeonMind/pull/229#pullrequestreview-5968294321",
+    "effectiveness": "Finalization delta review, required final-head CI and merge of PR229; no V9 activation"
+  }
 }
