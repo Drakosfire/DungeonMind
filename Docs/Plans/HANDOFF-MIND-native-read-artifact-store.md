@@ -24,6 +24,12 @@ PostgresKnowledgeRevisionRepository optional reader/identity-only backfill and
 new-publication insertion hook, native context/cache integration, owning tests,
 affected migration expectations and current handoff. Bounded control-plane
 settlement of accepted #217/#222/#223/#224/#227 handoffs brings the current slice to14 paths.
+Integration rebrief: one additional owning verification-cache test path makes15.
+Migration0022 creates derived foreign-key dependents; the destructive identity/
+missing-source fixtures must remove those dependents before their intentional
+source mutations. Keep the production foreign key and cache assertions unchanged.
+CI44427051616 exposed three fixture-setup failures (510 integration checks passed);
+core and benchmark passed. Repair belongs to this storage integration slice.
 Rebrief: the additional paths only seal accepted223/224/227; no storage runtime expansion.
 No Buddy runtime, public/frozen contract or required protocol changes, authority
 redesign, index semantics, serving data, cutover or production GC policy changes.
