@@ -77,6 +77,12 @@ def test_identity_movement_cannot_return_stale_source(migrated_database, pg, col
     del pg
     db, ordinary, cached, _cache, stored = _setup(migrated_database)
     with db.transaction() as conn:
+        # Remove derived dependents before deliberately corrupting source identity.
+        conn.execute(
+            "DELETE FROM dungeonmind.knowledge_native_read_artifacts "
+            "WHERE space_id=%s AND revision_id=%s",
+            (SPACE, stored.revision.revision_id),
+        )
         conn.execute("DELETE FROM dungeonmind.knowledge_head_events WHERE space_id=%s", (SPACE,))
         conn.execute("DELETE FROM dungeonmind.knowledge_heads WHERE space_id=%s", (SPACE,))
         if column == "space_id":
@@ -156,6 +162,12 @@ def test_missing_row_does_not_reuse_a_verified_proof(migrated_database, pg):
     del pg
     db, _ordinary, cached, _cache, stored = _setup(migrated_database)
     with db.transaction() as conn:
+        # Remove derived dependents before deliberately corrupting source identity.
+        conn.execute(
+            "DELETE FROM dungeonmind.knowledge_native_read_artifacts "
+            "WHERE space_id=%s AND revision_id=%s",
+            (SPACE, stored.revision.revision_id),
+        )
         conn.execute("DELETE FROM dungeonmind.knowledge_head_events WHERE space_id=%s", (SPACE,))
         conn.execute("DELETE FROM dungeonmind.knowledge_heads WHERE space_id=%s", (SPACE,))
         conn.execute("DELETE FROM dungeonmind.knowledge_revisions WHERE space_id=%s", (SPACE,))

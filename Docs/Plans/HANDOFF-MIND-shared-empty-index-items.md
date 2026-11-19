@@ -1,6 +1,6 @@
 # Share immutable empty entries across dense native indexes
 
-Status: ACTIVE. Owner: Elderwyld pre-cutover performance lane.
+Status: COMPLETE, accepted Core PR #223. Owner: Elderwyld pre-cutover performance lane.
 Authority: operator optimization-before-cutover goal and lane implementation/
 review/merge authorization. Exact base: accepted #222
 9f4e3469f2244e5c79ff04295e63d979b3251dbc.
@@ -23,11 +23,10 @@ handoff only. No PostgreSQL, cache/read-source authority, Buddy, public contract
 profile, GC policy, prewarming or cutover changes. Existing sparse accumulation
 and referential-validation ordering remain unchanged.
 
-One serial compute PR from the pinned accepted base; no behavioral dependency
-on unmerged storage218. After independent cumulative review and exact CI, accept
-this compute PR, then rebase storage218 and measure the combined actual socket
-path with accepted Buddy cache reuse. Pinned local combination may verify before
-acceptance. Do not silently fold the compute change into the storage PR.
+Delivered as a serial compute PR from the pinned accepted base, independent
+of storage218. Independent review and exact CI passed;223 is accepted and
+storage218 is rebased on its merge. Continue remaining performance investigation
+and actual socket verification; this allocation result does not accept V8.
 
 Proof: empty/sparse/dense/self-loop/alias/input-permutation graphs retain all
 index keys/memberships and hashes; immutable sharing removes duplicate pair
@@ -43,3 +42,15 @@ v7-elderwyld-scope/scratch/v8-core (filesystemUUID48fa5d10-fe99-4557-9fc9-d8a2a4
 Retain verification refs/probes/logs for review and remaining integration; cleanup
 after delivery with explicit scope and active-task/process/mount/dirty/unique-data/
 commit checks. No deletion permission inferred. V8/cutover remains gated.
+
+Acceptance: reviewed head96027747b45b786fcca50bce69f89253058c7873 merged as
+ad87ab1a42ed6d311e8f30e1536dbad12a94dfa4. Independent cumulative review approved;
+222 focused tests and all exact-head CI44405940347 jobs passed. Retained10k
+full-model/hash parity confirms60014 empty entries now use10004 pair objects,
+removing50010 allocations. This is a work-reduction acceptance, not V8 acceptance.
+Actual full-app composition9b6b582 with Buddy174639d passed exact response/citation,
+fresh source/revision and lifecycle assertions. First reads452–514ms, warm200–244ms,
+eviction647–718ms and new revision659–737ms; historical return462–490ms.
+First citations187–207ms fetch no duplicate artifact. Full-heap GC193–241ms remains in
+miss tails. No stable latency benefit established; frozen baseline not rerun.
+Storage218 is rebased on this merge; performance/cutover gates remain open.

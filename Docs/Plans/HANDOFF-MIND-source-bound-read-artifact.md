@@ -1,6 +1,6 @@
 # Source-bound compact native read artifacts
 
-Status — design accepted in #216; private codec implementation #217 has runtime review approval.
+Status — design #216 and private codec #217 accepted.
 Core store integration and Buddy adoption remain pending.
 Owner — the active Elderwyld pre-cutover performance lane.
 
@@ -208,7 +208,9 @@ Actual-store measurements and full production acceptance remain pending.
 PR #217 is based on accepted design #216 merge 46274422. The latest runtime
 candidate is df070d8689841ffcfe9f8c3e61f171a08005709b. Merge order is complete
 codec implementation, separate Core store integration, then Buddy adoption.
-Final documentation review, exact-head CI and merge remain pending.
+Exact full head 2b82417e719c1200e9e3ed4d4a268a47f38db369 passed review and
+all CI jobs. Accepted #217 merge is aef8883238cc7c9c993e42ed666cd99bdfb1847f.
+The next slice is governed by HANDOFF-MIND-native-read-artifact-store.md.
 
 `_source_wire.py` implements lossless primary-wire encoding, complete fresh
 revision-envelope/graph/parsed-format binding, strict JSON framing and
