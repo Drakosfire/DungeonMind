@@ -1,0 +1,2301 @@
+{
+  "schema": "dm_v8_optimized_evidence_v1",
+  "status": "independently_reviewed",
+  "candidate": {
+    "core": "4b6516e2c0dfd81acaa4410b9b9bb9da18894c90",
+    "buddy": "0a746752da32324256d83b018e884aa7cb8ad692"
+  },
+  "observed_buddy_main": {
+    "commit": "532ef4e4742afaebb3ac5e994402b699457bee77",
+    "core_pin": "4b6516e2c0dfd81acaa4410b9b9bb9da18894c90",
+    "qualification": "separate from accepted candidate; no deployed-process or benchmark qualification inferred"
+  },
+  "retention_root": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core",
+  "baseline_policy": "frozen classic timing baseline retained, never rerun in optimization lane",
+  "source_equivalence": {
+    "original_read_receipt": {
+      "retained_file": "native-postgres-artifact-source-proof-pool-8931b85-5dcd5ff.json",
+      "sha256": "4fe3097d5daedcff16168cc31fb7c13365b2fcbefb9cc4fee451adc10145de81"
+    },
+    "modules": [
+      {
+        "module": "dungeonmind.application.vnext._read_artifact",
+        "sha256": "5f9b2c8041877e76eb622906ce4fdf4bdaad362eba96b269fdcaab7080c704d0",
+        "unchanged": true,
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/_read_artifact.py"
+      },
+      {
+        "module": "dungeonmind.application.vnext._source_wire",
+        "sha256": "03fc0547a62145d50762b109462436103d01f2abff9d29b2d8bd8bddee1d4818",
+        "unchanged": true,
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/_source_wire.py"
+      },
+      {
+        "module": "dungeonmind.application.vnext.builder",
+        "sha256": "5a047f99425c42d2a4e5a31c054edc4b3527a29cd77ed8b5e7128aafb5cd3650",
+        "unchanged": true,
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/builder.py"
+      },
+      {
+        "module": "dungeonmind.application.vnext.frozen_json",
+        "sha256": "b062956308bc1c296c163989df052727a90ae895de3247df26e49c384d4ffd8e",
+        "unchanged": true,
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/frozen_json.py"
+      },
+      {
+        "module": "dungeonmind.application.vnext.model",
+        "sha256": "5180955a391b9769561456e0d9f1ca34e8a55058e0e5b7983c8b72912de476c7",
+        "unchanged": true,
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/model.py"
+      },
+      {
+        "module": "dungeonmind.application.vnext.native_source_access",
+        "sha256": "56e97493bb8d34d8d580e2fb95d4d55f699709785ec39b742803444c1aa40cf1",
+        "unchanged": true,
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/native_source_access.py"
+      },
+      {
+        "module": "dungeonmind.infrastructure.postgres.vnext_knowledge",
+        "sha256": "784053dce1a6d04b3d2cea8eaba1f4f24885f9e3b80c4cd1413b55cc3364e217",
+        "unchanged": true,
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/infrastructure/postgres/vnext_knowledge.py"
+      },
+      {
+        "module": "dungeonmind.infrastructure.postgres._revision_verification_cache",
+        "sha256": "282500b418b738892126c53a12d47c0b13bb1dc56d293f53dfb1e2f3cb470e82",
+        "unchanged": true,
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/infrastructure/postgres/_revision_verification_cache.py"
+      },
+      {
+        "module": "dungeonmind.infrastructure.postgres.vnext_read_artifacts",
+        "sha256": "5c88d542bedf29195b452ad8799740e10751e81abd0d8a7978a1d3eeca4e27a3",
+        "unchanged": true,
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/infrastructure/postgres/vnext_read_artifacts.py"
+      },
+      {
+        "module": "apps.live_control_server.routes.world_graph_retrieval",
+        "sha256": "21bec283e694c9a5e7fbc1435fa31b385e09d72a3b86f75470416c375e75603c",
+        "unchanged": true,
+        "repository": "DungeonMindBuddy",
+        "path": "apps/live_control_server/routes/world_graph_retrieval.py"
+      },
+      {
+        "module": "apps.live_control_server.services.native_graph_inspection",
+        "sha256": "1cbeebd3b22ab4956341a80c13b86af1f691c26001ba2b5d3ba519cdb852eda7",
+        "unchanged": true,
+        "repository": "DungeonMindBuddy",
+        "path": "apps/live_control_server/services/native_graph_inspection.py"
+      },
+      {
+        "module": "apps.live_control_server.integrations.dungeonmind.native_registry_source",
+        "sha256": "9937f826216401507a181c6fbd06aa36b02431c50b536dbeb3dbe3d6aa6b8b28",
+        "unchanged": true,
+        "repository": "DungeonMindBuddy",
+        "path": "apps/live_control_server/integrations/dungeonmind/native_registry_source.py"
+      },
+      {
+        "module": "graph_memory.vnext.domain_runtime",
+        "sha256": "a2b229d9744ec4ac6b50d8ae42af646b21aad87c8f2cb2c043850ea0452636e1",
+        "unchanged": true,
+        "repository": "DungeonMindBuddy",
+        "path": "src/graph_memory/vnext/domain_runtime.py"
+      },
+      {
+        "module": "apps.live_control_server.main",
+        "sha256": "0b3e22b81f2669b1a0e0f4393afc492f8d67bbee96e2010cd0b6a196b4315bb3",
+        "unchanged": true,
+        "repository": "DungeonMindBuddy",
+        "path": "apps/live_control_server/main.py"
+      }
+    ],
+    "limit": "All14 attested read modules unchanged, including Buddy main; not exhaustive dependency attestation or a newly measured run"
+  },
+  "comparable_buddy_neighborhood": {
+    "field_selection": "fresh_workers only; top-level native_http_ms is earlier instrumented diagnostic and is not the first-read acceptance series",
+    "baseline": {
+      "buddy": "e7e892808dbfbb39016f59aba42becfb6be39655",
+      "core": "45d04fb6691cb084b1d50feb1ddb7ab18f15a95d",
+      "native_first_ms": [
+        2124.0078509872546
+      ],
+      "classic_depth_ms": [
+        534.8809570132289,
+        537.1827080089133
+      ],
+      "native_repeat_ms": [
+        378.72800600598566,
+        387.0364690083079,
+        377.8878749872092,
+        379.6303779963637
+      ],
+      "classic_repeat_ms": [
+        541.134297993267,
+        539.9425920040812,
+        522.2924429981504,
+        535.4970719927223
+      ],
+      "log_sha256": "5e336045eb86e4e3197bc80b06ff2e1ca96aba6d2f631a1442bebfc359b9087f",
+      "scope": "Paired isolated mounted HTTP with exact excerpt parity"
+    },
+    "workers": [
+      {
+        "native_http_ms": [
+          484.9222879856825,
+          78.48428003489971,
+          80.38244798080996,
+          82.12359400931746,
+          81.4820840023458
+        ],
+        "eviction_ms": 511.3034079549834,
+        "first_citation_ms": 67.66738003352657,
+        "citation_sha256": "a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc",
+        "warm_proof": {
+          "full_reconstructions": 1,
+          "fresh_complete_source_reads": 5,
+          "retained_proof_content_bytes": 28358395,
+          "artifact_reads": [
+            {
+              "revision_id": "rev:671381e44091b25010426f9f7001e205",
+              "bytes": 2291524
+            }
+          ],
+          "revision_verifications": 5,
+          "fresh_source_views": 5
+        },
+        "retained_proof_content_bytes": 56721035,
+        "rss_at_end": 623620096,
+        "full_reconstructions": [
+          "rev:671381e44091b25010426f9f7001e205",
+          "rev:c8efaac0652d60bb9c366adf3bc46943"
+        ],
+        "scope": "full Buddy application/lifespan over actual loopback HTTP; production read-only repository; fixture binding; local auth; no provider calls",
+        "lifecycle": [
+          {
+            "kind": "new_revision",
+            "revision_id": "rev:c8efaac0652d60bb9c366adf3bc46943",
+            "cold_ms": 514.3820429802872,
+            "citation_ms": 65.86122396402061,
+            "citation_sha256": "a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc"
+          },
+          {
+            "kind": "historical_return",
+            "revision_id": "rev:671381e44091b25010426f9f7001e205",
+            "cold_ms": 538.7082329834811,
+            "citation_ms": 64.69076604116708,
+            "citation_sha256": "a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc"
+          }
+        ]
+      },
+      {
+        "native_http_ms": [
+          488.98740799631923,
+          78.5730310017243,
+          78.35871895076707,
+          77.80307001667097,
+          81.63496595807374
+        ],
+        "eviction_ms": 509.6323830075562,
+        "first_citation_ms": 69.92885400541127,
+        "citation_sha256": "a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc",
+        "warm_proof": {
+          "full_reconstructions": 1,
+          "fresh_complete_source_reads": 5,
+          "retained_proof_content_bytes": 28358395,
+          "artifact_reads": [
+            {
+              "revision_id": "rev:671381e44091b25010426f9f7001e205",
+              "bytes": 2291524
+            }
+          ],
+          "revision_verifications": 5,
+          "fresh_source_views": 5
+        },
+        "retained_proof_content_bytes": 56721035,
+        "rss_at_end": 623673344,
+        "full_reconstructions": [
+          "rev:671381e44091b25010426f9f7001e205",
+          "rev:c8efaac0652d60bb9c366adf3bc46943"
+        ],
+        "scope": "full Buddy application/lifespan over actual loopback HTTP; production read-only repository; fixture binding; local auth; no provider calls",
+        "lifecycle": [
+          {
+            "kind": "new_revision",
+            "revision_id": "rev:c8efaac0652d60bb9c366adf3bc46943",
+            "cold_ms": 508.08999000582844,
+            "citation_ms": 67.59880896424875,
+            "citation_sha256": "a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc"
+          },
+          {
+            "kind": "historical_return",
+            "revision_id": "rev:671381e44091b25010426f9f7001e205",
+            "cold_ms": 554.2419319972396,
+            "citation_ms": 64.02650702511892,
+            "citation_sha256": "a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc"
+          }
+        ]
+      },
+      {
+        "native_http_ms": [
+          492.5651499652304,
+          82.35653804149479,
+          78.9534270297736,
+          78.56500102207065,
+          84.04303196584806
+        ],
+        "eviction_ms": 512.2052099904977,
+        "first_citation_ms": 66.56158401165158,
+        "citation_sha256": "a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc",
+        "warm_proof": {
+          "full_reconstructions": 1,
+          "fresh_complete_source_reads": 5,
+          "retained_proof_content_bytes": 28358395,
+          "artifact_reads": [
+            {
+              "revision_id": "rev:671381e44091b25010426f9f7001e205",
+              "bytes": 2291524
+            }
+          ],
+          "revision_verifications": 5,
+          "fresh_source_views": 5
+        },
+        "retained_proof_content_bytes": 56721035,
+        "rss_at_end": 623599616,
+        "full_reconstructions": [
+          "rev:671381e44091b25010426f9f7001e205",
+          "rev:c8efaac0652d60bb9c366adf3bc46943"
+        ],
+        "scope": "full Buddy application/lifespan over actual loopback HTTP; production read-only repository; fixture binding; local auth; no provider calls",
+        "lifecycle": [
+          {
+            "kind": "new_revision",
+            "revision_id": "rev:c8efaac0652d60bb9c366adf3bc46943",
+            "cold_ms": 505.3090289584361,
+            "citation_ms": 66.07309699757025,
+            "citation_sha256": "a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc"
+          },
+          {
+            "kind": "historical_return",
+            "revision_id": "rev:671381e44091b25010426f9f7001e205",
+            "cold_ms": 536.177214991767,
+            "citation_ms": 65.42097695637494,
+            "citation_sha256": "a64c21442cb988b1e92e410b34c30668317174ebdfe9e6792ccbea25593dafbc"
+          }
+        ]
+      }
+    ],
+    "limits": [
+      "Three independent workers, not statistically established p95",
+      "Actual full Buddy application/lifespan and loopback HTTP; synthetic10k matched fixture; local operator and warm DB/OS",
+      "Two-slot64MiB cap bounds retained UTF8 proof content, not process RSS or inflight allocation",
+      "Source/provenance and complete raw source row still refreshed each read; immutable parse/proof reuse only"
+    ]
+  },
+  "matched_tiny_delta_write": {
+    "receipt": {
+      "retained_file": "native-matched-http-write-228-4029.json",
+      "sha256": "fb0749403f6c8d479ad2bddff90eb53adf7df011b4b0747808edec3c1fadb129"
+    },
+    "scope": "native-only unprofiled mounted in-process HTTP; retained classic arm not rerun; setup excluded; single sample per stage",
+    "timings_ms": {
+      "prepare": 411.48,
+      "confirm": 496.67,
+      "replay": 383.1
+    },
+    "parent_entity_count": 10000,
+    "parent_assertion_count": 5,
+    "child_entity_count": 10000,
+    "child_assertion_count": 6,
+    "parent_revision_id": "rev:296c76896d16c4a2e0910605693ea609",
+    "child_revision_id": "rev:b973c9fb6ba029635581f08382263376",
+    "new_relationship_predicate": "dungeonbuddy.custom:owns",
+    "citation_sha256": "05b35547cd95cfc89090be7bfb82aa9e91b5b246b80dba7408fa0d875def6d16",
+    "citation_bytes": 44,
+    "head_event_delta": 1,
+    "existing_entities_and_assertions_preserved": true,
+    "endpoints_and_direction_preserved": true,
+    "player_edge_withheld": true,
+    "exact_replay": true,
+    "runtime_modules": [
+      {
+        "module": "dungeonmind.application.vnext.prospective",
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/worktrees/DungeonMind/src/dungeonmind/application/vnext/prospective.py",
+        "commit": "8c5b29188e27c7ef1f55c3ada9dccdc131f7c7db",
+        "sha256": "77a5fdeac4877cd86b6f0942edae8929a8a7144df07bf06a576f80918eb602e8"
+      },
+      {
+        "module": "dungeonmind.application.vnext.native_source_extension",
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/worktrees/DungeonMind/src/dungeonmind/application/vnext/native_source_extension.py",
+        "commit": "8c5b29188e27c7ef1f55c3ada9dccdc131f7c7db",
+        "sha256": "fca2c20223b3999b1bde3440570d6407c5d370b8412d49e47b1061a0733067b8"
+      },
+      {
+        "module": "dungeonmind.infrastructure.postgres.vnext_knowledge",
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/worktrees/DungeonMind/src/dungeonmind/infrastructure/postgres/vnext_knowledge.py",
+        "commit": "8c5b29188e27c7ef1f55c3ada9dccdc131f7c7db",
+        "sha256": "784053dce1a6d04b3d2cea8eaba1f4f24885f9e3b80c4cd1413b55cc3364e217"
+      },
+      {
+        "module": "dungeonmind.infrastructure.postgres.vnext_read_artifacts",
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/worktrees/DungeonMind/src/dungeonmind/infrastructure/postgres/vnext_read_artifacts.py",
+        "commit": "8c5b29188e27c7ef1f55c3ada9dccdc131f7c7db",
+        "sha256": "5c88d542bedf29195b452ad8799740e10751e81abd0d8a7978a1d3eeca4e27a3"
+      },
+      {
+        "module": "apps.live_control_server.services.graph_document_relationship",
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/worktrees/DungeonMindBuddy/apps/live_control_server/services/graph_document_relationship.py",
+        "commit": "0c2717cd43c1443afecb5d79776085900654b3a9",
+        "sha256": "e1624182a264368f448ccfa4fc9c3c9c2e277c8d2482b29ef44ac39f380fe010"
+      },
+      {
+        "module": "apps.live_control_server.integrations.worldkeeper.registry_standing_consumer",
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/worktrees/DungeonMindBuddy/apps/live_control_server/integrations/worldkeeper/registry_standing_consumer.py",
+        "commit": "0c2717cd43c1443afecb5d79776085900654b3a9",
+        "sha256": "913664243c9d6bb8289f368a461e3d6ab7a5825002cdb75611e7def5d6ef7e12"
+      }
+    ],
+    "retained_classic": {
+      "stage": 34.62,
+      "prepare": 195.94,
+      "confirm": 4395.86,
+      "replay": 810.51
+    },
+    "limits": [
+      "single sample per stage; setup excluded; no classic rerun",
+      "native parent includes setup edge; classic stage and prepare use two requests",
+      "classic evidence and native complete-object display differ; no universal DTO parity claim"
+    ]
+  },
+  "candidate_fixtures": {
+    "receipt": {
+      "retained_file": "v8-current-candidate-fixtures-v3-profile.json",
+      "sha256": "3d0a580c234955e89a04ed70d07fd3f66aa39db5ac8093dd59738b82e0f8af4f"
+    },
+    "scope": "candidate-pin small semantic fixtures, no timing or deployed proof",
+    "candidate": {
+      "core": "4b6516e2c0dfd81acaa4410b9b9bb9da18894c90",
+      "buddy": "0a746752da32324256d83b018e884aa7cb8ad692"
+    },
+    "fixtures": {
+      "buddy_preservation": {
+        "repository_path": "tests/fixtures/vnext/dungeonbuddy_domain_runtime_preservation_v2.json",
+        "raw_file_sha256": "c8ad6cd148d43a6ca4d195b502aa7d14f2323cc155622cb919c2756bad49d8e5",
+        "canonical_json_sha256": "4fdc327cdf6887dc4ae154e44da9904974c82e40d310a807f590ce2db6d21121",
+        "recipe": "V6.1 _runtime_witness includes one other-campaign decoy, _admission campaign-longmont GM/player; fixture historic world name is synthetic only",
+        "cases": {
+          "gm": {
+            "admitted_ids": [
+              "as:brennan-classification",
+              "as:brennan-located-in-mireward",
+              "as:brennan-name",
+              "as:brennan-secret-plan",
+              "as:mireward-classification"
+            ],
+            "admitted_ids_sha256": "ed1763d426e25184d751c8bec6269c9545eb21db1fa84373871e0eaacbd45147",
+            "result_digest": "bc72c1be52215140a5170be64a902fa0591095b1c28132a36e66c16c253aadec"
+          },
+          "player": {
+            "admitted_ids": [
+              "as:brennan-classification",
+              "as:brennan-located-in-mireward",
+              "as:brennan-name",
+              "as:mireward-classification"
+            ],
+            "admitted_ids_sha256": "1d7237096f98b55e54b6546e991281dfd1e5d5538028315cb82da19c807a9816",
+            "result_digest": "5002d92e8e8d3083b8d0e0a887d0454aea2d746a2319a2407c3241583e959190"
+          }
+        },
+        "domain_digest": "d12f3a517a37d29a2ba52455d9ae1691bc5e4ff3fd6853b701a9e28e46ec65cd",
+        "profile_digest": "d40a352d1c6cbd24df68be887be6dc65a470e4cea8fb64970ef9ad89b96a3339",
+        "base_profile_cases": {
+          "gm": {
+            "admitted_ids": [
+              "as:brennan-classification",
+              "as:brennan-located-in-mireward",
+              "as:brennan-name",
+              "as:brennan-secret-plan",
+              "as:mireward-classification"
+            ],
+            "admitted_ids_sha256": "ed1763d426e25184d751c8bec6269c9545eb21db1fa84373871e0eaacbd45147",
+            "result_digest": "bc72c1be52215140a5170be64a902fa0591095b1c28132a36e66c16c253aadec"
+          },
+          "player": {
+            "admitted_ids": [
+              "as:brennan-classification",
+              "as:brennan-located-in-mireward",
+              "as:brennan-name",
+              "as:mireward-classification"
+            ],
+            "admitted_ids_sha256": "1d7237096f98b55e54b6546e991281dfd1e5d5538028315cb82da19c807a9816",
+            "result_digest": "5002d92e8e8d3083b8d0e0a887d0454aea2d746a2319a2407c3241583e959190"
+          }
+        },
+        "base_profile_digest": "51ea47ff45bc86ea158939c34a5769e7ee56de3911278d473570e3795edb7e14",
+        "qualified_variant_canonical_sha256": "f84818e182c2758fb48aab4fa693c6751d28bb13477a3248f6b29c6938dcc94a",
+        "qualified_variant_recipe": "Deep-copy original fixture; change only semantic_profile_ref.profile_revision and descriptor_sha256 to accepted custom-predicate V3 descriptor; same GM/player admitted IDs"
+      },
+      "organizational_memory": {
+        "repository_path": "tests/fixtures/vnext/organizational_memory_v1.json",
+        "raw_file_sha256": "0d539d1bf99c13290856a319a07c60750b8939c54694fbb841643046286b8dc5",
+        "canonical_json_sha256": "9b7dd16401472e3be7e2ec1b33c41f58aae4f981219bb6610a522822ca8bde57",
+        "recipe": "test_vnext_entity_reads._org_with_isolated_entity; established/team research+retrieval request; synthetic rev:org-isolated",
+        "exact_priya": "34c2a1c284b9871ca92754dffbb82c9134ecbe2a60e3100f45c0b7efadf63646",
+        "complete_priya": "73074194f4517cbee3e7fec8f2b0d00daf91173b5795f7f5381e733c16625368",
+        "exact_ids": [
+          "asrt:priya-member-research",
+          "asrt:priya-owns-retrieval-apr",
+          "asrt:priya-title"
+        ],
+        "complete_ids": [
+          "asrt:priya-member-research",
+          "asrt:priya-owns-retrieval-apr",
+          "asrt:priya-title"
+        ],
+        "historical_candidate_result_digests_match": true
+      },
+      "adversarial_identity": {
+        "repository_path": "tests/fixtures/vnext/adversarial_epistemic_identity_v1.json",
+        "raw_file_sha256": "1a4fbd8f9e9dd1052bc3497ac3528a68db4fe9ea4596957b242940a2f4eb8717",
+        "canonical_json_sha256": "b419937b825fb203429b50bc1e2759b6a503605df52ffba5057e28f8eaac2146",
+        "recipe": "same synthetic envelope as parsed-knowledge test37; standings map canonical_sha256; identity decisions validated independently, not applied as publications",
+        "standings": {
+          "asrt:belief-owns": "provisional",
+          "asrt:fact-owns": "established",
+          "asrt:plan-transfer": "provisional",
+          "asrt:retracted-rumor": "retracted"
+        },
+        "standings_sha256": "28a24f76327f7fcf929ff8c6fbb4015a7a4099eea72e825f427e0cc7d3af7420",
+        "parsed_semantic_digest": "5784ac0a1a9926954321502d5bb62c9dd7531bfe3d172750b5fc83d86c7ae9b9",
+        "identity_decisions_sha256": "2ea10a244f91feabf5c20dc77805420f4b88866ea858b360a3574147770e8252",
+        "identity_decision_kinds": [
+          "mark_ambiguous",
+          "merge",
+          "reject_candidate",
+          "split",
+          "unmerge"
+        ]
+      }
+    },
+    "source_modules": [
+      {
+        "module": "dungeonmind.agents",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/agents/__init__.py",
+        "sha256": "3347e6978734464440734c3ca7245119bac7367ba83a3a5c7b66291b383b10cf"
+      },
+      {
+        "module": "dungeonmind.agents.fixture",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/agents/fixture.py",
+        "sha256": "aa098b30579412f6e28c5062a8b6e4cc93c3c65a46c971bcbeb2ba21d4d3e8eb"
+      },
+      {
+        "module": "dungeonmind.agents.protocol",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/agents/protocol.py",
+        "sha256": "81ad96302aa2bb263c12a6abef714f681eb92a2be1b7f61be85ad889a7b01988"
+      },
+      {
+        "module": "dungeonmind.application",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/__init__.py",
+        "sha256": "a0fb0dc2742930d176d5fec5095067c896030a1c5ece633cfca2c7bc1dc8a134"
+      },
+      {
+        "module": "dungeonmind.application.context_assembly",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/context_assembly.py",
+        "sha256": "78b391fba443725c880cbf64d1057efd8553fb19f76a335434e3d49884ce2d62"
+      },
+      {
+        "module": "dungeonmind.application.contribution_review",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/contribution_review.py",
+        "sha256": "7104f862fb85249bde61a1ece5738b5a653430fb871e625febcb8966f7551112"
+      },
+      {
+        "module": "dungeonmind.application.contribution_review_v2",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/contribution_review_v2.py",
+        "sha256": "9c3682be67ab010b754ab5b4aaaeccdf4f1e48d32b31addedef17a19971ae556"
+      },
+      {
+        "module": "dungeonmind.application.contribution_review_v3",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/contribution_review_v3.py",
+        "sha256": "b97440551b63bd27deaeaf218cff01393cecd4d329b183062f39f1d86402bbb9"
+      },
+      {
+        "module": "dungeonmind.application.contribution_review_v4",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/contribution_review_v4.py",
+        "sha256": "6076be34340fe490eff7b64c47fc7db6b92974a8f468d5f8df46205e134a524a"
+      },
+      {
+        "module": "dungeonmind.application.existing_world_adoption",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/existing_world_adoption.py",
+        "sha256": "0a3174bbd82a8ec505e01a6651591e94eb271d16b0658c2d3505a3f0acfb581b"
+      },
+      {
+        "module": "dungeonmind.application.existing_world_adoption_repair",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/existing_world_adoption_repair.py",
+        "sha256": "d0bd049a2ac176004312b74a92085f520fd7b393d2db2e740182fd45cb56820b"
+      },
+      {
+        "module": "dungeonmind.application.existing_world_correspondence",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/existing_world_correspondence.py",
+        "sha256": "53d0d7a24256abf5fbde2a3d511eacab3057ce718049f68e3add7a620aa2b713"
+      },
+      {
+        "module": "dungeonmind.application.fictional_time",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/fictional_time.py",
+        "sha256": "3e99d3962b43c36294f7ad4ce8a2d9cddb7585d3759dd05fad6ab32afdaed04e"
+      },
+      {
+        "module": "dungeonmind.application.fictional_time_query_service",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/fictional_time_query_service.py",
+        "sha256": "1a3e690245e8e915f366b004b51b0547b825519f4f115b40213df9c205606131"
+      },
+      {
+        "module": "dungeonmind.application.graph_scope",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/graph_scope.py",
+        "sha256": "329e1b617d82d193952579cb7d001dcf71c880af3972e9eb111c616e82395a16"
+      },
+      {
+        "module": "dungeonmind.application.graph_snapshot",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/graph_snapshot.py",
+        "sha256": "efc79dbe4bf3391dc7bbc2bf43e7789a62430c6f85aa6ee1ef2b4e431131300a"
+      },
+      {
+        "module": "dungeonmind.application.graph_snapshot_v4",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/graph_snapshot_v4.py",
+        "sha256": "2a041e7b7b4059da2199c23071b440ed11f8dc50f2d566905e30f2fb02fa5bdc"
+      },
+      {
+        "module": "dungeonmind.application.graph_snapshot_v5",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/graph_snapshot_v5.py",
+        "sha256": "2b50b8185d40721b95af48e03b1a8a1cb1a6c8b2bb9d294ea92ead6847551a20"
+      },
+      {
+        "module": "dungeonmind.application.graph_snapshot_v6",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/graph_snapshot_v6.py",
+        "sha256": "06afb20e30398ade199dece69f6ea38465fd154fb9b521659e161654988a2548"
+      },
+      {
+        "module": "dungeonmind.application.mind_turn",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/mind_turn.py",
+        "sha256": "dae9c55d592854f9e07107f3e6e8726dae43fe04572ccf886bda6e8f8189eb39"
+      },
+      {
+        "module": "dungeonmind.application.parsed_revision_cache",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/parsed_revision_cache.py",
+        "sha256": "aa336110d29a887579ad65d146cacacc47084dc3ce6ff2688484792db03ae08f"
+      },
+      {
+        "module": "dungeonmind.application.publication_admission",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/publication_admission.py",
+        "sha256": "1824929926be2ab7a0571365da0f8bcf2f5606a58d5d09578ecd76d2556ef385"
+      },
+      {
+        "module": "dungeonmind.application.publication_history",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/publication_history.py",
+        "sha256": "78996e0ed3187772644bc296c53958d5e96601252537bec4f5ccc2495a59ef85"
+      },
+      {
+        "module": "dungeonmind.application.query_embedding",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/query_embedding.py",
+        "sha256": "af4d4701e4e2e6444102ecf456e961949231bbbda1abac2f04de5d036c5bdf52"
+      },
+      {
+        "module": "dungeonmind.application.repositories",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/repositories.py",
+        "sha256": "542be97195ee44d7664fc7a84384c25d6ebc812554b77f2c15d0ae9f411c686b"
+      },
+      {
+        "module": "dungeonmind.application.review_materialization",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/review_materialization.py",
+        "sha256": "e473b37f8e8d5eab298c750b210e3282301be36e337c8d7262ad93784d0263b4"
+      },
+      {
+        "module": "dungeonmind.application.review_materialization_v4",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/review_materialization_v4.py",
+        "sha256": "ffe99886910897b179fb8090d0c74c00baf7a9167e139ff3c6f8a94997da2da9"
+      },
+      {
+        "module": "dungeonmind.application.review_materialization_v6",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/review_materialization_v6.py",
+        "sha256": "0a7287bb9c3168f69363b19c65cdf427f8f7ceba24904d7a801b98a13743928e"
+      },
+      {
+        "module": "dungeonmind.application.review_publication",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/review_publication.py",
+        "sha256": "41163c9a2a3386fb7ba10d98fc3023614cf5ae6fdd60e52793bf5d113bd217eb"
+      },
+      {
+        "module": "dungeonmind.application.reviewed_world_initialization",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/reviewed_world_initialization.py",
+        "sha256": "fdbfc3c02b6f59dea45669fd3d7886a369832c8e39a50c7967895c9918d5863b"
+      },
+      {
+        "module": "dungeonmind.application.semantic_profiles",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/semantic_profiles.py",
+        "sha256": "310265350485a9dd4c9fcfc0c03fb49f12a84d1a44aa5d58ac43afd41e29fdb9"
+      },
+      {
+        "module": "dungeonmind.application.source_admission",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/source_admission.py",
+        "sha256": "73de29d510fc459732af30467758b96d9190d1d0619df6fd5d4497a5ada5d660"
+      },
+      {
+        "module": "dungeonmind.application.source_description_correction",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/source_description_correction.py",
+        "sha256": "9b53e2f73c5160eef5fda5109228b58ff8c66535f5602d94ce87eda569e0c706"
+      },
+      {
+        "module": "dungeonmind.application.source_provenance_snapshot",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/source_provenance_snapshot.py",
+        "sha256": "b5d32e5617376e3f398e84abf2a5e77c0cc2f1cb5eb3906531307e21841cc64a"
+      },
+      {
+        "module": "dungeonmind.application.vnext",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/__init__.py",
+        "sha256": "93cda1d65cadb7255250bbd2cecaf4ce98472855c8caa83806059fc71d56fd82"
+      },
+      {
+        "module": "dungeonmind.application.vnext._read_artifact",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/_read_artifact.py",
+        "sha256": "5f9b2c8041877e76eb622906ce4fdf4bdaad362eba96b269fdcaab7080c704d0"
+      },
+      {
+        "module": "dungeonmind.application.vnext._source_wire",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/_source_wire.py",
+        "sha256": "03fc0547a62145d50762b109462436103d01f2abff9d29b2d8bd8bddee1d4818"
+      },
+      {
+        "module": "dungeonmind.application.vnext.admission",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/admission.py",
+        "sha256": "8b32cd4dd599f16da16d5e6cd2ee4bc22be5360ecc50730c8952ded5e3b46773"
+      },
+      {
+        "module": "dungeonmind.application.vnext.authority",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/authority.py",
+        "sha256": "0c9405600a6f63e75f5d7cf05d097a765a0be1a596b8fcae32b82c1681e16da0"
+      },
+      {
+        "module": "dungeonmind.application.vnext.builder",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/builder.py",
+        "sha256": "5a047f99425c42d2a4e5a31c054edc4b3527a29cd77ed8b5e7128aafb5cd3650"
+      },
+      {
+        "module": "dungeonmind.application.vnext.entity_reads",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/entity_reads.py",
+        "sha256": "5513bafb88fe444bd8134dba79d48158d1b2d0539e53273588478891e2b4de1d"
+      },
+      {
+        "module": "dungeonmind.application.vnext.errors",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/errors.py",
+        "sha256": "5ab525481287b3aa1b03833dc2fbdd1bc131f12bef587899ed89217a144bc530"
+      },
+      {
+        "module": "dungeonmind.application.vnext.evidence_reads",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/evidence_reads.py",
+        "sha256": "ae53948fd98f176c4e389d3bc7fa4bb950a6d44baeb381fadacbfb7a9a0b09d9"
+      },
+      {
+        "module": "dungeonmind.application.vnext.frozen_json",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/frozen_json.py",
+        "sha256": "b062956308bc1c296c163989df052727a90ae895de3247df26e49c384d4ffd8e"
+      },
+      {
+        "module": "dungeonmind.application.vnext.initialization",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/initialization.py",
+        "sha256": "b147c830bf3f05455d76fe001672bfd612702e86df6cb45e6e924b8542c52637"
+      },
+      {
+        "module": "dungeonmind.application.vnext.legacy_compat",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/legacy_compat.py",
+        "sha256": "f8aeee36ce1a46d647a32deafed9f7a6ac0ca70fc7949195c200380e995270c2"
+      },
+      {
+        "module": "dungeonmind.application.vnext.materialization",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/materialization.py",
+        "sha256": "7e2f7b008962dc3e5c967c2a26a6b13c6c07bc52277b317ff5c5f770a0731cc3"
+      },
+      {
+        "module": "dungeonmind.application.vnext.model",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/model.py",
+        "sha256": "5180955a391b9769561456e0d9f1ca34e8a55058e0e5b7983c8b72912de476c7"
+      },
+      {
+        "module": "dungeonmind.application.vnext.native_source_access",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/native_source_access.py",
+        "sha256": "56e97493bb8d34d8d580e2fb95d4d55f699709785ec39b742803444c1aa40cf1"
+      },
+      {
+        "module": "dungeonmind.application.vnext.native_source_admission",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/native_source_admission.py",
+        "sha256": "6d1aeb8e92a8cb473278f1eb548d65f93d22380dabd87e970f589db8b0658117"
+      },
+      {
+        "module": "dungeonmind.application.vnext.native_source_extension",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/native_source_extension.py",
+        "sha256": "fca2c20223b3999b1bde3440570d6407c5d370b8412d49e47b1061a0733067b8"
+      },
+      {
+        "module": "dungeonmind.application.vnext.neighborhood",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/neighborhood.py",
+        "sha256": "860398bc37cc405ae96e962d9c6a7c70810ab0bd7ce37d621a5dd236903867f0"
+      },
+      {
+        "module": "dungeonmind.application.vnext.operator_approval",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/operator_approval.py",
+        "sha256": "bd21e10e81be7c9054211bbcc2240e47a8699a4f5b0bc43276149747ed932a3f"
+      },
+      {
+        "module": "dungeonmind.application.vnext.ports",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/ports.py",
+        "sha256": "e811a64250e064bba9e98f6c1983a56a45184132b42321cfcc2d673905f8a13d"
+      },
+      {
+        "module": "dungeonmind.application.vnext.profile_transition",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/profile_transition.py",
+        "sha256": "237c2418abbc4a86585a5afa7d60fa67ac2341a96d149af9234a1a47b0b9aece"
+      },
+      {
+        "module": "dungeonmind.application.vnext.prospective",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/prospective.py",
+        "sha256": "77a5fdeac4877cd86b6f0942edae8929a8a7144df07bf06a576f80918eb602e8"
+      },
+      {
+        "module": "dungeonmind.application.vnext.provenance",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/provenance.py",
+        "sha256": "f3ef461f7ccbc20b7279befd494228966467f39d17005ddda3b43314d9f985f1"
+      },
+      {
+        "module": "dungeonmind.application.vnext.publication",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/publication.py",
+        "sha256": "48c27adbd6b13929cfb1dbd6564045761a481412031f90360ba4849a060df25a"
+      },
+      {
+        "module": "dungeonmind.application.vnext.read_context",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/read_context.py",
+        "sha256": "1e4fd2d98406afd47e20e41a09cb96c2d17642dd91e0e72296f9f1d2fdb5b2ba"
+      },
+      {
+        "module": "dungeonmind.application.vnext.records",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/records.py",
+        "sha256": "0c66c661feee0fe45edf1c96d6b76bb7952c1fef22e99d5177a5b9338b04513a"
+      },
+      {
+        "module": "dungeonmind.application.vnext.revision_ids",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/revision_ids.py",
+        "sha256": "d6648953afefcdec4318aec5d1c4b1496d8ccec35241ff8ebd8d8e42461133e6"
+      },
+      {
+        "module": "dungeonmind.application.vnext.search",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/search.py",
+        "sha256": "09f073731a4174d77bf428c0bffc7c8d84e14a82251f209092a6cd99ddeebae7"
+      },
+      {
+        "module": "dungeonmind.application.vnext.search_normalize",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/search_normalize.py",
+        "sha256": "185207ec68c230a7d97d3ad4e501bc6975cdcf72d23c3476757625cd99a3f054"
+      },
+      {
+        "module": "dungeonmind.application.vnext.source_anchors",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/source_anchors.py",
+        "sha256": "84e0d8d957ae9a70ae21e946de21de53e6545b20a724fd9937f23a2dd51a103b"
+      },
+      {
+        "module": "dungeonmind.application.vnext.space_provisioning",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/vnext/space_provisioning.py",
+        "sha256": "1bb4f10710abc2a7559be8a4b469f65bbf3cbe6e0d21060fc5e11b4896d472af"
+      },
+      {
+        "module": "dungeonmind.application.world_graph_observability",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/world_graph_observability.py",
+        "sha256": "256673c20343a9e133647707d58890ab46e34c923a6f68440e9c8e2359e97c4a"
+      },
+      {
+        "module": "dungeonmind.application.world_graph_projection",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/world_graph_projection.py",
+        "sha256": "d694be39929cb84dcdeb02ecae2da9447f6a1ca4c96045b40a152c1e3a2d39a4"
+      },
+      {
+        "module": "dungeonmind.application.world_graph_read_context",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/world_graph_read_context.py",
+        "sha256": "f22004b305d9bdfba3bd50990800e2362043f88b90370237ec3ae8c77acac62b"
+      },
+      {
+        "module": "dungeonmind.application.world_graph_retrieval",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/world_graph_retrieval.py",
+        "sha256": "63c627cbe93757b352eb3cb8fd5a693486efa745c61bb64dfab650adce069af2"
+      },
+      {
+        "module": "dungeonmind.application.world_identity_reconciliation",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/application/world_identity_reconciliation.py",
+        "sha256": "5b8f1af0a175a4b2029a263c859bc68e6ab0c050c449977da97a0b4597f2c233"
+      },
+      {
+        "module": "dungeonmind.contracts",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/__init__.py",
+        "sha256": "f317eb4f517ed858d93b478886e0730dfc6992b37a49615f84b7c98cf502e399"
+      },
+      {
+        "module": "dungeonmind.contracts.adopted_assertion_withdrawal",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/adopted_assertion_withdrawal.py",
+        "sha256": "0363bac2c97e66a1212abb28fd8f609d959c7be0b425c269025920e9d9359424"
+      },
+      {
+        "module": "dungeonmind.contracts.base",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/base.py",
+        "sha256": "1dc1b6c12934d0dc3836e80018456a0cc8aa4f49ee8ddc5d9384c00248cc9b29"
+      },
+      {
+        "module": "dungeonmind.contracts.capability",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/capability.py",
+        "sha256": "e52bca843a99fc4aa12576fe60c9ca67a27dc838db5eb7672bc83d115bb858b8"
+      },
+      {
+        "module": "dungeonmind.contracts.contribution",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/contribution.py",
+        "sha256": "8e7a8b4a594cadada86261175a94ce9a6f8dfce4532a98fa2cbb7ac4a8b466f5"
+      },
+      {
+        "module": "dungeonmind.contracts.contribution_review",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/contribution_review.py",
+        "sha256": "4d4674df01d6822e2eb74f9e22c73ff8b5fcb82613deb7b558ff8497a0054325"
+      },
+      {
+        "module": "dungeonmind.contracts.contribution_review_v2",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/contribution_review_v2.py",
+        "sha256": "4667b3354c62e6921445a8ecb9cd413caee96b65dbbbd56a6b1f22839fc72999"
+      },
+      {
+        "module": "dungeonmind.contracts.contribution_review_v3",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/contribution_review_v3.py",
+        "sha256": "5b8ea648e63979869881179b702010e69c92e727ea7f7d5a5e09088c02239b47"
+      },
+      {
+        "module": "dungeonmind.contracts.contribution_review_v4",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/contribution_review_v4.py",
+        "sha256": "53c46c3c982062b1c6217ca055b8687a4c43fa6fe200e4ddba60581f1da61c53"
+      },
+      {
+        "module": "dungeonmind.contracts.evidence",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/evidence.py",
+        "sha256": "81add0e4fecd3e6dfa36d589f3efce05715ca990a7499db59aec4187b917e8a0"
+      },
+      {
+        "module": "dungeonmind.contracts.existing_world_adoption",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/existing_world_adoption.py",
+        "sha256": "6be65132be7abe67ac40e07d6300928e2112391223b6ce2d62f280ccd6d59d5b"
+      },
+      {
+        "module": "dungeonmind.contracts.existing_world_adoption_repair",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/existing_world_adoption_repair.py",
+        "sha256": "5e04fe596054f83f35cf4dc02a79d43169fc89141b6881610bf2f95a4055cdba"
+      },
+      {
+        "module": "dungeonmind.contracts.existing_world_correspondence",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/existing_world_correspondence.py",
+        "sha256": "f3c051e6740aecc39053f8079a4f094dd52319e9a1865280ed580d3d6e5ee795"
+      },
+      {
+        "module": "dungeonmind.contracts.fictional_time",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/fictional_time.py",
+        "sha256": "e33694695e8267f15c029107ecec352dedfff5c7ba1fef20289a0936c6e14a4f"
+      },
+      {
+        "module": "dungeonmind.contracts.fictional_time_transport",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/fictional_time_transport.py",
+        "sha256": "d80d5ef6ad93020a6850651ef7f024498d9c4583f6bbfcf2f17be63625b8c86d"
+      },
+      {
+        "module": "dungeonmind.contracts.graph",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/graph.py",
+        "sha256": "821fa8156776b478ba35b925ba8f4de6863b74c9b17eeb72d51e8a0c53a99d66"
+      },
+      {
+        "module": "dungeonmind.contracts.identity",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/identity.py",
+        "sha256": "5e9c26ed0b10cd9631892ccb68b87ff583c2e8048eb3ed3aaf1649f85db5d4a9"
+      },
+      {
+        "module": "dungeonmind.contracts.ids",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/ids.py",
+        "sha256": "2ff328b9e822cb78a44a53a3fc2450578389f4d824daaf1657ca6fbd8c77ccd5"
+      },
+      {
+        "module": "dungeonmind.contracts.knowledge_assertion",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/knowledge_assertion.py",
+        "sha256": "8606d84866b400373dc15c3547270406f3d708904214cbc140daeefe9f2ef208"
+      },
+      {
+        "module": "dungeonmind.contracts.mind_turn",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/mind_turn.py",
+        "sha256": "cebc8a34aa82c4043a46349cb287a0cae3ed532dfbe6f1fba4bd332563f58916"
+      },
+      {
+        "module": "dungeonmind.contracts.projection",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/projection.py",
+        "sha256": "d404028bc57067fb7b9beb6ea5401125f1b2cebc1660fe136c8e76d42f8b7a55"
+      },
+      {
+        "module": "dungeonmind.contracts.projection_v2",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/projection_v2.py",
+        "sha256": "61e9e4ae8cacae05f8391950b1de44fd76f14d07c938da537dbd7386d31bda9b"
+      },
+      {
+        "module": "dungeonmind.contracts.publication_admission",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/publication_admission.py",
+        "sha256": "8268ca08341b205be4c4d7bf5de42026719014cf30dcb6e8e54162c229caae3f"
+      },
+      {
+        "module": "dungeonmind.contracts.retrieval",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/retrieval.py",
+        "sha256": "bf23b388a196fe43c04a51ad58359f58e485ce58ac17ffb227167067b4883ecf"
+      },
+      {
+        "module": "dungeonmind.contracts.review_publication",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/review_publication.py",
+        "sha256": "bf44e9664ad9ec6ed7db06d540500260a7abdf08137b6a9de943bc73c8a6b844"
+      },
+      {
+        "module": "dungeonmind.contracts.review_publication_transport",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/review_publication_transport.py",
+        "sha256": "9513b5d9f2958e12157f0527add4dffa13a619fa3246dea08b0e016a1b4baf69"
+      },
+      {
+        "module": "dungeonmind.contracts.reviewed_world_initialization",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/reviewed_world_initialization.py",
+        "sha256": "db443a70134250d8c3be62752893816ec1a6c8e650b35bab7f901eb0a45dabd0"
+      },
+      {
+        "module": "dungeonmind.contracts.semantic",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/semantic.py",
+        "sha256": "4373eebf1d430e218a761570eff61391a9333abad109186752aa5cfde4cb3df0"
+      },
+      {
+        "module": "dungeonmind.contracts.semantic_profile",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/semantic_profile.py",
+        "sha256": "a097e0971830744ba621b69f0e1ab8ea5cebeab583c1166b4564e1a5b6344a9f"
+      },
+      {
+        "module": "dungeonmind.contracts.source_admission",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/source_admission.py",
+        "sha256": "fdfc502954d2f2a2e970485e56004850c115d8cf71d38503d1c7980a2cfa1da3"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/__init__.py",
+        "sha256": "5b5b147df22b16b03fa44829be47da4003402123a7f3d945eeb91c439c0fc8f7"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext.common",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/common.py",
+        "sha256": "3ebc400238ba13a7913de4b467a99fd7d7e3fde00dc04e303e11f80b65c5b0e3"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext.contribution",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/contribution.py",
+        "sha256": "9c737968d960dcc18705ec34bac7abf5b7be3cfd9f526d20aaae967eb24ec247"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext.domain",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/domain.py",
+        "sha256": "ba8ca7c2f6380a6a985ae6b392868c6d1f01e2ad71a3417ac8ce82ce3b31ddf4"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext.knowledge",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/knowledge.py",
+        "sha256": "480b23807671a4ad4760cbb3f135b571707e185a1a62aa4c3676d7f93f37fdab"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext.native_source",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/native_source.py",
+        "sha256": "dec8c3fd470c65b958592d6a929e53b5d8c9b080cf5bed94eb66cb71374d130a"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext.operator_source",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/operator_source.py",
+        "sha256": "15ed32940291646c6fb8b39eaf90da0ee3795f6701afc6d9df778e4ca3a57245"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext.pdf_region",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/pdf_region.py",
+        "sha256": "8e5a569071a6ac132184e66ba0694886238c8058f5e7bf3faab7fd9df1988acc"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext.profile_transition",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/profile_transition.py",
+        "sha256": "af9c5d9b4f9a5a33125e8a26650379483e3ad33bbcc2afe1c593817a5b962fb9"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext.projection",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/projection.py",
+        "sha256": "f9ebecc6743899a8adafd9094d37b6feba6f3f63c0901b3121a7a6f033b805d5"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext.prospective",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/prospective.py",
+        "sha256": "328f97516e95dea02cc40a1217291792bc8ee4bf2fd2b4b7c2cfae5d433535d5"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext.publication",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/publication.py",
+        "sha256": "8f38edf7f4e9fc0f5b0772f706c7243ea381d4baf6f52aa76f021f64646d8e8b"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext.source",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/source.py",
+        "sha256": "fc1e2b8ba9208509ffba0b61a1bc76067d4fde3db25269b3daab35feba4eae39"
+      },
+      {
+        "module": "dungeonmind.contracts.vnext.space_provisioning",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vnext/space_provisioning.py",
+        "sha256": "d9624fc410034742668dc86d532496dc593e5e6040917ecca3db79175ea8ffd3"
+      },
+      {
+        "module": "dungeonmind.contracts.vocabulary",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/contracts/vocabulary.py",
+        "sha256": "90a6ef200daeef3c50bc11d4f942cf9c4dbc037580009004270cc841580b199a"
+      },
+      {
+        "module": "dungeonmind.domain",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/domain/__init__.py",
+        "sha256": "5e1caac105d98438ebad3af86e0c6ea419de688c691e04227894803558669e1f"
+      },
+      {
+        "module": "dungeonmind.domain.canonical",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/domain/canonical.py",
+        "sha256": "f4ec97dbd4ac862e7579bfc966c7fd93d215ccdc7acaddd501069764850a9511"
+      },
+      {
+        "module": "dungeonmind.domain.capability",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/domain/capability.py",
+        "sha256": "25ff5a4cb391ebe469acb12e167c1c6b5f0e4c352d51971a8a5029bf5d54c64e"
+      },
+      {
+        "module": "dungeonmind.domain.errors",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/domain/errors.py",
+        "sha256": "62bd69b36955a5320115af5401b032bbd29a55b3cfcddbfcc92bda11ee7311cf"
+      },
+      {
+        "module": "dungeonmind.domain.existing_world_membership",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/domain/existing_world_membership.py",
+        "sha256": "eab705d6a62d3156686f005d229ceda360a219dac7851c02cbdee33b5bbb6928"
+      },
+      {
+        "module": "dungeonmind.domain.fusion",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/domain/fusion.py",
+        "sha256": "e86290562cdbc4f834ee14b76b8b4416db99d54c9054929c8996fb573cb2d146"
+      },
+      {
+        "module": "dungeonmind.domain.revision_ids",
+        "repository": "DungeonMind",
+        "path": "src/dungeonmind/domain/revision_ids.py",
+        "sha256": "3f9688ddfa08536508b0f240353555c14ebc30f28166d763f447d883849c0e7e"
+      },
+      {
+        "module": "graph_memory.vnext",
+        "repository": "DungeonMindBuddy",
+        "path": "src/graph_memory/vnext/__init__.py",
+        "sha256": "1e0f219ab83b7f470fe625629b5646be6bf8e0ade54087fd083ac8b54f383784"
+      },
+      {
+        "module": "graph_memory.vnext.domain_runtime",
+        "repository": "DungeonMindBuddy",
+        "path": "src/graph_memory/vnext/domain_runtime.py",
+        "sha256": "a2b229d9744ec4ac6b50d8ae42af646b21aad87c8f2cb2c043850ea0452636e1"
+      }
+    ],
+    "generating_script_sha256": "d966ed45d8b7b474dca03cace9a7b47a71935181a31c6b3165de2998a08995ed",
+    "recipe_source_files": [
+      {
+        "repository": "DungeonMind",
+        "path": "tests/unit/test_vnext_entity_reads.py",
+        "sha256": "5a90d482091e3b9326c226ba72ce9d4ada2c4804df46ac8744a2f374752b859d"
+      },
+      {
+        "repository": "DungeonMind",
+        "path": "tests/unit/test_vnext_knowledge_read_context.py",
+        "sha256": "126dca547d35103a517b76327a29723d4dc2a1029585649d996f861f74ad89aa"
+      },
+      {
+        "repository": "DungeonMindBuddy",
+        "path": "tests/test_v6_1_dungeonbuddy_vnext_domain_runtime.py",
+        "sha256": "0ce42f17e311ac1c6b3cac981f2a4ca479cf8e6aeb89bee4e4a43dc18ee3e73a"
+      }
+    ],
+    "base_profile_receipt": {
+      "retained_file": "v8-current-candidate-fixtures.json",
+      "sha256": "cdabc61138b6e93f059e6181124f852f634f60dcf0430a00d8ff3ea6e0d19233"
+    }
+  },
+  "validation": [
+    {
+      "cohort": "v8-acceptance-core-semantics",
+      "passed": 269,
+      "skipped": 0,
+      "junit": {
+        "retained_file": "v8-acceptance-core-semantics.xml",
+        "sha256": "50438a32896c5c530f2a9fd967fc4b654a8e8be9c2be050f01281d8196a46f21"
+      },
+      "log": {
+        "retained_file": "v8-acceptance-core-semantics.log",
+        "sha256": "637f3c6c9e21926578558bcc6a87cca6b7b9a65d39f6f2139fd80cd8dd64dba6"
+      },
+      "selected_authority_and_work_cases": [
+        "test_public_namespace_is_explicit_and_bounded",
+        "test_utc_interval_ordering_and_required_bound",
+        "test_organizational_memory_fixture_validates_and_has_stable_digest",
+        "test_temporal_supersession_fixture_validates",
+        "test_adversarial_fixture_preserves_governance_axes",
+        "test_fixture_digest_ledger_is_pinned",
+        "test_36_generic_organizational_memory_fixture_builds_without_ttrpg_imports",
+        "test_37_adversarial_epistemic_identity_fixture_builds_without_collapsing_conflicts",
+        "test_57_buddy_campaign_player_admission",
+        "test_63_historical_reader_files_remain_at_pinned_digests",
+        "test_claim_mode_filter_policy_fixture",
+        "test_74_result_digest_independent_of_work_counters",
+        "test_75_get_entity_work_proportional_to_subject_support",
+        "test_76_complete_work_proportional_to_touching_support",
+        "test_v6_k1_evidence_less_alias_returns_without_alias_source_work"
+      ]
+    },
+    {
+      "cohort": "v8-acceptance-core-bounded-work",
+      "passed": 117,
+      "skipped": 0,
+      "junit": {
+        "retained_file": "v8-acceptance-core-bounded-work.xml",
+        "sha256": "b8745115fed723f9972e025aad00dfa9d6130db54ccc631b42c55cd094d4bb51"
+      },
+      "log": {
+        "retained_file": "v8-acceptance-core-bounded-work.log",
+        "sha256": "b2ef6a2f986e8581e870a79816b952177b4501b8cd5a7dfef25b06c33bfac276"
+      },
+      "selected_authority_and_work_cases": [
+        "test_37_high_degree_seed_work_scales_honestly",
+        "test_43_organizational_memory_fixture_traverses",
+        "test_47_work_counters_do_not_affect_digest",
+        "test_15_unrelated_growth_does_not_change_fixed_target_work",
+        "test_17_org_and_buddy_fixtures_use_generic_engine",
+        "test_14_unrelated_growth_does_not_change_low_frequency_work",
+        "test_15_high_frequency_work_equals_real_match_set",
+        "test_18_org_and_buddy_fixtures_share_the_engine"
+      ]
+    },
+    {
+      "cohort": "v8-acceptance-buddy-authority",
+      "passed": 94,
+      "skipped": 0,
+      "junit": {
+        "retained_file": "v8-acceptance-buddy-authority.xml",
+        "sha256": "efefe3718c13410cb59bb04c6f048096eb0308274e1411ac263aad974346cff6"
+      },
+      "log": {
+        "retained_file": "v8-acceptance-buddy-authority.log",
+        "sha256": "3e98b8ffa59b811e2ed1aaf33fdc0b863ce51219f89b4fd110384e043d571b36"
+      },
+      "selected_authority_and_work_cases": [
+        "test_campaign_gm_admission_preserves_expected_semantics",
+        "test_campaign_player_cannot_recover_generic_rejections",
+        "test_bounded_read_and_presentation_work_shape",
+        "test_adapter_does_not_cross_alias_or_legacy_read_authority_boundary",
+        "test_campaign_world_role_and_standing_boundaries_fail_closed",
+        "test_anchor_tokens_are_deterministic_context_bound_and_fail_closed",
+        "test_native_vnext_boundaries_do_not_import_buddy_or_legacy_policy",
+        "test_historical_valid_support_survives_later_source_epoch",
+        "test_withdrawn_source_is_withheld_at_same_graph_pin",
+        "test_shared_search_preserves_admitted_seed_under_node_bound",
+        "test_native_recap_pages_reauthorize_exact_span_after_withdrawal",
+        "test_cached_neighborhood_anchor_withholds_withdrawn_source_at_fixed_graph_pin",
+        "test_cached_neighborhood_anchor_rechecks_scope[change0]",
+        "test_cached_neighborhood_anchor_rechecks_scope[change1]",
+        "test_cached_anchor_follows_visible_revision_and_restores_historical_content",
+        "test_selected_neighborhood_and_anchor_share_explicit_source_proof_owner",
+        "test_source_proof_pool_retains_two_pins_with_a_fixed_total_budget",
+        "test_source_proof_pool_concurrent_pin_selection_has_one_owner_per_pin"
+      ]
+    }
+  ],
+  "full_input_neighborhood_scale": {
+    "status": "characterization_complete_not_v8_acceptance",
+    "owner": "Elderwyld optimization lane",
+    "core_accepted_ref": "4b6516e2c0dfd81acaa4410b9b9bb9da18894c90",
+    "classic_service_rerun": false,
+    "representation": "Object definitions, summaries, aliases and properties encoded as benchmark literal assertions; native admission fields translated and raw legacy metadata duplicated in declared extensions. Aliases are not production identity aliases.",
+    "limits": [
+      "8GiB child RLIMIT_AS; excludes PostgreSQL server memory",
+      "Publication/setup excluded from read timing; DB/OS warm after ordinary oracle",
+      "Cold boundary is uncached primary source verification plus artifact validation/preparation and fresh context/provenance plus depth1 read; no source-text reopening",
+      "Only neighborhood read operation characterized; no twelve-operation coverage claim",
+      "No classic/native storage or latency equivalence claim for this encoding; no universal native capacity limit",
+      "Raw metadata extensions duplicate translated fields and increase representation cost",
+      "Separate matched Buddy HTTP cold485-493ms and warm78-84ms evidence remains its own acceptance gate"
+    ],
+    "shapes": {
+      "rules": {
+        "rows": [
+          {
+            "size": 100,
+            "status": "passed",
+            "phase": "complete",
+            "input_sha256": "d31c0cf98cbdb39bbd46e3ab64ed0cd709039dc85ac91178ddcd0689f56ed3ba",
+            "coverage_counts": {
+              "objects": 100,
+              "relationships": 150,
+              "aliases": 120,
+              "properties": 199,
+              "summaries": 100,
+              "evidence": 250,
+              "native_assertions": 669
+            },
+            "peak_rss_bytes": 90619904,
+            "read_cases": [
+              {
+                "case": "world_player",
+                "cold_samples_ms": [
+                  70.231,
+                  70.097,
+                  70.627
+                ],
+                "warm_p50_ms": 0.30949898064136505,
+                "warm_empirical_p95_ms": 0.4645069711841643
+              },
+              {
+                "case": "alpha_player",
+                "cold_samples_ms": [
+                  73.248,
+                  73.061,
+                  96.306
+                ],
+                "warm_p50_ms": 0.5290425033308566,
+                "warm_empirical_p95_ms": 0.7657110108993948
+              }
+            ]
+          },
+          {
+            "size": 1000,
+            "status": "passed",
+            "phase": "complete",
+            "input_sha256": "66c754d8ca619e79cae4df63c896d3b0ab04bb9da60d0d7d9dca1cbe3268b713",
+            "coverage_counts": {
+              "objects": 1000,
+              "relationships": 1500,
+              "aliases": 1200,
+              "properties": 1999,
+              "summaries": 1000,
+              "evidence": 2500,
+              "native_assertions": 6699
+            },
+            "peak_rss_bytes": 254021632,
+            "read_cases": [
+              {
+                "case": "world_player",
+                "cold_samples_ms": [
+                  722.597,
+                  760.409,
+                  794.653
+                ],
+                "warm_p50_ms": 0.3141750057693571,
+                "warm_empirical_p95_ms": 0.4024060326628387
+              },
+              {
+                "case": "alpha_player",
+                "cold_samples_ms": [
+                  744.467,
+                  775.326,
+                  783.548
+                ],
+                "warm_p50_ms": 0.5253679992165416,
+                "warm_empirical_p95_ms": 0.6094989948906004
+              }
+            ]
+          },
+          {
+            "size": 10000,
+            "status": "passed",
+            "phase": "complete",
+            "input_sha256": "8f7cae71de8a275e0d10e440ff1b745c1435b39f7e551901849a936aeb7bb320",
+            "coverage_counts": {
+              "objects": 10000,
+              "relationships": 15000,
+              "aliases": 12000,
+              "properties": 19999,
+              "summaries": 10000,
+              "evidence": 25000,
+              "native_assertions": 66999
+            },
+            "peak_rss_bytes": 1813803008,
+            "read_cases": [
+              {
+                "case": "world_player",
+                "cold_samples_ms": [
+                  9453.24,
+                  9489.368,
+                  9525.447
+                ],
+                "warm_p50_ms": 0.31966951792128384,
+                "warm_empirical_p95_ms": 0.4246360040269792
+              },
+              {
+                "case": "alpha_player",
+                "cold_samples_ms": [
+                  9507.294,
+                  9558.5,
+                  9558.233
+                ],
+                "warm_p50_ms": 0.525508017744869,
+                "warm_empirical_p95_ms": 0.6114590214565396
+              }
+            ]
+          },
+          {
+            "size": 50000,
+            "status": "failed",
+            "phase": "publication_and_artifact_generation",
+            "error": "PersistenceUnavailableError(\"total size of jsonb array elements exceeds the maximum of 268435455 bytes\\nCONTEXT:  unnamed portal parameter $10 = '...'\")",
+            "failure_boundary": "primary JSONB revision insertion, before derived artifact generation",
+            "read_timing": null
+          },
+          {
+            "size": 100000,
+            "status": "not_attempted",
+            "reason": "Prior size50000 ended failed at publication_and_artifact_generation; no larger-size behavior claimed under this budget"
+          }
+        ],
+        "database_cleanup": "dropped unique disposable database after zero-connection check; exact reclaimed filesystem bytes unavailable",
+        "database_logical_bytes_before_drop": 19651607,
+        "exact_reclaimed_filesystem_bytes": null
+      },
+      "world": {
+        "rows": [
+          {
+            "size": 100,
+            "status": "passed",
+            "phase": "complete",
+            "input_sha256": "5da9dff45d7d8e2a676d009555990e220c7ad45a46b98868b55fea94c361e273",
+            "coverage_counts": {
+              "objects": 100,
+              "relationships": 150,
+              "aliases": 120,
+              "properties": 199,
+              "summaries": 100,
+              "evidence": 250,
+              "native_assertions": 669
+            },
+            "peak_rss_bytes": 91357184,
+            "read_cases": [
+              {
+                "case": "world_player",
+                "cold_samples_ms": [
+                  71.846,
+                  66.216,
+                  69.835
+                ],
+                "warm_p50_ms": 0.3067250072490424,
+                "warm_empirical_p95_ms": 0.39886601734906435
+              },
+              {
+                "case": "alpha_player",
+                "cold_samples_ms": [
+                  70.706,
+                  71.225,
+                  86.577
+                ],
+                "warm_p50_ms": 0.48815750051289797,
+                "warm_empirical_p95_ms": 0.6729390006512403
+              }
+            ]
+          },
+          {
+            "size": 1000,
+            "status": "passed",
+            "phase": "complete",
+            "input_sha256": "721ac462ffb4ee0364ec5f42e15bb9d00d9df0e560858410d0ac9e12180c781c",
+            "coverage_counts": {
+              "objects": 1000,
+              "relationships": 1500,
+              "aliases": 1200,
+              "properties": 1999,
+              "summaries": 1000,
+              "evidence": 2500,
+              "native_assertions": 6699
+            },
+            "peak_rss_bytes": 252870656,
+            "read_cases": [
+              {
+                "case": "world_player",
+                "cold_samples_ms": [
+                  715.116,
+                  758.285,
+                  791.751
+                ],
+                "warm_p50_ms": 0.3143649664707482,
+                "warm_empirical_p95_ms": 0.39909599581733346
+              },
+              {
+                "case": "alpha_player",
+                "cold_samples_ms": [
+                  729.844,
+                  767.989,
+                  761.965
+                ],
+                "warm_p50_ms": 0.46533651766367257,
+                "warm_empirical_p95_ms": 0.5540479905903339
+              }
+            ]
+          },
+          {
+            "size": 10000,
+            "status": "passed",
+            "phase": "complete",
+            "input_sha256": "35a04feddea6bdd8183930ea4599f77481dc7eb47f66bacd7835ac3ab1dae0a0",
+            "coverage_counts": {
+              "objects": 10000,
+              "relationships": 15000,
+              "aliases": 12000,
+              "properties": 19999,
+              "summaries": 10000,
+              "evidence": 25000,
+              "native_assertions": 66999
+            },
+            "peak_rss_bytes": 1805119488,
+            "read_cases": [
+              {
+                "case": "world_player",
+                "cold_samples_ms": [
+                  9432.888,
+                  9510.23,
+                  9543.338
+                ],
+                "warm_p50_ms": 0.3117644810117781,
+                "warm_empirical_p95_ms": 0.40470599196851254
+              },
+              {
+                "case": "alpha_player",
+                "cold_samples_ms": [
+                  9578.044,
+                  9573.318,
+                  9516.311
+                ],
+                "warm_p50_ms": 0.47707700286991894,
+                "warm_empirical_p95_ms": 0.5637580179609358
+              }
+            ]
+          },
+          {
+            "size": 50000,
+            "status": "failed",
+            "phase": "publication_and_artifact_generation",
+            "error": "PersistenceUnavailableError(\"total size of jsonb array elements exceeds the maximum of 268435455 bytes\\nCONTEXT:  unnamed portal parameter $10 = '...'\")",
+            "failure_boundary": "primary JSONB revision insertion, before derived artifact generation",
+            "read_timing": null
+          },
+          {
+            "size": 100000,
+            "status": "not_attempted",
+            "reason": "Prior size50000 ended failed at publication_and_artifact_generation; no larger-size behavior claimed under this budget"
+          }
+        ],
+        "database_cleanup": "dropped unique disposable database after zero-connection check; exact reclaimed filesystem bytes unavailable",
+        "database_logical_bytes_before_drop": 19479575,
+        "exact_reclaimed_filesystem_bytes": null
+      }
+    },
+    "files": [
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/v8_full_fixture_encoding.py",
+        "sha256": "f490ee2c0a8b8cfe8a6c22df9e0060eb058a2222d19b9135e2404e3751f1a2e0",
+        "bytes": 6611
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native_full_fixture_child.py",
+        "sha256": "22d8a4a8edaefe88a4ee0af100f45d431d2f25f18b2a854c048bbcfe420b6217",
+        "bytes": 13313
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native_full_fixture_child_v2.py",
+        "sha256": "d8f76e5ac5d6bbebf04acf127cf3178549806d73e3de539ebc7e573ba7c78e77",
+        "bytes": 14302
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native_full_fixture_proof_child.py",
+        "sha256": "c1f436edaf3daf3e3a4d31e6b640bd7ab71a1302092d7250f1612dd38166befd",
+        "bytes": 14409
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/run_native_full_fixture_ladder.py",
+        "sha256": "28b5ab0ea186735dc8ef6e37d31440129bfb11c6f6881b703bacc575b297c15e",
+        "bytes": 4148
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/run_native_full_fixture_ladder_v2.py",
+        "sha256": "993ec0f03c6fe5b2a57314628ccb1efeb75be869e6e734155c2b79ad242d2a13",
+        "bytes": 4151
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/run_native_full_fixture_supplemental.py",
+        "sha256": "1dc3372a4a83752a79f570e9a89677cc6d783dc25c9c088043532a0129cb35d4",
+        "bytes": 4146
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/verify_full_rules_endpoint_scopes.py",
+        "sha256": "d9a5eaff4ba9d5b44ae49ddebfeb4b00ea66c40cdd172fa86558e20c7c7900e5",
+        "bytes": 1995
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-rules-scope-supplement.json",
+        "sha256": "86c59cd3dd850c3fd8107967e3f9a9a4b08a9e54d7f1f0dbb7759d1a30f44238",
+        "bytes": 818
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-rules-ladder-resource.json",
+        "sha256": "62ca5290de1146cece9d6e4d2d39e4e8b704c949ff7d003827919769c49c2d69",
+        "bytes": 38943
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-rules-100.json",
+        "sha256": "5cf1854ab06d0b763b4acedc4fa0bf6764671735c92b20221625db98044b75b2",
+        "bytes": 8684
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-rules-100.log",
+        "sha256": "531d919cbea158d8c2cf9eaf5706b403c503bc8b072a6b15015308bae3131870",
+        "bytes": 304
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-rules-1000.json",
+        "sha256": "98000ef4ed174ea323de7c4dd3240ef5bd3ba8427b08eccb996b28eed7476a33",
+        "bytes": 8709
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-rules-1000.log",
+        "sha256": "ba0d76e5f556ebb417b9264280e3b5c9bfb1610809cb6a0daf318527ecd167d4",
+        "bytes": 314
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-rules-10000.json",
+        "sha256": "88fab9f221b7a73b200b8ef0a555d8b30b9157cc69619f6276aee7f349eb6c3b",
+        "bytes": 8794
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-rules-10000.log",
+        "sha256": "f234e223d5644df271b3d3e1122ccbe9cefd884d0c198243d097f7b7ddd43edc",
+        "bytes": 324
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-rules-50000.json",
+        "sha256": "029ea347920f4408429d595a684c8235c787a5eb4f447ac627f3d30b2368ec06",
+        "bytes": 8428
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-rules-50000.log",
+        "sha256": "56906f59687b684f673d3a74a8223d48d59f685cd8c7cbe472408d8ea01ed5d5",
+        "bytes": 3444
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-world-ladder-resource.json",
+        "sha256": "7706176269740ad359a362e5f551003175a31364a5754086de768d295e8c5b3d",
+        "bytes": 38380
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-world-100.json",
+        "sha256": "f8cc65ea098fabf1703b1d7fef2273c52a11ef8481981e9b553aacde88c6e9be",
+        "bytes": 8555
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-world-100.log",
+        "sha256": "5cb5f342ef974d21d96f53c365424d4db630027a65e2f7874bdfa6cdc4d6b853",
+        "bytes": 304
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-world-1000.json",
+        "sha256": "76de6f9188fb8aea42570e6b7abd718c92fd3495b231d8da0ee52a911da559f8",
+        "bytes": 8581
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-world-1000.log",
+        "sha256": "b2ba96427ee863d6b43ccd557eee3331f65b1da852b300caad458fc022d328f3",
+        "bytes": 314
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-world-10000.json",
+        "sha256": "ecc3ef5394f07ee67a226a5149403c784bd36f06aac11715a8f6f101276ee038",
+        "bytes": 8606
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-world-10000.log",
+        "sha256": "7b33c2edbd31101b7fb9396691a4489bffac0fdb8ca53dc0753928058d41c28e",
+        "bytes": 324
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-world-50000.json",
+        "sha256": "e89bcbccb12a1ce1f0e8fc53ad8fa16b74372c90332f035e2ad8a587792b3b1e",
+        "bytes": 8350
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-world-50000.log",
+        "sha256": "d517ca2ba60f24d4bef60d17af332052f404c74cd47795e961308cf187fa889e",
+        "bytes": 3450
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-rules-supplemental-ladder-resource.json",
+        "sha256": "ee40c4c00abc5adf6643863567cf967c17de9869265347ab0934c8fd2cbc5dc1",
+        "bytes": 6291
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-rules-supplemental-100.json",
+        "sha256": "3417dd6d6f43159bd4920f3fe362996e15d1e713d769a5ecebd5d5bc3b396907",
+        "bytes": 5061
+      },
+      {
+        "path": "/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/native-full-rules-supplemental-100.log",
+        "sha256": "a5eda149a508c55ad9cdf8af6d65d8f0e85004115d6cb6f450dbaa66968c6610",
+        "bytes": 211
+      }
+    ],
+    "cleanup_followup": "Retain all scripts, results, logs and receipts for optimization-lane joint acceptance integration. Remove only reproducible task-owned disposable files after explicit scoped cleanup authorization and active process/mount/dirty/unique-data checks; no manual files removed here.",
+    "rules_supplement": {
+      "positive_alpha_admission": "passed proof-only100; expectedIDs from raw metadata; no timing rerun",
+      "all_successful_rung_endpoint_scopes": "passed hash-matched regeneration100/1k/10k",
+      "helper_matches_all_measured_successful_rungs": true,
+      "database_cleanup": "dropped unique disposable database after zero-connection check; exact reclaimed filesystem bytes unavailable",
+      "database_logical_bytes_before_drop": 10066967,
+      "exact_reclaimed_filesystem_bytes": null
+    }
+  },
+  "elderwyld_route_composite": {
+    "original": {
+      "retained_file": "elderwyld-v8-current-candidate-routes-8e69b27.json",
+      "sha256": "c2c7759ff77568733ccb0250980165d9718716facbe9959bda963500e55c9525"
+    },
+    "status": "original failed after18 completed route cases due to final harness variable shadowing; retained unchanged",
+    "rows": [
+      {
+        "case": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6/neighborhood1",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6",
+          "schema": "dmb_world_graph_neighborhood_request_v1",
+          "seedNodeIds": [
+            "ent:00202c694e7a7ea39bbb3776f933e9df"
+          ],
+          "maxDepth": 1
+        },
+        "ms": [
+          721.71,
+          86.02,
+          78.87
+        ],
+        "semantic_sha256": "71f74d31d30b0e4b27dfd29bc9dd654ce4aab17f2516bbd9edc0c9769bdd840a",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true
+      },
+      {
+        "case": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6/neighborhood2",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6",
+          "schema": "dmb_world_graph_neighborhood_request_v1",
+          "seedNodeIds": [
+            "ent:00202c694e7a7ea39bbb3776f933e9df"
+          ],
+          "maxDepth": 2
+        },
+        "ms": [
+          803.14,
+          126.19,
+          128.84
+        ],
+        "semantic_sha256": "3396279d4ae2c1135795c540217ad382c957fe0ffbebf8c15828cc5bd91cec1b",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true
+      },
+      {
+        "case": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6/object",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6",
+          "schema": "dmb_world_graph_object_request_v1",
+          "nodeId": "ent:00202c694e7a7ea39bbb3776f933e9df"
+        },
+        "ms": [
+          728.49,
+          68.99,
+          70.23
+        ],
+        "semantic_sha256": "1ed0340d4c947965acd1484f178fa7d8008b0818b4e60d89abaac36ea000dbef",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true
+      },
+      {
+        "case": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6/evidence",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6",
+          "schema": "dmb_world_graph_evidence_request_v1",
+          "target": {
+            "kind": "node",
+            "id": "ent:00202c694e7a7ea39bbb3776f933e9df"
+          }
+        },
+        "ms": [
+          589.36,
+          306.42,
+          197.21
+        ],
+        "semantic_sha256": "9d6b1f8b0ec24fd9a9f1a54a245ca0c3de1806e5f45d44a91cced17613461d6e",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true
+      },
+      {
+        "case": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6/complete-object",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6",
+          "schema": "dmb_world_graph_object_projection_request_v1",
+          "nodeId": "ent:00202c694e7a7ea39bbb3776f933e9df"
+        },
+        "ms": [
+          690.42,
+          211.45,
+          213.4
+        ],
+        "semantic_sha256": "511d687707064c1aa92cdb9933d7dd032d7300ccf341b8224638129f1264689f",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true
+      },
+      {
+        "case": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6/search",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6",
+          "schema": "dmb_world_graph_search_request_v1",
+          "queryText": "Lysandra discovers Dustwalker was expelled from Academy",
+          "seedNodeIds": [
+            "ent:00202c694e7a7ea39bbb3776f933e9df"
+          ],
+          "bounds": {
+            "maxNodes": 2
+          }
+        },
+        "ms": [
+          686.21,
+          285.92,
+          376.52
+        ],
+        "semantic_sha256": "37ec38b7a6b31759ff14d092ac8508e893aec46615b53b9fb8781d567c1f1c5a",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true
+      },
+      {
+        "case": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6/citation",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6",
+          "schema": "dmb_world_graph_source_anchor_read_request_v1",
+          "anchorId": "native-neighborhood:WyJhc3J0OmJhMjFhYjA0MmZhNWUyZDMzM2JkNmJlY2JkZTk4ZmFlIiwiZXY6MzA1ZmViODMzNzM2N2U3NTRlMGIyMjk4MTY4YTFkMjYxMGFmZWVmZmM1Y2M5MDlmYjYzZDY0ZTk0OTBjNDIzMCJd"
+        },
+        "ms": [
+          761.95,
+          64.73,
+          64.0
+        ],
+        "semantic_sha256": "cc68a7ed2ec6a6f29eebc010ebcfb9393fe7b73ea49d14675b2deaecc895dcec",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true,
+        "citation_bytes": 1453,
+        "citation_sha256": "e2affc1a851475b6f0bdbd7514b35fbb1591e334462e12c4fd36d3432f0a54a1"
+      },
+      {
+        "case": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6/citation",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6",
+          "schema": "dmb_world_graph_source_anchor_read_request_v1",
+          "anchorId": "native-neighborhood:WyJhc3J0OjJkNTBiZGQ1OGE0OTRkNjUwM2UzOWFiNTUzZDI0OWNiIiwiZXY6NjNmODE2MTVmNjc2ZDEzOTMyN2U4YmQyMmI5ZjlhNGRhZDJiNjI2OWMyMGVlYmM0MGI2YThmZmI3MzNhYjM0MCJd"
+        },
+        "ms": [
+          674.12,
+          66.23,
+          65.14
+        ],
+        "semantic_sha256": "a83f468c5f13622f5f92a0b24f4af0a7fc711606e18a305a33773b59cfb43dc1",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true,
+        "citation_bytes": 629,
+        "citation_sha256": "b24edf9b09ddc34f4a8dfa99b3ffc0038b91eb1d38bbaf426853ebb0ed8d1f10"
+      },
+      {
+        "case": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6/citation",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6",
+          "schema": "dmb_world_graph_source_anchor_read_request_v1",
+          "anchorId": "native-neighborhood:WyJhc3J0OmRlZGQ3YzA5ZTQxZGY3MWYzMjQ3NTYzODQ4NDI2MjA4IiwiZXY6ODM5Yzk2NTdlZTc5ODEwZDI2ZWM2OGU5MTJkM2Y2YzRjMGY2NGQxYTFiMzhmNmIxM2RhODQ2NjJhNTM5ZDI0ZCJd"
+        },
+        "ms": [
+          754.29,
+          63.82,
+          66.57
+        ],
+        "semantic_sha256": "dc09964ad82c5614110ecb30314340a8ba356db9d2b2921a625f0d9d9699d79e",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true,
+        "citation_bytes": 755,
+        "citation_sha256": "6b7777324544d7dbc22a272a4fba56c7ba30deeae903da43b6bb47a1f0310fed"
+      },
+      {
+        "case": "rev:643a89642dcd9ab74a63056fb0fa1e1c/neighborhood1",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:643a89642dcd9ab74a63056fb0fa1e1c",
+          "schema": "dmb_world_graph_neighborhood_request_v1",
+          "seedNodeIds": [
+            "ent:00202c694e7a7ea39bbb3776f933e9df"
+          ],
+          "maxDepth": 1
+        },
+        "ms": [
+          675.83,
+          74.69,
+          72.46
+        ],
+        "semantic_sha256": "58e47497281e4331958da6817846d9f5ce2c9f698ee92b57da8b2ec402468a6b",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true
+      },
+      {
+        "case": "rev:643a89642dcd9ab74a63056fb0fa1e1c/neighborhood2",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:643a89642dcd9ab74a63056fb0fa1e1c",
+          "schema": "dmb_world_graph_neighborhood_request_v1",
+          "seedNodeIds": [
+            "ent:00202c694e7a7ea39bbb3776f933e9df"
+          ],
+          "maxDepth": 2
+        },
+        "ms": [
+          823.53,
+          127.74,
+          127.42
+        ],
+        "semantic_sha256": "943970c8534ec0f897ae8c0024322a4a74b8468084d8de06805cf15151cf44b0",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true
+      },
+      {
+        "case": "rev:643a89642dcd9ab74a63056fb0fa1e1c/object",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:643a89642dcd9ab74a63056fb0fa1e1c",
+          "schema": "dmb_world_graph_object_request_v1",
+          "nodeId": "ent:00202c694e7a7ea39bbb3776f933e9df"
+        },
+        "ms": [
+          739.6,
+          70.44,
+          71.09
+        ],
+        "semantic_sha256": "84d467b7bdae3dcbfacdf4ddd90d780aaa0b13e384d76f227adc1bce40dfbe80",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true
+      },
+      {
+        "case": "rev:643a89642dcd9ab74a63056fb0fa1e1c/evidence",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:643a89642dcd9ab74a63056fb0fa1e1c",
+          "schema": "dmb_world_graph_evidence_request_v1",
+          "target": {
+            "kind": "node",
+            "id": "ent:00202c694e7a7ea39bbb3776f933e9df"
+          }
+        },
+        "ms": [
+          690.72,
+          197.81,
+          196.11
+        ],
+        "semantic_sha256": "002ae7373f42fca5486293bc7ac804d990e797f34401a24c62d6fe49884ce8da",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true
+      },
+      {
+        "case": "rev:643a89642dcd9ab74a63056fb0fa1e1c/complete-object",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:643a89642dcd9ab74a63056fb0fa1e1c",
+          "schema": "dmb_world_graph_object_projection_request_v1",
+          "nodeId": "ent:00202c694e7a7ea39bbb3776f933e9df"
+        },
+        "ms": [
+          695.93,
+          208.18,
+          209.45
+        ],
+        "semantic_sha256": "602b82ab35f697e65c8a7f5556e5f29ee1b5865cc112730802c6c7da725738be",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true
+      },
+      {
+        "case": "rev:643a89642dcd9ab74a63056fb0fa1e1c/search",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:643a89642dcd9ab74a63056fb0fa1e1c",
+          "schema": "dmb_world_graph_search_request_v1",
+          "queryText": "Lysandra discovers Dustwalker was expelled from Academy",
+          "seedNodeIds": [
+            "ent:00202c694e7a7ea39bbb3776f933e9df"
+          ],
+          "bounds": {
+            "maxNodes": 2
+          }
+        },
+        "ms": [
+          798.2,
+          295.68,
+          296.91
+        ],
+        "semantic_sha256": "3a00025c9ea402d847575eef2a5b1c1f360cc0f11d794707a7a92af1fca2bccf",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true
+      },
+      {
+        "case": "rev:643a89642dcd9ab74a63056fb0fa1e1c/citation",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:643a89642dcd9ab74a63056fb0fa1e1c",
+          "schema": "dmb_world_graph_source_anchor_read_request_v1",
+          "anchorId": "native-neighborhood:WyJhc3J0OmJhMjFhYjA0MmZhNWUyZDMzM2JkNmJlY2JkZTk4ZmFlIiwiZXY6MzA1ZmViODMzNzM2N2U3NTRlMGIyMjk4MTY4YTFkMjYxMGFmZWVmZmM1Y2M5MDlmYjYzZDY0ZTk0OTBjNDIzMCJd"
+        },
+        "ms": [
+          754.72,
+          65.73,
+          63.65
+        ],
+        "semantic_sha256": "cc68a7ed2ec6a6f29eebc010ebcfb9393fe7b73ea49d14675b2deaecc895dcec",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true,
+        "citation_bytes": 1453,
+        "citation_sha256": "e2affc1a851475b6f0bdbd7514b35fbb1591e334462e12c4fd36d3432f0a54a1"
+      },
+      {
+        "case": "rev:643a89642dcd9ab74a63056fb0fa1e1c/citation",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:643a89642dcd9ab74a63056fb0fa1e1c",
+          "schema": "dmb_world_graph_source_anchor_read_request_v1",
+          "anchorId": "native-neighborhood:WyJhc3J0OjJkNTBiZGQ1OGE0OTRkNjUwM2UzOWFiNTUzZDI0OWNiIiwiZXY6NjNmODE2MTVmNjc2ZDEzOTMyN2U4YmQyMmI5ZjlhNGRhZDJiNjI2OWMyMGVlYmM0MGI2YThmZmI3MzNhYjM0MCJd"
+        },
+        "ms": [
+          679.41,
+          67.32,
+          63.63
+        ],
+        "semantic_sha256": "a83f468c5f13622f5f92a0b24f4af0a7fc711606e18a305a33773b59cfb43dc1",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true,
+        "citation_bytes": 629,
+        "citation_sha256": "b24edf9b09ddc34f4a8dfa99b3ffc0038b91eb1d38bbaf426853ebb0ed8d1f10"
+      },
+      {
+        "case": "rev:643a89642dcd9ab74a63056fb0fa1e1c/citation",
+        "request": {
+          "worldId": "elderwyld",
+          "campaignId": "",
+          "scopeMode": "world",
+          "revisionPin": "rev:643a89642dcd9ab74a63056fb0fa1e1c",
+          "schema": "dmb_world_graph_source_anchor_read_request_v1",
+          "anchorId": "native-neighborhood:WyJhc3J0OmRlZGQ3YzA5ZTQxZGY3MWYzMjQ3NTYzODQ4NDI2MjA4IiwiZXY6ODM5Yzk2NTdlZTc5ODEwZDI2ZWM2OGU5MTJkM2Y2YzRjMGY2NGQxYTFiMzhmNmIxM2RhODQ2NjJhNTM5ZDI0ZCJd"
+        },
+        "ms": [
+          780.93,
+          65.59,
+          65.84
+        ],
+        "semantic_sha256": "dc09964ad82c5614110ecb30314340a8ba356db9d2b2921a625f0d9d9699d79e",
+        "anonymous_status": 401,
+        "ordinary_parser_parity": true,
+        "citation_bytes": 755,
+        "citation_sha256": "6b7777324544d7dbc22a272a4fba56c7ba30deeae903da43b6bb47a1f0310fed"
+      }
+    ],
+    "independent_head_check": {
+      "original_result_sha256": "c2c7759ff77568733ccb0250980165d9718716facbe9959bda963500e55c9525",
+      "original_status": "failed after all route cases; harness variable shadowing at final head check",
+      "successful_route_cases": 18,
+      "citation_cases": 6,
+      "head_revision_id": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6",
+      "expected_head_revision_id": "rev:2320336c2bf9b6d3f5cf514f8e2dc9b6",
+      "head_unchanged": true,
+      "scope": "independent final read-only head check; original failure preserved"
+    },
+    "head_check_receipt": {
+      "retained_file": "elderwyld-v8-current-candidate-head-check-8e69b27.json",
+      "sha256": "b343fb9e6bfd109a5172917eda035c9b776bcce74755ff6ffde0742afe74fd4e"
+    },
+    "limits": [
+      "Mounted routes, fixture binding, synthetic local authorization and warm DB/OS, not full deployed app",
+      "Ordinary-parser semantic oracle is native-only, not a new classic baseline or universal DTO parity",
+      "Runtime source attestation accompanies original receipt; final harness failure is not relabeled passed"
+    ],
+    "source_equivalence_to_candidate": {
+      "modules": [
+        {
+          "module": "dungeonmind.infrastructure.postgres.vnext_knowledge",
+          "repository": "DungeonMind",
+          "path": "src/dungeonmind/infrastructure/postgres/vnext_knowledge.py",
+          "sha256": "784053dce1a6d04b3d2cea8eaba1f4f24885f9e3b80c4cd1413b55cc3364e217"
+        },
+        {
+          "module": "dungeonmind.infrastructure.postgres.vnext_read_artifacts",
+          "repository": "DungeonMind",
+          "path": "src/dungeonmind/infrastructure/postgres/vnext_read_artifacts.py",
+          "sha256": "5c88d542bedf29195b452ad8799740e10751e81abd0d8a7978a1d3eeca4e27a3"
+        },
+        {
+          "module": "dungeonmind.infrastructure.postgres._revision_verification_cache",
+          "repository": "DungeonMind",
+          "path": "src/dungeonmind/infrastructure/postgres/_revision_verification_cache.py",
+          "sha256": "282500b418b738892126c53a12d47c0b13bb1dc56d293f53dfb1e2f3cb470e82"
+        },
+        {
+          "module": "dungeonmind.application.vnext.native_source_access",
+          "repository": "DungeonMind",
+          "path": "src/dungeonmind/application/vnext/native_source_access.py",
+          "sha256": "56e97493bb8d34d8d580e2fb95d4d55f699709785ec39b742803444c1aa40cf1"
+        },
+        {
+          "module": "dungeonmind.application.vnext._read_artifact",
+          "repository": "DungeonMind",
+          "path": "src/dungeonmind/application/vnext/_read_artifact.py",
+          "sha256": "5f9b2c8041877e76eb622906ce4fdf4bdaad362eba96b269fdcaab7080c704d0"
+        },
+        {
+          "module": "apps.live_control_server.routes.world_graph_retrieval",
+          "repository": "DungeonMindBuddy",
+          "path": "apps/live_control_server/routes/world_graph_retrieval.py",
+          "sha256": "21bec283e694c9a5e7fbc1435fa31b385e09d72a3b86f75470416c375e75603c"
+        },
+        {
+          "module": "apps.live_control_server.services.native_graph_inspection",
+          "repository": "DungeonMindBuddy",
+          "path": "apps/live_control_server/services/native_graph_inspection.py",
+          "sha256": "1cbeebd3b22ab4956341a80c13b86af1f691c26001ba2b5d3ba519cdb852eda7"
+        },
+        {
+          "module": "apps.live_control_server.integrations.dungeonmind.native_registry_source",
+          "repository": "DungeonMindBuddy",
+          "path": "apps/live_control_server/integrations/dungeonmind/native_registry_source.py",
+          "sha256": "9937f826216401507a181c6fbd06aa36b02431c50b536dbeb3dbe3d6aa6b8b28"
+        },
+        {
+          "module": "graph_memory.vnext.domain_runtime",
+          "repository": "DungeonMindBuddy",
+          "path": "src/graph_memory/vnext/domain_runtime.py",
+          "sha256": "a2b229d9744ec4ac6b50d8ae42af646b21aad87c8f2cb2c043850ea0452636e1"
+        }
+      ],
+      "limit": "All original attested modules unchanged at candidate; not exhaustive process/dependency attestation or a new route run"
+    }
+  },
+  "not_claimed": [
+    "Deployed serving qualification",
+    "Universal classic/native DTO, ordering or capped selection parity",
+    "Equivalent-work Rules classic/native speed ratio",
+    "All operation or100k coverage from neighborhood-only scale ladder"
+  ],
+  "accepted_dispositions": {
+    "cold_and_lifecycle": {
+      "decision": "accept the comparable first-read gate and recorded lifecycle evidence, with historical tail explicitly retained for V11 observation",
+      "basis": "three first reads485\u2013493ms below retained~540ms; warm78\u201384ms; eviction510\u2013512ms and new505\u2013514ms; historical536\u2013554ms median539",
+      "limits": "554.2ms is above point reference; no all-sample, percentile or universal no-regression claim"
+    },
+    "complete_object": {
+      "decision": "retain native reviewed relationship label/context and assertion ledger with explicit completeness",
+      "limits": "classic/native ledgers and display differ; only shared facts/endpoints/visibility/citation obligations match"
+    },
+    "search": {
+      "decision": "accept deterministic native secondary ordering for navigation with admitted seeds first, explicit bounds/truncation and exact source reopening",
+      "limits": "eight-node secondary order differs; two-node ordered equivalence does not establish universal ordering parity"
+    },
+    "capped_citations": {
+      "decision": "accept deterministic native selection among admitted eligible citations with disclosed truncation and exact selected-span reopening",
+      "limits": "one-anchor cap chooses a different eligible paragraph than classic; do not claim capped selection parity"
+    },
+    "rules_comparison": {
+      "decision": "Accept practical full-input characterization and retain the unmatched comparison as a stated evidence limitation, rather than claim an equivalent-work ratio",
+      "basis": "Same deterministic source generator/input hashes; representations, admission envelopes and timing boundaries differ. Full metadata-preserving native results and JSONB limits are recorded. This does not relax the matched Buddy cold-route gate.",
+      "remaining_debt": "A future Rules consumer needs matched route/representation qualification; no Rules-domain rollout is authorized here."
+    }
+  },
+  "acceptance_review": {
+    "proposal_head": "4357a91f78edb45abe7f5b6b247279e2cfba763d",
+    "base": "4b6516e2c0dfd81acaa4410b9b9bb9da18894c90",
+    "reviewer": "independent Aristotle agent; recorded through operator GitHub account, not distinct-user approval",
+    "verdict": "APPROVE",
+    "review_id": 5968294321,
+    "review_url": "https://github.com/Drakosfire/DungeonMind/pull/229#pullrequestreview-5968294321",
+    "effectiveness": "Finalization delta review, required final-head CI and merge of PR229; no V9 activation"
+  }
+}
