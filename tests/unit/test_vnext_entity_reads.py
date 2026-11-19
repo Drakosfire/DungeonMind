@@ -2213,3 +2213,12 @@ def test_complete_entity_batch_preserves_exact_results_and_withdrawal(org_contex
     for single, batched in zip(expected, actual, strict=True):
         assert replace(single, work=batched.work) == batched
     assert ("asrt:priya-owns-retrieval-apr" in {a.assertion_id for a in actual[0].assertions}) is not retracted
+
+
+def test_complete_entity_batch_misses_do_not_load_provenance(org_context):
+    context, _ = org_context
+    before = context.source_reader.snapshot_call_count
+    result = _SVC.get_complete_entities(context, ("missing-1", "missing-2"))
+    assert tuple(item.identity.entity_id for item in result) == ("missing-1", "missing-2")
+    assert not any(item.found for item in result)
+    assert context.source_reader.snapshot_call_count == before

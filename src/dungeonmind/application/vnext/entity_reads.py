@@ -766,10 +766,13 @@ class EntityReadService:
         if not entity_ids:
             return ()
         parsed = context.parsed
+        found_ids = {entity_id for entity_id in entity_ids if parsed.get_entity(entity_id) is not None}
+        if not found_ids:
+            return tuple(self.get_complete_entity(context, entity_id) for entity_id in entity_ids)
+
         candidates = {
             assertion_id
-            for entity_id in set(entity_ids)
-            if parsed.get_entity(entity_id) is not None
+            for entity_id in found_ids
             for assertion_id in (
                 *parsed.get_subject_assertion_ids(entity_id),
                 *parsed.get_incoming_entity_ref_assertion_ids(entity_id),
