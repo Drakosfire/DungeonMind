@@ -89,6 +89,7 @@ from .prospective import (
     ProspectiveKnowledgeContribution,
     ProspectiveResultBinding,
 )
+from .prospective_aliases import ProspectiveAliasContributionV1, ProspectiveCreateAliasV1
 from .publication import KnowledgePublicationReceipt
 from .source import EvidenceRefV3, SourceArtifactV3, SourceRevisionV2
 from .space_provisioning import KnowledgeSpaceProvisioningReceipt
@@ -163,8 +164,10 @@ __all__ = [
     "ProposeAssertion",
     "ProposeEntity",
     "ProposeIdentityDecision",
+    "ProspectiveAliasContributionV1",
     "ProspectiveAssertionValue",
     "ProspectiveContributionItem",
+    "ProspectiveCreateAliasV1",
     "ProspectiveCreateAssertion",
     "ProspectiveCreateEntity",
     "ProspectiveEntityRef",

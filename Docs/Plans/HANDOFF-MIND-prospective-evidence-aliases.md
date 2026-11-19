@@ -51,7 +51,11 @@ wrong/unknown/rejected result targets; missing evidence; sealed final payload;
 changed alias text/evidence/standing/target/rejected intent conflicts; exact replay,
 descendant replay, response-loss recovery and deterministic failures preserved.
 Read actual published aliases through EntityReadService/KnowledgeReadContext;
-prove visibility, scope, standing and source withdrawal revalidation on cached data.
+prove visibility, standing and source withdrawal revalidation on cached data.
+Scope retains current semantics: assertion/list membership is scoped; IdentityAlias
+has no scope field and exact identity aliases are source-authorized space-wide.
+Prove unmatched-scope listings omit entities/aliases without inventing a new alias
+scope policy. Product scope requirements beyond this contract require a new design.
 PostgreSQL: fresh/replay, concurrent same-ID replay/conflict, full transaction
 rollback, changed-parent zero mutation, response loss and direct committed content.
 Run affected V5.1/V5.4 cohorts, full required core and integration checks, Ruff and
@@ -75,3 +79,27 @@ Scratch/cache/owned disposable DB proof belongs under the same task root. Retain
 unique evidence; record created/retained/removed paths, owner, bytes/filesystem and
 cleanup follow-up. No manual deletion authority is implied. Serving mirrors/live
 DBs and other lanes remain untouched.
+
+## Implementation checkpoint
+
+Explicit wrapper/planner and shared publication seam implemented. Owning alias
+module27 tests passed; affected V5.1/V5.4 cohorts passed81 before the final four
+additional replay/scope proofs. Focused PostgreSQL17 passed including new alias and
+inherited prospective cases. Full Ruff and source Pyright pass (explicit external
+interpreter/pinned Node; no repository .venv allocation). Frozen V0 bundle check
+passes. Full core/integration and independent exact-head review remain pending.
+
+Independent design/implementation critique found no demonstrated code blocker;
+requested stronger accepted-target/evidence replay tests and clarified scope.
+Those tests now vary valid entity targets and parent evidence IDs/order. Exact
+identity aliases are space-wide subject to source/standing gates; unmatched scope
+filters assertions and entity listings, which also omits their listed aliases.
+No new alias scope policy is introduced.
+
+Owned isolated PostgreSQL proof database:codex_v10_alias_test_6475b2069389 on32903.
+Only this newly allocated test database receives destructive integration fixtures.
+Scratch evidence owner Elderwyld prospective-alias lane:
+/home/drakosfire/Projects/.codex/v7-elderwyld-scope/scratch/v8-core/v10-prospective-aliases.
+Retain database/logs/XML and reused task-owned caches through acceptance; inspect
+connections/processes/mounts/unique data and specifically approved cleanup scope
+before disposal. No manual paths removed or reclaimed bytes claimed.
