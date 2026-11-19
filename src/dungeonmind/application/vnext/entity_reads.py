@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from typing import Literal
 
 from dungeonmind.domain.canonical import canonical_sha256
 
-from .admission import collect_evidence_ref_dependencies, evidence_refs_pass
+from .admission import (
+    collect_evidence_dependencies,
+    collect_evidence_ref_dependencies,
+    evidence_refs_pass,
+)
 from .errors import EntityReadIntegrityError
 from .provenance import (
     KnowledgeProvenanceSnapshot,
+    _build_snapshot_from_loaded,
     validate_provenance_snapshot_integrity,
 )
 from .read_context import KnowledgeReadContext
@@ -439,6 +444,9 @@ def _assemble(
     context: KnowledgeReadContext,
     entity_id: str,
     include_touching: bool,
+    project_provenance: Callable[
+        [tuple[str, ...], tuple[str, ...]], KnowledgeProvenanceSnapshot
+    ] | None = None,
 ) -> EntityLookupResult | CompleteEntityLookupResult:
     parsed = context.parsed
     identity = _identity(context, entity_id)
@@ -499,7 +507,12 @@ def _assemble(
         candidate_ids = _dedupe_sorted(subject_ids)
         outgoing_assertion_ids = ()
 
-    admission, provenance = context.evaluate_candidates(candidate_ids)
+    if project_provenance is None:
+        admission, provenance = context.evaluate_candidates(candidate_ids)
+    else:
+        admission, provenance = context._evaluate_candidates(
+            candidate_ids, project_provenance=project_provenance
+        )
     admitted_ids = admission.admitted_assertion_ids
     assertions: list[ParsedAssertion] = []
     for assertion_id in admitted_ids:
@@ -740,3 +753,66 @@ class EntityReadService:
         if not isinstance(result, CompleteEntityLookupResult):
             raise EntityReadIntegrityError("get_complete_entity assembled a non-complete result")
         return result
+
+    def get_complete_entities(
+        self, context: KnowledgeReadContext, entity_ids: Sequence[str]
+    ) -> tuple[CompleteEntityLookupResult, ...]:
+        """Read ordered entities using one coherent assertion provenance snapshot.
+
+        Each result still runs its own policies and validates its exact dependency
+        set. Its work count excludes the shared read. Alias reads keep their own
+        admission scopes.
+        """
+        if not entity_ids:
+            return ()
+        parsed = context.parsed
+        candidates = {
+            assertion_id
+            for entity_id in set(entity_ids)
+            if parsed.get_entity(entity_id) is not None
+            for assertion_id in (
+                *parsed.get_subject_assertion_ids(entity_id),
+                *parsed.get_incoming_entity_ref_assertion_ids(entity_id),
+            )
+        }
+        _, artifacts, revisions = collect_evidence_dependencies(parsed, tuple(candidates))
+        union = context.source_reader.get_provenance_snapshot(
+            artifact_ids=artifacts, revision_ids=revisions
+        )
+        validate_provenance_snapshot_integrity(
+            union, expected_artifact_ids=artifacts, expected_revision_ids=revisions
+        )
+
+        artifact_set = frozenset(artifacts)
+        revision_set = frozenset(revisions)
+
+        def project(artifact_ids, revision_ids):
+            if not artifact_set.issuperset(artifact_ids) or not revision_set.issuperset(revision_ids):
+                raise EntityReadIntegrityError("Batch omitted requested provenance dependencies")
+            loaded_artifacts = {
+                key: value for key in artifact_ids
+                if (value := union.get_artifact(key)) is not None
+            }
+            loaded_revisions = {
+                key: value for key in revision_ids
+                if (value := union.get_revision(key)) is not None
+            }
+            return _build_snapshot_from_loaded(
+                loaded_artifacts=loaded_artifacts,
+                loaded_revisions=loaded_revisions,
+                requested_artifacts=artifact_ids,
+                requested_revisions=revision_ids,
+                missing_artifacts=tuple(key for key in artifact_ids if key not in loaded_artifacts),
+                missing_revisions=tuple(key for key in revision_ids if key not in loaded_revisions),
+            )
+
+        results = []
+        for entity_id in entity_ids:
+            result = _assemble(
+                context=context, entity_id=entity_id, include_touching=True,
+                project_provenance=project,
+            )
+            if not isinstance(result, CompleteEntityLookupResult):
+                raise EntityReadIntegrityError("Batch assembled a non-complete result")
+            results.append(result)
+        return tuple(results)
