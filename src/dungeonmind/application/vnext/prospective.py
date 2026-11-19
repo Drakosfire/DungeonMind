@@ -403,6 +403,24 @@ def publish_prospective_contribution(
         domain_contract=domain_contract,
         semantic_profile=semantic_profile,
     )
+    return _publish_planned_prospective_publication(
+        materialization=materialization,
+        resolved=resolved,
+        command=command,
+        publication_id=publication_id,
+        repository=repository,
+    )
+
+
+def _publish_planned_prospective_publication(
+    *,
+    materialization: GovernedMaterializationResult,
+    resolved: ResolvedProspectiveContribution,
+    command: PublishKnowledgeRevisionCommand,
+    publication_id: str,
+    repository: KnowledgeRevisionRepository,
+) -> KnowledgeProspectivePublication:
+    """Persist a complete sealed plan using the sole V5.3 replay authority."""
     expected_revision_id = revision_from_command(command).revision_id
     try:
         aggregate = repository.publish_prospective_publication(
