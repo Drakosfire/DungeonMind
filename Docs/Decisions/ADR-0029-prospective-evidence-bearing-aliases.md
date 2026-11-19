@@ -1,6 +1,8 @@
-# ADR-0027 — atomic prospective evidence-bearing aliases
+# ADR-0029 — atomic prospective evidence-bearing aliases
 
-Status: accepted design for bounded implementation, runtime acceptance pending.
+Status: Accepted at implementation headc9a64a81431121e189123e098856d216a4f7f807;
+independent review5973452695. Date:2026-11-19. Final documentation-head CI/merge
+remain separate delivery gates; no deployment is implied.
 Authority: HANDOFF-MIND-prospective-evidence-aliases.md in Docs/Plans.
 
 The current prospective contribution can allocate entities and assertions, but

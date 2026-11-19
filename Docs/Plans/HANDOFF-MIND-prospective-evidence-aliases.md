@@ -1,6 +1,6 @@
 # MIND — atomic prospective evidence-bearing aliases
 
-Status: ACTIVE. Owner/designer: Elderwyld vNext completion lane. Explicit operator
+Status: COMPLETE — MIND_PROSPECTIVE_EVIDENCE_ALIASES_ACCEPTED. Owner/designer: Elderwyld vNext completion lane. Explicit operator
 implementation, independent review, merge and launch authority; no PRIME dependency.
 Parent:9b4e0af51d343feb4ab5aafaab6a1026cfcfe0b8. Serial prerequisite after Buddy4087
 merge5574068634341c57235800b77f7278bf0c6c08ad; no Git stack on Buddy.
@@ -36,7 +36,7 @@ frozen V0/V5.4 wire-format modification; no new alias result mapping is needed.
 - Docs/Contracts/vnext/dm_prospective_alias_contribution_v1.json (new deterministic bundle);
 - tests/unit/test_vnext_prospective_aliases.py (new owning contract/materialization/read tests);
 - tests/integration/test_postgres_vnext_prospective_aliases.py (new transaction proofs);
-- Docs/Decisions/ADR-0027-prospective-evidence-bearing-aliases.md (new generic decision).
+- Docs/Decisions/ADR-0029-prospective-evidence-bearing-aliases.md (new generic decision).
 
 Open Core158/150/149/148/147/146/145/143 patches were inspected: no vNext runtime
 path overlap. Core158 owns global Steward/roadmap; do not edit those files. No
@@ -103,3 +103,35 @@ Scratch evidence owner Elderwyld prospective-alias lane:
 Retain database/logs/XML and reused task-owned caches through acceptance; inspect
 connections/processes/mounts/unique data and specifically approved cleanup scope
 before disposal. No manual paths removed or reclaimed bytes claimed.
+
+
+## Acceptance seal
+
+Disposition:MIND_PROSPECTIVE_EVIDENCE_ALIASES_ACCEPTED. Implementation head
+c9a64a81431121e189123e098856d216a4f7f807; independent cumulative code review recorded
+as5973452695 on PR231 through the operator account (not a separate GitHub-user
+approval). Local exact-head full core2997 passed11 skipped; full PostgreSQL519
+passed1 skipped (only new owned test database), owning alias27 and focused SQL17
+passed. Full Ruff/Pyright and frozen V0 bundle check passed. Existing Buddy
+first-World typed evidence module39 passed with explicit candidate Core source;
+this is compatibility evidence, not installed-pin or serving rollout acceptance.
+
+GitHub implementation-head CI44506845522 passed core/integration/benchmark-smoke,
+including the actual accepted WorldKeeper source/evidence consumer witness.
+Final documentation-head CI and independent delta review are required before merge.
+Local XML/log/type evidence lives in the task-owned scratch path above; no frozen
+classic baseline, provider request, live data or serving process changed.
+
+The finalization rebrief replaces only the new ADR path0027 with0029 because0027
+(open predicate namespaces) and0028 (source admission) already exist. Open active
+patches do not claim0029. Same nine-path/capability boundary; runtime/test/schema
+blobs are unchanged from the reviewed implementation. No broader source work is
+absorbed by this correction.
+
+Next primary question: how does Buddy compose the accepted reviewed first-World
+intent, source/span evidence and exact parent into this native publication without
+losing any accepted field or creating a second authority? Consumer pin/composition,
+versioned product prepare/confirm/recovery and activation remain unimplemented by
+this Core slice. Trace actual WK needs before introducing another contract. The
+larger optimized native deployment, current classic retirement and V11 performance/
+semantic evidence objective remains active.
