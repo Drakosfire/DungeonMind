@@ -1,29 +1,52 @@
 # Governed native source publication: atomic facts and aliases
 
-Status: ACTIVE IMPLEMENTATION. Root final start authorized pinned design0c6198e581ab41b135a21915b6b5f0bcb4274dbd.
-Owner: MIND. User explicitly authorizes this lane's design, implementation, review,
-PR transport and subsequent separately controlled merge. No ARCH/PRIME gate.
-Pinned base: f1dd6d2d4688a44c1428076e00fe32940077237b.
+Status: ACTIVE FINAL QUALIFICATION, CorePR239; root owns review/merge.
+Owner: MIND, explicit full-lane authority; no ARCH/PRIME gate.
 Branch: codex/v10-governed-native-source-publication.
-Delivery: one serial Core prerequisite; Buddy manual API remains gated. Profile1
-manual enablement remains a separate later Buddy compatibility slice.
+Current comparison/accepted-quality base: ecaaa2da0da1db028e260985cf8abc20ef6dfa9c.
+Original design base: f1dd6d2d4688a44c1428076e00fe32940077237b; approved design
+0c6198e581ab41b135a21915b6b5f0bcb4274dbd. Original reviewed publication runtime:
+ee3eb3f945cc7c91902ec983d15402070f79ac7c, Hubble review5985803881 SOURCEPASS with
+qualification HOLD (not final acceptance). Root explicitly released final
+integration; no public capability/code expansion is authorized in this phase.
 
-## Authority, caller pressure and audit
+## Fast reentry and serial dependencies
 
-Read README.md, AGENTS.md, Docs/Architecture/AUTHORITY.md, existing native source
-contracts, prospective aliases, extension planner/recovery and memory/Postgres
-source repositories. Current code/contracts govern; historical README consumer
-rollout summaries are not serving-state proof. Root audit: open143,145-150 concern
-classic WorldGraph/adoption;158 owns process/Steward guidance. No planned vNext
-regions overlap those active scopes. Do not absorb old PR work or edit standing
-Steward/roadmap documents. Root reports no narrower AGENTS under src/tests/Docs.
+Accepted quality prerequisites are integrated normally, without history rewriting:
+- Core240 merge757cc986a55aaba7013e27724e42ef50f814804c, code36c5f1f0538716413ddd4b90000af0ccf41997b7,
+  review5985957336, CI44650060111 all3SUCCESS; private optional counter typing,
+  annotation/tuple boundary and lint only, owning194passed.
+- Core241 mergeecaaa2da0da1db028e260985cf8abc20ef6dfa9c, code671a361c98330df407f99fafeba0f24dd894b78e,
+  review5986075059, CI44651370225 all3SUCCESS; test-only import isolation,
+  red->green ordered pair, module26/full3207passed,29assertions unchanged.
 
-Buddy protected gate bdab1ab12 supplies memory evidence only: plain governed
-extension publishes13 kinds/45 mapping inputs with normal name search, but omits
-manual primary-label aliases; separate alias publication preserves aliases with
-parent evidence but does not fence current source epoch. This does not exhaust
-all alternate ports or show a defect in generic alias publication. Core remains
-generic: no Buddy kinds, predicates, UI, caller workflow or profile defaults here.
+Root explicitly expands original19-path allowance to21 ONLY to settle these two
+owning handoffs. No extra production/test edits. All10 publication runtime/schema/
+migration files are byte-identical to reviewedee3: retained
+scratch/v10-core/governed-native-source-publication/integration-ecaaa-runtime-equivalence.json.
+Migration0023 SHA2560193a186411b6a2dfaba5f4704fe2d1469d4d61fe2368d268c75b1436a1b4fc7
+and alembic.ini stay stable during independent Buddy installed-runtime consumer
+SQL proof. No changes without root checkpoint; no Buddy/Core overlay or live write.
+
+Final committed integrated-head fullunit/conformance, owning SQL/migration,
+Ruff/types/frozenbundle/diff and lifecycle proof are required before final freeze.
+Do not repeat the whole12minute SQL cohort locally: root's originalee3 fullSQL
+586passed1skipped is historical proof, not a new-head execution. FinalCI repeats it.
+
+## Authority and current scope
+
+README.md, AGENTS.md, Docs/Architecture/AUTHORITY.md govern. Fresh fetched main is
+exactecaaa. Current openPR inventory239/158/150-145/143 unchanged:239 owns this
+publication scope,158 shared process/Steward guidance is excluded, other stacks
+are classic/adoption regions. No old work absorption, lease revocation or closure.
+New prerequisite seals are root-authorized docs only; accepted source changes
+arrive through main, not extra edits in this capability.
+
+Buddy protected gate bdab1ab12 is memory evidence: plain governed extension
+preserves13kinds/45mapping inputs and normal names but omits primary-label aliases;
+parent-evidence alias publisher lacks current epoch fence. This does not exhaust
+all ports or identify a generic alias publisher defect. No Buddy/domain semantics,
+profile default/adoption, UI, transport, live deployment or benchmark changes here.
 
 ## Outcome and indivisibility
 
@@ -152,7 +175,7 @@ source evidence closure. Any extraction from extension code must preserve old
 publication/recovery behavior and accepted validation cost (no new whole-history
 verification on ordinary publication; strict immutable recovery remains strict).
 
-## Exact19-path write lease and review map
+## Exact21-path allowance and review map
 
 1. Docs/Plans/HANDOFF-MIND-governed-native-source-publication.md (this handoff)
 2. Docs/Contracts/vnext/dm_governed_native_source_publication_v1.json (new standalone schema)
@@ -177,8 +200,11 @@ verification on ordinary publication; strict immutable recovery remains strict).
 Root rebrief: migration0023 makes the two existing0022 head expectations stale;
 19th path is coupled migration correctness, no unrelated test repairs.
 
+20. Docs/Plans/HANDOFF-MIND-complete-entity-batch-lint-types.md (accepted240 seal only)
+21. Docs/Plans/HANDOFF-MIND-cache-verification-import-isolation.md (accepted241 seal only)
+
 No other paths without root checkpoint. In particular no original bundle or
-PUBLIC_CONTRACT_MODELS changes: baseline17 models (actual pinned inventory; earlier18 count corrected), generations, schemas, parsed
+PUBLIC_CONTRACT_MODELS changes: baseline17 models (verified exact pinned inventory), generations, schemas, parsed
 model/builder/artifact formats stay unchanged. Standalone schema embeds new public
 request/receipt definitions as needed. No old contract regeneration. No shared
 Steward/roadmap edits, new env/dependency/domain/pin/UI/transport changes.
@@ -208,24 +234,6 @@ Steward/roadmap edits, new env/dependency/domain/pin/UI/transport changes.
   qualification with exact-head evidence and all failures preserved. No benchmark
   baseline reruns or claims of serving/performance parity from these tests.
 
-## Resources, stops and continuation
-
-Before allocation actual executor verified Projects UUID
-48fa5d10-fe99-4557-9fc9-d8a2a4b41ac8 and task parent/checkout writability. No new
-allocation for this design checkpoint. Reuse existing task Core runtime and task
-TMPDIR/UV_CACHE_DIR; no new env/resync/worktree/deletion. Future evidence under
-scratch/v10-core/governed-native-source-publication after writable check. Only
-fixture-owned disposable test DBs; no live/provider/serving/baseline mutations.
-
-Root approved design/storage/lease and explicitly authorized full implementation. Report public API/port/storage scope
-growth before editing outside lease. No partial Buddy manual API, profile transition
-or source admission bridge. Root owns subsequent Buddy adoption/manual work and
-profile1 enablement separately; full V10/current deployment/rollback/V11 remain open.
-
-Retain this unique handoff commit/branch. MIND owns retained task checkout/cache and
-all existing gate scratch; no cleanup performed or authorized. Cleanup follow-up
-requires explicit scope plus active-process/mount/dirty/unique-data checks.
-
 ## Root-approved preparation API rebrief
 
 Public source access gives proof+epoch but not introduction operation/receipt SHA.
@@ -252,28 +260,37 @@ sealed in full intent. Old generic planners retain their behavior. Child-survivo
 evidence closure alone cannot authorize deletions; both modes require memory/SQL
 zero-mutation tests with pre-existing facts from another source.
 
-## Working implementation checkpoint (not qualification acceptance)
+## Evidence and limits: do not relabel historical executions
 
-Working diagnostics under scratch/v10-core/governed-native-source-publication:
-unit1/2 passed12; expanded unit3 exposed missing test imports, unit5 exposed public
-DTO fixture assumptions and the corrected baseline17 count; all raw failures kept.
-unit9 owning+old alias/extension/bundle controls passed142. Types4 reports0 errors,
-full Ruff3 passes. SQL1 passed14; SQL2 passed43; SQL3 passed51 including migrations;
-SQL4 passed90 with1 stale old-extension downgrade-head expectation, corrected only
-0022->0023 in the already leased regression file. Each unique32903 test database
-has a lifecycle receipt proving zero connections before drop. These are working-
-source diagnostics, not final exact-head or broad qualification claims.
+Retained namespace: scratch/v10-core/governed-native-source-publication.
+- Original reviewedee3 scoped257unit/read and91SQL/migration passed0skips; lifecycle
+  verifies each unique32903DB removed after zero active connections. Exact source/
+  command/log hashes in final-ee3eb3f-inputs.json. Original bundle byte-identical.
+- Root originalee3 fullunit/conformance3279passed1FAILED (cache0!=1 reproduced on
+  exactbase/candidate); fullRuff6/type1FAILED also independently executed on exact
+  b653 mirror. Hubble independent142passed; old CI44646724178 corelintFAILED before
+  unit/types, integration+WorldKeeper/service types and benchmark-smokePASSED.
+- Root originalee3 fullSQL586passed1skipped/exit0, ownedDBremovedzeroactive. That
+  prior integration success is preserved, not renamed as current execution.
+- Quality parents240/241 resolve those static/import-test defects. New integrated
+  full tests must demonstrate closure; no silent waiver or old-result relabeling.
+- Initial working failures (missing test imports, public DTO assumptions, baseline
+ 17-model count correction, SQL4 stale old-extension0022 head expectation) remain
+  retained. No frozen old schema/bundle was regenerated. SQL4 failed90/1, not green.
 
-Root/Hubble readiness repairs included: create-only accepted items (destructive
-retract/supersede/identity refused); selected SUPPORT's own current access and
-original role/metadata; exact immutable root/introduction row identities and
-original command/child/payload commitments against valid-row substitution. Public
-metadata SUPPORT discovery covers admission/extension/new-publication origins;
-reuse receipts introduce nothing. Old generic alias semantics unchanged. New
-allocation mappings are part of the new atomic receipt, not a second result write.
+## Resources, stops and next delivery
 
-Integrate accepted origin/main b6539db99fe5c961123bf7615c9d67cd4e40676b before final
-exact-head checks: concurrent provenance-batch capability is disjoint and must be
-preserved. Original design base f1dd remains historical design anchor. No Buddy
-environment sync or live change. Source/receipt provenance manifest and final
-owning SQL/unit/type/lint results still required before freeze/review handback.
+Verified Projects UUID48fa5d10-fe99-4557-9fc9-d8a2a4b41ac8 plus actual writable task
+checkout/scratch. Existing Core runtime cache/v10-core-unit, per-process Core-only
+PYTHONPATH=src and task TMPDIR/UV_CACHE_DIR; no tool env sync/newenv/worktree/mirror.
+Only unique fixture32903DBs and task-owned conventional generated paths. No
+provider/serving/live/sourceauthority/baseline changes. MIND retains all current/
+prior logs, manifests, mirrors/cache under active full goal; no filesystem cleanup.
+Cleanup follow-up needs approved scope and process/mount/dirty/unique-data checks.
+
+After final committed-head qualification: updatePR239, push/freeze exacthead and
+report actual handles/results/limits to root. Independent source/evidence review
+and finalCI precede root merge. Buddy consumer currently may diagnose installedee3
+with migrations-only checkout; final accepted merge pin is mandatory. Buddy manual
+API/UI/current-route retirement/explicit World transition/deployment/rollback/V11
+remain separate open full-goal work; this capability is not their completion.
