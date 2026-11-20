@@ -242,7 +242,10 @@ def test_select_only_role_consumes_artifact_without_write_privilege(migrated_dat
         )
 
 
-def test_postgres_artifact_memory_hit_refreshes_withdrawal_and_source_verification(pg, monkeypatch):
+@pytest.mark.parametrize("historical_reopen", [False, True])
+def test_postgres_artifact_memory_hit_refreshes_withdrawal_and_source_verification(
+    pg, historical_reopen
+):
     from dungeonmind.application.vnext import publish_native_text_source_evidence
     from dungeonmind.application.vnext.native_source_access import (
         NativeParsedRevisionCache,
@@ -263,17 +266,32 @@ def test_postgres_artifact_memory_hit_refreshes_withdrawal_and_source_verificati
         space_id=receipt.space_id,
         revision_id=receipt.published_revision_id,
         domain_contract=domain,
-        parsed_cache=NativeParsedRevisionCache(),
+        parsed_cache=NativeParsedRevisionCache(retain_evicted_records=historical_reopen),
     )
     first = open_native_text_source_access_context(**args)
+    evidence = receipt.bindings[0].evidence_ref_id
+    if historical_reopen:
+        open_native_text_source_access_context(
+            **{**args, "revision_id": genesis.published_revision_id}
+        )
+        reopened = open_native_text_source_access_context(**args)
+        assert reopened.parsed is not first.parsed
+        assert reopened.parsed.evidence_by_id is first.parsed.evidence_by_id
+        assert reopened.parsed.semantic_digest == first.parsed.semantic_digest
+        assert open_admitted_native_text(reopened, evidence).body_text == request.body_text
+        open_native_text_source_access_context(
+            **{**args, "revision_id": genesis.published_revision_id}
+        )
     repo.withdraw_native_source(
         space_id=receipt.space_id,
         source_artifact_id=receipt.source_artifact_id,
         source_revision_id=receipt.source_revision_id,
     )
     second = open_native_text_source_access_context(**args)
-    assert second.parsed is first.parsed
-    evidence = receipt.bindings[0].evidence_ref_id
+    if historical_reopen:
+        assert second.parsed.evidence_by_id is first.parsed.evidence_by_id
+    else:
+        assert second.parsed is first.parsed
     assert open_admitted_native_text(first, evidence).status == "available"
     assert open_admitted_native_text(second, evidence).status == "unavailable"
     with pg.database.connect() as conn:

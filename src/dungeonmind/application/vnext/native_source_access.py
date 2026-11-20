@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from functools import partial
 from threading import Lock
 from typing import Any, cast
 
@@ -20,12 +21,14 @@ from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnav
 
 from ._read_artifact import decode_read_artifact, parse_verified_source_rows
 from .admission import _contract_visibility_visible
-from .builder import build_parsed_knowledge_revision
+from .builder import _build_parsed_knowledge_revision_from_records, build_parsed_knowledge_revision
 from .errors import KnowledgeReadContextIntegrityError, NativeTextSourceAccessIntegrityError
 from .materialization import NATIVE_VNEXT_GRAPH_SCHEMA, decode_native_graph_payload
 from .model import ParsedKnowledgeRevision
 from .ports import NativeSourceEvidenceRepository, NativeTextSourceView
 from .records import ParsedEvidenceRef, StoredKnowledgeRevision
+
+_EVICTED_RECORD_MAX_PAYLOAD_BYTES = 8_000_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,8 +47,12 @@ class NativeTextSourceAccessContext:
 class NativeParsedRevisionCache:
     """Keep one immutable parsed graph for repeated reads of a verified revision."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, retain_evicted_records: bool = False) -> None:
         self._lock = Lock()
+        self._retain_evicted_records = retain_evicted_records
+        self._evicted_records: tuple[
+            tuple[str, str, str], Callable[[], ParsedKnowledgeRevision]
+        ] | None = None
         self._entry: tuple[tuple[str, str, str], ParsedKnowledgeRevision] | None = None
 
     def parse(self, stored: StoredKnowledgeRevision) -> ParsedKnowledgeRevision:
@@ -66,7 +73,27 @@ class NativeParsedRevisionCache:
         with self._lock:
             if self._entry is not None and self._entry[0] == key:
                 return self._entry[1]
-            parsed = load()
+            archived = self._evicted_records
+            parsed = archived[1]() if archived is not None and archived[0] == key else load()
+            if self._retain_evicted_records and self._entry is not None:
+                previous_key, previous = self._entry
+                if len(previous_key[2].encode("utf-8")) <= _EVICTED_RECORD_MAX_PAYLOAD_BYTES:
+                    # Keep immutable facts only. Indexes and digest will be rebuilt.
+                    self._evicted_records = (
+                        previous_key,
+                        partial(
+                            _build_parsed_knowledge_revision_from_records,
+                            previous.identity,
+                            entities=previous.entities_by_id,
+                            assertions=previous.assertions_by_id,
+                            aliases=previous.aliases_by_id,
+                            evidence=previous.evidence_by_id,
+                            _stream_digest=True,
+                            _reuse_frozen_records=True,
+                        ),
+                    )
+                else:
+                    self._evicted_records = None
             self._entry = (key, parsed)
             return parsed
 
