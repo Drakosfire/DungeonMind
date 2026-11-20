@@ -1,4 +1,4 @@
-"""Separate bearer-gated FastAPI host for exact Threat mechanics hydration."""
+"""Compatibility HTTP boundary for retired classic Threat mechanics hydration."""
 
 # pyright: reportMissingImports=false
 
@@ -17,32 +17,10 @@ from pydantic import ValidationError
 from dungeonmind.application.graph_snapshot import GraphSnapshotReader
 from dungeonmind.application.repositories import WorldGraphRepository
 
-from ..application.threat_mechanics_transport import (
-    DndThreatMechanicsTransportError,
-    hydrate_threat_mechanics_request,
-)
 from ..contracts.mechanics_resources import DndMechanicsResourceResolver
 from ..contracts.mechanics_transport import DndThreatMechanicsHydrationRequest
 
 _HYDRATION_PATH = "/v1/dnd/threat-mechanics-hydrations"
-_PUBLIC_MESSAGES = {
-    "graph_revision_not_found": "Pinned graph revision was not found.",
-    "graph_repository_unavailable": "Graph repository is temporarily unavailable.",
-    "threat_mechanics_binding_invalid": "Threat mechanics binding validation failed.",
-    "mechanics_resource_not_found": "Mechanics resource was not found.",
-    "mechanics_resource_unavailable": "Mechanics resource provider is temporarily unavailable.",
-    "mechanics_resource_integrity_failure": "Mechanics resource integrity validation failed.",
-    "internal_error": "An unexpected error occurred.",
-}
-_STATUS_BY_REASON = {
-    "graph_revision_not_found": 404,
-    "graph_repository_unavailable": 503,
-    "threat_mechanics_binding_invalid": 409,
-    "mechanics_resource_not_found": 404,
-    "mechanics_resource_unavailable": 503,
-    "mechanics_resource_integrity_failure": 502,
-    "internal_error": 500,
-}
 
 
 class _AccessFailure(Exception):
@@ -98,9 +76,6 @@ class ThreatMechanicsAccessBinding:
 
 @dataclass
 class _ThreatMechanicsAppState:
-    graph_repository: WorldGraphRepository
-    graph_reader: GraphSnapshotReader
-    resource_resolver: DndMechanicsResourceResolver
     access_binding: ThreatMechanicsAccessBinding
     readiness_probe: Callable[[], dict[str, Any]]
 
@@ -133,14 +108,6 @@ def _access_body() -> dict[str, Any]:
     return _error_body("capability_denied", "Threat mechanics access denied.")
 
 
-def _transport_body(error: DndThreatMechanicsTransportError) -> dict[str, Any]:
-    return _error_body(
-        error.reason,
-        _PUBLIC_MESSAGES[error.reason],
-        details=error.details,
-    )
-
-
 def create_threat_mechanics_app(
     *,
     graph_repository: WorldGraphRepository,
@@ -149,7 +116,9 @@ def create_threat_mechanics_app(
     access_binding: ThreatMechanicsAccessBinding,
     readiness_probe: Callable[[], dict[str, Any]],
 ) -> FastAPI:
-    """Create a separate, read-only, server-to-server mechanics host."""
+    """Keep the legacy host callable while refusing further HTTP hydration."""
+    # Retain factory keyword compatibility for callers of the old host.
+    del graph_repository, graph_reader, resource_resolver
     app = FastAPI(
         title="DungeonMind D&D Threat Mechanics",
         version="0.1.0",
@@ -157,9 +126,6 @@ def create_threat_mechanics_app(
         redoc_url=None,
     )
     app.state.threat_mechanics = _ThreatMechanicsAppState(
-        graph_repository=graph_repository,
-        graph_reader=graph_reader,
-        resource_resolver=resource_resolver,
         access_binding=access_binding,
         readiness_probe=readiness_probe,
     )
@@ -168,7 +134,7 @@ def create_threat_mechanics_app(
     async def _unexpected_error(_request: Request, _exc: Exception) -> JSONResponse:
         return JSONResponse(
             status_code=500,
-            content=_error_body("internal_error", _PUBLIC_MESSAGES["internal_error"]),
+            content=_error_body("internal_error", "An unexpected error occurred."),
         )
 
     @app.get("/healthz")
@@ -185,12 +151,13 @@ def create_threat_mechanics_app(
                 status_code=503,
                 content=_error_body(
                     "graph_repository_unavailable",
-                    _PUBLIC_MESSAGES["graph_repository_unavailable"],
+                    "Graph repository is temporarily unavailable.",
                 ),
             )
 
     @app.post(
         _HYDRATION_PATH,
+        responses={410: {"description": "Classic Threat mechanics hydration is retired."}},
         openapi_extra={
             "requestBody": {
                 "required": True,
@@ -244,21 +211,12 @@ def create_threat_mechanics_app(
                 content=_access_body(),
             )
 
-        try:
-            hydration = hydrate_threat_mechanics_request(
-                body,
-                graph_repository=state.graph_repository,
-                graph_reader=state.graph_reader,
-                resource_resolver=state.resource_resolver,
-            )
-        except DndThreatMechanicsTransportError as error:
-            return JSONResponse(
-                status_code=_STATUS_BY_REASON[error.reason],
-                content=_transport_body(error),
-            )
         return JSONResponse(
-            status_code=200,
-            content=hydration.model_dump(mode="json"),
+            status_code=410,
+            content=_error_body(
+                "classic_threat_mechanics_hydration_retired",
+                "Classic Threat mechanics hydration is retired.",
+            ),
             headers={"Cache-Control": "no-store"},
         )
 

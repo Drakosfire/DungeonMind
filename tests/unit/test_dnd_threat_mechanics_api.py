@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import json
 from pathlib import Path
 from typing import Any, cast
@@ -13,7 +12,6 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from dungeonmind.contracts.graph import StoredGraphRevision
-from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind_dnd.contracts.mechanics_resources import (
     DndMechanicsResourceEnvelope,
     DndMechanicsResourceRef,
@@ -26,7 +24,6 @@ from tests.unit.test_dnd_threat_mechanics import _reader, _resource, _stored_rev
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "dungeonmind_dnd"
 REQUEST_FIXTURE = FIXTURES / "tripod-null-calf-threat-mechanics-request-v1.json"
-HYDRATION_SHA256 = "166dfe01ad0e2f4b57de3c74cfd50160e34a29591957f85b4a786c9f2edd6e16"
 SECRET = "sentinel-threat-mechanics-bearer"
 WORLD = "world:synthetic-gatewatch"
 PATH = "/v1/dnd/threat-mechanics-hydrations"
@@ -105,25 +102,21 @@ def _post(
     )
 
 
-def test_success_returns_existing_hydration_and_no_store() -> None:
+def test_authorized_hydration_retires_before_graph_or_resource_access() -> None:
     repository = _Repository(_stored_revision())
     resolver = _Resolver(_resource())
+    reader = _CountingReader()
 
-    with TestClient(_app(repository, resolver)) as client:
+    with TestClient(_app(repository, resolver, reader=reader)) as client:
         response = _post(client)
 
-    assert response.status_code == 200
+    assert response.status_code == 410
     assert response.headers["cache-control"] == "no-store"
-    assert response.headers["content-type"].startswith("application/json")
-    assert canonical_sha256(response.json()) == HYDRATION_SHA256
-    assert response.json()["binding"]["binding_id"] == (
-        "mechbind:872167afbc6e6a6b242c6d93036767ab"
-    )
-    assert repository.get_revision_calls == [
-        (WORLD, "rev:6e02bd224f6b5616534f10026c8b9679")
-    ]
+    assert response.json()["error"]["code"] == "classic_threat_mechanics_hydration_retired"
+    assert repository.get_revision_calls == []
     assert repository.get_head_calls == 0
-    assert len(resolver.calls) == 1
+    assert resolver.calls == []
+    assert reader.calls == 0
 
 
 @pytest.mark.parametrize("token", ["", "wrong", None])
@@ -233,95 +226,6 @@ def test_wrong_world_is_forbidden_before_repository_access() -> None:
     assert resolver.calls == []
 
 
-def test_missing_revision_is_404_and_does_not_resolve_resource() -> None:
-    repository = _Repository(None)
-    resolver = _Resolver(_resource())
-
-    with TestClient(_app(repository, resolver)) as client:
-        response = _post(client)
-
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "graph_revision_not_found"
-    assert len(repository.get_revision_calls) == 1
-    assert resolver.calls == []
-
-
-def test_forged_revision_is_409_before_resolver_access() -> None:
-    stored = _stored_revision()
-    forged = StoredGraphRevision(
-        revision=stored.revision.model_copy(
-            update={"revision_id": "rev:" + ("0" * 32)}
-        ),
-        graph_payload=copy.deepcopy(stored.graph_payload),
-    )
-    repository = _Repository(forged)
-    resolver = _Resolver(_resource())
-
-    with TestClient(_app(repository, resolver)) as client:
-        response = _post(client)
-
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "threat_mechanics_binding_invalid"
-    assert resolver.calls == []
-
-
-def test_resource_miss_and_provider_failure_use_stable_codes() -> None:
-    repository = _Repository(_stored_revision())
-    with TestClient(_app(repository, _Resolver(None))) as client:
-        missing = _post(client)
-    assert missing.status_code == 404
-    assert missing.json()["error"]["code"] == "mechanics_resource_not_found"
-
-    class _ExplodingResolver(_Resolver):
-        def resolve(self, _: DndMechanicsResourceRef) -> None:
-            self.calls.append(_)
-            raise RuntimeError("https://provider.invalid/secret-path")
-
-    exploding = _ExplodingResolver(_resource())
-    with TestClient(_app(_Repository(_stored_revision()), exploding)) as client:
-        unavailable = _post(client)
-    assert unavailable.status_code == 503
-    assert unavailable.json()["error"]["code"] == "mechanics_resource_unavailable"
-    assert "provider.invalid" not in unavailable.text
-    assert "secret-path" not in unavailable.text
-    assert len(exploding.calls) == 1
-
-
-def test_wrong_resource_ref_returns_502_without_payload_bytes() -> None:
-    resource = _resource()
-    changed = DndMechanicsResourceEnvelope(
-        resource_ref=resource.resource_ref.model_copy(
-            update={"resource_id": "statblock:sentinel-resource"}
-        ),
-        mechanics_payload=copy.deepcopy(resource.mechanics_payload),
-    )
-    resolver = _Resolver(changed)
-
-    with TestClient(_app(_Repository(_stored_revision()), resolver)) as client:
-        response = _post(client)
-
-    assert response.status_code == 502
-    assert response.json()["error"]["code"] == "mechanics_resource_integrity_failure"
-    assert "Tripod Null-Calf" not in response.text
-    assert "sentinel-resource" not in response.text
-    assert len(resolver.calls) == 1
-
-
-def test_successive_posts_are_isolated_and_recomputed() -> None:
-    repository = _Repository(_stored_revision())
-    resolver = _Resolver(_resource())
-
-    with TestClient(_app(repository, resolver)) as client:
-        first = _post(client)
-        first_body = first.json()
-        first_body["mechanics_payload"]["name"] = "client mutation"
-        second = _post(client)
-
-    assert first.status_code == second.status_code == 200
-    assert second.json()["mechanics_payload"]["name"] == "Tripod Null-Calf"
-    assert len(resolver.calls) == 2
-
-
 def test_health_readiness_and_openapi_surface_are_narrow() -> None:
     repository = _Repository(_stored_revision())
     resolver = _Resolver(_resource())
@@ -367,27 +271,3 @@ def test_health_readiness_and_openapi_surface_are_narrow() -> None:
     assert repository.get_revision_calls == []
     assert repository.get_head_calls == 0
     assert resolver.calls == []
-
-
-def test_unexpected_service_error_is_sanitized(monkeypatch) -> None:
-    repository = _Repository(_stored_revision())
-    resolver = _Resolver(_resource())
-    monkeypatch.setattr(
-        "dungeonmind_dnd.integration.threat_mechanics_api.hydrate_threat_mechanics_request",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            RuntimeError("database://secret-path")
-        ),
-    )
-
-    with TestClient(_app(repository, resolver), raise_server_exceptions=False) as client:
-        response = _post(client)
-
-    assert response.status_code == 500
-    assert response.json() == {
-        "error": {
-            "code": "internal_error",
-            "message": "An unexpected error occurred.",
-            "details": {},
-        }
-    }
-    assert "secret-path" not in response.text

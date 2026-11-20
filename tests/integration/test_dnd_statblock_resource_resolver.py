@@ -1,4 +1,4 @@
-"""Real loopback composition of the statblock resolver through PR #20."""
+"""Real loopback provider composition through direct classic hydration."""
 
 from __future__ import annotations
 
@@ -10,11 +10,12 @@ from typing import Any, cast
 
 import pytest
 
-pytest.importorskip("fastapi")
-from fastapi.testclient import TestClient
-
 from dungeonmind.contracts.graph import StoredGraphRevision
 from dungeonmind.domain.canonical import canonical_sha256
+from dungeonmind_dnd.application.threat_mechanics_transport import (
+    DndThreatMechanicsTransportError,
+    hydrate_threat_mechanics_request,
+)
 from dungeonmind_dnd.contracts.mechanics_resources import DndMechanicsResourceRef
 from dungeonmind_dnd.contracts.mechanics_transport import (
     DndThreatMechanicsHydrationRequest,
@@ -28,10 +29,6 @@ from dungeonmind_dnd.integration.statblock_resource_resolver import (
     DndStatblockResourceResolver,
     DndStatblockResourceResolverConfig,
 )
-from dungeonmind_dnd.integration.threat_mechanics_api import (
-    ThreatMechanicsAccessBinding,
-    create_threat_mechanics_app,
-)
 from tests.unit.test_dnd_threat_mechanics import _reader, _stored_revision
 
 pytestmark = pytest.mark.integration
@@ -43,11 +40,9 @@ FIXTURE = (
 WORLD_ID = "world:synthetic-gatewatch"
 REVISION_ID = "rev:6e02bd224f6b5616534f10026c8b9679"
 OBJECT_ID = "obj:48e170969a2bb3980e437f7430b7b1c1"
-TOKEN = "integration-threat-mechanics-token"
 PROVIDER_KEY = "integration-dungeonbuddy-key"
 EXPECTED_DIGEST = "935dc0dff1ac7cc8405836764469761a1d26e9e38dd74cd856b8a8a31f0fae51"
 PATH = f"{STATBLOCKS_ROUTE_PREFIX}/sb_000001/revisions/rev_000002"
-HYDRATION_PATH = "/v1/dnd/threat-mechanics-hydrations"
 
 
 def _provider_body() -> dict[str, Any]:
@@ -180,21 +175,12 @@ class _ProxyServer:
         self.thread.join(timeout=5)
 
 
-def _app(repository: _Repository, resolver: DndStatblockResourceResolver):
-    return create_threat_mechanics_app(
+def _hydrate(repository: _Repository, resolver: DndStatblockResourceResolver):
+    return hydrate_threat_mechanics_request(
+        _request(),
         graph_repository=cast(Any, repository),
         graph_reader=_reader(),
         resource_resolver=resolver,
-        access_binding=ThreatMechanicsAccessBinding.from_secret(WORLD_ID, TOKEN),
-        readiness_probe=lambda: {"status": "ready"},
-    )
-
-
-def _post(client: TestClient) -> Any:
-    return client.post(
-        HYDRATION_PATH,
-        json=_request().model_dump(mode="json"),
-        headers={"Authorization": f"Bearer {TOKEN}"},
     )
 
 
@@ -208,21 +194,18 @@ def _resolver(server: _ProviderServer) -> DndStatblockResourceResolver:
     )
 
 
-def test_exact_provider_response_hydrates_through_pr20_loopback() -> None:
+def test_exact_loopback_provider_response_hydrates_through_library() -> None:
     provider_bytes = FIXTURE.read_bytes()
     repository = _Repository(_stored_revision())
     with _ProviderServer(provider_bytes) as provider:
         resolver = _resolver(provider)
         try:
-            with TestClient(_app(repository, resolver)) as client:
-                response = _post(client)
+            response = _hydrate(repository, resolver)
         finally:
             resolver.close()
 
-    assert response.status_code == 200
-    assert response.headers["cache-control"] == "no-store"
-    assert canonical_sha256(response.json()["mechanics_payload"]) == EXPECTED_DIGEST
-    assert response.json()["mechanics_payload"]["identity"]["name"] == "Ironhide Brute"
+    assert canonical_sha256(response.mechanics_payload) == EXPECTED_DIGEST
+    assert response.mechanics_payload["identity"]["name"] == "Ironhide Brute"
     assert repository.get_revision_calls == [(WORLD_ID, REVISION_ID)]
     assert repository.get_head_calls == 0
     assert provider.calls == [
@@ -253,64 +236,55 @@ def test_public_resolver_bypasses_ambient_proxy_and_reaches_provider(
 
         resolver = _resolver(provider)
         try:
-            with TestClient(_app(repository, resolver)) as client:
-                response = _post(client)
+            response = _hydrate(repository, resolver)
         finally:
             resolver.close()
 
-    assert response.status_code == 200
-    assert canonical_sha256(response.json()["mechanics_payload"]) == EXPECTED_DIGEST
+    assert canonical_sha256(response.mechanics_payload) == EXPECTED_DIGEST
     assert repository.get_revision_calls == [(WORLD_ID, REVISION_ID)]
     assert repository.get_head_calls == 0
     assert len(provider.calls) == 1
     assert proxy.calls == []
 
 
-def test_repeated_exact_posts_are_isolated_and_uncached() -> None:
+def test_repeated_exact_hydrations_are_isolated_and_uncached() -> None:
     repository = _Repository(_stored_revision())
     with _ProviderServer(FIXTURE.read_bytes()) as provider:
         resolver = _resolver(provider)
         try:
-            with TestClient(_app(repository, resolver)) as client:
-                first = _post(client)
-                first_body = first.json()
-                first_body["mechanics_payload"]["identity"]["name"] = "client mutation"
-                second = _post(client)
+            first = _hydrate(repository, resolver)
+            first.mechanics_payload["identity"]["name"] = "caller mutation"
+            second = _hydrate(repository, resolver)
         finally:
             resolver.close()
 
-    assert first.status_code == second.status_code == 200
-    assert second.json()["mechanics_payload"]["identity"]["name"] == "Ironhide Brute"
+    assert second.mechanics_payload["identity"]["name"] == "Ironhide Brute"
     assert len(repository.get_revision_calls) == 2
     assert repository.get_head_calls == 0
     assert len(provider.calls) == 2
 
 
 @pytest.mark.parametrize(
-    ("status_code", "provider_body", "expected_status", "expected_code"),
+    ("status_code", "provider_body", "expected_code"),
     [
         (
             404,
             b"provider miss secret sentinel",
-            404,
             "mechanics_resource_not_found",
         ),
         (
             410,
             b"provider gone secret sentinel",
-            404,
             "mechanics_resource_not_found",
         ),
         (
             503,
             b"provider failure secret sentinel",
-            503,
             "mechanics_resource_unavailable",
         ),
         (
             200,
             b'{"diagnostic":NaN}',
-            503,
             "mechanics_resource_unavailable",
         ),
     ],
@@ -318,21 +292,19 @@ def test_repeated_exact_posts_are_isolated_and_uncached() -> None:
 def test_provider_miss_and_unavailable_paths_are_exact_and_sanitized(
     status_code: int,
     provider_body: bytes,
-    expected_status: int,
     expected_code: str,
 ) -> None:
     repository = _Repository(_stored_revision())
     with _ProviderServer(provider_body, status_code=status_code) as provider:
         resolver = _resolver(provider)
         try:
-            with TestClient(_app(repository, resolver)) as client:
-                response = _post(client)
+            with pytest.raises(DndThreatMechanicsTransportError) as raised:
+                _hydrate(repository, resolver)
         finally:
             resolver.close()
 
-    assert response.status_code == expected_status
-    assert response.json()["error"]["code"] == expected_code
-    assert "secret sentinel" not in response.text
+    assert raised.value.reason == expected_code
+    assert "secret sentinel" not in repr(raised.value.details) + str(raised.value)
     assert repository.get_revision_calls == [(WORLD_ID, REVISION_ID)]
     assert repository.get_head_calls == 0
     assert len(provider.calls) == 1
@@ -360,14 +332,13 @@ def test_provider_identity_or_schema_disagreement_is_b3a_integrity_failure(
     with _ProviderServer(json.dumps(body, separators=(",", ":")).encode()) as provider:
         resolver = _resolver(provider)
         try:
-            with TestClient(_app(repository, resolver)) as client:
-                response = _post(client)
+            with pytest.raises(DndThreatMechanicsTransportError) as raised:
+                _hydrate(repository, resolver)
         finally:
             resolver.close()
 
-    assert response.status_code == 502
-    assert response.json()["error"]["code"] == "mechanics_resource_integrity_failure"
-    assert "Ironhide Brute" not in response.text
+    assert raised.value.reason == "mechanics_resource_integrity_failure"
+    assert "Ironhide Brute" not in repr(raised.value.details) + str(raised.value)
     assert len(provider.calls) == 1
 
 
@@ -397,13 +368,12 @@ def test_provider_digest_or_payload_disagreement_is_b3a_integrity_failure(
     with _ProviderServer(json.dumps(body, separators=(",", ":")).encode()) as provider:
         resolver = _resolver(provider)
         try:
-            with TestClient(_app(repository, resolver)) as client:
-                response = _post(client)
+            with pytest.raises(DndThreatMechanicsTransportError) as raised:
+                _hydrate(repository, resolver)
         finally:
             resolver.close()
 
-    assert response.status_code == 502
-    assert response.json()["error"]["code"] == "mechanics_resource_integrity_failure"
-    assert "changed mechanics" not in response.text
-    assert "Ironhide Brute" not in response.text
+    assert raised.value.reason == "mechanics_resource_integrity_failure"
+    assert "changed mechanics" not in repr(raised.value.details) + str(raised.value)
+    assert "Ironhide Brute" not in repr(raised.value.details) + str(raised.value)
     assert len(provider.calls) == 1

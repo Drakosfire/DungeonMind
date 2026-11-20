@@ -25,7 +25,7 @@ EXPECTED_HYDRATION_SHA256 = (
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Hydrate one exact D&D Threat mechanics resource."
+        description="Historical client for the retired classic Threat mechanics HTTP route."
     )
     parser.add_argument("--base-url", required=True)
     parser.add_argument(
