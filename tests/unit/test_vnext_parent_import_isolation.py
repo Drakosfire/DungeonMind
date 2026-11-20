@@ -158,7 +158,7 @@ def test_cold_historical_reader_does_not_load_fresh_publishers_or_require_postgr
 @pytest.mark.parametrize(
     "namespace,alias,implementation",
     [
-        ("contracts", "GraphContributionV4", "dungeonmind.contracts.contribution"),
+        ("contracts", "ContributionStatus", "dungeonmind.contracts.contribution"),
         (
             "application",
             "finalize_contribution_review_v4",
@@ -285,6 +285,16 @@ def test_cold_native_contracts_do_not_compile_classic_world_graph_models():
         ("WorldGraphRevision", "graph"),
         ("WorldGraphProjectionRequestV2", "projection_v2"),
         ("ScopeModeV2", "projection_v2"),
+        ("GraphContribution", "contribution"),
+        ("GraphContributionAssertion", "contribution"),
+        ("GraphContributionAssertionCorrection", "contribution"),
+        ("GraphContributionAssertionCorrectionKind", "contribution"),
+        ("GraphContributionAssertionV2", "contribution"),
+        ("GraphContributionAssertionV3", "contribution"),
+        ("GraphContributionAssertionV4", "contribution"),
+        ("GraphContributionV2", "contribution"),
+        ("GraphContributionV3", "contribution"),
+        ("GraphContributionV4", "contribution"),
     ],
 )
 def test_retired_classic_contract_is_available_only_from_explicit_leaf(name, leaf):

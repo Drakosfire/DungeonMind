@@ -13,7 +13,6 @@ from dungeonmind.contracts import (
     CallerScope,
     ContributionSourceKind,
     EmbeddingRun,
-    GraphContribution,
     MindTurnRequest,
     MindTurnResponse,
     SemanticDocument,
@@ -21,6 +20,9 @@ from dungeonmind.contracts import (
     SemanticQuery,
     SurfaceContext,
     Visibility,
+)
+from dungeonmind.contracts.contribution import (
+    GraphContribution,
 )
 from dungeonmind.domain.errors import (
     IdempotencyConflictError,
