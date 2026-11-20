@@ -2212,7 +2212,9 @@ def test_complete_entity_batch_preserves_exact_results_and_withdrawal(org_contex
     )
     for single, batched in zip(expected, actual, strict=True):
         assert replace(single, work=batched.work) == batched
-    assert ("asrt:priya-owns-retrieval-apr" in {a.assertion_id for a in actual[0].assertions}) is not retracted
+    assert (
+        "asrt:priya-owns-retrieval-apr" in {a.assertion_id for a in actual[0].assertions}
+    ) is not retracted
 
 
 def test_complete_entity_batch_misses_do_not_load_provenance(org_context):
