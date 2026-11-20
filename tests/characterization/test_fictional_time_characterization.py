@@ -18,8 +18,10 @@ import pytest
 from dungeonmind.contracts import (
     AcceptanceState,
     EvidenceRef,
-    GraphContributionAssertion,
     SourceDomain,
+)
+from dungeonmind.contracts.contribution import (
+    GraphContributionAssertion,
 )
 
 FIXTURE_PATH = (

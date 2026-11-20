@@ -12,10 +12,6 @@ from dungeonmind.contracts import (
     ClaimAuthority,
     ContributionEpistemicKind,
     FocusKind,
-    GraphContributionAssertion,
-    GraphContributionAssertionCorrection,
-    GraphContributionAssertionCorrectionKind,
-    GraphContributionAssertionV2,
     GraphScope,
     IdentityAliasMapRewrite,
     IdentityDecisionKind,
@@ -35,6 +31,12 @@ from dungeonmind.contracts import (
     SourceRevision,
     SurfaceContext,
     WorldGraphProjectionRequest,
+)
+from dungeonmind.contracts.contribution import (
+    GraphContributionAssertion,
+    GraphContributionAssertionCorrection,
+    GraphContributionAssertionCorrectionKind,
+    GraphContributionAssertionV2,
 )
 from dungeonmind.contracts.vocabulary import EpistemicKind
 

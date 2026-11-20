@@ -10,12 +10,6 @@ from dungeonmind.contracts import (
     Admissibility,
     ContributionEpistemicKind,
     ContributionSourceKind,
-    GraphContribution,
-    GraphContributionAssertion,
-    GraphContributionAssertionCorrection,
-    GraphContributionAssertionCorrectionKind,
-    GraphContributionAssertionV2,
-    GraphContributionV2,
     GraphRetrievalSession,
     IdentityAliasMapRewrite,
     IdentityDecisionKind,
@@ -27,6 +21,14 @@ from dungeonmind.contracts import (
     SourceDomain,
     SourceRevision,
     Visibility,
+)
+from dungeonmind.contracts.contribution import (
+    GraphContribution,
+    GraphContributionAssertion,
+    GraphContributionAssertionCorrection,
+    GraphContributionAssertionCorrectionKind,
+    GraphContributionAssertionV2,
+    GraphContributionV2,
 )
 from dungeonmind.domain.errors import IdempotencyConflictError, PersistenceIntegrityError
 from tests.conftest import WORLD_ID
@@ -202,8 +204,10 @@ def test_conflicting_duplicate_evidence_in_contribution_fails(pg) -> None:
     from dungeonmind.contracts import (
         EvidenceRef,
         EvidenceRole,
-        GraphContributionAssertion,
         SourceDomain,
+    )
+    from dungeonmind.contracts.contribution import (
+        GraphContributionAssertion,
     )
 
     ev_a = EvidenceRef(
@@ -242,8 +246,10 @@ def test_identical_duplicate_evidence_in_contribution_ok(pg) -> None:
     from dungeonmind.contracts import (
         EvidenceRef,
         EvidenceRole,
-        GraphContributionAssertion,
         SourceDomain,
+    )
+    from dungeonmind.contracts.contribution import (
+        GraphContributionAssertion,
     )
 
     ev = EvidenceRef(

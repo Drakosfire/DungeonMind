@@ -16,7 +16,6 @@ from dungeonmind.contracts import (
     ContributionSourceKind,
     EmbeddingRun,
     EmbeddingRunStatus,
-    GraphContribution,
     IdentityDecisionKind,
     IdentityDecisionRecord,
     MindTurnRequest,
@@ -29,6 +28,9 @@ from dungeonmind.contracts import (
     SourceRevision,
     SurfaceContext,
     Visibility,
+)
+from dungeonmind.contracts.contribution import (
+    GraphContribution,
 )
 from dungeonmind.domain.errors import (
     IdempotencyConflictError,

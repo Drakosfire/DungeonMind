@@ -13,12 +13,6 @@ from dungeonmind.contracts import (
     ContributionEpistemicKind,
     ContributionSourceKind,
     EvidenceRef,
-    GraphContribution,
-    GraphContributionAssertion,
-    GraphContributionAssertionCorrection,
-    GraphContributionAssertionCorrectionKind,
-    GraphContributionAssertionV2,
-    GraphContributionV2,
     GraphRetrievalSession,
     GraphScope,
     IdentityAliasMapRewrite,
@@ -40,6 +34,14 @@ from dungeonmind.contracts import (
     ToolCapabilityRule,
     Visibility,
     WorldGraphProjectionRequest,
+)
+from dungeonmind.contracts.contribution import (
+    GraphContribution,
+    GraphContributionAssertion,
+    GraphContributionAssertionCorrection,
+    GraphContributionAssertionCorrectionKind,
+    GraphContributionAssertionV2,
+    GraphContributionV2,
 )
 from dungeonmind.contracts.graph import WorldGraphHead, WorldGraphRevision
 
