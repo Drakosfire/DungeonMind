@@ -175,8 +175,8 @@ def test_two_app_instances_replay_one_durable_record(pg, database_url: str) -> N
 
 
 class _RejectingReader:
-    def read(self, *args, **kwargs):
-        raise AssertionError("receipt replay must not open graph sources")
+    def parse(self, *, graph_schema: str, graph_payload: dict[str, Any]) -> None:
+        raise AssertionError("receipt replay must not rematerialize the graph")
 
 
 @pytest.mark.parametrize("head_state", ["descendant", "rollback"])
@@ -204,6 +204,12 @@ def test_historical_replay_does_not_follow_or_republish_current_head(pg, head_st
 def test_missing_review_is_404_and_unauthorized_requests_do_not_lookup_or_mutate(pg) -> None:
     with TestClient(_app(pg)) as client:
         missing = _post(client, body=_body("review:missing"))
+
+    class RejectingReceiptLookup:
+        def get_for_review(self, world_id: str, review_id: str) -> None:
+            raise AssertionError("receipt lookup preceded authorization")
+
+    with TestClient(_app(pg, publication_repository=RejectingReceiptLookup())) as client:
         unauthorized = _post(client, token="wrong-token")
         wrong_world = _post(client, body=_body(world_id="world:other"))
     assert missing.status_code == 404
