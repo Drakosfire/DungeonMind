@@ -1,6 +1,6 @@
 # V10 prerequisite — read-only historical finalized-publication recovery
 
-Status: ACTIVE. Owner MIND under the operator's full-lane design, implementation,
+Status: IMPLEMENTED — exact-head qualification/review pending. Owner MIND under the operator's full-lane design, implementation,
 review and merge authority. Base `67db2e5cffa772467cec5cf911fea9683e6a0f8d`, branch
 `codex/v10-historical-publication-recovery`, existing clean task Core checkout.
 This nine-path assignment is pinned before runtime edits. Independent Hubble
@@ -120,3 +120,16 @@ MIND retains existing task checkouts/envs and new reports under
 deletion. Any new package verification env/SQL fixture is task-owned, with explicit
 lifecycle and approved-scoped cleanup follow-up after process/mount, dirty/unique
 data and unique-commit protection. No reclaimed bytes claimed without measurement.
+
+## Implementation checkpoint
+
+Lease pin `ab3d4d4` precedes runtime edits. Existing publisher defaults and exact
+legacy-codec functions/manifest remain unchanged. Working evidence:169 unit/
+conformance cases passed; incremental corruption/policy checks9 passed; SQL39
+passed after correcting the missing-row fault filter, plus4 additional unknown-
+family/unavailability cases passed. All3 uniquely named fixture DBs dropped after
+zero connections and confirmed absent. Initial validation-error classification
+and test-harness failures are retained externally, not qualifying passes.
+Core/PG type checks and changed-path lint pass. Final exact-head results, wheel
+identity/origin proof, CI and independent acceptance belong in the PR/evidence.
+No package-pin, frozen-contract, schema, migration or serving changes.

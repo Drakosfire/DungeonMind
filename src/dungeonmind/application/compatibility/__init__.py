@@ -22,6 +22,7 @@ from .legacy_graph import (
     verify_historical_semantic_parity,
     verify_legacy_compatibility_manifest,
 )
+from .publication_recovery import read_historical_finalized_publication
 
 __all__ = [
     "COMPATIBILITY_DOMAIN_CONTRACT_ID",
@@ -37,6 +38,7 @@ __all__ = [
     "decode_legacy_graph_revision",
     "decode_legacy_stored_graph_revision",
     "load_legacy_world_compat_manifest",
+    "read_historical_finalized_publication",
     "validate_stored_legacy_graph_revision",
     "verify_historical_semantic_parity",
     "verify_legacy_compatibility_manifest",
