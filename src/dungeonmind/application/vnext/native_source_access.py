@@ -6,7 +6,7 @@ import hashlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from threading import Lock
-from typing import cast
+from typing import Any, cast
 
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.domain import DomainContractDescriptor, DomainContractRef
@@ -18,7 +18,7 @@ from dungeonmind.contracts.vnext.source import SourceArtifactV3, SourceRevisionV
 from dungeonmind.domain.canonical import canonical_json, canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnavailableError
 
-from ._read_artifact import decode_read_artifact
+from ._read_artifact import decode_read_artifact, parse_verified_source_rows
 from .admission import _contract_visibility_visible
 from .builder import build_parsed_knowledge_revision
 from .errors import KnowledgeReadContextIntegrityError, NativeTextSourceAccessIntegrityError
@@ -110,6 +110,7 @@ def open_native_text_source_access_context(
     ),
     audience_labels: Sequence[str] = (),
     parsed_cache: NativeParsedRevisionCache | None = None,
+    prefer_verified_source_rows: bool = False,
 ) -> NativeTextSourceAccessContext:
     """Pin one exact native revision and one coherent source-authority epoch.
 
@@ -118,7 +119,19 @@ def open_native_text_source_access_context(
     """
     if not space_id.strip() or not revision_id.strip():
         raise KnowledgeReadContextIntegrityError("native source context identity is blank")
-    stored = repository.get_revision(space_id, revision_id)
+    read_rows = getattr(repository, "get_revision_for_native_read", None)
+    if prefer_verified_source_rows and callable(read_rows):
+        read_verified = cast(
+            Callable[
+                [str, str],
+                tuple[StoredKnowledgeRevision | None, Callable[[], dict[str, Any]] | None],
+            ],
+            read_rows,
+        )
+        stored, load_rows = read_verified(space_id, revision_id)
+    else:
+        stored = repository.get_revision(space_id, revision_id)
+        load_rows = None
     if stored is None:
         raise KnowledgeReadContextIntegrityError("native source context revision is missing")
     if stored.revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA:
@@ -137,10 +150,15 @@ def open_native_text_source_access_context(
         != stored.revision.domain_contract_ref.descriptor_sha256
     ):
         raise KnowledgeReadContextIntegrityError("native source context domain pin mismatch")
+    def load_parsed() -> ParsedKnowledgeRevision:
+        if load_rows is not None:
+            parsed_rows = parse_verified_source_rows(stored, load_rows())
+            if parsed_rows is not None:
+                return parsed_rows
+        return _parse_verified_revision(repository, stored)
+
     parsed = (
-        _parse_verified_revision(repository, stored)
-        if parsed_cache is None
-        else parsed_cache._parse_using(stored, lambda: _parse_verified_revision(repository, stored))
+        load_parsed() if parsed_cache is None else parsed_cache._parse_using(stored, load_parsed)
     )
     view = repository.open_native_source_view(space_id)
     return NativeTextSourceAccessContext(
