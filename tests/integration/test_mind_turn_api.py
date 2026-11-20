@@ -20,6 +20,7 @@ from dungeonmind.infrastructure.fixtures.curated_mind_turn import (
 from dungeonmind.service.api import create_app
 from dungeonmind.service.bootstrap import build_readiness_probe
 from dungeonmind.service.demo_access import DemoAccessBinding
+from tests.integration.test_mind_turn_replay import seed_completed_turn
 
 pytestmark = pytest.mark.integration
 
@@ -83,7 +84,7 @@ def _request_body(fixture, *, request_id: str, message: str, **overrides):
 
 
 def test_healthz_readyz_and_mind_turn(seeded_client) -> None:
-    client, fixture, _service = seeded_client
+    client, fixture, service = seeded_client
     health = client.get("/healthz")
     assert health.status_code == 200
     assert health.json() == {"status": "ok"}
@@ -95,13 +96,15 @@ def test_healthz_readyz_and_mind_turn(seeded_client) -> None:
     assert payload["world_id"] == fixture.world_id
     assert payload["embedding_run_id"] == fixture.raw["embedding_run"]["run_id"]
 
-    response = client.post(
-        "/v1/mind-turn",
-        json=_request_body(
+    request_body = _request_body(
             fixture,
             request_id="req:api-safeguards",
             message="Who safeguards the Sun Ledger?",
-        ),
+        )
+    seed_completed_turn(client, service, request_body)
+    response = client.post(
+        "/v1/mind-turn",
+        json=request_body,
     )
     assert response.status_code == 200
     body = response.json()
@@ -112,14 +115,16 @@ def test_healthz_readyz_and_mind_turn(seeded_client) -> None:
 
 
 def test_grounded_miss(seeded_client) -> None:
-    client, fixture, _service = seeded_client
-    response = client.post(
-        "/v1/mind-turn",
-        json=_request_body(
+    client, fixture, service = seeded_client
+    request_body = _request_body(
             fixture,
             request_id="req:api-moon-king",
             message="Who is the Moon King?",
-        ),
+        )
+    seed_completed_turn(client, service, request_body)
+    response = client.post(
+        "/v1/mind-turn",
+        json=request_body,
     )
     assert response.status_code == 200
     body = response.json()
@@ -216,7 +221,7 @@ def test_persistence_errors_are_sanitized(seeded_client) -> None:
     def _boom(_request):
         raise PersistenceUnavailableError(leak)
 
-    service.execute = _boom  # type: ignore[method-assign]
+    service.recover_completed_turn = _boom  # type: ignore[method-assign]
     response = client.post(
         "/v1/mind-turn",
         json=_request_body(
@@ -241,7 +246,7 @@ def test_openapi_only_intended_endpoints(seeded_client) -> None:
     assert paths == {"/healthz", "/readyz", "/v1/mind-turn"}
 
 
-def test_missing_revision_mapped_404(seeded_client) -> None:
+def test_fresh_turn_retires_without_resolving_revision(seeded_client) -> None:
     client, fixture, _service = seeded_client
     response = client.post(
         "/v1/mind-turn",
@@ -252,5 +257,6 @@ def test_missing_revision_mapped_404(seeded_client) -> None:
             requested_revision_id="rev:does-not-exist",
         ),
     )
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "revision_not_found"
+    assert response.status_code == 410
+    assert response.json()["error"]["code"] == "classic_mind_turn_execution_retired"
+    assert _service.agent_invocation_count == 0

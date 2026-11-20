@@ -1,5 +1,11 @@
 # RUNBOOK — B.1b Curated browser surface consumer proof
 
+> V10 retired fresh execution on `POST /v1/mind-turn`. The demo host
+> authorizes the original request and only replays a completed turn.
+> Fresh requests and unfinished sessions return HTTP 410.
+> The original browser exercise below documents the B.1b fixture behavior.
+
+
 **Purpose:** Prove the repository-local static browser example against a real
 PostgreSQL-backed Mind Turn host on a second origin. This is an acceptance
 consumer, not a product surface.
