@@ -1,6 +1,7 @@
 # Governed native source publication: atomic facts and aliases
 
-Status: ACTIVE FINAL QUALIFICATION, CorePR239; root owns review/merge.
+Status: COMPLETE library capability; CorePR239 accepted and merged.
+Owner MIND retains the unfinished consumer/cutover goal.
 Owner: MIND, explicit full-lane authority; no ARCH/PRIME gate.
 Branch: codex/v10-governed-native-source-publication.
 Current comparison/accepted-quality base: ecaaa2da0da1db028e260985cf8abc20ef6dfa9c.
@@ -9,6 +10,51 @@ Original design base: f1dd6d2d4688a44c1428076e00fe32940077237b; approved design
 ee3eb3f945cc7c91902ec983d15402070f79ac7c, Hubble review5985803881 SOURCEPASS with
 qualification HOLD (not final acceptance). Root explicitly released final
 integration; no public capability/code expansion is authorized in this phase.
+
+## Accepted merge and current consumer boundary
+
+Core239 merged90a5aed43ca2a7f1c7539f7d57fe23d54a22d483 from exact
+4d58f2d67507d98c8a4aa80a58aa1a12d52d88c1. Independent Hubble Cycle2 SOURCEPASS
+and bounded functional qualification ACCEPTED, review5986257814. Exact-head
+CI44653743056 all3 jobs succeeded, including core3165passed/11skipped, integration
+581passed/1skipped and the actual WorldKeeper consumer witness. The CI merge tree
+matched the reviewed head; current main was re-fetched unchanged before merge.
+
+Local proof retains its actual execution anchors: committed5ed5266 ran full
+unit/conformance3280passed and owningSQL91passed,0skips. Final4d58 ran the two new
+artifact-path cases plus Ruff/types/frozenbundle/diff. Root independently ran both
+final artifact SQL cases; the unique DB was removed after zero connections. The
+new writer preserves fresh-repository derived decoding with fallback full parsing
+forbidden, exact entity/alias/citation reads and no read-side persisted changes.
+This is structural work evidence, not deployed timing. All10 publication runtime/
+schema/migration blobs remain byte-identical to the prior independently reviewed
+ee3. Historical failed runs remain recorded at their original heads.
+
+Buddy4188 is a separately reviewed/qualified dependent adoption lane. Its initial
+87470578662385fe1226903b237c749009f8b2ea diagnostics installed ee3; those are not
+final accepted-pin or deployment evidence. Retarget to accepted90a5, verify installed
+origins/package graph, close any review findings, qualify and independently review
+the exact final consumer before merging. Manual backend/UI, fresh-classic retirement,
+compatible primary/fallback rollout, rollback and V11 remain unfinished.
+
+## Post-merge documentation slice
+
+Root authorizes serial settlement on codex/v10-governed-source-publication-acceptance
+from accepted90a5aed43ca2a7f1c7539f7d57fe23d54a22d483. Exact two-path lease:
+- This handoff: COMPLETE acceptance and truthful continuation.
+- Docs/Handoffs/HANDOFF-v8-joint-acceptance-checkpoint.md: preserve named V8 measured
+  anchors while updating current V10 code/question and remaining consumer gates.
+Pin this amended assignment before changing the second file. Verify cumulative
+documentation-only scope, local link targets, unchanged runtime/test/dependency
+inputs, diff cleanliness and independent delta review. Existing accepted code/
+semantic tests govern; this slice adds no runtime or measurement claim.
+
+MIND retains task checkouts, existing caches, diagnostic envs, source-bound logs and
+the exact-base verification mirror for the active full goal. All owned SQL databases
+were removed after zero connections. No manual filesystem deletion or reclaimed
+bytes. Cleanup follow-up requires approved scope/process/mount/dirty/unique-data/
+commit checks. Current active assignment and the original design/verification
+contract below stay distinct; Git history retains superseded prose.
 
 ## Fast reentry and serial dependencies
 
@@ -68,7 +114,7 @@ allocator/predicted entity IDs/two-stage commit/dummy interval workaround.
 
 ## Explicit new public contracts and mode union
 
-Names and signatures below are the implementation contract, not implemented code.
+The following implemented V1 contracts and public signatures define this capability.
 New module: contracts/vnext/native_source_publication.py.
 
 NativeSourcePublicationNewIntervalsV1:
