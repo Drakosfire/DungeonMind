@@ -175,26 +175,27 @@ and process/mount/connection, dirty-worktree, unique-data and unique-commit chec
 
 ## Bounded checkpoint maintenance lease
 
-Implemented one-file settlement awaiting independent exact-head review under the operator's full-lane implementation, review
-and merge authority. MIND owns this existing task checkout on branch
-`codex/v10-manual-ui-checkpoint`, base
-`c35a2c49470db9ac718367bd8c42d9361532df3d`. This assignment is committed before
-rewriting the current state at `cb9b411cee73ee0edb7ed3fef097a37c2b3f97a1`.
-Exact write lease: this file only.
+ACTIVE one-file continuity settlement under the operator's full-lane authority.
+MIND reuses the clean task Core checkout on
+`codex/v10-classic-retirement-checkpoint`, base
+`e83ab2664f6c953f4a8726ff053b24703440452a`. This lease is committed before
+updating the current checkpoint. Exact write lease: this file only.
 
-Outcome: record accepted Buddy4207 at merge
-`e3e9304e7e7397a0e6950c285e56d399cc4e6cd3`, reviewed head
-`45b87cd015ed7dfab9fa2fc2ec9f278c158939c8`, review5987678478; replace the stale
-manual-UI question with the true classic-write retirement and subsequent rollout/
-rollback/V11 gates. Preserve all accepted V8, serving and capacity limitations.
-Serial predecessor is accepted Buddy4207; this continuity update precedes another
-roadmap merge. Buddy retirement is designed but not activated by this file.
+Outcome: settle accepted Buddy4215 merge
+`c19f4d90dc5628399009cdd12831d01bc5dd2c83`, tested3cdd, review5988124380;
+record qualified but not yet merged WK17 headb1aa and its serial downstream
+adoption; replace the completed classic-manual question with actual remaining
+current/public retirement work. Preserve the accepted V8/serving section exactly,
+performance/capacity limits and all uncompleted deployment/rollback/V11 gates.
+Core244 settled4207 at mergee83; this settlement follows4215 and precedes WK17.
 
-No runtime, contract, dependency, migration, benchmark, serving, live World or
-provider change. Core158 retains its exact shared index/roadmap lease; its actual
-changed-file list excludes this checkpoint. Validate one-file cumulative scope,
-unchanged non-document inputs, relative links and diff. No runtime tests for prose.
-Independent exact-head delta review and expected-head merge close this lease.
-Existing task artifacts remain MIND-owned for the full goal; no new worktree or
-manual cleanup, with active-use/dirty/unique-data cleanup follow-up after approved
-scope. The previous683aa38 assignment ended with accepted Core243.
+No runtime, dependency, contract, migration, benchmark, serving, provider or live
+World changes. Core158's open shared-index lease excludes this file. Validate
+one-file cumulative scope, unchanged non-document inputs, preserved accepted
+V8/serving section, relative links and diff. No local runtime tests for prose.
+Independent exact-head review and expected-head merge close this lease; any
+automatic CI is reported separately from local qualification.
+
+MIND retains existing task resources for the active full goal; no new worktree,
+manual deletion or reclaimed bytes. Cleanup requires approved scoped inventory,
+process/mount/dirty/unique-data and unique-commit checks.
