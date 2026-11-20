@@ -427,7 +427,9 @@ def test_prospective_result_failure_rolls_back_child_artifact(migrated_database,
         assert _count(migrated_database, table) == 0
 
 
-def test_direct_source_rows_match_artifact_and_reject_changed_primary(migrated_database, pg):
+def test_direct_source_rows_match_artifact_and_reject_changed_primary(
+    migrated_database, pg, monkeypatch
+):
     from dungeonmind.application.vnext._read_artifact import parse_verified_source_rows
     from dungeonmind.infrastructure.postgres.vnext_knowledge import VerifiedKnowledgeRevisionCache
 
@@ -439,9 +441,18 @@ def test_direct_source_rows_match_artifact_and_reject_changed_primary(migrated_d
     pin = SPACE, stored.revision.revision_id
     expected = decode_read_artifact(reader.get_native_read_artifact(stored), stored)
     assert expected is not None
-    for _ in range(2):
-        current, load_rows = reader.get_revision_for_native_read(*pin)
-        assert current == stored and load_rows is not None
+    current, load_rows = reader.get_revision_for_native_read(*pin)
+    assert current == stored and load_rows is not None
+    assert parse_verified_source_rows(current, load_rows()) == expected
+
+    current, load_rows = reader.get_revision_for_native_read(*pin)
+    assert current == stored and load_rows is not None
+    with monkeypatch.context() as guard:
+        def forbidden(_stored):
+            pytest.fail("proof hit reverified the sealed payload")
+
+        guard.setattr(type(stored), "graph_payload", property(forbidden))
+        assert parse_verified_source_rows(current, load_rows()) == expected
         assert parse_verified_source_rows(current, load_rows()) == expected
 
     with database.transaction() as conn:
