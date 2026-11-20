@@ -95,7 +95,6 @@ if _TYPE_CHECKING:
     from .world_graph_projection import (
         ProjectionClock,
         WorldGraphProjectionResult,
-        WorldGraphProjectionService,
     )
     from .world_graph_read_context import WorldGraphReadContext
     from .world_graph_retrieval import (
@@ -123,7 +122,6 @@ if _TYPE_CHECKING:
         SourceContextIndexRequest,
         SourceContextIndexResult,
         SourceContextResolution,
-        WorldGraphRetrievalService,
         derive_source_anchor_id,
     )
     from .world_identity_reconciliation import (
@@ -245,7 +243,6 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "emit_read_observation": (".world_graph_observability", "emit_read_observation"),
     "ProjectionClock": (".world_graph_projection", "ProjectionClock"),
     "WorldGraphProjectionResult": (".world_graph_projection", "WorldGraphProjectionResult"),
-    "WorldGraphProjectionService": (".world_graph_projection", "WorldGraphProjectionService"),
     "WorldGraphReadContext": (".world_graph_read_context", "WorldGraphReadContext"),
     "CONTEXT_ANCHOR_ID_PREFIX": (".world_graph_retrieval", "CONTEXT_ANCHOR_ID_PREFIX"),
     "AdmittedAssertionValue": (".world_graph_retrieval", "AdmittedAssertionValue"),
@@ -271,7 +268,6 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "SourceContextIndexRequest": (".world_graph_retrieval", "SourceContextIndexRequest"),
     "SourceContextIndexResult": (".world_graph_retrieval", "SourceContextIndexResult"),
     "SourceContextResolution": (".world_graph_retrieval", "SourceContextResolution"),
-    "WorldGraphRetrievalService": (".world_graph_retrieval", "WorldGraphRetrievalService"),
     "derive_source_anchor_id": (".world_graph_retrieval", "derive_source_anchor_id"),
     "CanonicalRebindRequest": (".world_identity_reconciliation", "CanonicalRebindRequest"),
     "IdentityReconciliationPublicationResult": (
@@ -352,14 +348,12 @@ __all__ = [
     "SystemMonotonicReadClock",
     "UnionGraphV1SnapshotReader",
     "WorldGraphProjectionResult",
-    "WorldGraphProjectionService",
     "WorldGraphReadClock",
     "WorldGraphReadContext",
     "WorldGraphReadObservation",
     "WorldGraphReadObserver",
     "WorldGraphReadPhaseDuration",
     "WorldGraphRepository",
-    "WorldGraphRetrievalService",
     "WorldIdentityReconciliationRepository",
     "admit_source_revision",
     "adopt_existing_world",
