@@ -192,7 +192,7 @@ def test_byte_bypass_clear_and_stale_generation_cannot_repopulate():
         assert reconstruct.call_count == 2 and cache.retained_bytes == 0
     cache = k.VerifiedKnowledgeRevisionCache(max_bytes=1_000_000)
     stored = read(repo(db, cache), db)
-    key, proof, size = cache._entry
+    (key, (proof, size)), = cache._entries.items()
     assert size == sum(len(s.encode("utf-8")) for s in key if s is not None) + sum(
         len(s.encode("utf-8")) for s in (proof.envelope, proof.payload, proof.payload_sha256)
     )
@@ -288,3 +288,33 @@ def test_depth_precheck_preserves_mixed_container_cutoff(depth, leaf):
         value = {"sibling": 1, "child": value} if index % 2 else [0, value]
     deepest_container = depth if type(leaf) in (dict, list) else depth - 1
     assert k._bounded_depth(value) is (deepest_container < 64)
+
+
+def test_aggregate_byte_budget_evicts_least_recently_used_proof():
+    db = Database()
+    cache = k.VerifiedKnowledgeRevisionCache(max_bytes=1_000_000, max_entries=3)
+    reader = repo(db, cache)
+    rows = [_row({"value": value})[0] for value in ("one", "two", "six")]
+
+    def read_row(index):
+        db.row = rows[index]
+        return read(reader, db)
+
+    read_row(0)
+    single_proof_bytes = cache.retained_bytes
+    cache = k.VerifiedKnowledgeRevisionCache(
+        max_bytes=2 * single_proof_bytes, max_entries=3
+    )
+    reader = repo(db, cache)
+    with patch.object(k, "_reconstruct", wraps=k._reconstruct) as reconstruct:
+        read_row(0)
+        read_row(1)
+        read_row(0)
+        assert reconstruct.call_count == 2
+        assert cache.retained_bytes == 2 * single_proof_bytes
+        read_row(2)
+        read_row(0)
+        assert reconstruct.call_count == 3
+        read_row(1)
+        assert reconstruct.call_count == 4
+        assert cache.retained_bytes == 2 * single_proof_bytes
