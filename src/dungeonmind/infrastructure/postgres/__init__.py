@@ -1,32 +1,80 @@
-"""PostgreSQL adapters for DungeonMind application ports.
+"""Lazy PostgreSQL adapter exports.
 
-Importing this package requires the ``postgres`` extra
-(``uv sync --extra postgres``). Core ``dungeonmind`` imports never load this
-package.
+Individual adapters require their own optional dependencies only when requested.
+The explicitly requested legacy bundle may load the full adapter family.
 """
 
-from ...application.publication_admission import PublicationAdmissionRegistry
-from .database import PostgresDatabase
-from .existing_world_adoption import PostgresExistingWorldAdoptionRepository
-from .graph import PostgresWorldGraphRepository
-from .publication_admission import PostgresPublicationAdmissionRepository
-from .records import (
-    PostgresContributionRepository,
-    PostgresContributionReviewRepository,
-    PostgresIdentityDecisionRepository,
-    PostgresRetrievalSessionRepository,
-    PostgresSourceRepository,
-)
-from .review_publication import PostgresFinalizedReviewPublicationRepository
-from .reviewed_world_initialization import PostgresReviewedWorldInitializationRepository
-from .semantic import (
-    PostgresEmbeddingRunRepository,
-    PostgresSemanticDocumentRepository,
-    PostgresSemanticSearch,
-)
-from .threads import PostgresMindThreadRepository
-from .vnext_sources import PostgresNativeSourceEvidenceRepository
-from .world_identity_reconciliation import PostgresWorldIdentityReconciliationRepository
+from importlib import import_module as _import_module
+from typing import TYPE_CHECKING as _TYPE_CHECKING
+
+if _TYPE_CHECKING:
+    from ...application.publication_admission import (
+        PublicationAdmissionRegistry as PublicationAdmissionRegistry,
+    )
+    from .database import PostgresDatabase
+    from .existing_world_adoption import PostgresExistingWorldAdoptionRepository
+    from .graph import PostgresWorldGraphRepository
+    from .publication_admission import PostgresPublicationAdmissionRepository
+    from .records import (
+        PostgresContributionRepository,
+        PostgresContributionReviewRepository,
+        PostgresIdentityDecisionRepository,
+        PostgresRetrievalSessionRepository,
+        PostgresSourceRepository,
+    )
+    from .review_publication import PostgresFinalizedReviewPublicationRepository
+    from .reviewed_world_initialization import PostgresReviewedWorldInitializationRepository
+    from .semantic import (
+        PostgresEmbeddingRunRepository,
+        PostgresSemanticDocumentRepository,
+        PostgresSemanticSearch,
+    )
+    from .threads import PostgresMindThreadRepository
+    from .vnext_sources import PostgresNativeSourceEvidenceRepository
+    from .world_identity_reconciliation import PostgresWorldIdentityReconciliationRepository
+
+
+_EXPORTS: dict[str, tuple[str, str]] = {
+    "PublicationAdmissionRegistry": (
+        "...application.publication_admission",
+        "PublicationAdmissionRegistry",
+    ),
+    "PostgresDatabase": (".database", "PostgresDatabase"),
+    "PostgresExistingWorldAdoptionRepository": (
+        ".existing_world_adoption",
+        "PostgresExistingWorldAdoptionRepository",
+    ),
+    "PostgresWorldGraphRepository": (".graph", "PostgresWorldGraphRepository"),
+    "PostgresPublicationAdmissionRepository": (
+        ".publication_admission",
+        "PostgresPublicationAdmissionRepository",
+    ),
+    "PostgresContributionRepository": (".records", "PostgresContributionRepository"),
+    "PostgresContributionReviewRepository": (".records", "PostgresContributionReviewRepository"),
+    "PostgresIdentityDecisionRepository": (".records", "PostgresIdentityDecisionRepository"),
+    "PostgresRetrievalSessionRepository": (".records", "PostgresRetrievalSessionRepository"),
+    "PostgresSourceRepository": (".records", "PostgresSourceRepository"),
+    "PostgresFinalizedReviewPublicationRepository": (
+        ".review_publication",
+        "PostgresFinalizedReviewPublicationRepository",
+    ),
+    "PostgresReviewedWorldInitializationRepository": (
+        ".reviewed_world_initialization",
+        "PostgresReviewedWorldInitializationRepository",
+    ),
+    "PostgresEmbeddingRunRepository": (".semantic", "PostgresEmbeddingRunRepository"),
+    "PostgresSemanticDocumentRepository": (".semantic", "PostgresSemanticDocumentRepository"),
+    "PostgresSemanticSearch": (".semantic", "PostgresSemanticSearch"),
+    "PostgresMindThreadRepository": (".threads", "PostgresMindThreadRepository"),
+    "PostgresNativeSourceEvidenceRepository": (
+        ".vnext_sources",
+        "PostgresNativeSourceEvidenceRepository",
+    ),
+    "PostgresWorldIdentityReconciliationRepository": (
+        ".world_identity_reconciliation",
+        "PostgresWorldIdentityReconciliationRepository",
+    ),
+}
 
 __all__ = [
     "PostgresContributionRepository",
@@ -52,29 +100,60 @@ __all__ = [
 class PostgresRepositoryBundle:
     """Optional convenience wiring; individual repositories stay explicit."""
 
+    if _TYPE_CHECKING:
+        database: PostgresDatabase
+        publication_admission: PostgresPublicationAdmissionRepository
+        world_graph: PostgresWorldGraphRepository
+        contributions: PostgresContributionRepository
+        contribution_reviews: PostgresContributionReviewRepository
+        finalized_review_publications: PostgresFinalizedReviewPublicationRepository
+        existing_world_adoptions: PostgresExistingWorldAdoptionRepository
+        reviewed_world_initializations: PostgresReviewedWorldInitializationRepository
+        identity_decisions: PostgresIdentityDecisionRepository
+        identity_reconciliation: PostgresWorldIdentityReconciliationRepository
+        sources: PostgresSourceRepository
+        retrieval_sessions: PostgresRetrievalSessionRepository
+        threads: PostgresMindThreadRepository
+        embedding_runs: PostgresEmbeddingRunRepository
+        semantic_documents: PostgresSemanticDocumentRepository
+        semantic_search: PostgresSemanticSearch
+
     def __init__(
         self,
-        database: PostgresDatabase,
+        database: "PostgresDatabase",
         *,
-        admission_registry: PublicationAdmissionRegistry | None = None,
+        admission_registry: "PublicationAdmissionRegistry | None" = None,
     ) -> None:
-        self.database = database
-        self.publication_admission = PostgresPublicationAdmissionRepository(database)
-        self.world_graph = PostgresWorldGraphRepository(database)
-        self.contributions = PostgresContributionRepository(database)
-        self.contribution_reviews = PostgresContributionReviewRepository(database)
-        self.finalized_review_publications = PostgresFinalizedReviewPublicationRepository(
-            database, admission_registry=admission_registry
+        from ._bundle import initialize_bundle
+
+        initialize_bundle(self, database, admission_registry=admission_registry)
+
+
+# Retain the real public source location while delaying annotation dependencies
+# until the aggregate is explicitly requested.
+_PostgresRepositoryBundle = PostgresRepositoryBundle
+globals().pop("PostgresRepositoryBundle")
+
+
+def __getattr__(name: str) -> object:
+    if name == "PostgresRepositoryBundle":
+        database_type = _import_module(".database", __name__).PostgresDatabase
+        registry_type = _import_module(
+            "...application.publication_admission", __name__
+        ).PublicationAdmissionRegistry
+        _PostgresRepositoryBundle.__init__.__annotations__.update(
+            database=database_type, admission_registry=registry_type | None
         )
-        self.existing_world_adoptions = PostgresExistingWorldAdoptionRepository(database)
-        self.reviewed_world_initializations = PostgresReviewedWorldInitializationRepository(
-            database
-        )
-        self.identity_decisions = PostgresIdentityDecisionRepository(database)
-        self.identity_reconciliation = PostgresWorldIdentityReconciliationRepository(database)
-        self.sources = PostgresSourceRepository(database)
-        self.retrieval_sessions = PostgresRetrievalSessionRepository(database)
-        self.threads = PostgresMindThreadRepository(database)
-        self.embedding_runs = PostgresEmbeddingRunRepository(database)
-        self.semantic_documents = PostgresSemanticDocumentRepository(database)
-        self.semantic_search = PostgresSemanticSearch(database)
+        globals()[name] = _PostgresRepositoryBundle
+        return _PostgresRepositoryBundle
+    target = _EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attribute = target
+    value = getattr(_import_module(module_name, __name__), attribute)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | _EXPORTS.keys() | {"PostgresRepositoryBundle"})

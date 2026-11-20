@@ -25,7 +25,15 @@ DungeonMind has crossed the boundary from architecture experiment to independent
 
 A real external consumer, DungeonMindBuddy, has migrated the Eldyrwild World Graph authority into DungeonMind/PostgreSQL and proven a current-client read contract against DungeonMind-native semantics. The adopted world has immutable published revisions, a living PostgreSQL head, governed post-adoption publication, exact historical pinning, GM/PLAYER admissibility, campaign and cross-campaign projection, native lookup/search/neighborhood/evidence retrieval, and source-anchor derivation/revalidation.
 
-The current measurement lane is **quality-preserving compute efficiency on the classic World Graph route**. R.3a is completed historical work, and Buddy retired its direct-read rollout toggle. Buddy's inspected direct adapter constructs classic projection/retrieval services; its accepted native-vNext complete-object adapter remains a dormant integration proof. A library `main` ref is not proof of which code a serving process runs.
+The active migration lane is **optimized vNext current authority for Elderwyld**.
+Buddy's managed graph HTTP readers and fresh Plan/Play query dispatch use vNext;
+retained original bootstraps and some classic projection/recap interfaces still
+need an explicit historical disposition. Buddy PR #4234 retired the eight classic
+Threat publication HTTP actions while preserving recorded history. These source
+facts do not prove which build is serving, deployed cutover, rollback or V11.
+The current Core prerequisite isolates vNext imports from eager classic parent
+facades; it preserves existing aliases rather than claiming their retirement.
+See [the bounded import handoff](Docs/Plans/HANDOFF-MIND-vnext-parent-import-isolation.md).
 
 Core #130–#133 already reduce copying, publication-ancestry reconstruction, review-child queries, and repeated reviewed-source preparation. Reviewed-source sessions reuse one coherent acquisition context and close before provider dispatch. They do not cache admission across turns. See the [executable experiment plan and register](Docs/Plans/PLAN-compute-efficiency-experiments.md) for current code pins, confirmed findings, measurement commands, and consumer boundaries. Future vNext migration and V11 acceptance remain separate roadmap gates.
 
@@ -123,6 +131,16 @@ src/dungeonmind_dnd/
 ```
 
 The dependency remains one-way: the generic `dungeonmind` package does not import `dungeonmind_dnd`. Deployments resolve profile descriptors through the registry port.
+
+## Current and historical imports
+
+Current generic contracts and services live in `dungeonmind.contracts.vnext` and
+`dungeonmind.application.vnext`; PostgreSQL adapters are optional. Flat parent
+facades preserve existing aliases on explicit access. Historical decoding and
+verified terminal-publication reading belong to `dungeonmind.application.compatibility`.
+Preserving those aliases is transitional compatibility, not acceptance of classic
+current authority. The R.3/classic shapes and witnesses below remain historical
+context while the finite vNext roadmap is completed.
 
 ## Development
 
