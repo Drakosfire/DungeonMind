@@ -15,11 +15,11 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from dungeonmind.application import (
+from dungeonmind.application.graph_snapshot import UnionGraphV3SnapshotReader
+from dungeonmind.application.review_publication import (
     FinalizedReviewPublication,
     publish_finalized_review,
 )
-from dungeonmind.application.graph_snapshot import UnionGraphV3SnapshotReader
 from dungeonmind.contracts.contribution_review import ContributionReviewState
 from dungeonmind.contracts.graph import (
     PublishRevisionCommand,

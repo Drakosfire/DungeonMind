@@ -302,6 +302,8 @@ def test_retired_classic_contract_is_available_only_from_explicit_leaf(name, lea
     [
         ("WorldGraphProjectionService", "world_graph_projection"),
         ("WorldGraphRetrievalService", "world_graph_retrieval"),
+        ("publish_finalized_review", "review_publication"),
+        ("publish_identity_reconciliation", "world_identity_reconciliation"),
     ],
 )
 def test_retired_classic_service_is_available_only_from_explicit_leaf(name, leaf):

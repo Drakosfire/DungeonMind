@@ -11,8 +11,11 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from dungeonmind.application import FinalizedReviewPublication, publish_finalized_review
 from dungeonmind.application.graph_snapshot import UnionGraphV3SnapshotReader
+from dungeonmind.application.review_publication import (
+    FinalizedReviewPublication,
+    publish_finalized_review,
+)
 from dungeonmind.contracts.contribution import ContributionStatus, GraphContribution
 from dungeonmind.contracts.contribution_review import (
     ContributionAssertionVerdict,

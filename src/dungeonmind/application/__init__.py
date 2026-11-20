@@ -70,10 +70,7 @@ if _TYPE_CHECKING:
     )
     from .review_materialization_v4 import materialize_finalized_review_v4
     from .review_materialization_v6 import materialize_finalized_review_v6
-    from .review_publication import (
-        FinalizedReviewPublication,
-        publish_finalized_review,
-    )
+    from .review_publication import FinalizedReviewPublication
     from .reviewed_world_initialization import (
         FirstWorldMaterialization,
         initialize_reviewed_world,
@@ -128,7 +125,6 @@ if _TYPE_CHECKING:
         CanonicalRebindRequest,
         IdentityReconciliationPublicationResult,
         materialize_identity_reconciliation,
-        publish_identity_reconciliation,
     )
 
 
@@ -223,7 +219,6 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "materialize_finalized_review_v6",
     ),
     "FinalizedReviewPublication": (".review_publication", "FinalizedReviewPublication"),
-    "publish_finalized_review": (".review_publication", "publish_finalized_review"),
     "FirstWorldMaterialization": (".reviewed_world_initialization", "FirstWorldMaterialization"),
     "initialize_reviewed_world": (".reviewed_world_initialization", "initialize_reviewed_world"),
     "materialize_reviewed_world_initialization_v6": (
@@ -277,10 +272,6 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "materialize_identity_reconciliation": (
         ".world_identity_reconciliation",
         "materialize_identity_reconciliation",
-    ),
-    "publish_identity_reconciliation": (
-        ".world_identity_reconciliation",
-        "publish_identity_reconciliation",
     ),
 }
 
@@ -373,8 +364,6 @@ __all__ = [
     "materialize_finalized_review_v6",
     "materialize_identity_reconciliation",
     "materialize_reviewed_world_initialization_v6",
-    "publish_finalized_review",
-    "publish_identity_reconciliation",
     "query_fictional_time_shadow_at_revision",
     "repair_existing_world_adoption_source_classification",
 ]
