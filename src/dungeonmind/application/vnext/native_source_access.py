@@ -25,7 +25,7 @@ from .builder import _build_parsed_knowledge_revision_from_records, build_parsed
 from .errors import KnowledgeReadContextIntegrityError, NativeTextSourceAccessIntegrityError
 from .materialization import NATIVE_VNEXT_GRAPH_SCHEMA, decode_native_graph_payload
 from .model import ParsedKnowledgeRevision
-from .ports import NativeSourceEvidenceRepository, NativeTextSourceView
+from .ports import NativeSourceEvidenceRepository, NativeTextSourceView, StoredNativeTextSource
 from .records import ParsedEvidenceRef, StoredKnowledgeRevision
 
 _EVICTED_RECORD_MAX_PAYLOAD_BYTES = 8_000_000
@@ -387,6 +387,52 @@ def open_admitted_native_text(
         raise
     except PersistenceIntegrityError as exc:
         raise NativeTextSourceAccessIntegrityError("source record integrity failed") from exc
+    return _verify_opened_source(context, evidence, source)
+
+
+def open_admitted_native_text_batch(
+    context: NativeTextSourceAccessContext,
+    evidence_ref_ids: Sequence[str],
+) -> tuple[NativeTextSourceAccessV1, ...]:
+    """Open evidence in caller order using one pinned source view."""
+    load = getattr(context.source_view, "get_native_text_sources", None)
+    if load is None:
+        return tuple(open_admitted_native_text(context, item) for item in evidence_ref_ids)
+
+    results = [_unavailable() for _ in evidence_ref_ids]
+    eligible = []
+    for index, evidence_id in enumerate(evidence_ref_ids):
+        if not isinstance(evidence_id, str) or not evidence_id.strip():
+            continue
+        evidence = context.parsed.get_evidence(evidence_id)
+        if evidence is not None and _eligible_evidence(context, evidence):
+            eligible.append((index, evidence))
+    if not eligible:
+        return tuple(results)
+
+    try:
+        sources = load(tuple(
+            (
+                evidence.source_artifact_id,
+                cast(str, evidence.source_revision_id),
+                cast(str, evidence.source_span_ref_id),
+            )
+            for _, evidence in eligible
+        ))
+    except PersistenceIntegrityError as exc:
+        raise NativeTextSourceAccessIntegrityError("source record integrity failed") from exc
+    verified_bodies: dict[int, tuple[str, str]] = {}
+    for (index, evidence), source in zip(eligible, sources, strict=True):
+        results[index] = _verify_opened_source(context, evidence, source, verified_bodies)
+    return tuple(results)
+
+
+def _verify_opened_source(
+    context: NativeTextSourceAccessContext,
+    evidence: ParsedEvidenceRef,
+    source: StoredNativeTextSource | None,
+    verified_bodies: dict[int, tuple[str, str]] | None = None,
+) -> NativeTextSourceAccessV1:
     if source is None:
         return _unavailable()
 
@@ -397,20 +443,26 @@ def open_admitted_native_text(
         return _unavailable()
     if proof.source_revision_id != revision.source_revision_id:
         raise NativeTextSourceAccessIntegrityError("span revision binding mismatch")
-    if proof.evidence_ref_id != evidence_ref_id:
+    if proof.evidence_ref_id != evidence.evidence_ref_id:
         raise NativeTextSourceAccessIntegrityError("span evidence binding mismatch")
     if proof.span_id != evidence.source_span_ref_id:
         raise NativeTextSourceAccessIntegrityError("span identity mismatch")
 
     body = source.body_bytes
-    body_digest = hashlib.sha256(body).hexdigest()
-    if body_digest != revision.content_sha256:
-        raise NativeTextSourceAccessIntegrityError("body digest mismatch")
-    if proof.end_byte > len(body):
-        raise NativeTextSourceAccessIntegrityError("span exceeds body bounds")
-    selected = body[proof.start_byte : proof.end_byte]
+    cached_body = None if verified_bodies is None else verified_bodies.get(id(body))
     try:
-        body_text = body.decode("utf-8", errors="strict")
+        if cached_body is None:
+            body_digest = hashlib.sha256(body).hexdigest()
+            body_text = body.decode("utf-8", errors="strict")
+            if verified_bodies is not None:
+                verified_bodies[id(body)] = (body_digest, body_text)
+        else:
+            body_digest, body_text = cached_body
+        if body_digest != revision.content_sha256:
+            raise NativeTextSourceAccessIntegrityError("body digest mismatch")
+        if proof.end_byte > len(body):
+            raise NativeTextSourceAccessIntegrityError("span exceeds body bounds")
+        selected = body[proof.start_byte : proof.end_byte]
         selected.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
         raise NativeTextSourceAccessIntegrityError(
@@ -421,7 +473,7 @@ def open_admitted_native_text(
 
     return NativeTextSourceAccessV1(
         status="available",
-        evidence_ref_id=evidence_ref_id,
+        evidence_ref_id=evidence.evidence_ref_id,
         source_artifact_id=artifact.source_artifact_id,
         source_revision_id=revision.source_revision_id,
         body_sha256=body_digest,

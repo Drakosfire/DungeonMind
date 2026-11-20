@@ -13,6 +13,7 @@ from dungeonmind.application.vnext.errors import (
 from dungeonmind.application.vnext.initialization import initialize_empty_knowledge_space
 from dungeonmind.application.vnext.native_source_access import (
     open_admitted_native_text,
+    open_admitted_native_text_batch,
     open_native_text_source_access_context,
     refresh_native_text_source_access_context,
 )
@@ -575,6 +576,12 @@ def test_postgres_concurrent_withdrawal_preserves_graph_and_pinned_source_view(p
     assert refreshed.source_view.epoch == context.source_view.epoch + 1
     assert open_admitted_native_text(refreshed, evidence_id).status == "unavailable"
     assert open_admitted_native_text(context, evidence_id).body_text == BODY
+    assert open_admitted_native_text_batch(refreshed, (evidence_id,)) == (
+        open_admitted_native_text(refreshed, evidence_id),
+    )
+    assert open_admitted_native_text_batch(context, (evidence_id,)) == (
+        open_admitted_native_text(context, evidence_id),
+    )
     assert fresh.get_head(request.space_id) == head
     assert fresh.head_events(request.space_id) == events
     assert (
@@ -693,6 +700,27 @@ def test_native_metadata_snapshot_batches_text_admission_and_span_reads(pg, monk
             assert set(snapshot.provenance.revisions_by_id) == set(revisions)
             assert len(statements) == 4
 
+    keys = [
+        (receipt.source_artifact_id, receipt.source_revision_id, proof.span_id)
+        for receipt in reversed(receipts)
+        for proof in receipt.bindings
+    ]
+    expected = tuple(
+        view.get_native_text_source(
+            source_artifact_id=artifact_id, source_revision_id=revision_id, span_id=span_id
+        )
+        for artifact_id, revision_id, span_id in keys
+    )
+    assert all(item is not None for item in expected)
+    with monkeypatch.context() as counter:
+        counter.setattr(Connection, "execute", count)
+        for size in (1, len(keys)):
+            statements.clear()
+            request_keys = [*keys[:size], keys[0], ("absent", "absent", "absent")]
+            result = view.get_native_text_sources(request_keys)
+            assert result == (*expected[:size], expected[0], None)
+            assert len(statements) == 3
+
     with pg.database.transaction() as conn:
         conn.execute(
             "UPDATE dungeonmind.knowledge_native_source_spans "
@@ -705,3 +733,5 @@ def test_native_metadata_snapshot_batches_text_admission_and_span_reads(pg, monk
             artifact_ids=[item.source_artifact_id for item in receipts],
             revision_ids=[item.source_revision_id for item in receipts],
         )
+    with pytest.raises(PersistenceIntegrityError, match="span index drift"):
+        view.get_native_text_sources(keys)

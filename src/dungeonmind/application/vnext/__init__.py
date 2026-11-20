@@ -85,6 +85,7 @@ from .native_source_access import (
     NativeTextSourceMetadata,
     list_admitted_native_text_sources,
     open_admitted_native_text,
+    open_admitted_native_text_batch,
     open_native_text_source_access_context,
     refresh_native_text_source_access_context,
 )
@@ -270,6 +271,7 @@ __all__ = [
     "list_admitted_native_text_sources",
     "materialize_governed_revision",
     "open_admitted_native_text",
+    "open_admitted_native_text_batch",
     "open_native_text_source_access_context",
     "preview_native_source_evidence_extension",
     "preview_native_source_publication_evidence",
