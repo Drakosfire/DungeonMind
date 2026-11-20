@@ -1,8 +1,10 @@
 # DungeonMind — vNext Governed Knowledge Roadmap
 
-**Status:** current forward roadmap  
-**Updated:** 2026-10-17 (current-route efficiency amendment; vNext gates unchanged)
-**Main re-anchor used for this amendment:** DungeonMind remote `main` at PR #94 merge (`19b9e8d71635d8736e9ad5f0db3aa075f635d510`); PRIME Cycle 2 PASS `5346386227` accepts the V7 activation-gate amendment as reviewable, not as gate satisfaction or implementation authority. PR #93's `PARTIAL_MEMORY_BASELINE_THROUGH_10K` remains accepted; 50k/100k remain deferred, PostgreSQL remains inactive, and V7 implementation remains blocked
+**Status:** Elderwyld V11 closeout effective on merge of the serving evidence
+**Updated:** 2026-11-20 (Elderwyld serving closeout)
+**Operational evidence:** [V11 Elderwyld serving evidence](../Reports/V11-elderwyld-serving-evidence.md)
+**Successor:** [Post-vNext performance roadmap](ROADMAP-post-vnext-performance.md)
+**Historical October re-anchor:** DungeonMind remote `main` at PR #94 merge (`19b9e8d71635d8736e9ad5f0db3aa075f635d510`); PRIME Cycle 2 PASS `5346386227` accepts the V7 activation-gate amendment as reviewable, not as gate satisfaction or implementation authority. PR #93's `PARTIAL_MEMORY_BASELINE_THROUGH_10K` remains accepted; 50k/100k remain deferred, PostgreSQL remains inactive, and V7 implementation remains blocked
 **Semantic target:** [`ARCHITECTURE-domain-agnostic-governed-memory-vnext.md`](../Architecture/ARCHITECTURE-domain-agnostic-governed-memory-vnext.md)  
 **Read/performance target:** [`ARCHITECTURE-vnext-read-path-and-performance.md`](../Architecture/ARCHITECTURE-vnext-read-path-and-performance.md)
 
