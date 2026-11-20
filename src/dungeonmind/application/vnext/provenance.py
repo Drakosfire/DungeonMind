@@ -17,6 +17,12 @@ from .frozen_json import FrozenDict
 _ModelT = TypeVar("_ModelT", SourceArtifactV3, SourceRevisionV2)
 
 
+class _CopyOnReadModelMap:
+    """Internal marker for maps that detach every value on access."""
+
+    __slots__ = ()
+
+
 def _make_sealed_copy_on_read_map(inner: Mapping[str, _ModelT]) -> Mapping[str, _ModelT]:
     """Return a mapping with no replaceable backing; every access deep-copies models."""
 
@@ -24,7 +30,9 @@ def _make_sealed_copy_on_read_map(inner: Mapping[str, _ModelT]) -> Mapping[str, 
         {key: value.model_copy(deep=True) for key, value in inner.items()}
     )
 
-    class _SealedCopyOnReadModelMap(Mapping[str, SourceArtifactV3 | SourceRevisionV2]):
+    class _SealedCopyOnReadModelMap(
+        _CopyOnReadModelMap, Mapping[str, SourceArtifactV3 | SourceRevisionV2]
+    ):
         __slots__ = ()
 
         def __getitem__(self, key: str) -> SourceArtifactV3 | SourceRevisionV2:
@@ -35,6 +43,9 @@ def _make_sealed_copy_on_read_map(inner: Mapping[str, _ModelT]) -> Mapping[str, 
 
         def __len__(self) -> int:
             return len(sealed)
+
+        def __contains__(self, key: object) -> bool:
+            return key in sealed
 
         def get(
             self,
@@ -211,14 +222,14 @@ class KnowledgeProvenanceSnapshot:
 
     def get_artifact(self, artifact_id: str) -> SourceArtifactV3 | None:
         artifact = self.artifacts_by_id.get(artifact_id)
-        if artifact is None:
-            return None
+        if artifact is None or isinstance(self.artifacts_by_id, _CopyOnReadModelMap):
+            return artifact
         return artifact.model_copy(deep=True)
 
     def get_revision(self, revision_id: str) -> SourceRevisionV2 | None:
         revision = self.revisions_by_id.get(revision_id)
-        if revision is None:
-            return None
+        if revision is None or isinstance(self.revisions_by_id, _CopyOnReadModelMap):
+            return revision
         return revision.model_copy(deep=True)
 
 
