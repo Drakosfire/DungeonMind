@@ -69,28 +69,72 @@ execution of the later merge tree or a new live deployment. Detailed evidence is
 retained under the task's `scratch/v9-buddy/v10-native-manual-ui`, including
 `root-final-qualification-45b87cd015.json` and `merge-acceptance-4207.json`.
 
-Next primary question: **Can current/public classic manual prepare be retired and
-confirmation restricted to original receipt recovery, preserving native behavior,
-legacy local drafts and exact historical protocols without fresh classic writes?**
+Buddy [PR4215](https://github.com/Drakosfire/DungeonMindBuddy/pull/4215) merged
+`c19f4d90dc5628399009cdd12831d01bc5dd2c83`, exact reviewed/tested head
+`3cdd67cbcb324f81d992c799fce17e5bf00b5895`, final independent review5988124380.
+Classic manual prepare now returns typed410 after existing ownership checks;
+both local/hosted confirmation branches are recovery-only. The explicit legacy
+published-Recap branch retains local object/relationship drafts and inspection,
+with truthful local-only presentation and no fresh publisher. Managed native
+Recap is unchanged; native Worldbuilding is not a Recap adapter.
 
-The next Buddy slice must close the mounted classic `/prepare` and make BOTH
-local/hosted `/commit` branches recovery-only. The explicit legacy published-Recap
-writer must stop offering fresh publication while retaining local staging and
-read inspection; managed native Recap viewing stays on its current path. Native
-Worldbuilding manual authoring is not a Recap adapter: do not relabel sources or
-reinterpret saved packets. Pin the successor's bounded lease before coding.
+Exact3cdd qualification:31 retirement tests passed with one explicitly optional
+historical PostgreSQL witness skipped;96 native and315 auth tests passed without
+failures/errors/skips. All114 owning UI cases passed in the full discovered run:
+8334 passed/102 retained failures/2 pending, zero new failures/pending and no
+omissions. The same two report-only collection extras leave parity red. One old
+publisher assertion was retitled with explicit retirement disposition; four
+assertions were added, including that replacement and an upstream selector case.
+Hosted1412 selected passed with147 existing filter-pending; build, canonical
+validation, parity and cleanup passed. The full discovered diagnostic remains
+red, not aggregate release qualification. Eight SQL fixtures were dropped after
+zero connections and verified absent;177 Core files match90a5/WKef9. Short
+classification CI44681089141 passed. Initial diagnostics and the lock-refused
+hosted attempt are retained as unqualified; the successful retry is distinct.
+Actual later-main changes throughcd54 were independently inspected for coupling;
+no execution of the subsequent merged tree or new serving deployment is claimed.
+Evidence: task `scratch/v9-buddy/v10-classic-manual-recovery-only`.
 
-Existing classic recovery has a material limit: source/span/binding/admission
-checks occur before receipt lookup, and hosted ownership resolution reads mutable
-metadata. Its recovery_only flag prevents a fresh publish; it does not establish
-source-independent immutable recovery. Preserve the actual guarantee and original
-packet protocol. A stronger recovery design requires its own bounded assignment.
+Existing classic recovery still resolves mutable source/span/binding/admission
+before receipt lookup; hosted ownership also reads mutable metadata. Recovery-only
+prevents fresh publication but does not establish source-independent immutable
+recovery. Preserve original packets and fail closed; stronger recovery needs a
+separate exact read-only boundary before retiring its writer dependencies.
 
-Serial continuation: accepted native manual backend/UI -> classic fresh-write
-retirement and remaining current/public Core/Buddy/WorldKeeper surface audit ->
-compatible primary/fallback rollout and rollback -> V11 measured serving acceptance
-and successor performance handoff. Repository merges alone do not satisfy those
-remaining gates.
+Next primary question: **Can current native consumers be separated from classic
+imports, then remaining classic reads/writers be retired or explicitly historical
+without losing exact saved selectors, receipt recovery or source provenance?**
+
+WorldKeeper [PR17](https://github.com/Drakosfire/WorldKeeper/pull/17) is qualified
+but not merged: head `b1aa09b609e203b18fc0277282dc2932daeab58b`,
+review5988177840. Its pinned five-path lease removes the eager classic adapter
+from the native integration root and retains the identical historical class
+under explicit `.compat` and its original direct module. Cold imports block the
+WK classic module before any WK import. Exact installed-wheel98 tests pass with
+zero skips; Ruff/Pyright pass,14 wheel source files match, and WK/Core origins
+are isolated site-packages on unchanged locked Core4ccd. It does not prove
+Core's own eager-import independence or Buddy adoption on Core90a5. This
+checkpoint settles4215 before another roadmap merge; it does not relabel WK17
+as merged or deployed.
+
+Serial continuation:
+
+- Accept WK import isolation, then explicitly repin/qualify Buddy while retaining
+  Core90a5. Move Buddy's shared presentation carriers/helpers out of classic read
+  imports without changing DTO bytes or saved pins.
+- Disposition direct classic projection and recap-context-v2 separately. Native
+  managed projection is not an equivalent protocol for saved historical reads.
+- Establish exact historical receipt recovery with zero-write absent/corrupt
+  refusal, migrate actual consumers, then retire Core's reachable fresh classic
+  publishing host and library entrypoints. Quarantine legacy operator policy
+  without rewriting immutable stored attestations.
+- Retire actual old current/public Core/consumer surfaces, not just export lists;
+  qualify installed packages and downstream pins. Then compatible primary/fallback
+  rollout, later-write-safe rollback/restart/restore and V11 serving acceptance.
+
+These are bounded dependent slices, not authorization for a single broad rewrite.
+Full current/public retirement remains unproved; source inventory is not complete
+external-consumer evidence. Repository merges alone do not satisfy deployment.
 
 ## Accepted V8 and serving evidence
 
@@ -175,26 +219,27 @@ and process/mount/connection, dirty-worktree, unique-data and unique-commit chec
 
 ## Bounded checkpoint maintenance lease
 
-Implemented one-file settlement awaiting independent exact-head review under the operator's full-lane implementation, review
-and merge authority. MIND owns this existing task checkout on branch
-`codex/v10-manual-ui-checkpoint`, base
-`c35a2c49470db9ac718367bd8c42d9361532df3d`. This assignment is committed before
-rewriting the current state at `cb9b411cee73ee0edb7ed3fef097a37c2b3f97a1`.
-Exact write lease: this file only.
+Implemented one-file continuity settlement awaiting independent exact-head review under the operator's full-lane authority.
+MIND reuses the clean task Core checkout on
+`codex/v10-classic-retirement-checkpoint`, base
+`e83ab2664f6c953f4a8726ff053b24703440452a`. This lease was pinned at `957c386` before
+updating the current checkpoint. Exact write lease: this file only.
 
-Outcome: record accepted Buddy4207 at merge
-`e3e9304e7e7397a0e6950c285e56d399cc4e6cd3`, reviewed head
-`45b87cd015ed7dfab9fa2fc2ec9f278c158939c8`, review5987678478; replace the stale
-manual-UI question with the true classic-write retirement and subsequent rollout/
-rollback/V11 gates. Preserve all accepted V8, serving and capacity limitations.
-Serial predecessor is accepted Buddy4207; this continuity update precedes another
-roadmap merge. Buddy retirement is designed but not activated by this file.
+Outcome: settle accepted Buddy4215 merge
+`c19f4d90dc5628399009cdd12831d01bc5dd2c83`, tested3cdd, review5988124380;
+record qualified but not yet merged WK17 headb1aa and its serial downstream
+adoption; replace the completed classic-manual question with actual remaining
+current/public retirement work. Preserve the accepted V8/serving section exactly,
+performance/capacity limits and all uncompleted deployment/rollback/V11 gates.
+Core244 settled4207 at mergee83; this settlement follows4215 and precedes WK17.
 
-No runtime, contract, dependency, migration, benchmark, serving, live World or
-provider change. Core158 retains its exact shared index/roadmap lease; its actual
-changed-file list excludes this checkpoint. Validate one-file cumulative scope,
-unchanged non-document inputs, relative links and diff. No runtime tests for prose.
-Independent exact-head delta review and expected-head merge close this lease.
-Existing task artifacts remain MIND-owned for the full goal; no new worktree or
-manual cleanup, with active-use/dirty/unique-data cleanup follow-up after approved
-scope. The previous683aa38 assignment ended with accepted Core243.
+No runtime, dependency, contract, migration, benchmark, serving, provider or live
+World changes. Core158's open shared-index lease excludes this file. Validate
+one-file cumulative scope, unchanged non-document inputs, preserved accepted
+V8/serving section, relative links and diff. No local runtime tests for prose.
+Independent exact-head review and expected-head merge close this lease; any
+automatic CI is reported separately from local qualification.
+
+MIND retains existing task resources for the active full goal; no new worktree,
+manual deletion or reclaimed bytes. Cleanup requires approved scoped inventory,
+process/mount/dirty/unique-data and unique-commit checks.
