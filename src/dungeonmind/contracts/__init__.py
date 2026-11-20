@@ -189,8 +189,6 @@ if _TYPE_CHECKING:
         GRAPH_REVISION_SCHEMA,
         PublishRevisionCommand,
         StoredGraphRevision,
-        WorldGraphHead,
-        WorldGraphRevision,
     )
     from .identity import (
         IDENTITY_DECISION_SCHEMA,
@@ -239,8 +237,6 @@ if _TYPE_CHECKING:
         PROJECTION_REQUEST_SCHEMA_V2,
         PROJECTION_SNAPSHOT_SCHEMA_V2,
         ProjectionSnapshotV2,
-        ScopeModeV2,
-        WorldGraphProjectionRequestV2,
     )
     from .publication_admission import (
         AdmissionCatalogRefV1,
@@ -649,8 +645,6 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "GRAPH_REVISION_SCHEMA": (".graph", "GRAPH_REVISION_SCHEMA"),
     "PublishRevisionCommand": (".graph", "PublishRevisionCommand"),
     "StoredGraphRevision": (".graph", "StoredGraphRevision"),
-    "WorldGraphHead": (".graph", "WorldGraphHead"),
-    "WorldGraphRevision": (".graph", "WorldGraphRevision"),
     "IDENTITY_DECISION_SCHEMA": (".identity", "IDENTITY_DECISION_SCHEMA"),
     "IDENTITY_DECISION_V2_SCHEMA": (".identity", "IDENTITY_DECISION_V2_SCHEMA"),
     "IDENTITY_RECONCILIATION_DECISION_SCHEMA": (
@@ -695,8 +689,6 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "PROJECTION_REQUEST_SCHEMA_V2": (".projection_v2", "PROJECTION_REQUEST_SCHEMA_V2"),
     "PROJECTION_SNAPSHOT_SCHEMA_V2": (".projection_v2", "PROJECTION_SNAPSHOT_SCHEMA_V2"),
     "ProjectionSnapshotV2": (".projection_v2", "ProjectionSnapshotV2"),
-    "ScopeModeV2": (".projection_v2", "ScopeModeV2"),
-    "WorldGraphProjectionRequestV2": (".projection_v2", "WorldGraphProjectionRequestV2"),
     "AdmissionCatalogRefV1": (".publication_admission", "AdmissionCatalogRefV1"),
     "AdmissionPolicyRefV1": (".publication_admission", "AdmissionPolicyRefV1"),
     "AdmissionValidatorRefV1": (".publication_admission", "AdmissionValidatorRefV1"),
@@ -983,7 +975,6 @@ __all__ = [
     "ReviewedWorldInitializationReceiptV1",
     "ReviewedWorldInitializationReceiptV2",
     "ScopeMode",
-    "ScopeModeV2",
     "SemanticCandidate",
     "SemanticDocument",
     "SemanticDocumentKind",
@@ -1008,10 +999,7 @@ __all__ = [
     "ToolCapabilityRule",
     "Visibility",
     "WorkspaceDocumentRefV1",
-    "WorldGraphHead",
     "WorldGraphProjectionRequest",
-    "WorldGraphProjectionRequestV2",
-    "WorldGraphRevision",
     "existing_world_adoption_bundle_canonical_bytes",
     "existing_world_adoption_bundle_v2_canonical_bytes",
     "new_id",

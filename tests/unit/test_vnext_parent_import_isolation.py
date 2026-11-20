@@ -70,7 +70,7 @@ assert not any(name == prefix or name.startswith(prefix + '.')
 def test_cold_current_entry_points_do_not_load_classic_runtime(entry):
     statements = {
         "contracts": (
-            "import dungeonmind.contracts as facade; assert 'WorldGraphRevision' in dir(facade)"
+            "import dungeonmind.contracts as facade; assert 'WorldGraphRevision' not in dir(facade)"
         ),
         "application": (
             "import dungeonmind.application as facade; "
@@ -158,8 +158,6 @@ def test_cold_historical_reader_does_not_load_fresh_publishers_or_require_postgr
 @pytest.mark.parametrize(
     "namespace,alias,implementation",
     [
-        ("contracts", "WorldGraphRevision", "dungeonmind.contracts.graph"),
-        ("contracts", "WorldGraphHead", "dungeonmind.contracts.graph"),
         ("contracts", "GraphContributionV4", "dungeonmind.contracts.contribution"),
         (
             "application",
@@ -288,3 +286,22 @@ def test_cold_native_contracts_do_not_compile_classic_world_graph_models():
             "dungeonmind.contracts.contribution",
         ),
     )
+
+
+@pytest.mark.parametrize(
+    "name,leaf",
+    [
+        ("WorldGraphHead", "graph"),
+        ("WorldGraphRevision", "graph"),
+        ("WorldGraphProjectionRequestV2", "projection_v2"),
+        ("ScopeModeV2", "projection_v2"),
+    ],
+)
+def test_retired_classic_contract_is_available_only_from_explicit_leaf(name, leaf):
+    facade = importlib.import_module("dungeonmind.contracts")
+    assert name not in dir(facade)
+    assert name not in facade.__all__
+    with pytest.raises(AttributeError):
+        getattr(facade, name)
+    definition = getattr(importlib.import_module(f"dungeonmind.contracts.{leaf}"), name)
+    assert definition.__name__ == name
