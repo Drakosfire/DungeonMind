@@ -114,7 +114,10 @@ class PostgresKnowledgeRevisionRepository:
                     return None, None
                 if result is not False:
                     if payload is None:
-                        return result, lambda: result.graph_payload
+                        # A proof hit matched the complete current primary row.
+                        # Decode its sealed bytes only when the parsed cache misses.
+                        verified_json = result._payload_json
+                        return result, lambda: json.loads(verified_json)
                     verified_rows = payload
                     return result, lambda: verified_rows
             return _read_revision(conn, space_id, revision_id), None
