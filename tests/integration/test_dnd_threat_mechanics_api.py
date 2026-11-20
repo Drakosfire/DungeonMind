@@ -1,4 +1,4 @@
-"""PostgreSQL and loopback HTTP proof for exact historical hydration."""
+"""PostgreSQL and loopback proof for retirement of classic HTTP hydration."""
 
 from __future__ import annotations
 
@@ -39,7 +39,6 @@ CLIENT_PATH = (
     Path(__file__).resolve().parents[2] / "examples" / "dnd_threat_mechanics_client.py"
 )
 TOKEN = "sentinel-threat-mechanics-loopback-token"
-HYDRATION_SHA256 = "166dfe01ad0e2f4b57de3c74cfd50160e34a29591957f85b4a786c9f2edd6e16"
 
 pytestmark = pytest.mark.integration
 
@@ -86,7 +85,7 @@ def _wait_for_server(port: int) -> None:
     raise AssertionError("loopback server did not start")
 
 
-def test_postgres_historical_revision_survives_head_advance_and_client_replay(
+def test_classic_client_receives_retirement_before_and_after_head_advance(
     pg,
 ) -> None:
     import uvicorn
@@ -130,44 +129,21 @@ def test_postgres_historical_revision_survives_head_advance_and_client_replay(
             str(REQUEST_PATH),
             "--verify-replay",
         ]
-        first = subprocess.run(
-            command,
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        assert first.returncode == 0, first.stderr
-        assert TOKEN not in first.stdout
-        assert PUBLISHED_REVISION_ID in first.stdout
-        assert "mechbind:872167afbc6e6a6b242c6d93036767ab" in first.stdout
-        assert HYDRATION_SHA256 in first.stdout
-
-        _publish_descendant(pg, PUBLISHED_REVISION_ID)
-
-        second = subprocess.run(
-            [
-                item
-                for item in command
-                if item != "--verify-replay"
-            ],
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        assert second.returncode == 0, second.stderr
-        assert TOKEN not in second.stdout
-        assert HYDRATION_SHA256 in second.stdout
+        for advance_head in (False, True):
+            if advance_head:
+                _publish_descendant(pg, PUBLISHED_REVISION_ID)
+            result = subprocess.run(
+                command, env=env, capture_output=True, text=True, check=False,
+            )
+            assert result.returncode == 1
+            assert result.stdout == ""
+            assert TOKEN not in result.stderr
+            assert "classic_threat_mechanics_hydration_retired" in result.stderr
     finally:
         server.should_exit = True
         thread.join(timeout=10)
 
     assert not thread.is_alive()
-    assert repository.get_revision_calls == [
-        (WORLD_ID, PUBLISHED_REVISION_ID),
-        (WORLD_ID, PUBLISHED_REVISION_ID),
-        (WORLD_ID, PUBLISHED_REVISION_ID),
-    ]
+    assert repository.get_revision_calls == []
     assert repository.get_head_calls == 0
-    assert len(resolver.calls) == 3
+    assert resolver.calls == []
