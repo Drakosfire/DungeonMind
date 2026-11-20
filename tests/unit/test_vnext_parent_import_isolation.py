@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import inspect
 import os
 import pickle
 import subprocess
 import sys
 import textwrap
-import typing
 
 import pytest
 
@@ -200,41 +198,44 @@ def test_explicit_star_import_keeps_advertised_aliases(namespace):
 
 
 @pytest.mark.skipif(importlib.util.find_spec("psycopg") is None, reason="optional postgres extra")
-def test_explicit_legacy_bundle_preserves_identity_annotations_and_root_factories(monkeypatch):
-    import psycopg
-
-    from dungeonmind.application.publication_admission import PublicationAdmissionRegistry
-    from dungeonmind.infrastructure import postgres
-
-    def forbidden(*args, **kwargs):
-        raise AssertionError("Aggregate construction attempted a PostgreSQL connection")
-
-    monkeypatch.setattr(psycopg, "connect", forbidden)
-    bundle_type = postgres.PostgresRepositoryBundle
-    assert bundle_type.__module__ == "dungeonmind.infrastructure.postgres"
-    assert bundle_type.__name__ == bundle_type.__qualname__ == "PostgresRepositoryBundle"
-    assert pickle.loads(pickle.dumps(bundle_type)) is bundle_type
-    assert list(inspect.signature(bundle_type).parameters) == ["database", "admission_registry"]
-    hints = typing.get_type_hints(bundle_type.__init__)
-    assert hints["database"] is postgres.PostgresDatabase
-    assert hints["admission_registry"] == PublicationAdmissionRegistry | None
-    database = postgres.PostgresDatabase("postgresql://unused.invalid/never_opened")
-    registry = PublicationAdmissionRegistry()
-    sentinel = object()
-    calls = []
-    monkeypatch.setattr(
-        postgres, "PostgresWorldGraphRepository", lambda db: sentinel if db is database else None
+def test_cold_legacy_bundle_preserves_reflection_and_root_factories():
+    _cold(
+        """
+        import inspect
+        import pickle
+        import typing
+        import psycopg
+        from dungeonmind.application.publication_admission import PublicationAdmissionRegistry
+        from dungeonmind.infrastructure import postgres
+        def forbidden(*args, **kwargs):
+            raise AssertionError('Aggregate construction attempted a PostgreSQL connection')
+        psycopg.connect = forbidden
+        bundle_type = postgres.PostgresRepositoryBundle
+        assert bundle_type.__module__ == 'dungeonmind.infrastructure.postgres'
+        assert bundle_type.__name__ == bundle_type.__qualname__ == 'PostgresRepositoryBundle'
+        assert pickle.loads(pickle.dumps(bundle_type)) is bundle_type
+        assert 'class PostgresRepositoryBundle' in inspect.getsource(bundle_type)
+        assert 'def __init__' in inspect.getsource(bundle_type.__init__)
+        assert list(inspect.signature(bundle_type).parameters) == ['database', 'admission_registry']
+        hints = typing.get_type_hints(bundle_type.__init__)
+        assert hints['database'] is postgres.PostgresDatabase
+        assert hints['admission_registry'] == PublicationAdmissionRegistry | None
+        database = postgres.PostgresDatabase('postgresql://unused.invalid/never_opened')
+        registry = PublicationAdmissionRegistry()
+        sentinel = object()
+        calls = []
+        postgres.PostgresWorldGraphRepository = lambda db: sentinel if db is database else None
+        def review_repository(db, *, admission_registry=None):
+            calls.append((db, admission_registry))
+            return sentinel
+        postgres.PostgresFinalizedReviewPublicationRepository = review_repository
+        bundle = bundle_type(database, admission_registry=registry)
+        assert bundle.database is database and bundle.world_graph is sentinel
+        assert bundle.finalized_review_publications is sentinel
+        assert calls == [(database, registry)]
+        """,
+        denied=(),
     )
-
-    def review_repository(db, *, admission_registry=None):
-        calls.append((db, admission_registry))
-        return sentinel
-
-    monkeypatch.setattr(postgres, "PostgresFinalizedReviewPublicationRepository", review_repository)
-    bundle = bundle_type(database, admission_registry=registry)
-    assert bundle.database is database and bundle.world_graph is sentinel
-    assert bundle.finalized_review_publications is sentinel
-    assert calls == [(database, registry)]
 
 
 @pytest.mark.skipif(importlib.util.find_spec("psycopg") is None, reason="optional postgres extra")

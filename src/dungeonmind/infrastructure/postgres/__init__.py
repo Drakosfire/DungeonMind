@@ -11,7 +11,6 @@ if _TYPE_CHECKING:
     from ...application.publication_admission import (
         PublicationAdmissionRegistry as PublicationAdmissionRegistry,
     )
-    from ._bundle import PostgresRepositoryBundle as PostgresRepositoryBundle
     from .database import PostgresDatabase
     from .existing_world_adoption import PostgresExistingWorldAdoptionRepository
     from .graph import PostgresWorldGraphRepository
@@ -75,7 +74,6 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         ".world_identity_reconciliation",
         "PostgresWorldIdentityReconciliationRepository",
     ),
-    "PostgresRepositoryBundle": ("._bundle", "PostgresRepositoryBundle"),
 }
 
 __all__ = [
@@ -99,7 +97,55 @@ __all__ = [
 ]
 
 
+class PostgresRepositoryBundle:
+    """Optional convenience wiring; individual repositories stay explicit."""
+
+    if _TYPE_CHECKING:
+        database: PostgresDatabase
+        publication_admission: PostgresPublicationAdmissionRepository
+        world_graph: PostgresWorldGraphRepository
+        contributions: PostgresContributionRepository
+        contribution_reviews: PostgresContributionReviewRepository
+        finalized_review_publications: PostgresFinalizedReviewPublicationRepository
+        existing_world_adoptions: PostgresExistingWorldAdoptionRepository
+        reviewed_world_initializations: PostgresReviewedWorldInitializationRepository
+        identity_decisions: PostgresIdentityDecisionRepository
+        identity_reconciliation: PostgresWorldIdentityReconciliationRepository
+        sources: PostgresSourceRepository
+        retrieval_sessions: PostgresRetrievalSessionRepository
+        threads: PostgresMindThreadRepository
+        embedding_runs: PostgresEmbeddingRunRepository
+        semantic_documents: PostgresSemanticDocumentRepository
+        semantic_search: PostgresSemanticSearch
+
+    def __init__(
+        self,
+        database: "PostgresDatabase",
+        *,
+        admission_registry: "PublicationAdmissionRegistry | None" = None,
+    ) -> None:
+        from ._bundle import initialize_bundle
+
+        initialize_bundle(self, database, admission_registry=admission_registry)
+
+
+# Retain the real public source location while delaying annotation dependencies
+# until the aggregate is explicitly requested.
+_PostgresRepositoryBundle = PostgresRepositoryBundle
+globals().pop("PostgresRepositoryBundle")
+
+
 def __getattr__(name: str) -> object:
+    if name == "PostgresRepositoryBundle":
+        database_type = _import_module(".database", __name__).PostgresDatabase
+        registry_type = _import_module(
+            "...application.publication_admission", __name__
+        ).PublicationAdmissionRegistry
+        _PostgresRepositoryBundle.__init__.__annotations__.update(
+            database=database_type, admission_registry=registry_type | None
+        )
+        globals()[name] = _PostgresRepositoryBundle
+        return _PostgresRepositoryBundle
     target = _EXPORTS.get(name)
     if target is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -110,4 +156,4 @@ def __getattr__(name: str) -> object:
 
 
 def __dir__() -> list[str]:
-    return sorted(set(globals()) | _EXPORTS.keys())
+    return sorted(set(globals()) | _EXPORTS.keys() | {"PostgresRepositoryBundle"})

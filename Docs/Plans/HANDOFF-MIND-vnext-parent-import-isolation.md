@@ -108,3 +108,29 @@ Any later adoption requires a fresh rebase and owning review against this bounda
 Other inspected open patches do not overlap these eight paths. This is an explicit
 current-file ownership disposition, not reliance on a future Git conflict or an
 assertion that the older PRs were merged. No lease path or behavioral scope expands.
+
+## Pre-acceptance verification and reflection repair
+
+Frozen source `a793be35d04f8ae8d287665cfa3a4d88f1a74f9c` passed the
+PostgreSQL cohort: 622 passed, one skipped, no failures/errors. Its uniquely
+owned verification database was dropped at zero clients and absence verified.
+Installed-wheel phases passed eight minimal cold cases, 26 PostgreSQL owning
+cases and 172 historical conformance cases; all 362 facade bindings matched
+the accepted d206 inventory. These checks did not prove source reflection.
+Independent inspection found `inspect.getsource(PostgresRepositoryBundle)`
+failed because its class definition had moved out of its public module. The
+repair keeps the class definition in the public root and defers only wiring.
+Class and constructor source inspection join pickle/signature/type-hint and
+root-factory replacement proof in a cold subprocess.
+
+The original full unit attempt is retained as failed: 3,363 passed, three
+failed, seven skipped. One subprocess lacked uv on PATH; optional-extra
+collection left SQLAlchemy loaded (also reproduced against accepted d206);
+the new in-process pickle test encountered an older test's global module purge.
+Use the locked default no-extras unit environment, an explicit uv PATH and a
+separate nested smoke environment. Isolate the new reflection proof instead of
+changing existing import-boundary assertions. Original logs remain evidence;
+these findings do not waive the required repaired-head full unit run.
+
+Acceptance remains pending repaired-head source, installed-wheel, PostgreSQL
+qualification and independent review. No serving build or authority changed.
