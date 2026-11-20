@@ -617,6 +617,16 @@ def test_pinned_source_read_scope_reuses_a_read_only_connection(pg, monkeypatch,
             conn.execute("SELECT 1 / 0")
         assert open_admitted_native_text(scoped, evidence_id) == expected
         assert open_admitted_native_text(scoped, "missing").status == "unavailable"
+        with (
+            view._database.transaction(),
+            pytest.raises(PersistenceUnavailableError, match="requires sequential reads"),
+        ):
+            open_admitted_native_text(scoped, evidence_id)
+        with ThreadPoolExecutor(max_workers=1) as worker:
+            future = worker.submit(open_admitted_native_text, scoped, evidence_id)
+            with pytest.raises(PersistenceUnavailableError, match="belongs to another thread"):
+                future.result()
+        assert open_admitted_native_text(scoped, evidence_id) == expected
         metadata = {
             "artifact_ids": [expected.source_artifact_id],
             "revision_ids": [expected.source_revision_id],

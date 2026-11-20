@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime
+from threading import get_ident
 from typing import Any, Protocol
 
 import psycopg
@@ -39,22 +40,33 @@ class ReadTransactions(Protocol):
 class _ScopedReadTransactions:
     def __init__(self, connection: Connection[Any]) -> None:
         self._connection = connection
+        self._owner = get_ident()
+        self._active = False
+
+    def _check_owner(self) -> None:
+        if self._connection.closed:
+            raise PersistenceUnavailableError("native source read scope is closed")
+        if get_ident() != self._owner:
+            raise PersistenceUnavailableError("native source read scope belongs to another thread")
 
     @contextmanager
     def transaction(self) -> Iterator[Connection[Any]]:
-        if self._connection.closed:
-            raise PersistenceUnavailableError("native source read scope is closed")
+        self._check_owner()
+        if self._active:
+            raise PersistenceUnavailableError("native source read scope requires sequential reads")
+        self._active = True
         try:
             with self._connection.transaction():
                 yield self._connection
         except Exception as exc:
             _map_driver_error(exc)
             raise
+        finally:
+            self._active = False
 
     @contextmanager
     def read_scope(self) -> Iterator[ReadTransactions]:
-        if self._connection.closed:
-            raise PersistenceUnavailableError("native source read scope is closed")
+        self._check_owner()
         yield self
 
 
