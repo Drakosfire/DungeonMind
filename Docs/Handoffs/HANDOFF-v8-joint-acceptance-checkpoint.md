@@ -106,3 +106,15 @@ for the active goal. Owned verification SQL DBs were removed only after zero act
 connections; logical DB sizes are not reclaimed filesystem bytes. No manual
 filesystem cleanup occurred. Cleanup follow-up requires explicit scope/authorization
 and process/mount/connection, dirty-worktree, unique-data and unique-commit checks.
+
+## Bounded checkpoint maintenance lease
+
+ACTIVE docs settlement under MIND/operator full-lane authority. Base
+`a012b660c907fbceac1e1ed3514f018852d43c62`, branch
+`codex/v10-native-manual-backend-checkpoint`. Exact one-path lease: this file.
+Outcome: record accepted Buddy4188/4192 and the true next UI/retirement/rollout/V11
+gates. Parallel-independent of Buddy UI design; no runtime dependency or shared
+Core158 index ownership. Commit this assignment before rewriting current state.
+Validate cumulative one-file scope, unchanged runtime/test/dependency/migration
+inputs, relative links and diff; no runtime tests repeated for prose. Independent
+delta review and expected-head merge precede settlement acceptance.
