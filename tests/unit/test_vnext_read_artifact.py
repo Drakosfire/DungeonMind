@@ -41,7 +41,10 @@ def test_actual_frozen_values_preserve_representation(value):
     source = _source(payload)
     parsed = decode_read_artifact(encode_source_wire(source), source)
     ordinary = _parsed(source, payload)
-    assert parse_verified_source_rows(source, source.graph_payload) == ordinary
+    owned_rows = source.graph_payload
+    assert parse_verified_source_rows(source, owned_rows) == ordinary
+    assert owned_rows == {}
+    assert source.graph_payload == payload
     assert parsed == ordinary
     for aid, assertion in parsed.assertions_by_id.items():
         expected = ordinary.assertions_by_id[aid]

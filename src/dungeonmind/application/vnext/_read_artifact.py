@@ -71,7 +71,7 @@ def decode_read_artifact(
 def parse_verified_source_rows(
     source: StoredKnowledgeRevision, rows: dict[str, Any],
 ) -> ParsedKnowledgeRevision | None:
-    """Parse a request-owned decoded payload already bound by the source verifier."""
+    """Consume a request-owned decoded payload already bound by the source verifier."""
     if set(rows) != {"entities", "assertions", "aliases", "evidence"} or any(
         type(table) is not list for table in rows.values()
     ):
@@ -89,12 +89,12 @@ def parse_verified_source_rows(
                     # preserves scalar types and signed zero. Different key order
                     # may miss the pool, but cannot conflate different values.
                     meta, value = row["metadata"], row["value"]
-                    row = {
-                        **row,
-                        "metadata": metadata_pool.setdefault(repr(meta), meta),
-                        "value": value_pool.setdefault(repr(value), value),
-                    }
+                    row["metadata"] = metadata_pool.setdefault(repr(meta), meta)
+                    row["value"] = value_pool.setdefault(repr(value), value)
                 consume(key, row, False, False)
+        # The repository hands off ownership for this one parse. Release the
+        # mutable graph before building indexes over the frozen records.
+        rows.clear()
         return True
 
     return _build_parsed_rows(source, feed)
@@ -180,6 +180,8 @@ def _build_parsed_rows(
         # proceed to structural validation and return a parsed result.
         if not feed(consume):
             return None
+        metadata.clear()
+        values.clear()
         return _build_parsed_knowledge_revision_from_records(
             _parse_revision_identity(source.revision),
             entities=entities,
