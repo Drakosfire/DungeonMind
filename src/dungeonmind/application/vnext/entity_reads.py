@@ -16,7 +16,7 @@ from .admission import (
 from .errors import EntityReadIntegrityError
 from .provenance import (
     KnowledgeProvenanceSnapshot,
-    _build_snapshot_from_loaded,
+    _batch_provenance_projector,
     validate_provenance_snapshot_integrity,
 )
 from .read_context import KnowledgeReadContext
@@ -788,32 +788,7 @@ class EntityReadService:
             union, expected_artifact_ids=artifacts, expected_revision_ids=revisions
         )
 
-        artifact_set = frozenset(artifacts)
-        revision_set = frozenset(revisions)
-
-        def project(
-            artifact_ids: Sequence[str], revision_ids: Sequence[str]
-        ) -> KnowledgeProvenanceSnapshot:
-            if not artifact_set.issuperset(artifact_ids) or not revision_set.issuperset(
-                revision_ids
-            ):
-                raise EntityReadIntegrityError("Batch omitted requested provenance dependencies")
-            loaded_artifacts = {
-                key: value for key in artifact_ids
-                if (value := union.get_artifact(key)) is not None
-            }
-            loaded_revisions = {
-                key: value for key in revision_ids
-                if (value := union.get_revision(key)) is not None
-            }
-            return _build_snapshot_from_loaded(
-                loaded_artifacts=loaded_artifacts,
-                loaded_revisions=loaded_revisions,
-                requested_artifacts=tuple(artifact_ids),
-                requested_revisions=tuple(revision_ids),
-                missing_artifacts=tuple(key for key in artifact_ids if key not in loaded_artifacts),
-                missing_revisions=tuple(key for key in revision_ids if key not in loaded_revisions),
-            )
+        project = _batch_provenance_projector(union, error_type=EntityReadIntegrityError)
 
         results = []
         for entity_id in entity_ids:

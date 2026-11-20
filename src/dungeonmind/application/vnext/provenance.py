@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, MutableMapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Generic, TypeVar, cast
 
 from dungeonmind.contracts.vnext.source import SourceArtifactV3, SourceRevisionV2
 from dungeonmind.domain.canonical import canonical_sha256
+from dungeonmind.domain.errors import PersistenceIntegrityError
 
 from .errors import KnowledgeReadContextIntegrityError
 from .frozen_json import FrozenDict
@@ -562,3 +563,39 @@ class InMemoryKnowledgeSourceReader:
             missing_artifacts=tuple(missing_artifacts),
             missing_revisions=tuple(missing_revisions),
         )
+
+
+
+def _batch_provenance_projector(
+    union: KnowledgeProvenanceSnapshot,
+    *,
+    error_type: type[PersistenceIntegrityError],
+) -> Callable[[tuple[str, ...], tuple[str, ...]], KnowledgeProvenanceSnapshot]:
+    """Project a verified batch back to the exact dependency set of each read."""
+    artifact_set = frozenset(union.requested_artifact_ids)
+    revision_set = frozenset(union.requested_revision_ids)
+
+    def project(
+        artifact_ids: Sequence[str], revision_ids: Sequence[str]
+    ) -> KnowledgeProvenanceSnapshot:
+        if not artifact_set.issuperset(artifact_ids) or not revision_set.issuperset(
+            revision_ids
+        ):
+            raise error_type("Batch omitted requested provenance dependencies")
+        loaded_artifacts = {
+            key: value for key in artifact_ids
+            if (value := union.get_artifact(key)) is not None
+        }
+        loaded_revisions = {
+            key: value for key in revision_ids
+            if (value := union.get_revision(key)) is not None
+        }
+        return _build_snapshot_from_loaded(
+            loaded_artifacts=loaded_artifacts,
+            loaded_revisions=loaded_revisions,
+            requested_artifacts=tuple(artifact_ids),
+            requested_revisions=tuple(revision_ids),
+            missing_artifacts=tuple(key for key in artifact_ids if key not in loaded_artifacts),
+            missing_revisions=tuple(key for key in revision_ids if key not in loaded_revisions),
+        )
+    return project

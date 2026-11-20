@@ -744,3 +744,23 @@ def test_21_get_evidence_hoists_admitted_supporter_set() -> None:
         )
     ]
     assert nested_set_in_comp == []
+
+
+def test_ordered_assertion_evidence_batch_reuses_one_provenance_snapshot() -> None:
+    context, _ = _lab_context(
+        entities=[Entity(entity_id="A")],
+        assertions=[
+            _literal("asrt:a", "A"),
+            _literal("asrt:b", "A"),
+            _literal("asrt:hidden", "A", visibility=LabelsAllVisibility(labels=["test:hidden"])),
+        ],
+    )
+    requested = ("asrt:b", "missing", "asrt:hidden", "asrt:a", "asrt:b")
+    expected = tuple(_SVC.get_assertion_evidence(context, value) for value in requested)
+    before = context.source_reader.snapshot_call_count
+    assert _SVC.get_assertions_evidence(context, requested) == expected
+    assert context.source_reader.snapshot_call_count - before == 1
+    before = context.source_reader.snapshot_call_count
+    assert _SVC.get_assertions_evidence(context, ()) == ()
+    assert len(_SVC.get_assertions_evidence(context, ("missing", "also-missing"))) == 2
+    assert context.source_reader.snapshot_call_count == before
