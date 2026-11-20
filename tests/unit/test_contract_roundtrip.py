@@ -41,7 +41,6 @@ from dungeonmind.contracts import (
     Visibility,
     WorldGraphProjectionRequest,
 )
-
 from dungeonmind.contracts.graph import WorldGraphHead, WorldGraphRevision
 
 NOW = datetime(2026, 7, 29, tzinfo=UTC)
