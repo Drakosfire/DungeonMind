@@ -72,9 +72,11 @@ operational details and bounded recovery limitations.
   backup/restore and rollback require qualification of the actual chosen pair.
 - V11 must measure deployed cold/warm, eviction, new-revision and historical-return
   behavior with exact workload, loaded pins, scope/head, authorization, ordered
-  results and citation identity. Record latency, work and memory; show the roadmap's
-  measurable improvement over V8 and publish the successor optimization handoff
-  before completion tokens. Recording a baseline alone does not waive that gate.
+  results and citation identity. Record latency, work and memory. Bind the roadmap's
+  improvement comparison to a named V8 artifact, separating the original2.12s paired
+  native reference from optimized acceptance measurements and accounting for work
+  already accepted. The V11 handoff must state how its measurements satisfy that
+  requirement and publish the successor optimization handoff before completion tokens.
 - The554.24ms historical-return sample remains above the approximately540ms frozen
   reference. Accepted V8 fresh-worker first requests were484.92/488.99/492.57ms,
   warm77.80–84.04ms. Three workers establish no p95 or universal no-regression.
