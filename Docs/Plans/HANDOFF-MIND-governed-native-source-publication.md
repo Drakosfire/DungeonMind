@@ -294,3 +294,19 @@ and finalCI precede root merge. Buddy consumer currently may diagnose installede
 with migrations-only checkout; final accepted merge pin is mandatory. Buddy manual
 API/UI/current-route retirement/explicit World transition/deployment/rollback/V11
 remain separate open full-goal work; this capability is not their completion.
+
+## Integrated qualification and writer-work guard
+
+Committed5ed526638894e0759eea1462d1aaf89d5df34cc6 completed fullunit/conformance
+3280passed0failures0skips; owning SQL/migration91passed0skips; fullRuffPASS,
+Pyright0errors0warnings, frozenbundlePASS. Unique fixture DB lifecycle records
+zero active connections before drop. No oldee3 execution was relabeled.
+Root then authorized two new cases in the existing SQL module only: after each
+publication mode, reopen a fresh public source/read context with fallback full
+_parse_revision forbidden, prove actual current derived-artifact bytes are used,
+complete entity/alias readback and exact citation still open, with zero read-side
+writes. These cases guard new writer work preservation, not timings/baseline or
+new production behavior. Working artifact-guard-1 passed both cases and dropped its unique DB after zero
+connections. Re-execute their direct proof on the final committed successor;
+5ed fullunit evidence can carry only via explicit unchanged-input equivalence.
+Publication API/adapters/schema/migration remain byte-identical to reviewedee3.
