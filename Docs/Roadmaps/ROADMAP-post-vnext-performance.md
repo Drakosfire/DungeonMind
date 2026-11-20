@@ -1,6 +1,6 @@
 # DungeonMind — Post-vNext Performance Roadmap
 
-**Status:** BLOCKED for the post-vNext successor — activates after V11 accepts the post-cutover baseline
+**Status:** O1 entry opens on merge of the [V11 Elderwyld serving evidence](../Reports/V11-elderwyld-serving-evidence.md).
 **Predecessor exit:** `POST_CUTOVER_PERFORMANCE_BASELINE_ACCEPTED` and `VNEXT_ROADMAP_COMPLETE`  
 **First phase:** O1 — Hot-path work elimination
 
@@ -12,6 +12,11 @@ the serving classic architecture now. Those results do not satisfy V11, activate
 O1, or authorize a vNext/storage cutover. Every phase preserves accepted authority, privacy,
 historical reconstruction, and semantic digests before claiming performance
 credit.
+
+For Elderwyld, start with exact source-verification and parsed-index rebuild
+work on first access to a new revision and on historical pin turnover. The
+serving evidence separates live measurements from the comparable fixture and
+retains the V8 capacity and Rules-comparison debt.
 
 ## Phase sequence
 

@@ -31,9 +31,11 @@ records the measured behavior, verified recovery point and schema-compatible
 fallback. The [accepted V8 artifact](dm_vnext_contract_acceptance_v1.json)
 governs the semantic and practical scale evidence.
 
-The next question is whether the remaining V10 boundary and V11 serving
-evidence justify closing the roadmap. Complete the remaining verification
-before advancing the successor optimization roadmap.
+This evidence closes V9–V11 for the accepted Elderwyld scope on merge.
+The next question for the [successor roadmap](../Roadmaps/ROADMAP-post-vnext-performance.md)
+is how much exact proof and parsed-index rebuild work can be removed on a
+new or evicted revision while preserving authority and citation parity.
+The 50k insertion limit and unmatched Rules comparison remain recorded debt.
 
 ---
 

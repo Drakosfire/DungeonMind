@@ -1,6 +1,7 @@
 # V11 Elderwyld serving evidence
 
-**Disposition:** Native serving switch verified. V11 roadmap acceptance remains open.
+**Disposition on merge:** `POST_CUTOVER_PERFORMANCE_BASELINE_ACCEPTED` and
+`VNEXT_ROADMAP_COMPLETE` for the accepted fresh-native Elderwyld scope.
 
 On 2026-11-20, the local Buddy UI on port 5202 switched to Buddy
 `cf89e86624231a5e373d0afddc4d1be48e2af5de` with installed Core
@@ -38,9 +39,12 @@ The retained classic reference is 540 ms on the comparable fixture. The direct
 live observation and live pin sequence use the real Elderwyld authority and are
 a separate workload. The fresh-worker check used the same release and live authority on separate
 loopback HTTP ports while the serving proxy stayed on 5202. Each worker matched
-the live neighborhood and citation hashes. The first request after a new live
-publication remains open. The published-revision measurement above used a
-disposable fixture.
+the live neighborhood and citation hashes. The published-revision measurement used a disposable fixture with the exact
+locked release. No synthetic publication was added to live Elderwyld.
+
+At observation, the live API had **856 MiB RSS** and a **918 MiB** process
+high-water mark. Installed fixture workers ended at **636 MiB RSS**. These
+are process observations, limited to the recorded workloads and sampling times.
 
 ## Semantic and recovery evidence
 
@@ -80,16 +84,30 @@ compatibility readers and their stored contracts must remain readable.
 
 Core's service exposes explicit retirement boundaries for fresh classic Mind
 Turn execution and classic campaign ingest context. Historical completed-turn
-and publication receipt lookup remain available. This audit establishes the
-named serving boundary. A broader inventory of package-level compatibility
-exports is still open.
+and publication receipt lookup remain available. The separate fictional-time
+shadow host requires an authorized revision pin and serves the shadow contract.
 
-## Remaining closeout
+The native application and contract facades export none of
+`WorldGraphRevision`, `WorldGraphHead`, `WorldGraphProjectionRequestV2`, or
+`ScopeModeV2`. Importing both facades in a fresh process loaded none of the
+classic graph, projection, retrieval, or compatibility modules. Explicit
+legacy leaf imports remain for historical codecs, frozen Buddy receipts,
+and legacy tooling. The Core historical boundary, codec parity, and retired
+campaign entry-point cohort passed 68 tests. Existing historical storage and
+migrations remain in place.
 
-Confirm the remaining V10 public/current authority boundary and record the
-disposition of retained classic compatibility. Complete or explicitly dispose
-of the remaining live performance cells before recording
-`POST_CUTOVER_PERFORMANCE_BASELINE_ACCEPTED` and `VNEXT_ROADMAP_COMPLETE`.
-The measured successor investigation is the cost of proof and parsed rebuilds
-when alternating among live pins, plus first access after a new publication.
-The successor roadmap remains gated on the V11 acceptance record.
+## Successor handoff
+
+The comparable first read and eviction improved against the accepted V8
+measurements. First access to a freshly published fixture revision increased
+from **505–514 ms** in V8 to **674–688 ms** on this release. Live alternating
+pin reads still reach **990 ms**. Investigate proof and parsed-index rebuild
+work first, including release of retired revision data. Preserve exact
+source verification, visibility, citation bytes and historical reconstruction.
+
+The V8 50k full-input primary JSONB insertion limit, unattempted 100k rung,
+and unmatched Rules comparison carry forward as evidence debt. This baseline
+covers the accepted Elderwyld release and its comparable fixture. It does not
+establish a universal latency or capacity bound. Follow the
+[post-vNext performance roadmap](../Roadmaps/ROADMAP-post-vnext-performance.md)
+for any subsequent implementation.
