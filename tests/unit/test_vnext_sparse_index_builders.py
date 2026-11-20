@@ -155,7 +155,7 @@ def test_isolated_entities_and_evidence_allocate_no_mutable_index_buckets(shape,
 
 
 @pytest.mark.parametrize("shape", ["empty", "sparse", "self-loop", "dense", "aliases"])
-def test_dense_indexes_share_only_immutable_empty_entries_and_preserve_hashes(shape):
+def test_dense_indexes_avoid_pair_storage_and_preserve_hashes(shape):
     import copy
     import pickle
 
@@ -173,26 +173,21 @@ def test_dense_indexes_share_only_immutable_empty_entries_and_preserve_hashes(sh
         "entity_adjacency",
         "aliases_by_entity",
     )
-    empty_pairs = {}
     for name in names:
         index = getattr(parsed, name)
         reference = FrozenDict(dict(index.items()))
         assert type(index) is FrozenDict
         assert list(index.items()) == list(reference.items())
+        assert index._items is None and not index._hash_ready
         assert index == reference and hash(index) == hash(reference)
-        assert index._hash_ready  # Index construction retains eager hash behavior.
+        assert index._items is None and index._hash_ready
         assert copy.copy(index) is index and copy.deepcopy(index) is index
         restored = pickle.loads(pickle.dumps(index))
         assert restored == reference and hash(restored) == hash(reference)
-        for pair in index._items:
-            if pair[1] == ():
-                previous = empty_pairs.setdefault(pair[0], pair)
-                assert pair is previous, "one immutable empty pair per key across all indexes"
         with pytest.raises(TypeError):
             index._items = ()
         with pytest.raises(TypeError):
             index._proxy["ent:injected"] = ()
-    assert set(empty_pairs) == set(parsed.entities_by_id)
     restored = pickle.loads(pickle.dumps(parsed))
     assert restored == parsed and hash(restored) == hash(parsed)
 
@@ -200,20 +195,18 @@ def test_dense_indexes_share_only_immutable_empty_entries_and_preserve_hashes(sh
 def test_private_dense_index_copies_buckets_and_preserves_empty_domain_order():
     from dungeonmind.application.vnext.frozen_json import FrozenDict, _frozen_dense_index
 
-    empty = (("ent:a", ()), ("ent:b", ()), ("ent:c", ()))
+    entity_ids = ("ent:a", "ent:b", "ent:c")
     buckets = {"ent:b": ["assertion:z", "assertion:a"]}
-    actual = _frozen_dense_index(empty, buckets)
+    actual = _frozen_dense_index(entity_ids, buckets)
     expected = FrozenDict({"ent:a": (), "ent:b": ("assertion:a", "assertion:z"), "ent:c": ()})
     buckets["ent:b"].clear()
     buckets["ent:c"] = ["assertion:later"]
     assert actual == expected and hash(actual) == hash(expected)
-    assert actual._items[0] is empty[0] and actual._items[2] is empty[2]
-    assert actual._items[1] is not empty[1]
-    assert _frozen_dense_index(empty, {})._items is empty
+    assert tuple(actual) == entity_ids and actual._items is None
     assert _frozen_dense_index((), {}) == FrozenDict()
 
 
-def test_shared_empty_entries_are_local_to_each_concurrent_build():
+def test_concurrent_builds_keep_index_mappings_local():
     from concurrent.futures import ThreadPoolExecutor
 
     payload = _graph("sparse", 20)
@@ -223,14 +216,14 @@ def test_shared_empty_entries_are_local_to_each_concurrent_build():
     assert all(parsed == results[0] for parsed in results)
     for parsed in results:
         _assert_complete_indexes(parsed)
-    left = results[0].aliases_by_entity._items
-    right = results[1].aliases_by_entity._items
-    assert left == right and left is not right
-    assert all(a is not b for a, b in zip(left, right, strict=True))
+    left = results[0].aliases_by_entity
+    right = results[1].aliases_by_entity
+    assert left == right and left._proxy is not right._proxy
+    assert left._items is None and right._items is None
 
 
 def test_dense_index_rejects_memberships_outside_its_primary_domain():
     from dungeonmind.application.vnext.frozen_json import _frozen_dense_index
 
     with pytest.raises(ValueError, match="outside primary key domain"):
-        _frozen_dense_index((("ent:a", ()),), {"ent:unknown": ["assertion:one"]})
+        _frozen_dense_index(("ent:a",), {"ent:unknown": ["assertion:one"]})

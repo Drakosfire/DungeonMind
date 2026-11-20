@@ -7,7 +7,7 @@ cannot mutate, poison, or leak state into or out of `ParsedKnowledgeRevision`.
 from __future__ import annotations
 
 import json
-from collections.abc import Collection, ItemsView, Iterator, KeysView, Mapping, ValuesView
+from collections.abc import Collection, ItemsView, Iterator, KeysView, Mapping, Sequence, ValuesView
 from types import MappingProxyType
 from typing import Any, TypeVar, overload
 
@@ -153,7 +153,11 @@ def _deferred_frozen_dict(mapping: Mapping[KT, VT]) -> FrozenDict[KT, VT]:
     requests materialize those pairs transiently. It is not for caller-owned
     mutable payloads. Public construction remains eager and unchanged.
     """
-    sorted_mapping = {key: mapping[key] for key in sorted(mapping, key=str)}
+    return _freeze_owned_sorted_dict({key: mapping[key] for key in sorted(mapping, key=str)})
+
+
+def _freeze_owned_sorted_dict(sorted_mapping: dict[KT, VT]) -> FrozenDict[KT, VT]:
+    """Take ownership of an ordered dictionary without retaining pair tuples."""
     result: FrozenDict[KT, VT] = object.__new__(FrozenDict)
     object.__setattr__(result, "_proxy", MappingProxyType(sorted_mapping))
     object.__setattr__(result, "_items", None)
@@ -163,37 +167,16 @@ def _deferred_frozen_dict(mapping: Mapping[KT, VT]) -> FrozenDict[KT, VT]:
 
 
 def _frozen_dense_index(
-    empty_items: tuple[tuple[str, tuple[str, ...]], ...],
+    entity_ids: Sequence[str],
     memberships: Mapping[str, Collection[str]],
 ) -> FrozenDict[str, tuple[str, ...]]:
-    """Freeze owner-validated index buckets over a complete sorted key domain.
-
-    The builder validates references first and supplies one immutable empty pair
-    per primary key, sorted by the public constructor's str(key) ordering. Reuse
-    those pairs without exposing mutable buckets or changing dense index values.
-    Public FrozenDict construction remains unchanged; index hashes remain eager.
-    """
-    if memberships:
-        pairs: list[tuple[str, tuple[str, ...]]] = []
-        for empty in empty_items:
-            values = memberships.get(empty[0])
-            pairs.append((empty[0], tuple(sorted(values))) if values else empty)
-        items = tuple(pairs)
-    else:
-        items = empty_items
-    items_dict = dict(items)
+    """Freeze index buckets over an owner-validated sorted primary key domain."""
+    items_dict: dict[str, tuple[str, ...]] = dict.fromkeys(entity_ids, ())
     if not memberships.keys() <= items_dict.keys():
         raise ValueError("index membership outside primary key domain")
-    result: FrozenDict[str, tuple[str, ...]] = object.__new__(FrozenDict)
-    object.__setattr__(result, "_proxy", MappingProxyType(items_dict))
-    object.__setattr__(result, "_items", items)
-    try:
-        computed_hash = hash(items)
-    except TypeError:
-        computed_hash = None
-    object.__setattr__(result, "_hash", computed_hash)
-    object.__setattr__(result, "_hash_ready", True)
-    return result
+    for entity_id, values in memberships.items():
+        items_dict[entity_id] = tuple(sorted(values))
+    return _freeze_owned_sorted_dict(items_dict)
 
 
 FrozenJsonValue = (
