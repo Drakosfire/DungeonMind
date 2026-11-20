@@ -427,6 +427,34 @@ def test_prospective_result_failure_rolls_back_child_artifact(migrated_database,
         assert _count(migrated_database, table) == 0
 
 
+def test_direct_source_rows_match_artifact_and_reject_changed_primary(migrated_database, pg):
+    from dungeonmind.application.vnext._read_artifact import parse_verified_source_rows
+    from dungeonmind.infrastructure.postgres.vnext_knowledge import VerifiedKnowledgeRevisionCache
+
+    database = PostgresDatabase(migrated_database)
+    reader = PostgresKnowledgeRevisionRepository(
+        database, verification_cache=VerifiedKnowledgeRevisionCache(max_bytes=1_000_000),
+    )
+    stored = reader.publish_revision(genesis_command())
+    pin = SPACE, stored.revision.revision_id
+    expected = decode_read_artifact(reader.get_native_read_artifact(stored), stored)
+    assert expected is not None
+    for _ in range(2):
+        current, load_rows = reader.get_revision_for_native_read(*pin)
+        assert current == stored and load_rows is not None
+        assert parse_verified_source_rows(current, load_rows()) == expected
+
+    with database.transaction() as conn:
+        conn.execute(
+            "UPDATE dungeonmind.knowledge_revisions "
+            "SET graph_payload = jsonb_set(graph_payload, '{unexpected}', 'true') "
+            "WHERE space_id = %s AND revision_id = %s",
+            pin,
+        )
+    with pytest.raises(PersistenceIntegrityError):
+        reader.get_revision_for_native_read(*pin)
+
+
 def test_old_valid_source_without_artifact_falls_back_without_read_side_write(
     migrated_database, pg
 ):
