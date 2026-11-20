@@ -627,6 +627,50 @@ class PostgresFinalizedReviewPublicationRepository:
             raise PersistenceIntegrityError("finalized publication missing after insert")
         return row
 
+    def read_verified_publication(
+        self, world_id: str, operation_id: str
+    ) -> VerifiedPublicationHistoryEntry | None:
+        with self._database.transaction() as conn:
+            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            row = _publication_row(conn, world_id=world_id, operation_id=operation_id)
+            if row is None:
+                return None
+            selected = _return_publication(row)
+            if selected.world_id != world_id or selected.operation_id != operation_id:
+                raise PersistenceIntegrityError("terminal publication selector mismatch")
+            revisions: dict[str, StoredGraphRevision] = {}
+            reviews: dict[str, ContributionReviewState] = {}
+
+            def revision(key: str) -> StoredGraphRevision:
+                if key not in revisions:
+                    value = self._load_revision(conn, world_id=world_id, revision_id=key)
+                    if value.revision.world_id != world_id or value.revision.revision_id != key:
+                        raise PersistenceIntegrityError("historical revision selector mismatch")
+                    revisions[key] = value
+                return revisions[key]
+
+            def review(key: str) -> ContributionReviewState:
+                if key not in reviews:
+                    value = self._load_review(conn, world_id=world_id, review_id=key)
+                    if value.record.world_id != world_id or value.record.review_id != key:
+                        raise PersistenceIntegrityError("historical review selector mismatch")
+                    reviews[key] = value
+                return reviews[key]
+
+            try:
+                verified = self._load_verified(
+                    conn, row, revision_loader=revision, review_loader=review
+                )
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise PersistenceIntegrityError(
+                    "historical publication reconstruction failed"
+                ) from exc
+            return VerifiedPublicationHistoryEntry(
+                revision(verified.published_revision_id).revision.model_copy(deep=True),
+                verified.model_copy(deep=True),
+                review(verified.review_id).model_copy(deep=True),
+            )
+
     def get(
         self,
         world_id: str,

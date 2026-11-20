@@ -223,6 +223,20 @@ class VerifiedPublicationHistoryEntry:
     review: DurableContributionReviewState | None
 
 
+class HistoricalFinalizedPublicationReader(Protocol):
+    """Privileged read-only terminal history; no fresh-write or source authority.
+
+    Success contains non-null publication/review and the original child envelope,
+    detached from storage, all verified in one coherent view. None is coherent
+    absence only; partial indexes/corrupt companions and unavailable stores raise.
+    Absence never authorizes publication or resolves an ambiguous prior outcome.
+    """
+
+    def read_verified_publication(
+        self, world_id: str, operation_id: str
+    ) -> VerifiedPublicationHistoryEntry | None: ...
+
+
 class PublicationAdmissionPolicyRepository(Protocol):
     """Operator/bootstrap-only immutable registration and exact policy read."""
 

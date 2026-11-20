@@ -723,3 +723,428 @@ def test_verified_ancestry_rejects_missing_or_foreign_start(pg):
     for world, revision in [(WORLD_ID, 'missing'), ('other', PARENT_REVISION_ID)]:
         with pytest.raises(PersistenceIntegrityError):
             pg.finalized_review_publications.read_verified_ancestry(world, revision)
+
+
+@pytest.fixture(params=["v1", "v2"])
+def historical_publication_lane(pg, request):
+    """Both immutable receipt families; no new schema or transport fixture."""
+    from types import SimpleNamespace
+
+    from dungeonmind.infrastructure.postgres import PostgresFinalizedReviewPublicationRepository
+    from tests.integration.test_postgres_publication_admission import setup_pg
+    from tests.unit.test_publication_admission import SyntheticValidator
+
+    if request.param == "v2":
+        original = setup_pg(pg, validator=SyntheticValidator())
+        receipt = original.publications.publish(original.command)
+        state = original.state
+    else:
+        state = _seed_tripod(pg)
+        receipt = _publish(pg, _reader())
+    # Recovery must not require the original validator registry/process.
+    repo = PostgresFinalizedReviewPublicationRepository(pg.database)
+    return SimpleNamespace(pg=pg, receipt=receipt, state=state, repo=repo)
+
+
+def _historical_read(lane):
+    from dungeonmind.application.compatibility import read_historical_finalized_publication
+
+    return read_historical_finalized_publication(
+        lane.receipt.world_id, lane.receipt.operation_id, reader=lane.repo
+    )
+
+
+def _historical_snapshot(pg):
+    """Compare complete rows, not just counts, across the privileged read."""
+    from psycopg import sql
+
+    with pg.database.connect() as conn:
+        return {
+            table: sorted(
+                json.dumps(row["row"], sort_keys=True)
+                for row in conn.execute(
+                    sql.SQL("SELECT to_jsonb(t) AS row FROM dungeonmind.{} t").format(
+                        sql.Identifier(table)
+                    )
+                ).fetchall()
+            )
+            for table in (
+                "finalized_review_publications",
+                "graph_revisions",
+                "world_graph_heads",
+                "world_graph_head_events",
+                "contribution_reviews",
+                "graph_contributions",
+                "source_artifacts",
+                "source_revisions",
+                "evidence_refs",
+            )
+        }
+
+
+def test_historical_terminal_is_one_bounded_readonly_snapshot(
+    historical_publication_lane, monkeypatch
+):
+    from collections import Counter
+    from contextlib import contextmanager
+
+    lane = historical_publication_lane
+    before = _historical_snapshot(lane.pg)
+    calls, statements, modes = Counter(), [], []
+    database = lane.pg.database
+    original_transaction = database.transaction
+    original_review, original_revision = lane.repo._load_review, lane.repo._load_revision
+
+    class ConnectionProbe:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def execute(self, statement, params=None):
+            text = statement if isinstance(statement, str) else statement.as_string(self.conn)
+            statements.append(text)
+            result = self.conn.execute(statement, params)
+            if text.startswith("SET TRANSACTION"):
+                modes.append(
+                    (
+                        self.conn.execute("SHOW transaction_isolation").fetchone()[
+                            "transaction_isolation"
+                        ],
+                        self.conn.execute("SHOW transaction_read_only").fetchone()[
+                            "transaction_read_only"
+                        ],
+                    )
+                )
+            return result
+
+    @contextmanager
+    def transaction():
+        calls["transaction"] += 1
+        with original_transaction() as conn:
+            yield ConnectionProbe(conn)
+
+    def review(conn, **kwargs):
+        calls["review"] += 1
+        return original_review(conn, **kwargs)
+
+    def revision(conn, **kwargs):
+        calls[kwargs["revision_id"]] += 1
+        return original_revision(conn, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("historical query attempted current authority or publication")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(database, "transaction", transaction)
+        patch.setattr(lane.repo, "_load_review", review)
+        patch.setattr(lane.repo, "_load_revision", revision)
+        patch.setattr(lane.repo, "publish", forbidden)
+        patch.setattr(lane.repo._graph, "get_head", forbidden)
+        patch.setattr(lane.repo, "get_provenance_snapshot", forbidden)
+        patch.setattr(lane.repo._admission_registry, "validate", forbidden)
+        entry = _historical_read(lane)
+    assert entry.publication == lane.receipt
+    assert entry.review == lane.state
+    assert entry.revision.revision_id == lane.receipt.published_revision_id
+    assert calls == Counter(
+        {
+            "transaction": 1,
+            "review": 1,
+            lane.receipt.published_revision_id: 1,
+            lane.receipt.expected_parent_revision_id: 1,
+        }
+    )
+    assert modes == [("repeatable read", "on")]
+    assert all(text.lstrip().startswith(("SELECT", "SET TRANSACTION")) for text in statements)
+    assert not any("source_artifacts" in text or "world_graph_heads" in text for text in statements)
+    assert _historical_snapshot(lane.pg) == before
+    entry.revision.operation_ids.clear()
+    entry.review.reviewed_contribution.assertions.clear()
+    entry.publication.confirmation_id = "caller:only"
+    again = _historical_read(lane)
+    assert again.publication == lane.receipt
+    assert again.review == lane.state
+    assert again.revision.operation_ids == [lane.receipt.operation_id]
+
+
+def test_historical_absence_never_finishes_a_finalized_review(
+    historical_publication_lane, monkeypatch
+):
+    lane = historical_publication_lane
+    with lane.pg.database.transaction() as conn:
+        conn.execute(
+            "DELETE FROM dungeonmind.finalized_review_publications "
+            "WHERE world_id=%s AND operation_id=%s",
+            (lane.receipt.world_id, lane.receipt.operation_id),
+        )
+    before = _historical_snapshot(lane.pg)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("absence must not publish or finalize")
+
+    monkeypatch.setattr(lane.repo, "publish", forbidden)
+    monkeypatch.setattr(lane.pg.contribution_reviews, "finalize", forbidden)
+    assert _historical_read(lane) is None
+    assert (
+        lane.pg.contribution_reviews.get(lane.receipt.world_id, lane.receipt.review_id)
+        == lane.state
+    )
+    assert _historical_snapshot(lane.pg) == before
+
+
+@pytest.mark.parametrize("movement", ["descendant", "rollback"])
+def test_historical_original_survives_head_movement(
+    historical_publication_lane, movement, monkeypatch
+):
+    from datetime import timedelta
+
+    lane = historical_publication_lane
+    receipt = lane.receipt
+    if movement == "descendant":
+        original = lane.pg.world_graph.get_revision(receipt.world_id, receipt.published_revision_id)
+        lane.pg.world_graph.publish_revision(
+            PublishRevisionCommand(
+                world_id=receipt.world_id,
+                parent_revision_id=receipt.published_revision_id,
+                expected_parent_revision_id=receipt.published_revision_id,
+                operation_ids=["historical:descendant"],
+                graph_schema=receipt.graph_schema,
+                graph_payload=original.graph_payload,
+                created_at=receipt.published_at + timedelta(seconds=1),
+            )
+        )
+    else:
+        lane.pg.world_graph.rollback_head(
+            receipt.world_id,
+            receipt.expected_parent_revision_id,
+            updated_at=receipt.published_at + timedelta(seconds=1),
+        )
+    before = _historical_snapshot(lane.pg)
+    monkeypatch.setattr(
+        lane.repo._graph, "get_head", lambda *args: pytest.fail("current head read")
+    )
+    assert _historical_read(lane).publication == receipt
+    assert _historical_snapshot(lane.pg) == before
+
+
+@pytest.mark.parametrize("selector", ["world", "operation"])
+def test_historical_valid_receipt_substitution_is_integrity(
+    historical_publication_lane, monkeypatch, selector
+):
+    from dungeonmind.infrastructure.postgres import review_publication as module
+
+    lane = historical_publication_lane
+    with lane.pg.database.transaction() as conn:
+        row = module._publication_row(
+            conn, world_id=lane.receipt.world_id, operation_id=lane.receipt.operation_id
+        )
+    before = _historical_snapshot(lane.pg)
+    monkeypatch.setattr(module, "_publication_row", lambda *args, **kwargs: row)
+    world = "world:foreign" if selector == "world" else lane.receipt.world_id
+    operation = "operation:foreign" if selector == "operation" else lane.receipt.operation_id
+    with pytest.raises(PersistenceIntegrityError):
+        lane.repo.read_verified_publication(world, operation)
+    assert _historical_snapshot(lane.pg) == before
+
+
+@pytest.mark.parametrize(
+    "damage", ["publication", "review", "candidate", "contribution", "parent", "child"]
+)
+def test_historical_corrupt_companion_is_integrity(historical_publication_lane, damage):
+    from psycopg import sql
+
+    lane = historical_publication_lane
+    receipt = lane.receipt
+    table, column, value = {
+        "publication": ("finalized_review_publications", "operation_id", receipt.operation_id),
+        "review": ("contribution_reviews", "review_id", receipt.review_id),
+        "candidate": (
+            "graph_contributions",
+            "contribution_id",
+            lane.state.record.stored_candidate_contribution_id,
+        ),
+        "contribution": (
+            "graph_contributions",
+            "contribution_id",
+            receipt.reviewed_contribution_id,
+        ),
+        "parent": ("graph_revisions", "revision_id", receipt.expected_parent_revision_id),
+        "child": ("graph_revisions", "revision_id", receipt.published_revision_id),
+    }[damage]
+    with lane.pg.database.transaction() as conn:
+        conn.execute(
+            sql.SQL("UPDATE dungeonmind.{} SET record_fingerprint='bad' WHERE {}=%s").format(
+                sql.Identifier(table), sql.Identifier(column)
+            ),
+            (value,),
+        )
+    before = _historical_snapshot(lane.pg)
+    with pytest.raises(PersistenceIntegrityError):
+        _historical_read(lane)
+    assert _historical_snapshot(lane.pg) == before
+
+
+@pytest.mark.parametrize("missing", ["review", "candidate", "contribution", "parent", "child"])
+def test_historical_fk_protected_missing_row_read_fails_closed(
+    historical_publication_lane, monkeypatch, missing
+):
+    """Inject absent read results without disabling database foreign keys."""
+    from contextlib import contextmanager
+
+    lane = historical_publication_lane
+    key = {
+        "review": ("review_id", lane.receipt.review_id),
+        "candidate": ("contribution_id", lane.state.record.stored_candidate_contribution_id),
+        "contribution": ("contribution_id", lane.receipt.reviewed_contribution_id),
+        "parent": ("revision_id", lane.receipt.expected_parent_revision_id),
+        "child": ("revision_id", lane.receipt.published_revision_id),
+    }[missing]
+    before = _historical_snapshot(lane.pg)
+    original_transaction = lane.pg.database.transaction
+
+    table = {
+        "review": "contribution_reviews",
+        "candidate": "graph_contributions",
+        "contribution": "graph_contributions",
+        "parent": "graph_revisions",
+        "child": "graph_revisions",
+    }[missing]
+
+    class CursorFilter:
+        def __init__(self, cursor, applies):
+            self.cursor = cursor
+            self.applies = applies
+
+        def fetchone(self):
+            row = self.cursor.fetchone()
+            return (
+                None
+                if self.applies and row is not None and row.get(key[0]) == key[1]
+                else row
+            )
+
+        def fetchall(self):
+            return [
+                row for row in self.cursor.fetchall()
+                if not self.applies or row.get(key[0]) != key[1]
+            ]
+
+    class ConnectionFilter:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def execute(self, statement, *args, **kwargs):
+            text = statement if isinstance(statement, str) else statement.as_string(self.conn)
+            return CursorFilter(
+                self.conn.execute(statement, *args, **kwargs), f".{table}" in text
+            )
+
+    @contextmanager
+    def filtered_transaction():
+        with original_transaction() as conn:
+            yield ConnectionFilter(conn)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(lane.pg.database, "transaction", filtered_transaction)
+        with pytest.raises(PersistenceIntegrityError):
+            _historical_read(lane)
+    assert _historical_snapshot(lane.pg) == before
+
+
+def test_historical_v2_withdrawal_preserves_immutable_proof_and_ceiling(pg, monkeypatch):
+    from dungeonmind.application.compatibility import read_historical_finalized_publication
+    from dungeonmind.domain.errors import CapabilityDeniedError
+    from dungeonmind.infrastructure.postgres import PostgresFinalizedReviewPublicationRepository
+    from tests.integration.test_postgres_publication_admission import retract_source, setup_pg
+    from tests.unit.test_publication_admission import SyntheticValidator
+
+    lane = setup_pg(pg, validator=SyntheticValidator())
+    receipt = lane.publications.publish(lane.command)
+    artifact_id = receipt.admission_context.source_snapshot.artifacts[0].source_artifact_id
+    retract_source(pg, artifact_id)
+    before = _historical_snapshot(pg)
+    repo = PostgresFinalizedReviewPublicationRepository(pg.database)
+    monkeypatch.setattr(
+        repo._admission_registry, "validate", lambda *args: pytest.fail("validator rerun")
+    )
+    entry = read_historical_finalized_publication(
+        receipt.world_id, receipt.operation_id, reader=repo
+    )
+    assert entry.publication == receipt
+    assert entry.publication.admission_context.source_snapshot.artifacts[0].status == "active"
+    with pytest.raises(CapabilityDeniedError):
+        read_historical_finalized_publication(
+            receipt.world_id,
+            receipt.operation_id,
+            reader=repo,
+            allowed_receipt_schemas=frozenset({"dm_finalized_review_publication_v1"}),
+        )
+    assert _historical_snapshot(pg) == before
+    revision_id = receipt.admission_context.source_snapshot.revisions[0].source_revision_id
+    with pg.database.transaction() as conn:
+        conn.execute(
+            "UPDATE dungeonmind.source_revisions SET content_sha256=%s WHERE source_revision_id=%s",
+            ("0" * 64, revision_id),
+        )
+    with pytest.raises(PersistenceIntegrityError):
+        read_historical_finalized_publication(receipt.world_id, receipt.operation_id, reader=repo)
+
+
+def test_historical_read_keeps_verified_snapshot_under_concurrent_drift(
+    historical_publication_lane, monkeypatch
+):
+    lane = historical_publication_lane
+    original = lane.repo._load_review
+
+    def review_then_drift(conn, **kwargs):
+        state = original(conn, **kwargs)
+        # A distinct committed writer changes the still-unread child. The
+        # readonly repeatable snapshot must return the original verified view.
+        with lane.pg.database.transaction() as writer:
+            writer.execute(
+                "UPDATE dungeonmind.graph_revisions SET graph_payload='{}'::jsonb "
+                "WHERE world_id=%s AND revision_id=%s",
+                (lane.receipt.world_id, lane.receipt.published_revision_id),
+            )
+        return state
+
+    monkeypatch.setattr(lane.repo, "_load_review", review_then_drift)
+    entry = _historical_read(lane)
+    assert entry.publication == lane.receipt
+    assert entry.review == lane.state
+    monkeypatch.setattr(lane.repo, "_load_review", original)
+    with pytest.raises(PersistenceIntegrityError):
+        _historical_read(lane)
+
+
+def test_historical_unknown_receipt_family_is_integrity(historical_publication_lane):
+    lane = historical_publication_lane
+    with lane.pg.database.transaction() as conn:
+        conn.execute(
+            "UPDATE dungeonmind.finalized_review_publications SET schema_version='unknown' "
+            "WHERE world_id=%s AND operation_id=%s",
+            (lane.receipt.world_id, lane.receipt.operation_id),
+        )
+    before = _historical_snapshot(lane.pg)
+    with pytest.raises(PersistenceIntegrityError):
+        _historical_read(lane)
+    assert _historical_snapshot(lane.pg) == before
+
+
+def test_historical_unavailability_is_not_absence(historical_publication_lane, monkeypatch):
+    from contextlib import contextmanager
+
+    from dungeonmind.domain.errors import PersistenceUnavailableError
+
+    lane = historical_publication_lane
+    before = _historical_snapshot(lane.pg)
+
+    @contextmanager
+    def unavailable():
+        raise PersistenceUnavailableError("synthetic unavailable transaction")
+        yield  # pragma: no cover
+
+    with monkeypatch.context() as patch:
+        patch.setattr(lane.pg.database, "transaction", unavailable)
+        with pytest.raises(PersistenceUnavailableError):
+            _historical_read(lane)
+    assert _historical_snapshot(lane.pg) == before

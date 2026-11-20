@@ -845,17 +845,32 @@ class InMemoryFinalizedReviewPublicationRepository:
     def _reconstruct_unlocked(
         self,
         publication: FinalizedReviewPublication,
+        *,
+        revision_loader: Callable[[str], StoredGraphRevision | None] | None = None,
+        review_loader: Callable[[str], DurableContributionReviewState | None] | None = None,
     ) -> FinalizedReviewPublication:
         verified = self._validate_record(publication)
-        state = self._reviews.get(verified.world_id, verified.review_id)
+        state = (
+            review_loader(verified.review_id)
+            if review_loader is not None
+            else self._reviews.get(verified.world_id, verified.review_id)
+        )
         if state is None:
             raise PersistenceIntegrityError("finalized publication references a missing review")
         self._validate_record_review(verified, state)
-        stored = self._graph._revisions.get((verified.world_id, verified.published_revision_id))
+        stored = (
+            revision_loader(verified.published_revision_id)
+            if revision_loader is not None
+            else self._graph._revisions.get((verified.world_id, verified.published_revision_id))
+        )
         if stored is None:
             raise PersistenceIntegrityError("finalized publication references a missing revision")
-        parent = self._graph._revisions.get(
-            (verified.world_id, verified.expected_parent_revision_id)
+        parent = (
+            revision_loader(verified.expected_parent_revision_id)
+            if revision_loader is not None
+            else self._graph._revisions.get(
+                (verified.world_id, verified.expected_parent_revision_id)
+            )
         )
         if parent is None:
             raise PersistenceIntegrityError(
@@ -905,6 +920,88 @@ class InMemoryFinalizedReviewPublicationRepository:
             verified, self._sources.get_revision if self._sources else lambda _: None
         )
         return _copy(verified)
+
+    def read_verified_publication(
+        self, world_id: str, operation_id: str
+    ) -> VerifiedPublicationHistoryEntry | None:
+        # Match the publisher's graph->source order, then freeze the existing
+        # review/contribution stores across reconstruction and detached copying.
+        with (
+            self._graph._lock_for(world_id),
+            self._source_lock,
+            self._reviews._lock,
+            self._reviews._contributions._lock,
+        ):
+            raw = self._records_by_operation.get((world_id, operation_id))
+            if raw is None:
+                # Index loss is corruption, not absence. Complete loss of every
+                # terminal record cannot be distinguished from absence here.
+                for index in (self._records_by_review, self._records_by_revision):
+                    for (indexed_world, _), candidate in index.items():
+                        if indexed_world == world_id:
+                            candidate = self._validate_record(candidate)
+                            if candidate.operation_id == operation_id:
+                                raise PersistenceIntegrityError(
+                                    "terminal operation index is missing"
+                                )
+                return None
+            publication = self._validate_record(raw)
+            if publication.world_id != world_id or publication.operation_id != operation_id:
+                raise PersistenceIntegrityError("terminal publication selector mismatch")
+            for index, key in (
+                (self._records_by_operation, operation_id),
+                (self._records_by_review, publication.review_id),
+                (self._records_by_revision, publication.published_revision_id),
+            ):
+                companion = index.get((world_id, key))
+                if (
+                    companion is None
+                    or _fingerprint(self._validate_record(companion))
+                    != _fingerprint(publication)
+                ):
+                    raise PersistenceIntegrityError(
+                        "terminal publication indexes disagree"
+                    )
+            revisions: dict[str, StoredGraphRevision] = {}
+            reviews: dict[str, DurableContributionReviewState] = {}
+
+            def revision(key: str) -> StoredGraphRevision:
+                if key not in revisions:
+                    value = self._graph._revisions.get((world_id, key))
+                    if (
+                        value is None
+                        or value.revision.world_id != world_id
+                        or value.revision.revision_id != key
+                    ):
+                        raise PersistenceIntegrityError("historical revision selector mismatch")
+                    revisions[key] = value
+                return revisions[key]
+
+            def review(key: str) -> DurableContributionReviewState:
+                if key not in reviews:
+                    value = self._reviews.get(world_id, key)
+                    if (
+                        value is None
+                        or value.record.world_id != world_id
+                        or value.record.review_id != key
+                    ):
+                        raise PersistenceIntegrityError("historical review selector mismatch")
+                    reviews[key] = value
+                return reviews[key]
+
+            try:
+                verified = self._reconstruct_unlocked(
+                    publication, revision_loader=revision, review_loader=review
+                )
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise PersistenceIntegrityError(
+                    "historical publication reconstruction failed"
+                ) from exc
+            return VerifiedPublicationHistoryEntry(
+                _copy(revision(verified.published_revision_id).revision),
+                verified,
+                _copy(review(verified.review_id)),
+            )
 
     def get(
         self,
