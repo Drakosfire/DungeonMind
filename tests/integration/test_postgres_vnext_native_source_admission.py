@@ -60,7 +60,9 @@ def _init(repository):
     return domain, profile, receipt
 
 
-def test_postgres_commits_exact_source_and_replays_after_descendant(pg):
+def test_postgres_commits_exact_source_and_replays_after_descendant(pg, monkeypatch):
+    from psycopg import Connection
+
     repository = _repository(pg)
     domain, profile, genesis = _init(repository)
     request = _request(
@@ -79,7 +81,17 @@ def test_postgres_commits_exact_source_and_replays_after_descendant(pg):
         revision_id=receipt.published_revision_id,
         domain_contract=domain,
     )
-    access = open_admitted_native_text(context, receipt.bindings[0].evidence_ref_id)
+    statements = []
+    execute = Connection.execute
+
+    def count(connection, query, *args, **kwargs):
+        statements.append(query)
+        return execute(connection, query, *args, **kwargs)
+
+    with monkeypatch.context() as counter:
+        counter.setattr(Connection, "execute", count)
+        access = open_admitted_native_text(context, receipt.bindings[0].evidence_ref_id)
+    assert len(statements) == 3
     assert access.status == "available"
     assert access.body_text == BODY
 

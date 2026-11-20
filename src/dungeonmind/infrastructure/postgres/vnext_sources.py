@@ -386,7 +386,14 @@ def _read_native_record(
     ).fetchone()
     if row is None:
         return None
-    span_rows = conn.execute(
+    span_rows = _read_native_span_rows(conn, space_id, admission_id)
+    return _verify_native_record(row, span_rows, space_id, admission_id, include_body=include_body)
+
+
+def _read_native_span_rows(
+    conn: Connection[Any], space_id: str, admission_id: str,
+) -> list[dict[str, Any]]:
+    return conn.execute(
         sql.SQL(
             """
             SELECT span_id, evidence_ref_id, proof
@@ -396,7 +403,6 @@ def _read_native_record(
         ).format(sql.Identifier(SCHEMA)),
         (space_id, admission_id),
     ).fetchall()
-    return _verify_native_record(row, span_rows, space_id, admission_id, include_body=include_body)
 
 
 def _verify_native_record(
@@ -1297,7 +1303,10 @@ class _PostgresNativeTextSourceView:
             row = conn.execute(
                 sql.SQL(
                     """
-                    SELECT admission_id
+                    SELECT space_id, admission_id, command_sha256, source_authority_epoch,
+                           source_artifact_id, source_revision_id, published_revision_id,
+                           source_artifact, source_revision, origin, body_bytes, span_proofs,
+                           receipt_payload, record_fingerprint
                     FROM {}.knowledge_native_source_admissions
                     WHERE space_id = %s AND source_artifact_id = %s
                       AND source_revision_id = %s AND source_authority_epoch <= %s
@@ -1307,11 +1316,14 @@ class _PostgresNativeTextSourceView:
             ).fetchone()
             if row is None:
                 return None
-            record = _read_native_record(
-                conn, self._space_id, row["admission_id"], include_body=True
+            admission_id = row["admission_id"]
+            record = _verify_native_record(
+                row,
+                _read_native_span_rows(conn, self._space_id, admission_id),
+                self._space_id,
+                admission_id,
+                include_body=True,
             )
-            if record is None:
-                raise PersistenceIntegrityError("native source record disappeared")
             span = next((proof for proof in record["proofs"] if proof.span_id == span_id), None)
             proof_epoch = record["epoch"]
             if span is None:
