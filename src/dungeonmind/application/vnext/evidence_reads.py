@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from functools import lru_cache
 
 from dungeonmind.domain.canonical import canonical_json, canonical_sha256
 
@@ -381,7 +382,11 @@ class EvidenceReadService:
         validate_provenance_snapshot_integrity(
             snapshot, expected_artifact_ids=artifacts, expected_revision_ids=revisions,
         )
-        project = _batch_provenance_projector(snapshot, error_type=EvidenceReadIntegrityError)
+        # Equal dependency sets from this sealed snapshot can share one projection.
+        # The cache ends with this batch; every assertion still runs its own admission.
+        project = lru_cache(maxsize=256)(
+            _batch_provenance_projector(snapshot, error_type=EvidenceReadIntegrityError)
+        )
         return tuple(self._get_assertion_evidence(context, value, project) for value in requested)
 
     def _get_assertion_evidence(

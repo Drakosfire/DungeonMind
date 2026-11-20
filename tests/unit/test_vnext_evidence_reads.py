@@ -746,7 +746,23 @@ def test_21_get_evidence_hoists_admitted_supporter_set() -> None:
     assert nested_set_in_comp == []
 
 
-def test_ordered_assertion_evidence_batch_reuses_one_provenance_snapshot() -> None:
+def test_ordered_assertion_evidence_batch_reuses_one_provenance_snapshot(monkeypatch) -> None:
+    from dungeonmind.application.vnext import evidence_reads
+
+    projections = []
+    factory = evidence_reads._batch_provenance_projector
+
+    def counted_factory(*args, **kwargs):
+        project = factory(*args, **kwargs)
+
+        def counted_project(artifacts, revisions):
+            projections.append((artifacts, revisions))
+            return project(artifacts, revisions)
+
+        return counted_project
+
+    monkeypatch.setattr(evidence_reads, "_batch_provenance_projector", counted_factory)
+
     context, _ = _lab_context(
         entities=[Entity(entity_id="A")],
         assertions=[
@@ -760,6 +776,10 @@ def test_ordered_assertion_evidence_batch_reuses_one_provenance_snapshot() -> No
     before = context.source_reader.snapshot_call_count
     assert _SVC.get_assertions_evidence(context, requested) == expected
     assert context.source_reader.snapshot_call_count - before == 1
+    expected_projection = (("src:lab",), ("srcrev:lab",))
+    assert projections == [expected_projection]
+    assert _SVC.get_assertions_evidence(context, requested) == expected
+    assert projections == [expected_projection, expected_projection]
     before = context.source_reader.snapshot_call_count
     assert _SVC.get_assertions_evidence(context, ()) == ()
     assert len(_SVC.get_assertions_evidence(context, ("missing", "also-missing"))) == 2
