@@ -101,69 +101,43 @@ prevents fresh publication but does not establish source-independent immutable
 recovery. Preserve original packets and fail closed; stronger recovery needs a
 separate exact read-only boundary before retiring its writer dependencies.
 
-Next primary question: **Can current native consumers be separated from classic
-imports, then remaining classic reads/writers be retired or explicitly historical
-without losing exact saved selectors, receipt recovery or source provenance?**
+Next primary question: **Can an exact historical finalized publication be read
+with its original verified review/child, independently of current head/source
+eligibility and without any path to publish when no terminal receipt exists?**
 
-WorldKeeper [PR17](https://github.com/Drakosfire/WorldKeeper/pull/17) merged
-`348c0dbf5156e7e7d5d951de90b9086501fc834f`, reviewed/tested head
-`b1aa09b609e203b18fc0277282dc2932daeab58b`, review5988177840. Its five-path lease
-removes the eager classic adapter from the native integration root and retains
-its identical historical class under explicit `.compat` and its original module.
-Cold imports block WK's classic module before any WK import. Exact installed-wheel
-98 tests, Ruff and Pyright pass on unchanged locked Core4ccd;14 wheel source files
-match and installed origins are isolated. Merge package/test inputs are identical
-to that tested head. This does not retire Core's own eager classic imports.
+Core246 accepted merge `67db2e5cffa772467cec5cf911fea9683e6a0f8d`, testedfd345,
+review5988441626; CI44686872284 all three successful. Integration581 passed/1
+skipped and the actual WK348 source consumer witness proved native admission,
+publication, exact replay, stale-parent refusal, child bindings and source reopen.
+Its deliberate source overlay is separate from Buddy's installed-package proof.
 
-Core245 settled4215 at merge `7b79fc4d1b5d5a39a3a59800fc2c0759b200221f`,
-exacte50c/review5988191850; CI44684331642 all three jobs successful. The current
-[consumer-pin handoff](../Plans/HANDOFF-MIND-current-worldkeeper-consumer-pin.md)
-updates Core CI's old49a862 WK checkout and verifier constant together to348.
-Its intentional exact-source-overlay witness remains separate from Buddy's
-installed-package qualification. No Core library runtime or dependency changes.
+WK17 accepted merge348c0db, exactb1aa/review5988177840. Buddy4222 adopted it while
+preserving Core90a5 at merge `7e35a942828a774b976db77d0fc358e1ab113e13`, exact62b9,
+review5988377665. WK98/native96/auth315 pass without skips; hosted1412 selected
+passes/147existingfilterpending, build/canonical/parity/cleanup pass. All14WK/
+178Core package files matched accepted348/90a5 before/after;8CoreSQLfixtures absent
+after zero connections. The375PASS/1staletestFAIL preservation diagnostic remains
+red, explicitly attributed under oldWKef9 on parent-identical runtime/test blobs.
+No separately checked-out parent or later merge execution claim.
 
-Buddy [PR4222](https://github.com/Drakosfire/DungeonMindBuddy/pull/4222) remains
-merge-pending at exact `62b9f40752a9ae6dd1a89251756819be4b66a0d0`, base9f479.
-Its three-path adoption preserves Core90a5 and all unrelated lock metadata:
-only the exact WK reference changes. Installed WK98/native-manual96/auth315 pass
-without errors/skips. Hosted1412 selected passes,147 existing filter-pending;
-build/canonical/parity/cleanup and three short CI workflows pass. WK14/Core178
-package files match348/90a5 before/after SQL; eight Core fixtures are absent after
-zero-connection cleanup. Accepted earlier environments remain untouched.
+Buddy4224 repaired that one stale relationship test at merge
+`30554065f3362c662b35484510b9c24dad6bf5db`, exact0b2/review5988492229. All24 owning
+cases and1412selectedhosted/build/canonical pass; native cases/helpers untouched,
+original saved-packet recovery preserved. Parent375/1 evidence stays historical
+red; broader GraphDocSource historical fresh-HTTP expectations still need explicit
+disposition. Current relationship UI uses native prepare/confirm; its review-request
+carrier is presentation, not authority to publish classically.
 
-Preservation is375PASS/1FAIL/0skip out of376, explicitly red. One unchanged
-relationship adapter test expects classic prepare200, while accepted4215 returns
-410 classic_manual_prepare_retired. A focused oldWKef9/Core90a5 execution on
-identical parent runtime/test blobs reproduces that failure; this is not a separate
-parent checkout or a retrieval baseline rerun. Record independent disposition in
-its PR before accepting the dependency slice. An owning retirement-test repair
-remains required before final cutover; do not delete the assertion or silently
-broaden this pin slice. Current relationship UI already uses native-prepare/
-native-confirm; its review-request carrier remains product-local presentation.
-The initial WK importlib collection attempt is retained as unqualified; the
-standard-mode retry supplies the98 passing installed-package cases. Later main287
-editor-snapshot changes were independently inspected without concrete coupling;
-no later merge execution or deployment is claimed. Evidence is retained in task
-`scratch/v10-wk-native-consumer-buddy`.
-
-Serial continuation:
-
-- Finish Core consumer-pin and Buddy adoption acceptance while retaining Core90a5;
-  repair the stale classic retirement test separately. Move Buddy's shared presentation carriers/helpers out of classic read
-  imports without changing DTO bytes or saved pins.
-- Disposition direct classic projection and recap-context-v2 separately. Native
-  managed projection is not an equivalent protocol for saved historical reads.
-- Establish exact historical receipt recovery with zero-write absent/corrupt
-  refusal, migrate actual consumers, then retire Core's reachable fresh classic
-  publishing host and library entrypoints. Quarantine legacy operator policy
-  without rewriting immutable stored attestations.
-- Retire actual old current/public Core/consumer surfaces, not just export lists;
-  qualify installed packages and downstream pins. Then compatible primary/fallback
-  rollout, later-write-safe rollback/restart/restore and V11 serving acceptance.
-
-These are bounded dependent slices, not authorization for a single broad rewrite.
-Full current/public retirement remains unproved; source inventory is not complete
-external-consumer evidence. Repository merges alone do not satisfy deployment.
+The [historical publication recovery assignment](../Plans/HANDOFF-MIND-historical-publication-recovery.md)
+is the next bounded Core prerequisite. No new storage/schema/migration or publisher
+deletion belongs in it. Serial continuation: read-only Core aggregate -> Buddy
+original-packet adoption and absent-receipt fallback removal -> actual classic
+HTTP/application/repository writer retirement after real consumer dispositions.
+Historical FirstWorld and native source-publication families remain separate.
+Native presentation import isolation, direct projection/recap-context historical
+boundaries, operator-attestation quarantine and complete public-surface retirement
+remain open. Then compatible primary/fallback rollout, later-write-safe rollback/
+restart/restore andV11 serving acceptance. Merges alone do not satisfy deployment.
 
 ## Accepted V8 and serving evidence
 
@@ -248,12 +222,10 @@ and process/mount/connection, dirty-worktree, unique-data and unique-commit chec
 
 ## Bounded checkpoint maintenance lease
 
-This update belongs to the four-path
-[current WK consumer assignment](../Plans/HANDOFF-MIND-current-worldkeeper-consumer-pin.md),
-pinned at `fa49b0f` before implementation on
-`codex/v10-current-worldkeeper-consumer`, base7b79. It settles WK17 after its merge
-and before another roadmap merge. Core245's prior one-file assignment is closed.
-Preserve accepted V8/serving evidence and all full-goal limitations. Independent
-exact-head review and actual CI consumer witness are required before acceptance.
-No new worktree, manual cleanup or reclaimed bytes; existing MIND-owned resources
-remain retained with approved-scope process/mount/dirty/unique-data cleanup follow-up.
+This first-commit continuity settlement belongs to the nine-path
+[historical reader assignment](../Plans/HANDOFF-MIND-historical-publication-recovery.md),
+on `codex/v10-historical-publication-recovery`, base67db, pinned before runtime
+edits. Core246's four-path consumer assignment is closed. Accepted V8/serving
+bytes and full-goal limits remain unchanged. Existing MIND-owned resources are
+retained with approved-scoped process/mount/dirty/unique-data cleanup follow-up;
+no new worktree, manual cleanup or reclaimed bytes.
