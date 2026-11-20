@@ -28,7 +28,7 @@ run/artifact metadata before content; exact persisted source/index commitments;
 all13 kinds/45 mappings; names, primary aliases, role and descriptions; atomic
 SUPPORT/facts/aliases; current owner/binding fences and immutable original-packet
 recovery before mutable eligibility. Empty active Worlds are supported; profile
-adoption stays explicit. This does not migrate the mounted manual UI.
+adoption stays explicit. Mounted manual UI migration is accepted separately below.
 
 Exact5233 qualification: owning96, authorization315 and native preservation376
 passed with zero failures/errors/skips; hosted frontend1412, production build,
@@ -40,22 +40,57 @@ warnings remained, with no new diagnostics. Final main's disjoint history warmup
 was inspected for coupling; these are tested-head results, not execution of the
 subsequent merge tree, live deployment or full-release acceptance.
 
-Next primary question: **Can the mounted manual UI preserve the complete native
-object/relationship journey, exact selected source bytes, explicit profile upgrade
-and durable original-packet recovery without fresh classic fallback?**
+Buddy [PR4207](https://github.com/Drakosfire/DungeonMindBuddy/pull/4207) merged
+`e3e9304e7e7397a0e6950c285e56d399cc4e6cd3`, exact reviewed/tested head
+`45b87cd015ed7dfab9fa2fc2ec9f278c158939c8`, final independent acceptance
+review5987678478. The mounted manual UI now uses native context/prepare/confirm,
+explicit source admission/profile adoption, all13 kinds/45 relationships, exact
+UTF8 witnesses and original signed-packet recovery. World coordination and
+monotonic dispatch claims protect concurrent retries; ambiguous prior outcomes
+cannot become safe-to-archive merely because a later attempt refuses. Retained
+same-name endpoints stay distinguishable, and refused identity refreshes remove
+stale choices. Classic saved packets retain their original protocol.
 
-Buddy UI design is on `codex/v10-native-manual-ui`, based on accepted807. It is
-not yet an activated implementation lease. Pin its bounded handoff before coding.
-The next slice must discover retained operations before fresh-context eligibility,
-retain old protocols explicitly and keep recovery reachable after document/run/head
-changes. Fresh UI publication must use native authority. The existing classic
-commit service's recovery_only capability is not yet wired to its mounted route;
-retirement must distinguish committed historical recovery from fresh publication.
+Exact45b qualification: all290 owning UI assertions passed; hosted1412 selected
+passed with147 existing filter-pending cases, build/parity/canonical validation/
+cleanup passed. Full discovered8331 passed/102 failed/2 pending: all102 failure
+identities are retained from the accepted base, with no new failure/pending case.
+Collection parity remains red from the same two baseline report-only extras;
+there are no collection omissions. The21 replaced dispatcher assertions have an
+explicit independently approved migration disposition;116 assertions were added.
+The full diagnostic is not aggregate green or release qualification. Backend
+owning96 and auth315 passed without failures/errors/skips. Eight qualifying SQL
+DBs were dropped after zero connections and verified absent;177 Core Python files
+matched accepted90a5/WKef9. Both applicable short CI workflows succeeded.
 
-Serial continuation: accepted Core and Buddy backend -> complete native manual UI
--> remaining fresh-classic route retirement -> compatible primary/fallback rollout
-and rollback -> V11 measured serving acceptance and successor performance handoff.
-Repository merges alone do not satisfy those remaining gates.
+The merged4207 tree differs from tested45b only in the independently inspected
+Backlog change. These are exact tested-head results and source equivalence, not
+execution of the later merge tree or a new live deployment. Detailed evidence is
+retained under the task's `scratch/v9-buddy/v10-native-manual-ui`, including
+`root-final-qualification-45b87cd015.json` and `merge-acceptance-4207.json`.
+
+Next primary question: **Can current/public classic manual prepare be retired and
+confirmation restricted to original receipt recovery, preserving native behavior,
+legacy local drafts and exact historical protocols without fresh classic writes?**
+
+The next Buddy slice must close the mounted classic `/prepare` and make BOTH
+local/hosted `/commit` branches recovery-only. The explicit legacy published-Recap
+writer must stop offering fresh publication while retaining local staging and
+read inspection; managed native Recap viewing stays on its current path. Native
+Worldbuilding manual authoring is not a Recap adapter: do not relabel sources or
+reinterpret saved packets. Pin the successor's bounded lease before coding.
+
+Existing classic recovery has a material limit: source/span/binding/admission
+checks occur before receipt lookup, and hosted ownership resolution reads mutable
+metadata. Its recovery_only flag prevents a fresh publish; it does not establish
+source-independent immutable recovery. Preserve the actual guarantee and original
+packet protocol. A stronger recovery design requires its own bounded assignment.
+
+Serial continuation: accepted native manual backend/UI -> classic fresh-write
+retirement and remaining current/public Core/Buddy/WorldKeeper surface audit ->
+compatible primary/fallback rollout and rollback -> V11 measured serving acceptance
+and successor performance handoff. Repository merges alone do not satisfy those
+remaining gates.
 
 ## Accepted V8 and serving evidence
 
@@ -88,10 +123,11 @@ operational details and bounded recovery limitations.
 
 - V10 is incomplete. The [historical-codec quarantine](../Plans/HANDOFF-MIND-v10-historical-codec-quarantine.md)
   is a bounded completed step, not full retirement. Replace actual fresh classic
-  current-authority callers, including the mounted manual UI and reachable legacy
-  fresh publishing surfaces. The accepted native backend is its prerequisite, not
-  proof that those callers migrated. Preserve justified original receipt/source-page recovery
-  and exact historical selectors behind an explicit compatibility boundary.
+  current-authority callers and reachable legacy fresh publishing surfaces. The
+  mounted Worldbuilding manual UI is accepted; remaining public classic endpoints,
+  Core exports/leaf APIs and actual Buddy/WorldKeeper consumers still require
+  retirement or an explicit compatibility boundary. Preserve justified original
+  receipt/source-page recovery and exact historical selectors.
 - Profile4 declaration and the explicit1/2/3->4 API are accepted code capabilities,
   not an automatic World transition. Both serving primary and compatible fallback
   must support the selected descriptor and latest persistence before live adoption.
@@ -129,18 +165,22 @@ accepted architecture and pinned acceptance evidence outrank stale phase summari
 
 MIND retains `/home/drakosfire/Projects/.codex/v7-elderwyld-scope` checkouts, caches,
 source-bound reports, candidate environments and the exact-base verification mirror
-for the active goal. Owned verification SQL DBs were removed only after zero active
-connections; logical DB sizes are not reclaimed filesystem bytes. No manual
+for the active goal. The eight qualifying Core SQL fixture DBs were removed only after zero active
+connections; logical DB sizes are not reclaimed filesystem bytes. Four older
+interrupted-run fixture candidates remain retained at zero connections, with
+partial outputs and their interrupted verifier workspace excluded from accepted
+evidence. Attribute/check these before any approved scoped disposal. No manual
 filesystem cleanup occurred. Cleanup follow-up requires explicit scope/authorization
 and process/mount/connection, dirty-worktree, unique-data and unique-commit checks.
 
 ## Bounded checkpoint maintenance lease
 
-ACTIVE one-file settlement under the operator's full-lane implementation, review
+Implemented one-file settlement awaiting independent exact-head review under the operator's full-lane implementation, review
 and merge authority. MIND owns this existing task checkout on branch
 `codex/v10-manual-ui-checkpoint`, base
 `c35a2c49470db9ac718367bd8c42d9361532df3d`. This assignment is committed before
-rewriting the current state. Exact write lease: this file only.
+rewriting the current state at `cb9b411cee73ee0edb7ed3fef097a37c2b3f97a1`.
+Exact write lease: this file only.
 
 Outcome: record accepted Buddy4207 at merge
 `e3e9304e7e7397a0e6950c285e56d399cc4e6cd3`, reviewed head
