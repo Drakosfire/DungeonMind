@@ -38,11 +38,10 @@ from tests.integration.test_postgres_review_publication import (
     REVIEW_ID,
     WORLD_ID,
     _head_event_count,
+    _publish,
     _publish_descendant,
     _reader,
-    _second_state,
     _seed_tripod,
-    _state,
 )
 
 pytestmark = pytest.mark.integration
@@ -103,23 +102,19 @@ def _post(client: TestClient, *, body: dict[str, Any] | None = None, token: str 
     )
 
 
-def test_fresh_publication_returns_primary_record_and_no_store(pg) -> None:
+def test_unpublished_finalized_review_cannot_advance_head(pg) -> None:
     _seed_tripod(pg)
+    before_head = pg.world_graph.get_head(WORLD_ID)
     before_events = _head_event_count(pg)
-    with TestClient(_app(pg)) as client:
+    with TestClient(_app(pg, graph_reader=_RejectingReader())) as client:
         response = _post(client)
-    assert response.status_code == 200
+    assert response.status_code == 404
     assert response.headers["cache-control"] == "no-store"
-    publication = FinalizedReviewPublication.model_validate(response.json())
-    assert publication.world_id == WORLD_ID
-    assert publication.review_id == REVIEW_ID
-    assert publication.published_revision_id == PUBLISHED_REVISION_ID
-    assert publication.published_at == PUBLISHED_AT
-    assert canonical_sha256(response.json()) == (
-        "3e7a632142c41066d3866c8682290fdc8e57b8f08b3324689c2964f6b045958c"
-    )
-    assert _head_event_count(pg) == before_events + 1
-    assert _publication_count(pg) == 1
+    assert response.json()["error"]["code"] == "contribution_review_not_found"
+    assert pg.world_graph.get_head(WORLD_ID) == before_head
+    assert pg.world_graph.get_revision(WORLD_ID, PUBLISHED_REVISION_ID) is None
+    assert _head_event_count(pg) == before_events
+    assert _publication_count(pg) == 0
 
 
 def _publication_count(pg) -> int:
@@ -137,20 +132,23 @@ def _publication_count(pg) -> int:
 
 def test_immediate_replay_is_exact_and_does_not_materialize_or_write(pg) -> None:
     _seed_tripod(pg)
-    with TestClient(_app(pg, clock=PUBLISHED_AT)) as first_client:
-        first = _post(first_client)
+    original = _publish(pg, _reader())
     events = _head_event_count(pg)
     publications = _publication_count(pg)
     with TestClient(_app(pg, clock=LATER, graph_reader=_RejectingReader())) as replay_client:
         replay = _post(replay_client)
-    assert first.status_code == replay.status_code == 200
-    assert first.json() == replay.json()
+    assert replay.status_code == 200
+    assert replay.json() == original.model_dump(mode="json")
+    assert canonical_sha256(replay.json()) == (
+        "3e7a632142c41066d3866c8682290fdc8e57b8f08b3324689c2964f6b045958c"
+    )
     assert _head_event_count(pg) == events
     assert _publication_count(pg) == publications
 
 
-def test_two_app_instances_converge_on_one_durable_record(pg, database_url: str) -> None:
+def test_two_app_instances_replay_one_durable_record(pg, database_url: str) -> None:
     _seed_tripod(pg)
+    _publish(pg, _reader())
     bundle_b = PostgresRepositoryBundle(PostgresDatabase(database_url))
     app_a = _app(pg, clock=PUBLISHED_AT)
     app_b = _app(bundle_b, clock=LATER)
@@ -176,123 +174,15 @@ def test_two_app_instances_converge_on_one_durable_record(pg, database_url: str)
     assert _publication_count(pg) == 1
 
 
-def test_different_reviews_pinned_to_one_parent_preserve_cas_loser(pg, database_url: str) -> None:
-    _seed_tripod(pg)
-    second = _second_state()
-    pg.contribution_reviews.finalize(second)
-    bundle_b = PostgresRepositoryBundle(PostgresDatabase(database_url))
-    apps = [_app(pg), _app(bundle_b)]
-    bodies = [_body(REVIEW_ID), _body(second.record.review_id)]
-    barrier = threading.Barrier(2)
-    responses: list[Any] = [None, None]
-
-    def invoke(index: int) -> None:
-        with TestClient(apps[index]) as client:
-            barrier.wait(timeout=5)
-            responses[index] = _post(client, body=bodies[index])
-
-    threads = [
-        threading.Thread(target=invoke, args=(0,)),
-        threading.Thread(target=invoke, args=(1,)),
-    ]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=10)
-    assert all(not thread.is_alive() for thread in threads)
-    statuses = sorted(response.status_code for response in responses)
-    assert statuses == [200, 409]
-    loser = next(response for response in responses if response.status_code == 409)
-    assert loser.json()["error"]["code"] == "stale_parent_revision"
-    assert _publication_count(pg) == 1
-
-
 class _RejectingReader:
-    def parse(self, *, graph_schema: str, graph_payload: dict[str, Any]) -> None:
-        del graph_schema, graph_payload
-        raise AssertionError("replay unexpectedly rematerialized the graph")
-
-
-class _ResponseLossRepository:
-    def __init__(self, inner) -> None:
-        self.inner = inner
-
-    def get_for_review(self, world_id: str, review_id: str):
-        return self.inner.get_for_review(world_id, review_id)
-
-    def get(self, world_id: str, operation_id: str):
-        return self.inner.get(world_id, operation_id)
-
-    def publish(self, command):
-        self.inner.publish(command)
-        raise RuntimeError("response-loss-sentinel")
-
-
-def test_committed_response_loss_recovers_to_http_200(pg) -> None:
-    _seed_tripod(pg)
-    repository = _ResponseLossRepository(pg.finalized_review_publications)
-    with TestClient(_app(pg, publication_repository=repository)) as client:
-        response = _post(client)
-    assert response.status_code == 200
-    assert response.json()["published_revision_id"] == PUBLISHED_REVISION_ID
-    assert _publication_count(pg) == 1
-
-
-class _UnknownOutcomeRepository:
-    def __init__(self, inner) -> None:
-        self.inner = inner
-        self.attempted = False
-        self.recovery_unavailable = True
-
-    def get_for_review(self, world_id: str, review_id: str):
-        if self.attempted and self.recovery_unavailable:
-            raise RuntimeError("recovery-dsn-sentinel")
-        return self.inner.get_for_review(world_id, review_id)
-
-    def get(self, world_id: str, operation_id: str):
-        return self.inner.get(world_id, operation_id)
-
-    def publish(self, command):
-        if self.recovery_unavailable:
-            self.attempted = True
-            raise PersistenceUnavailableError("attempt-dsn-sentinel")
-        return self.inner.publish(command)
-
-
-def test_unknown_outcome_is_retry_safe_and_same_request_can_later_succeed(pg) -> None:
-    _seed_tripod(pg)
-    repository = _UnknownOutcomeRepository(pg.finalized_review_publications)
-    app = _app(pg, publication_repository=repository)
-    with TestClient(app) as client:
-        unknown = _post(client)
-        assert unknown.status_code == 503
-        assert unknown.json() == {
-            "error": {
-                "code": "finalized_review_publication_outcome_unknown",
-                "message": "Publication outcome is unknown. Retrying the same request is safe.",
-                "details": {
-                    "world_id": WORLD_ID,
-                    "review_id": REVIEW_ID,
-                    "operation_id": "reviewop:11111111111111111111111111111111",
-                    "expected_published_revision_id": PUBLISHED_REVISION_ID,
-                    "reason": "publication_attempt_or_recovery_probe_failed",
-                    "retry_safe": True,
-                },
-            }
-        }
-        assert TOKEN not in unknown.text
-        repository.recovery_unavailable = False
-        repository.attempted = False
-        retry = _post(client)
-    assert retry.status_code == 200
-    assert _publication_count(pg) == 1
+    def read(self, *args, **kwargs):
+        raise AssertionError("receipt replay must not open graph sources")
 
 
 @pytest.mark.parametrize("head_state", ["descendant", "rollback"])
 def test_historical_replay_does_not_follow_or_republish_current_head(pg, head_state: str) -> None:
     _seed_tripod(pg)
-    with TestClient(_app(pg)) as client:
-        first = _post(client)
+    original = _publish(pg, _reader())
     if head_state == "descendant":
         expected_head = _publish_descendant(pg, PUBLISHED_REVISION_ID).revision.revision_id
     else:
@@ -306,7 +196,7 @@ def test_historical_replay_does_not_follow_or_republish_current_head(pg, head_st
     with TestClient(_app(pg, clock=LATER, graph_reader=_RejectingReader())) as client:
         replay = _post(client)
     assert replay.status_code == 200
-    assert replay.json() == first.json()
+    assert replay.json() == original.model_dump(mode="json")
     assert pg.world_graph.get_head(WORLD_ID).head_revision_id == expected_head  # type: ignore[union-attr]
     assert _head_event_count(pg) == events
 
@@ -321,21 +211,6 @@ def test_missing_review_is_404_and_unauthorized_requests_do_not_lookup_or_mutate
     assert unauthorized.status_code == wrong_world.status_code == 403
     assert unauthorized.json()["error"]["code"] == "capability_denied"
     assert wrong_world.json()["error"]["code"] == "capability_denied"
-    assert _publication_count(pg) == 0
-
-
-def test_missing_pinned_parent_is_404_without_publication_mutation(pg) -> None:
-    state = _state()
-    class _ReviewRepository:
-        def get(self, world_id: str, review_id: str):
-            if world_id == WORLD_ID and review_id == REVIEW_ID:
-                return state
-            return None
-
-    with TestClient(_app(pg, review_repository=_ReviewRepository())) as client:
-        response = _post(client)
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "revision_not_found"
     assert _publication_count(pg) == 0
 
 
@@ -420,6 +295,7 @@ def test_publication_bootstrap_rejects_missing_configuration_without_secret_leak
 
 def test_real_loopback_client_uses_exact_request_and_replay(pg) -> None:
     _seed_tripod(pg)
+    _publish(pg, _reader())
     import uvicorn
 
     app = _app(pg)
