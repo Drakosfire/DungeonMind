@@ -68,6 +68,31 @@ def test_fresh_source_every_read_but_full_proof_once_across_repository_instances
     assert 0 < cache.retained_bytes <= cache.max_bytes
 
 
+def test_native_read_rows_are_request_owned_and_current_source_is_verified():
+    db = Database()
+    cache = k.VerifiedKnowledgeRevisionCache(max_bytes=1_000_000)
+    reader = repo(db, cache)
+    pin = db.row["space_id"], db.row["revision_id"]
+
+    with patch.object(k, "_reconstruct", wraps=k._reconstruct) as reconstruct:
+        first, load_first = reader.get_revision_for_native_read(*pin)
+        assert first is not None and load_first is not None
+        owned_rows = load_first()
+        assert owned_rows == first.graph_payload
+        owned_rows["changed"] = True
+        assert "changed" not in first.graph_payload
+
+        second, load_second = reader.get_revision_for_native_read(*pin)
+        assert second == first and load_second is not None
+        assert load_second() == first.graph_payload
+        assert reconstruct.call_count == 1
+
+        db.row["graph_payload"]["forged"] = True
+        with pytest.raises(PersistenceIntegrityError):
+            reader.get_revision_for_native_read(*pin)
+    assert db.reads == 3
+
+
 def test_default_path_is_uncached_and_native_repository_forwards_injection():
     db = Database()
     with patch.object(k, "_reconstruct", wraps=k._reconstruct) as reconstruct:

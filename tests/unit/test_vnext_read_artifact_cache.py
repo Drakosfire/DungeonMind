@@ -81,6 +81,43 @@ def test_artifact_memory_hit_reverifies_revision_and_refreshes_withdrawal(monkey
     assert len(reads) == 1 and len(revisions) == 2
 
 
+def test_opt_in_rows_skip_artifact_but_refresh_source_authority(monkeypatch):
+    repo, args, _, receipt = _open_args()
+    loads = []
+    pins = []
+
+    def get_rows(space_id, revision_id):
+        pins.append((space_id, revision_id))
+        stored = repo.get_revision(space_id, revision_id)
+
+        def load():
+            loads.append(revision_id)
+            return stored.graph_payload
+
+        return stored, load
+
+    def unexpected_artifact(stored):
+        pytest.fail("direct source reads must not consume the derived artifact")
+
+    monkeypatch.setattr(repo, "get_revision_for_native_read", get_rows, raising=False)
+    monkeypatch.setattr(repo, "get_native_read_artifact", unexpected_artifact, raising=False)
+    args["prefer_verified_source_rows"] = True
+    first = access.open_native_text_source_access_context(**args)
+    evidence_id = receipt.bindings[0].evidence_ref_id
+    assert access.open_admitted_native_text(first, evidence_id).status == "available"
+
+    repo.withdraw_native_source(
+        space_id=receipt.space_id,
+        source_artifact_id=receipt.source_artifact_id,
+        source_revision_id=receipt.source_revision_id,
+    )
+    second = access.open_native_text_source_access_context(**args)
+    assert second.parsed is first.parsed
+    assert access.open_admitted_native_text(second, evidence_id).status == "unavailable"
+    assert pins == [(args["space_id"], args["revision_id"])] * 2
+    assert loads == [args["revision_id"]]
+
+
 def test_absent_or_unsupported_stored_artifact_falls_back(monkeypatch):
     blob = None
     repo, args, _, _ = _open_args()

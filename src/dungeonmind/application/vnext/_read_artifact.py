@@ -7,6 +7,7 @@ parser; shared mutable validation models never escape this function.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from json.encoder import encode_basestring
 from typing import Annotated, Any
 
@@ -62,6 +63,49 @@ def decode_read_artifact(
     matching artifacts and invalid source facts fail closed as persistence errors.
     Full ordinary repository verification must precede this optional accelerator.
     """
+    return _build_parsed_rows(
+        source, lambda consume: _decode_source_wire(data, source, consume) is not None
+    )
+
+
+def parse_verified_source_rows(
+    source: StoredKnowledgeRevision, rows: dict[str, Any],
+) -> ParsedKnowledgeRevision | None:
+    """Parse a request-owned decoded payload already bound by the source verifier."""
+    if set(rows) != {"entities", "assertions", "aliases", "evidence"} or any(
+        type(table) is not list for table in rows.values()
+    ):
+        return None
+
+    def feed(consume: _ConsumeRow) -> bool:
+        metadata_pool: dict[str, Any] = {}
+        value_pool: dict[str, Any] = {}
+        for key, table in rows.items():
+            for row in table:
+                if type(row) is not dict:
+                    raise ValueError("expected native source object")
+                if key == "assertions":
+                    # The verifier supplies only built-in JSON values. Their repr
+                    # preserves scalar types and signed zero. Different key order
+                    # may miss the pool, but cannot conflate different values.
+                    meta, value = row["metadata"], row["value"]
+                    row = {
+                        **row,
+                        "metadata": metadata_pool.setdefault(repr(meta), meta),
+                        "value": value_pool.setdefault(repr(value), value),
+                    }
+                consume(key, row, False, False)
+        return True
+
+    return _build_parsed_rows(source, feed)
+
+
+_ConsumeRow = Callable[[str, dict[str, Any], bool, bool], None]
+
+
+def _build_parsed_rows(
+    source: StoredKnowledgeRevision, feed: Callable[[_ConsumeRow], bool],
+) -> ParsedKnowledgeRevision | None:
     try:
         entities: list[ParsedEntity] = []
         aliases: list[ParsedIdentityAlias] = []
@@ -134,7 +178,7 @@ def decode_read_artifact(
         # Consume the proof's exact rows into local immutable records rather than
         # retaining a second whole mutable graph. Only a completed proof can
         # proceed to structural validation and return a parsed result.
-        if _decode_source_wire(data, source, consume) is None:
+        if not feed(consume):
             return None
         return _build_parsed_knowledge_revision_from_records(
             _parse_revision_identity(source.revision),

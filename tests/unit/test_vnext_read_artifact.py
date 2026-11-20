@@ -11,7 +11,10 @@ import pytest
 
 from dungeonmind.application.vnext import _read_artifact as artifact_module
 from dungeonmind.application.vnext import builder, model
-from dungeonmind.application.vnext._read_artifact import decode_read_artifact
+from dungeonmind.application.vnext._read_artifact import (
+    decode_read_artifact,
+    parse_verified_source_rows,
+)
 from dungeonmind.application.vnext._source_wire import encode_source_wire
 from dungeonmind.application.vnext.frozen_json import canonical_json_text, thaw_json_value
 from dungeonmind.application.vnext.model import _stream_semantic_digest, compute_semantic_digest
@@ -38,6 +41,7 @@ def test_actual_frozen_values_preserve_representation(value):
     source = _source(payload)
     parsed = decode_read_artifact(encode_source_wire(source), source)
     ordinary = _parsed(source, payload)
+    assert parse_verified_source_rows(source, source.graph_payload) == ordinary
     assert parsed == ordinary
     for aid, assertion in parsed.assertions_by_id.items():
         expected = ordinary.assertions_by_id[aid]

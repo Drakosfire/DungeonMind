@@ -94,6 +94,31 @@ class PostgresKnowledgeRevisionRepository:
                     return result
             return _read_revision(conn, space_id, revision_id)
 
+    def get_revision_for_native_read(
+        self, space_id: str, revision_id: str,
+    ) -> tuple[StoredKnowledgeRevision | None, Callable[[], dict[str, Any]] | None]:
+        """Expose verified decoded rows to one read without adding them to the proof cache."""
+        with self._database.transaction() as conn:
+            if self._verification_cache is not None:
+                payload: dict[str, Any] | None = None
+
+                def keep_rows(rows: dict[str, Any]) -> None:
+                    nonlocal payload
+                    payload = rows
+
+                result = _read_verified_revision(
+                    conn, space_id, revision_id, self._verification_cache,
+                    keep_rows=keep_rows,
+                )
+                if result is None:
+                    return None, None
+                if result is not False:
+                    if payload is None:
+                        return result, lambda: result.graph_payload
+                    verified_rows = payload
+                    return result, lambda: verified_rows
+            return _read_revision(conn, space_id, revision_id), None
+
     def get_native_read_artifact(self, stored: StoredKnowledgeRevision) -> bytes | None:
         """Return only current-version bound rows after full source verification.
 
@@ -512,6 +537,7 @@ def _bounded_depth(value: Any) -> bool:
 
 def _read_verified_revision(
     conn: Connection[Any], space_id: str, revision_id: str, cache: VerifiedKnowledgeRevisionCache,
+    *, keep_rows: Callable[[dict[str, Any]], None] | None = None,
 ) -> StoredKnowledgeRevision | Literal[False] | None:
     row = conn.execute(
         sql.SQL(
@@ -541,6 +567,8 @@ def _read_verified_revision(
     # deep/nonstandard rows return first, then use the ORIGINAL read path.
     stored = _reconstruct(decoded)
     cache._store(key, stored, generation)
+    if keep_rows is not None:
+        keep_rows(decoded["graph_payload"])
     return stored
 
 def _insert_revision(conn: Connection[Any], stored: StoredKnowledgeRevision) -> None:
