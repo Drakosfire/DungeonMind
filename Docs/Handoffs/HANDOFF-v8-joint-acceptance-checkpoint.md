@@ -136,13 +136,25 @@ and process/mount/connection, dirty-worktree, unique-data and unique-commit chec
 
 ## Bounded checkpoint maintenance lease
 
-Docs settlement prepared; this one-file lease ends on merge. Assignment683aa38
-was pinned before the current-state rewrite. MIND acts under operator full-lane authority. Base
-`a012b660c907fbceac1e1ed3514f018852d43c62`, branch
-`codex/v10-native-manual-backend-checkpoint`. Exact one-path lease: this file.
-Outcome: record accepted Buddy4188/4192 and the true next UI/retirement/rollout/V11
-gates. Parallel-independent of Buddy UI design; no runtime dependency or shared
-Core158 index ownership. Commit this assignment before rewriting current state.
-Validate cumulative one-file scope, unchanged runtime/test/dependency/migration
-inputs, relative links and diff; no runtime tests repeated for prose. Independent
-delta review and expected-head merge precede settlement acceptance.
+ACTIVE one-file settlement under the operator's full-lane implementation, review
+and merge authority. MIND owns this existing task checkout on branch
+`codex/v10-manual-ui-checkpoint`, base
+`c35a2c49470db9ac718367bd8c42d9361532df3d`. This assignment is committed before
+rewriting the current state. Exact write lease: this file only.
+
+Outcome: record accepted Buddy4207 at merge
+`e3e9304e7e7397a0e6950c285e56d399cc4e6cd3`, reviewed head
+`45b87cd015ed7dfab9fa2fc2ec9f278c158939c8`, review5987678478; replace the stale
+manual-UI question with the true classic-write retirement and subsequent rollout/
+rollback/V11 gates. Preserve all accepted V8, serving and capacity limitations.
+Serial predecessor is accepted Buddy4207; this continuity update precedes another
+roadmap merge. Buddy retirement is designed but not activated by this file.
+
+No runtime, contract, dependency, migration, benchmark, serving, live World or
+provider change. Core158 retains its exact shared index/roadmap lease; its actual
+changed-file list excludes this checkpoint. Validate one-file cumulative scope,
+unchanged non-document inputs, relative links and diff. No runtime tests for prose.
+Independent exact-head delta review and expected-head merge close this lease.
+Existing task artifacts remain MIND-owned for the full goal; no new worktree or
+manual cleanup, with active-use/dirty/unique-data cleanup follow-up after approved
+scope. The previous683aa38 assignment ended with accepted Core243.
