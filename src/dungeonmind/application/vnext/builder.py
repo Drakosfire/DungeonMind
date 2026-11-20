@@ -372,16 +372,16 @@ def _build_parsed_knowledge_revision_from_records(
     aliases_by_entity_builder: dict[str, list[str]] = defaultdict(list)
     alias_exact_builder: dict[str, set[str]] = {}
     literal_exact_builder: dict[tuple[str, str], list[str]] = {}
-    lexical_candidate_builder: dict[str, set[str]] = {}
-    lexical_assertion_builder: dict[str, set[str]] = {}
-    predicate_assertion_builder: dict[str, set[str]] = {}
-    term_ref_assertion_builder: dict[str, set[str]] = {}
+    lexical_candidate_builder: dict[str, set[str]] = defaultdict(set)
+    lexical_assertion_builder: dict[str, set[str]] = defaultdict(set)
+    predicate_assertion_builder: dict[str, set[str]] = defaultdict(set)
+    term_ref_assertion_builder: dict[str, set[str]] = defaultdict(set)
 
     for aid in sorted(assertions_dict.keys()):
         asrt = assertions_dict[aid]
         assertions_by_subject_builder[asrt.subject_entity_id].append(aid)
         assertion_evidence_builder[aid] = asrt.metadata.evidence_ref_ids
-        predicate_assertion_builder.setdefault(asrt.predicate, set()).add(aid)
+        predicate_assertion_builder[asrt.predicate].add(aid)
 
         for evid in asrt.metadata.evidence_ref_ids:
             evidence_supporters_builder[evid].append(aid)
@@ -399,10 +399,10 @@ def _build_parsed_knowledge_revision_from_records(
 
             if isinstance(asrt.value.value, str):
                 for tok in tokenize_search_text(asrt.value.value):
-                    lexical_candidate_builder.setdefault(tok, set()).add(asrt.subject_entity_id)
-                    lexical_assertion_builder.setdefault(tok, set()).add(aid)
+                    lexical_candidate_builder[tok].add(asrt.subject_entity_id)
+                    lexical_assertion_builder[tok].add(aid)
         elif isinstance(asrt.value, ParsedTermRefValue):
-            term_ref_assertion_builder.setdefault(asrt.value.term, set()).add(aid)
+            term_ref_assertion_builder[asrt.value.term].add(aid)
 
     # Index aliases
     for al_id in sorted(aliases_dict.keys()):
@@ -414,7 +414,7 @@ def _build_parsed_knowledge_revision_from_records(
         alias_exact_builder[norm_alias].add(al.entity_id)
 
         for tok in tokenize_search_text(al.alias_text):
-            lexical_candidate_builder.setdefault(tok, set()).add(al.entity_id)
+            lexical_candidate_builder[tok].add(al.entity_id)
 
     # Every per-entity index retains the complete primary key domain. Share the
     # immutable empty entries instead of allocating the same (key, ()) repeatedly.
@@ -440,15 +440,16 @@ def _build_parsed_knowledge_revision_from_records(
     entity_adjacency = _frozen_dense_index(empty_index_items, adjacency_memberships)
     assertion_evidence = FrozenDict(assertion_evidence_builder)
     # Evidence has its own complete key domain, including unused references.
+    # Supporter and literal buckets were populated in sorted assertion order.
     evidence_supporters = FrozenDict(
-        {evid: tuple(sorted(evidence_supporters_builder.get(evid, ()))) for evid in evidence_dict}
+        {evid: tuple(evidence_supporters_builder.get(evid, ())) for evid in evidence_dict}
     )
     aliases_by_entity = _frozen_dense_index(empty_index_items, aliases_by_entity_builder)
     alias_exact_index = FrozenDict(
         {norm_text: tuple(sorted(eids)) for norm_text, eids in alias_exact_builder.items()}
     )
     literal_exact_index = FrozenDict(
-        {k: tuple(sorted(aids)) for k, aids in literal_exact_builder.items()}
+        {k: tuple(aids) for k, aids in literal_exact_builder.items()}
     )
     lexical_candidate_index = FrozenDict(
         {tok: tuple(sorted(eids)) for tok, eids in lexical_candidate_builder.items()}
