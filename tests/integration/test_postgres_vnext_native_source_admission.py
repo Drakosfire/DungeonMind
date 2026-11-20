@@ -334,17 +334,18 @@ def test_postgres_source_metadata_reads_no_body_and_defers_byte_verification(pg,
         revision_id=receipt.published_revision_id,
         domain_contract=domain,
     )
-    actual = storage._read_native_record
+    actual = storage._verify_native_record
     reads = []
 
-    def record(conn, space_id, admission_id, *, include_body):
-        result = actual(conn, space_id, admission_id, include_body=include_body)
+    def record(row, span_rows, space_id, admission_id, *, include_body):
+        result = actual(row, span_rows, space_id, admission_id, include_body=include_body)
         reads.append(include_body)
         if not include_body:
+            assert row.get("body_bytes") is None
             assert result["body"] is None
         return result
 
-    monkeypatch.setattr(storage, "_read_native_record", record)
+    monkeypatch.setattr(storage, "_verify_native_record", record)
     result = list_admitted_native_text_sources(context)
     assert result.complete and len(result.sources) == 1 and reads == [False]
     assert result.sources[0].origin == origin
@@ -637,3 +638,58 @@ def test_pinned_source_read_scope_reuses_a_read_only_connection(pg, monkeypatch,
     assert connections[0].closed
     with pytest.raises(PersistenceUnavailableError, match="read scope is closed"):
         open_admitted_native_text(scoped, evidence_id)
+
+
+def test_native_metadata_snapshot_batches_text_admission_and_span_reads(pg, monkeypatch):
+    from psycopg import Connection
+
+    repository = _repository(pg)
+    domain, profile, genesis = _init(repository)
+    parent_id = genesis.published_revision_id
+    receipts = []
+    for index in range(5):
+        request = _request(
+            space_id=genesis.space_id,
+            admission_id=f"admit:batch-{index}",
+            parent_revision_id=parent_id,
+            body=f"{BODY}\nSource {index}",
+        )
+        receipt = publish_native_text_source_evidence(
+            repository=repository, request=request, domain_contract=domain, semantic_profile=profile
+        )
+        receipts.append(receipt)
+        parent_id = receipt.published_revision_id
+
+    view = repository.open_native_source_view(genesis.space_id)
+    statements = []
+    execute = Connection.execute
+
+    def count(connection, query, *args, **kwargs):
+        statements.append(query)
+        return execute(connection, query, *args, **kwargs)
+
+    with monkeypatch.context() as counter:
+        counter.setattr(Connection, "execute", count)
+        for selection in (receipts[:1], receipts):
+            statements.clear()
+            artifacts = [item.source_artifact_id for item in selection]
+            revisions = [item.source_revision_id for item in selection]
+            snapshot = view.get_native_metadata_snapshot(
+                artifact_ids=artifacts, revision_ids=revisions
+            )
+            assert set(snapshot.provenance.artifacts_by_id) == set(artifacts)
+            assert set(snapshot.provenance.revisions_by_id) == set(revisions)
+            assert len(statements) == 4
+
+    with pg.database.transaction() as conn:
+        conn.execute(
+            "UPDATE dungeonmind.knowledge_native_source_spans "
+            """SET proof = proof || '{"unexpected": true}'::jsonb """
+            "WHERE space_id = %s AND admission_id = %s",
+            (genesis.space_id, receipts[-1].admission_id),
+        )
+    with pytest.raises(PersistenceIntegrityError, match="span index drift"):
+        view.get_native_metadata_snapshot(
+            artifact_ids=[item.source_artifact_id for item in receipts],
+            revision_ids=[item.source_revision_id for item in receipts],
+        )
