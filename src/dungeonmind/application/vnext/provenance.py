@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Generic, TypeVar, cast
+from typing import Generic, TypeVar
 
 from dungeonmind.contracts.vnext.source import SourceArtifactV3, SourceRevisionV2
 from dungeonmind.domain.canonical import canonical_sha256
@@ -17,6 +17,12 @@ from .frozen_json import FrozenDict
 _ModelT = TypeVar("_ModelT", SourceArtifactV3, SourceRevisionV2)
 
 
+class _CopyOnReadModelMap(Mapping[str, _ModelT]):
+    """Internal marker for maps that detach every value on access."""
+
+    __slots__ = ()
+
+
 def _make_sealed_copy_on_read_map(inner: Mapping[str, _ModelT]) -> Mapping[str, _ModelT]:
     """Return a mapping with no replaceable backing; every access deep-copies models."""
 
@@ -24,10 +30,10 @@ def _make_sealed_copy_on_read_map(inner: Mapping[str, _ModelT]) -> Mapping[str, 
         {key: value.model_copy(deep=True) for key, value in inner.items()}
     )
 
-    class _SealedCopyOnReadModelMap(Mapping[str, SourceArtifactV3 | SourceRevisionV2]):
+    class _SealedCopyOnReadModelMap(_CopyOnReadModelMap[_ModelT]):
         __slots__ = ()
 
-        def __getitem__(self, key: str) -> SourceArtifactV3 | SourceRevisionV2:
+        def __getitem__(self, key: str) -> _ModelT:
             return sealed[key].model_copy(deep=True)
 
         def __iter__(self) -> Iterator[str]:
@@ -36,20 +42,23 @@ def _make_sealed_copy_on_read_map(inner: Mapping[str, _ModelT]) -> Mapping[str, 
         def __len__(self) -> int:
             return len(sealed)
 
+        def __contains__(self, key: object) -> bool:
+            return key in sealed
+
         def get(
             self,
             key: str,
-            default: SourceArtifactV3 | SourceRevisionV2 | None = None,
-        ) -> SourceArtifactV3 | SourceRevisionV2 | None:
+            default: _ModelT | None = None,
+        ) -> _ModelT | None:
             if key not in sealed:
                 return default
             return sealed[key].model_copy(deep=True)
 
-        def items(self) -> Iterator[tuple[str, SourceArtifactV3 | SourceRevisionV2]]:
+        def items(self) -> Iterator[tuple[str, _ModelT]]:
             for key in sealed:
                 yield key, sealed[key].model_copy(deep=True)
 
-        def values(self) -> Iterator[SourceArtifactV3 | SourceRevisionV2]:
+        def values(self) -> Iterator[_ModelT]:
             for value in sealed.values():
                 yield value.model_copy(deep=True)
 
@@ -59,7 +68,7 @@ def _make_sealed_copy_on_read_map(inner: Mapping[str, _ModelT]) -> Mapping[str, 
         def __delattr__(self, name: str) -> None:
             raise TypeError("provenance snapshot maps are immutable")
 
-    return cast(Mapping[str, _ModelT], _SealedCopyOnReadModelMap())
+    return _SealedCopyOnReadModelMap()
 
 
 def _deep_copy_artifacts(
@@ -211,14 +220,14 @@ class KnowledgeProvenanceSnapshot:
 
     def get_artifact(self, artifact_id: str) -> SourceArtifactV3 | None:
         artifact = self.artifacts_by_id.get(artifact_id)
-        if artifact is None:
-            return None
+        if artifact is None or isinstance(self.artifacts_by_id, _CopyOnReadModelMap):
+            return artifact
         return artifact.model_copy(deep=True)
 
     def get_revision(self, revision_id: str) -> SourceRevisionV2 | None:
         revision = self.revisions_by_id.get(revision_id)
-        if revision is None:
-            return None
+        if revision is None or isinstance(self.revisions_by_id, _CopyOnReadModelMap):
+            return revision
         return revision.model_copy(deep=True)
 
 

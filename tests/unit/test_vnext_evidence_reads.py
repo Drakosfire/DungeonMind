@@ -784,3 +784,30 @@ def test_ordered_assertion_evidence_batch_reuses_one_provenance_snapshot(monkeyp
     assert _SVC.get_assertions_evidence(context, ()) == ()
     assert len(_SVC.get_assertions_evidence(context, ("missing", "also-missing"))) == 2
     assert context.source_reader.snapshot_call_count == before
+
+
+def test_sealed_provenance_getter_copies_once_and_membership_does_not_copy(monkeypatch):
+    from dataclasses import replace
+
+    context, _ = _lab_context(entities=[Entity(entity_id="A")], assertions=[])
+    snapshot = context.source_reader.get_provenance_snapshot(
+        artifact_ids=("src:lab",), revision_ids=("srcrev:lab",)
+    )
+    artifact = snapshot.get_artifact("src:lab")
+    assert artifact is not None
+    copies = []
+    original = type(artifact).model_copy
+
+    def counted(model, *args, **kwargs):
+        copies.append(model)
+        return original(model, *args, **kwargs)
+
+    monkeypatch.setattr(type(artifact), "model_copy", counted)
+    assert "src:lab" in snapshot.artifacts_by_id
+    assert not copies
+    first = snapshot.get_artifact("src:lab")
+    assert first == artifact and len(copies) == 1
+    second = snapshot.get_artifact("src:lab")
+    assert second == first and second is not first and len(copies) == 2
+    loose = replace(snapshot, artifacts_by_id={"src:lab": artifact})
+    assert loose.get_artifact("src:lab") is not artifact and len(copies) == 3
