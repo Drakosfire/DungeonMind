@@ -253,3 +253,13 @@ def test_python_equal_json_numbers_do_not_reuse_prior_proof(replacement):
     assert db.row["graph_payload"] == {"value": True}
     with pytest.raises(PersistenceIntegrityError, match="record_fingerprint drift"):
         read(reader, db)
+
+
+@pytest.mark.parametrize("depth", [0, 1, 62, 63, 64, 65])
+@pytest.mark.parametrize("leaf", [None, [], {}])
+def test_depth_precheck_preserves_mixed_container_cutoff(depth, leaf):
+    value = leaf
+    for index in range(depth):
+        value = {"sibling": 1, "child": value} if index % 2 else [0, value]
+    deepest_container = depth if type(leaf) in (dict, list) else depth - 1
+    assert k._bounded_depth(value) is (deepest_container < 64)

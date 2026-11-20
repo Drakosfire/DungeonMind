@@ -489,14 +489,25 @@ def _source_key(row: dict[str, Any], space_id: str, revision_id: str) -> _Source
     return tuple(values)
 
 
-def _bounded_depth(value: Any, depth: int = 0) -> bool:
-    if type(value) not in (dict, list):
+def _bounded_depth(value: Any) -> bool:
+    kind = type(value)
+    if kind is not dict and kind is not list:
         return True
-    if depth >= 64:
-        return False
-    return all(_bounded_depth(item, depth + 1) for item in (
-        value.values() if type(value) is dict else value
-    ))
+
+    # Keep one iterator per ancestor so wide payloads do not grow the stack.
+    ancestors = [iter(value.values() if kind is dict else value)]
+    while ancestors:
+        for child in ancestors[-1]:
+            kind = type(child)
+            if kind is not dict and kind is not list:
+                continue
+            if len(ancestors) >= 64:
+                return False
+            ancestors.append(iter(child.values() if kind is dict else child))
+            break
+        else:
+            ancestors.pop()
+    return True
 
 
 def _read_verified_revision(
