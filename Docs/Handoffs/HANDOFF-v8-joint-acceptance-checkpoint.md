@@ -7,29 +7,55 @@ bounded lane; the full vNext goal remains active.
 
 ## Current code anchor and next slice
 
-Core239 merged `90a5aed43ca2a7f1c7539f7d57fe23d54a22d483`, reviewed head
-`4d58f2d67507d98c8a4aa80a58aa1a12d52d88c1`, Cycle2 review5986257814 and
-CI44653743056 all three jobs successful. The accepted generic source-authorized
-publication capability is the Kernel prerequisite for complete native manual
-creation. Its [owning handoff](../Plans/HANDOFF-MIND-governed-native-source-publication.md)
-records the exact contract, evidence, work guard and accepted quality parents.
+Core239 is accepted at `90a5aed43ca2a7f1c7539f7d57fe23d54a22d483`, reviewed
+`4d58f2d67507d98c8a4aa80a58aa1a12d52d88c1`, review5986257814 and
+CI44653743056 all three jobs successful. Its
+[owning handoff](../Plans/HANDOFF-MIND-governed-native-source-publication.md)
+records the atomic source-authorized publication contract and accepted evidence.
 
-Buddy [PR4188](https://github.com/Drakosfire/DungeonMindBuddy/pull/4188) is the
-separately owned dependency adoption. Its first diagnostics at
-`87470578662385fe1226903b237c749009f8b2ea` installed Coreee3, not the accepted merge.
-It must retarget to accepted90a5, verify installed provenance/package preservation,
-close review findings and pass final qualification before acceptance. That
-consumer slice implements no manual endpoint or UI.
+Buddy [PR4188](https://github.com/Drakosfire/DungeonMindBuddy/pull/4188) merged
+`13ea571faffd9bdc3e909ade910be623f66e25db`, reviewed
+`61c3dd9d7c540d259e0fb2890b555d8ed67d0ae1`, review5986476147. It consumes exact
+Core90a5/WKef9 and proves both SUPPORT modes, canonical-name-equal aliases and the
+complete closed kind/predicate mapping. Candidate874/Coreee3 runs remain earlier
+diagnostics, not accepted-pin execution.
 
-Next primary question: **Can Buddy consume the exact accepted atomic contract,
-then preserve its complete supported manual-authoring behavior through the native
-backend and UI without private Kernel authority or invented semantics?**
+Buddy [PR4192](https://github.com/Drakosfire/DungeonMindBuddy/pull/4192) merged
+`807e1771e8e3addc83ad5df42d4c7f56f1ad603f`, reviewed and tested
+`5233d9c605e7344511e9a021a02f12180fea5c8d`, final independent review5986967724.
+The native manual context/prepare/confirm backend is accepted: scoped APP Page and
+run/artifact metadata before content; exact persisted source/index commitments;
+all13 kinds/45 mappings; names, primary aliases, role and descriptions; atomic
+SUPPORT/facts/aliases; current owner/binding fences and immutable original-packet
+recovery before mutable eligibility. Empty active Worlds are supported; profile
+adoption stays explicit. This does not migrate the mounted manual UI.
 
-Serial continuation: accepted Core capability -> accepted exact Buddy pin/proof
--> complete native manual backend -> manual UI -> remaining fresh-classic route
-retirement -> compatible primary/fallback rollout and rollback -> V11 measured
-serving acceptance and successor performance handoff. Scope each outcome through
-its owning handoff; do not treat a prerequisite or repository merge as deployment.
+Exact5233 qualification: owning96, authorization315 and native preservation376
+passed with zero failures/errors/skips; hosted frontend1412, production build,
+collection parity, canonical validation and verifier cleanup passed. All four short
+CI checks succeeded. Eight owning SQL databases were dropped at zero connections
+and confirmed absent;177 installed Core files matched the accepted pin. New files
+were lint-clean under Buddy's lock-pinned Ruff0.15.7; eleven inherited shared F811
+warnings remained, with no new diagnostics. Final main's disjoint history warmup
+was inspected for coupling; these are tested-head results, not execution of the
+subsequent merge tree, live deployment or full-release acceptance.
+
+Next primary question: **Can the mounted manual UI preserve the complete native
+object/relationship journey, exact selected source bytes, explicit profile upgrade
+and durable original-packet recovery without fresh classic fallback?**
+
+Buddy UI design is on `codex/v10-native-manual-ui`, based on accepted807. It is
+not yet an activated implementation lease. Pin its bounded handoff before coding.
+The next slice must discover retained operations before fresh-context eligibility,
+retain old protocols explicitly and keep recovery reachable after document/run/head
+changes. Fresh UI publication must use native authority. The existing classic
+commit service's recovery_only capability is not yet wired to its mounted route;
+retirement must distinguish committed historical recovery from fresh publication.
+
+Serial continuation: accepted Core and Buddy backend -> complete native manual UI
+-> remaining fresh-classic route retirement -> compatible primary/fallback rollout
+and rollback -> V11 measured serving acceptance and successor performance handoff.
+Repository merges alone do not satisfy those remaining gates.
 
 ## Accepted V8 and serving evidence
 
@@ -62,8 +88,9 @@ operational details and bounded recovery limitations.
 
 - V10 is incomplete. The [historical-codec quarantine](../Plans/HANDOFF-MIND-v10-historical-codec-quarantine.md)
   is a bounded completed step, not full retirement. Replace actual fresh classic
-  current-authority callers, including manual creation and reachable legacy fresh
-  publishing surfaces. Preserve justified original receipt/source-page recovery
+  current-authority callers, including the mounted manual UI and reachable legacy
+  fresh publishing surfaces. The accepted native backend is its prerequisite, not
+  proof that those callers migrated. Preserve justified original receipt/source-page recovery
   and exact historical selectors behind an explicit compatibility boundary.
 - Profile4 declaration and the explicit1/2/3->4 API are accepted code capabilities,
   not an automatic World transition. Both serving primary and compatible fallback
@@ -109,7 +136,8 @@ and process/mount/connection, dirty-worktree, unique-data and unique-commit chec
 
 ## Bounded checkpoint maintenance lease
 
-ACTIVE docs settlement under MIND/operator full-lane authority. Base
+Docs settlement prepared; this one-file lease ends on merge. Assignment683aa38
+was pinned before the current-state rewrite. MIND acts under operator full-lane authority. Base
 `a012b660c907fbceac1e1ed3514f018852d43c62`, branch
 `codex/v10-native-manual-backend-checkpoint`. Exact one-path lease: this file.
 Outcome: record accepted Buddy4188/4192 and the true next UI/retirement/rollout/V11
