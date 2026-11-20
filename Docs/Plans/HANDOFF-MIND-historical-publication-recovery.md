@@ -1,6 +1,7 @@
 # V10 prerequisite — read-only historical finalized-publication recovery
 
-Status: IMPLEMENTED — exact-head qualification/review pending. Owner MIND under the operator's full-lane design, implementation,
+Status: COMPLETE — accepted and merged as Core PR #247 at
+`d206e56a9aa34ae6eb6cc7ac61980a7ac8919c4d`. Owner MIND under the operator's full-lane design, implementation,
 review and merge authority. Base `67db2e5cffa772467cec5cf911fea9683e6a0f8d`, branch
 `codex/v10-historical-publication-recovery`, existing clean task Core checkout.
 This nine-path assignment is pinned before runtime edits. Independent Hubble
@@ -133,3 +134,21 @@ and test-harness failures are retained externally, not qualifying passes.
 Core/PG type checks and changed-path lint pass. Final exact-head results, wheel
 identity/origin proof, CI and independent acceptance belong in the PR/evidence.
 No package-pin, frozen-contract, schema, migration or serving changes.
+
+## Consuming-slice settlement of Core247
+
+Accepted exact head `6987087a08458dce995510e69b45426d6c1febee` merged as
+`d206e56a9aa34ae6eb6cc7ac61980a7ac8919c4d`. Hubble bounded ACCEPT review
+`PRR_kwDOToHpZs8AAAABZPbwKQ`; CI44692015442 all three jobs succeeded:
+3,220 core passes/11 skips;622 integration passes/one skip; benchmark smoke and
+WK348 native source consumer witness passed. The installed minimal wheel
+(no postgres extras) passed172 owning/conformance cases, with218 source files
+independently equal to the committed source. Parent eager publisher loading was
+explicitly recorded, not accepted as a current-import isolation proof.
+
+Buddy later adopted this reader for ordinary manual, Worldbuilding and Recap
+historical recovery; classic Threat HTTP mutation retirement is accepted at
+Buddy4234/e4829505224a29ea9b4d3688ac22762588d60b05. Current serving cutover and
+full V10/V11 were not established by those commits. The next Core import slice
+addresses parent loading only; existing compatibility codecs/manifest and
+historical review/receipt correspondence remain unchanged.
