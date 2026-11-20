@@ -28,15 +28,19 @@ retains the joint fixture and scale disposition. The classic reference was reuse
 | Same fixture | First access to a newly published revision | 674–688 |
 | Same fixture | Return to prior pinned revision | 76 |
 | Live loopback API at activation | First timed current-pin neighborhood, after startup | 631 |
+| Three fresh release workers against read-only live authority | First current-pin neighborhood | 621–652 |
+| Same fresh workers | Warm current-pin neighborhood | 151–156 |
 | Live port 5202, current head and two historical pins | Warm neighborhood | 108–114 |
 | Live port 5202, same pin sequence | Opens and returns during cache turnover | 356–990 |
 | Live port 5202, same pin sequence | Exact citation reopening | 84–96 |
 
 The retained classic reference is 540 ms on the comparable fixture. The direct
 live observation and live pin sequence use the real Elderwyld authority and are
-a separate workload. A reproducible live cold-process distribution and the
-first request after a new live publication remain open. The published-revision
-measurement above used a disposable fixture.
+a separate workload. The fresh-worker check used the same release and live authority on separate
+loopback HTTP ports while the serving proxy stayed on 5202. Each worker matched
+the live neighborhood and citation hashes. The first request after a new live
+publication remains open. The published-revision measurement above used a
+disposable fixture.
 
 ## Semantic and recovery evidence
 
@@ -59,6 +63,26 @@ measurement above used a disposable fixture.
 - The 569-test Buddy cohort covered source withdrawal, visibility, exact source
   and hosted access. The isolated HTTP fixture verified ordered results and
   citation-byte parity on the final installed dependency.
+
+## Current and historical authority boundary
+
+The Buddy shared neighborhood, search, object, evidence and anchor routes
+dispatch to native readers. The exact serving build passed 28 targeted
+regressions for retired projections, graph-attached live query and fresh
+classic Agent turns. These tests trap legacy storage or provider dispatch and
+require the typed retirement response.
+
+The Agent retains a classic resolver for frozen historical Graph capabilities.
+Fresh Plan, governed Build and Play select the native query resolver. A missing
+native resolver on those fresh paths is an error. Historical recap projection
+requires an exact extraction run and adopted historical source. These
+compatibility readers and their stored contracts must remain readable.
+
+Core's service exposes explicit retirement boundaries for fresh classic Mind
+Turn execution and classic campaign ingest context. Historical completed-turn
+and publication receipt lookup remain available. This audit establishes the
+named serving boundary. A broader inventory of package-level compatibility
+exports is still open.
 
 ## Remaining closeout
 
