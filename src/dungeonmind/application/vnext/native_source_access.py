@@ -6,7 +6,7 @@ import hashlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from threading import Lock
-from typing import cast
+from typing import Any, cast
 
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.domain import DomainContractDescriptor, DomainContractRef
@@ -121,7 +121,14 @@ def open_native_text_source_access_context(
         raise KnowledgeReadContextIntegrityError("native source context identity is blank")
     read_rows = getattr(repository, "get_revision_for_native_read", None)
     if prefer_verified_source_rows and callable(read_rows):
-        stored, load_rows = read_rows(space_id, revision_id)
+        read_verified = cast(
+            Callable[
+                [str, str],
+                tuple[StoredKnowledgeRevision | None, Callable[[], dict[str, Any]] | None],
+            ],
+            read_rows,
+        )
+        stored, load_rows = read_verified(space_id, revision_id)
     else:
         stored = repository.get_revision(space_id, revision_id)
         load_rows = None
