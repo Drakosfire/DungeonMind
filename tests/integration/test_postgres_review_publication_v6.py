@@ -15,10 +15,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from dungeonmind.application import FinalizedReviewPublication, publish_finalized_review
 from dungeonmind.application.contribution_review_v2 import finalize_contribution_review_v2
 from dungeonmind.application.existing_world_adoption import adopt_existing_world
 from dungeonmind.application.graph_snapshot import GRAPH_SCHEMA_V6
+from dungeonmind.application.review_publication import (
+    FinalizedReviewPublication,
+    publish_finalized_review,
+)
 from dungeonmind.contracts import (
     Admissibility,
     CapabilityCategory,
