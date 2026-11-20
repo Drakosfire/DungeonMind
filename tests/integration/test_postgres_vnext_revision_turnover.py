@@ -16,8 +16,10 @@ from dungeonmind.contracts.vnext import ProjectionRequest, ScopeSelector
 from dungeonmind.infrastructure.postgres import vnext_knowledge
 from dungeonmind.infrastructure.postgres.vnext_knowledge import VerifiedKnowledgeRevisionCache
 from dungeonmind.infrastructure.postgres.vnext_sources import PostgresNativeSourceEvidenceRepository
+from tests.integration.test_postgres_vnext_prospective_publication import _publish
 from tests.unit.test_vnext_cas_publication import SPACE, genesis_command
 from tests.unit.test_vnext_governed_materialization import _lab_descriptors
+from tests.unit.test_vnext_prospective_publication import _contribution, _entity
 
 pytestmark = pytest.mark.integration
 
@@ -130,22 +132,15 @@ def test_native_context_rebuild_on_child_and_parent_return(
     first_parent = read("first_parent_neighborhood_ms", parent)
     assert read("warm_parent_neighborhood_ms", parent) is first_parent
 
-    child_payload = {
-        **payload,
-        "assertions": [
-            {**exemplar, "value": {**exemplar["value"], "value": "Alice updated"}},
-            *payload["assertions"][1:],
-        ],
-    }
-    child_command = genesis_command(
-        payload=child_payload,
-        parent_revision_id=parent,
-        expected_parent_revision_id=parent,
-        operation_ids=["op:turnover-child"],
-    )
+    stages.clear()
+    calls.clear()
+    contribution = _contribution([_entity()])
     start = perf_counter()
-    child = repo.publish_publication(child_command, "publication:turnover-child").published_revision_id
+    published = _publish(repo, first_parent, contribution, "prepared:turnover-child")
+    child = published.publication_receipt.published_revision_id
     measurements["publication_ms"] = (perf_counter() - start) * 1000
+    stage_samples["publication_ms"] = dict(stages)
+    stage_counts["publication_ms"] = dict(calls)
     first_child = read("first_child_neighborhood_ms", child)
     assert first_child.identity.revision_id == child
     assert read("warm_child_neighborhood_ms", child) is first_child
@@ -155,7 +150,7 @@ def test_native_context_rebuild_on_child_and_parent_return(
     assert results["first_child_neighborhood_ms"] == results["warm_child_neighborhood_ms"]
     assert returned_parent == first_parent
     assert returned_parent is not first_parent
-    assert stage_counts["first_child_neighborhood_ms"].get("_reconstruct", 0) == 1
+    assert stage_counts["first_child_neighborhood_ms"].get("_reconstruct", 0) == 0
     assert stage_counts["return_to_parent_neighborhood_ms"].get(
         "_reconstruct", 0
     ) == (0 if proof_entries == 2 else 1)
