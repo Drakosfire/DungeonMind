@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 
 from dungeonmind.domain.canonical import canonical_json, canonical_sha256
 
+from .admission import collect_evidence_dependencies
 from .entity_reads import (
     EntityReadCompleteness,
     EntityReadSourceArtifact,
     EntityReadSourceRevision,
 )
 from .errors import EvidenceReadIntegrityError
-from .provenance import KnowledgeProvenanceSnapshot
+from .provenance import (
+    KnowledgeProvenanceSnapshot,
+    _batch_provenance_projector,
+    validate_provenance_snapshot_integrity,
+)
 from .read_context import KnowledgeReadContext
 from .records import ParsedAssertion, ParsedEvidenceRef
 from .source_anchors import (
@@ -355,6 +360,37 @@ class EvidenceReadService:
         context: KnowledgeReadContext,
         assertion_id: str,
     ) -> AssertionEvidenceResult:
+        return self._get_assertion_evidence(context, assertion_id)
+
+    def get_assertions_evidence(
+        self, context: KnowledgeReadContext, assertion_ids: Sequence[str],
+    ) -> tuple[AssertionEvidenceResult, ...]:
+        """Read ordered assertion evidence using one coherent provenance snapshot."""
+        requested = tuple(_require_id(value, label="assertion ID") for value in assertion_ids)
+        if len(requested) < 2:
+            return tuple(self.get_assertion_evidence(context, value) for value in requested)
+        found = tuple(
+            value for value in requested if context.parsed.get_assertion(value) is not None
+        )
+        if not found:
+            return tuple(self.get_assertion_evidence(context, value) for value in requested)
+        _, artifacts, revisions = collect_evidence_dependencies(context.parsed, found)
+        snapshot = context.source_reader.get_provenance_snapshot(
+            artifact_ids=artifacts, revision_ids=revisions,
+        )
+        validate_provenance_snapshot_integrity(
+            snapshot, expected_artifact_ids=artifacts, expected_revision_ids=revisions,
+        )
+        project = _batch_provenance_projector(snapshot, error_type=EvidenceReadIntegrityError)
+        return tuple(self._get_assertion_evidence(context, value, project) for value in requested)
+
+    def _get_assertion_evidence(
+        self,
+        context: KnowledgeReadContext,
+        assertion_id: str,
+        project: Callable[[tuple[str, ...], tuple[str, ...]], KnowledgeProvenanceSnapshot]
+        | None = None,
+    ) -> AssertionEvidenceResult:
         requested = _require_id(assertion_id, label="assertion ID")
         identity = _identity(context)
         parsed = context.parsed
@@ -375,7 +411,7 @@ class EvidenceReadService:
         if assertion is None:
             return self._unavailable_assertion(identity=identity, requested=requested, trace=trace)
 
-        admission, snapshot = context.evaluate_candidates((requested,))
+        admission, snapshot = context._evaluate_candidates((requested,), project_provenance=project)
         evidence_ids = parsed.assertion_evidence.get(requested, ())
         trace = _merge_trace(
             base=trace,
