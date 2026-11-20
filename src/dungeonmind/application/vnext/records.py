@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 from dungeonmind.contracts.vnext.common import KnowledgeStanding
 from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
-from dungeonmind.domain.canonical import canonical_json, canonical_sha256
+from dungeonmind.domain.canonical import canonical_json, canonical_sha256, sha256_text
 from dungeonmind.domain.errors import PersistenceIntegrityError
 
 from .frozen_json import FrozenJsonValue
@@ -258,7 +258,7 @@ class StoredKnowledgeRevision:
     @staticmethod
     def seal(revision: KnowledgeRevision, payload: Mapping[str, Any]) -> StoredKnowledgeRevision:
         payload_json = canonical_json(dict(payload))
-        digest = canonical_sha256(dict(payload))
+        digest = sha256_text(payload_json)
         if digest != revision.graph_payload_sha256:
             raise PersistenceIntegrityError(
                 "stored graph payload digest disagrees with the revision envelope"
