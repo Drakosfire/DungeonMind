@@ -7,6 +7,7 @@ performing scope/visibility admission or introducing domain/TTRPG concepts.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from json.encoder import encode_basestring
@@ -190,10 +191,10 @@ class ParsedKnowledgeRevision:
 
 def _semantic_payload(
     identity: ParsedKnowledgeRevisionIdentity,
-    entities_by_id: dict[str, ParsedEntity],
-    assertions_by_id: dict[str, ParsedAssertion],
-    aliases_by_id: dict[str, ParsedIdentityAlias],
-    evidence_by_id: dict[str, ParsedEvidenceRef],
+    entities_by_id: Mapping[str, ParsedEntity],
+    assertions_by_id: Mapping[str, ParsedAssertion],
+    aliases_by_id: Mapping[str, ParsedIdentityAlias],
+    evidence_by_id: Mapping[str, ParsedEvidenceRef],
 ) -> dict[str, object]:
     """Normalize the existing semantic payload without changing its representation."""
     normalized_entities = sorted(entities_by_id.keys())
@@ -353,10 +354,10 @@ def _normalized_assertion_value(a: ParsedAssertion) -> dict[str, object]:
 
 def compute_semantic_digest(
     identity: ParsedKnowledgeRevisionIdentity,
-    entities_by_id: dict[str, ParsedEntity],
-    assertions_by_id: dict[str, ParsedAssertion],
-    aliases_by_id: dict[str, ParsedIdentityAlias],
-    evidence_by_id: dict[str, ParsedEvidenceRef],
+    entities_by_id: Mapping[str, ParsedEntity],
+    assertions_by_id: Mapping[str, ParsedAssertion],
+    aliases_by_id: Mapping[str, ParsedIdentityAlias],
+    evidence_by_id: Mapping[str, ParsedEvidenceRef],
 ) -> str:
     """Compute the unchanged canonical digest over normalized semantic content."""
     return _sha256(
@@ -394,10 +395,10 @@ def _canonical_assertion_value_bytes(assertion: ParsedAssertion) -> bytes:
 
 def _stream_semantic_digest(
     identity: ParsedKnowledgeRevisionIdentity,
-    entities_by_id: dict[str, ParsedEntity],
-    assertions_by_id: dict[str, ParsedAssertion],
-    aliases_by_id: dict[str, ParsedIdentityAlias],
-    evidence_by_id: dict[str, ParsedEvidenceRef],
+    entities_by_id: Mapping[str, ParsedEntity],
+    assertions_by_id: Mapping[str, ParsedAssertion],
+    aliases_by_id: Mapping[str, ParsedIdentityAlias],
+    evidence_by_id: Mapping[str, ParsedEvidenceRef],
 ) -> str:
     """Hash the same canonical stream, normalizing each immutable pool item once.
 

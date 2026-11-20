@@ -26,8 +26,9 @@ pytestmark = pytest.mark.integration
 
 @pytest.mark.parametrize("entity_count", [1, 10_000])
 @pytest.mark.parametrize("proof_entries", [1, 2])
+@pytest.mark.parametrize("retain_records", [False, True])
 def test_native_context_rebuild_on_child_and_parent_return(
-    pg, monkeypatch, entity_count, proof_entries
+    pg, monkeypatch, entity_count, proof_entries, retain_records
 ):
     proofs = VerifiedKnowledgeRevisionCache(max_bytes=64_000_000, max_entries=proof_entries)
     repo = PostgresNativeSourceEvidenceRepository(pg.database, verification_cache=proofs)
@@ -50,7 +51,9 @@ def test_native_context_rebuild_on_child_and_parent_return(
     service = NeighborhoodReadService()
     results = {}
     parent = repo.publish_revision(genesis_command(payload=payload)).revision.revision_id
-    cache = native_source_access.NativeParsedRevisionCache()
+    cache = native_source_access.NativeParsedRevisionCache(
+        retain_evicted_records=retain_records
+    )
     rebuilds = []
     measurements = {}
     parse = native_source_access.parse_verified_source_rows
@@ -152,6 +155,10 @@ def test_native_context_rebuild_on_child_and_parent_return(
     assert results["first_child_neighborhood_ms"] == results["warm_child_neighborhood_ms"]
     assert returned_parent == first_parent
     assert returned_parent is not first_parent
+    if retain_records:
+        assert returned_parent.entities_by_id is first_parent.entities_by_id
+        assert returned_parent.assertions_by_id is first_parent.assertions_by_id
+        assert returned_parent.assertions_by_subject is not first_parent.assertions_by_subject
     assert stage_counts["publication_ms"].get("_reconstruct", 0) == 1
     assert stage_counts["first_child_neighborhood_ms"].get("_reconstruct", 0) == 0
     assert stage_counts["return_to_parent_neighborhood_ms"].get(
@@ -160,7 +167,8 @@ def test_native_context_rebuild_on_child_and_parent_return(
     if use_artifact:
         assert "decode_read_artifact" in stage_samples["first_child_neighborhood_ms"]
     else:
-        assert [sample["revision"] for sample in rebuilds] == [parent, parent]
+        expected_rebuilds = [parent] if retain_records else [parent, parent]
+        assert [sample["revision"] for sample in rebuilds] == expected_rebuilds
     status = Path("/proc/self/status")
     memory = {}
     if status.is_file():

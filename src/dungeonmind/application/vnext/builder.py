@@ -260,13 +260,16 @@ def _build_parsed_knowledge_revision_from_records(
     aliases: Mapping[str, ParsedIdentityAlias] | Sequence[ParsedIdentityAlias] = (),
     evidence: Mapping[str, ParsedEvidenceRef] | Sequence[ParsedEvidenceRef] = (),
     _stream_digest: bool = False,
+    _reuse_frozen_records: bool = False,
 ) -> ParsedKnowledgeRevision:
     """Build a deterministic, immutable ParsedKnowledgeRevision from internal immutable records.
 
     Raises:
         RevisionStructuralIntegrityError: if duplicate IDs exist or referential integrity fails.
     """
-    if isinstance(entities, Mapping):
+    if _reuse_frozen_records and isinstance(entities, FrozenDict):
+        entities_dict = entities
+    elif isinstance(entities, Mapping):
         entities_dict = dict(entities)
         for key, ent in entities_dict.items():
             if key != ent.entity_id:
@@ -281,7 +284,9 @@ def _build_parsed_knowledge_revision_from_records(
                 raise RevisionStructuralIntegrityError(f"Duplicate entity_id: {eid!r}")
             entities_dict[eid] = ent
 
-    if isinstance(evidence, Mapping):
+    if _reuse_frozen_records and isinstance(evidence, FrozenDict):
+        evidence_dict = evidence
+    elif isinstance(evidence, Mapping):
         evidence_dict = dict(evidence)
         for key, ev in evidence_dict.items():
             if key != ev.evidence_ref_id:
@@ -297,7 +302,9 @@ def _build_parsed_knowledge_revision_from_records(
                 raise RevisionStructuralIntegrityError(f"Duplicate evidence_ref_id: {evid!r}")
             evidence_dict[evid] = ev
 
-    if isinstance(aliases, Mapping):
+    if _reuse_frozen_records and isinstance(aliases, FrozenDict):
+        aliases_dict = aliases
+    elif isinstance(aliases, Mapping):
         aliases_dict = dict(aliases)
         for key, al in aliases_dict.items():
             if key != al.alias_id:
@@ -324,7 +331,9 @@ def _build_parsed_knowledge_revision_from_records(
                     f"Alias {al_id!r} references missing evidence {ev_id!r}"
                 )
 
-    if isinstance(assertions, Mapping):
+    if _reuse_frozen_records and isinstance(assertions, FrozenDict):
+        assertions_dict = assertions
+    elif isinstance(assertions, Mapping):
         assertions_dict = dict(assertions)
         for key, asrt in assertions_dict.items():
             if key != asrt.assertion_id:
@@ -473,10 +482,26 @@ def _build_parsed_knowledge_revision_from_records(
 
     return ParsedKnowledgeRevision(
         identity=identity,
-        entities_by_id=freeze_records(entities_dict),
-        assertions_by_id=freeze_records(assertions_dict),
-        aliases_by_id=freeze_records(aliases_dict),
-        evidence_by_id=freeze_records(evidence_dict),
+        entities_by_id=(
+            entities_dict
+            if isinstance(entities_dict, FrozenDict)
+            else freeze_records(entities_dict)
+        ),
+        assertions_by_id=(
+            assertions_dict
+            if isinstance(assertions_dict, FrozenDict)
+            else freeze_records(assertions_dict)
+        ),
+        aliases_by_id=(
+            aliases_dict
+            if isinstance(aliases_dict, FrozenDict)
+            else freeze_records(aliases_dict)
+        ),
+        evidence_by_id=(
+            evidence_dict
+            if isinstance(evidence_dict, FrozenDict)
+            else freeze_records(evidence_dict)
+        ),
         assertions_by_subject=assertions_by_subject,
         entity_ref_outgoing=entity_ref_outgoing,
         entity_ref_incoming=entity_ref_incoming,
