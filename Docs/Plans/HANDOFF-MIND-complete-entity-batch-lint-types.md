@@ -33,10 +33,11 @@ scope remains untouched, as do all classic stacks and239. No old PR absorption.
   -> KnowledgeProvenanceSnapshot using existing imports. Preserve union, order,
   duplicates, projections, callback boundaries, missing sets and counters.
 - read_context: retain initial getattr(..., None) and non-None guard. Inside the
-  guard use getattr(self.source_reader, "snapshot_call_count") minus the observed
-  before value. No second default: preserve AttributeError if an unusual reader
-  loses its attribute mid-call. No protocol requirement, new counter/default,
-  isinstance restriction, Any cast or error suppression.
+  guard use cast(_SnapshotCallCounter, self.source_reader).snapshot_call_count
+  minus the observed before value. The private Protocol models optional existing
+  instrumentation only. Preserve direct access/AttributeError semantics; no public
+  protocol requirement, new counter/default, isinstance restriction, Any cast or
+  error suppression.
 - owning test: wrap one existing assertion only; preserve its complete membership
   and retracted/not-retracted semantics. No assertion/selection removal or waiver.
 
@@ -80,3 +81,37 @@ After owning/static checks: inspect cumulative diff, commit/push draft PR, freez
 exacthead for parent/Hubble. Root reviews/merges; no merge authority inferred from
 this handoff. Full native manual adoption/UI/current-route retirement/deployment/
 rollback/V11 objective remains active and separate.
+
+## Static diagnostic checkpoint
+
+Initial owning194passed. Literal no-default getattr triggered RuffB009; use one
+local attribute-name string for the same optional lookups (no new counter/fallback).
+Sequence annotations exposed that _build_snapshot_from_loaded requires tuple
+requests; normalize its two requested-ID arguments with tuple(). Actual internal
+callers already supply tuples, so values/order/duplicates remain unchanged. No
+protocol widening, error suppression or admission/default changes. Raw Ruff1 and
+types1 failures retained in scoped scratch. Recheck owning/static after correction.
+
+## Root-approved final optional-counter typing rebrief
+
+Root explicitly approves a private _SnapshotCallCounter Protocol with int counter
+and typed cast under the unchanged getattr(..., None) non-None guard. Use that
+instead of the intermediate local attribute-name solution (which passed Ruff2/
+types2/owning2 but is not final). Keep direct attribute access/error semantics;
+no Any cast, runtime isinstance, ignore, exported helper or KnowledgeSourceReader
+requirement. Sequence callback retains tuple normalization at immutable builder
+boundary; actual tuple callers retain identity/order/work. Update AST proof to
+normalize only the private structural typing and typed cast, not broader behavior.
+
+## Final scoped verification checkpoint
+
+Final private Protocol/cast source: owning3 XML194passed0failed0errors0skips;
+Ruff3 full repository PASS; types3 owning-interpreter Pyright0errors0warnings;
+git diff --check PASS. scope-equivalence.json confirms exact4path scope, private
+Protocol/cast/annotations/tuple-boundary normalization only, and unchanged test AST.
+The intermediate initial diagnostic failures remain retained, not overwritten.
+No full unit/conformance/SQL rerun or baseline experiment; previous3279/1 remains
+an explicitly failed full suite with exactbase-reproduced cache failure.
+Protected239 remote still exactee3; this repair is not silently included there.
+Source inputs are frozen for independent review after commit/push/draft creation;
+root owns merge and subsequent239 reanchor/qualification.

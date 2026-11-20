@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol, cast
 
 from dungeonmind.contracts.vnext.domain import (
     DomainContractDescriptor,
@@ -36,6 +36,12 @@ from .frozen_json import FrozenJsonValue, freeze_json_value, thaw_json_value
 from .model import ParsedKnowledgeRevision
 from .ports import KnowledgeSourceReader
 from .provenance import KnowledgeProvenanceSnapshot, validate_provenance_snapshot_integrity
+
+
+class _SnapshotCallCounter(Protocol):
+    """Optional reader instrumentation, not a source-reader requirement."""
+
+    snapshot_call_count: int
 
 
 class _EvidenceMemoBox:
@@ -195,7 +201,10 @@ class KnowledgeReadContext:
             )
             snapshot_calls = 1
             if snapshot_calls_before is not None:
-                snapshot_calls = self.source_reader.snapshot_call_count - snapshot_calls_before
+                snapshot_calls = (
+                    cast(_SnapshotCallCounter, self.source_reader).snapshot_call_count
+                    - snapshot_calls_before
+                )
         else:
             provenance = project_provenance(artifact_ids, revision_ids)
             snapshot_calls = 0

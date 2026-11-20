@@ -766,7 +766,9 @@ class EntityReadService:
         if not entity_ids:
             return ()
         parsed = context.parsed
-        found_ids = {entity_id for entity_id in entity_ids if parsed.get_entity(entity_id) is not None}
+        found_ids = {
+            entity_id for entity_id in entity_ids if parsed.get_entity(entity_id) is not None
+        }
         if not found_ids:
             return tuple(self.get_complete_entity(context, entity_id) for entity_id in entity_ids)
 
@@ -789,8 +791,12 @@ class EntityReadService:
         artifact_set = frozenset(artifacts)
         revision_set = frozenset(revisions)
 
-        def project(artifact_ids, revision_ids):
-            if not artifact_set.issuperset(artifact_ids) or not revision_set.issuperset(revision_ids):
+        def project(
+            artifact_ids: Sequence[str], revision_ids: Sequence[str]
+        ) -> KnowledgeProvenanceSnapshot:
+            if not artifact_set.issuperset(artifact_ids) or not revision_set.issuperset(
+                revision_ids
+            ):
                 raise EntityReadIntegrityError("Batch omitted requested provenance dependencies")
             loaded_artifacts = {
                 key: value for key in artifact_ids
@@ -803,8 +809,8 @@ class EntityReadService:
             return _build_snapshot_from_loaded(
                 loaded_artifacts=loaded_artifacts,
                 loaded_revisions=loaded_revisions,
-                requested_artifacts=artifact_ids,
-                requested_revisions=revision_ids,
+                requested_artifacts=tuple(artifact_ids),
+                requested_revisions=tuple(revision_ids),
                 missing_artifacts=tuple(key for key in artifact_ids if key not in loaded_artifacts),
                 missing_revisions=tuple(key for key in revision_ids if key not in loaded_revisions),
             )
