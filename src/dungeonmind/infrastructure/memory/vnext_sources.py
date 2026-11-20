@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from dungeonmind.application.vnext.native_source_admission import (
@@ -713,6 +714,10 @@ class _InMemoryNativeTextSourceView:
     @property
     def epoch(self) -> int:
         return self._epoch
+
+    @contextmanager
+    def read_scope(self) -> Iterator[_InMemoryNativeTextSourceView]:
+        yield self
 
     def open_coherent_view(self) -> NativeTextSourceView:
         return _InMemoryNativeTextSourceView(self._repository, self._space_id, self._epoch)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Protocol
@@ -147,6 +148,10 @@ class NativeTextSourceView(KnowledgeSourceReader, Protocol):
 
     @property
     def epoch(self) -> int: ...
+
+    def read_scope(self) -> AbstractContextManager[NativeTextSourceView]:
+        """Use the yielded pinned view sequentially on the originating thread."""
+        ...
 
     def open_coherent_view(self) -> NativeTextSourceView: ...
 

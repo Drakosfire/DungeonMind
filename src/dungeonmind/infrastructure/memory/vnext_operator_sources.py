@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -356,6 +357,10 @@ class _OperatorSourceView:
     @property
     def epoch(self) -> int:
         return self._base.epoch
+
+    @contextmanager
+    def read_scope(self) -> Iterator[_OperatorSourceView]:
+        yield self
 
     def open_coherent_view(self) -> _OperatorSourceView:
         return _OperatorSourceView(self._repo, self._base.open_coherent_view(), self._space_id)

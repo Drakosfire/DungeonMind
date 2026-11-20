@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from typing import Any
 
 from psycopg import Connection, sql
@@ -60,7 +61,7 @@ from ...application.vnext.errors import (
     NativeTextSourceAdmissionIntegrityError,
 )
 from ...application.vnext.records import StoredKnowledgeRevision
-from .database import SCHEMA, PostgresDatabase, jsonb
+from .database import SCHEMA, PostgresDatabase, ReadTransactions, jsonb
 from .vnext_knowledge import (
     PostgresKnowledgeRevisionRepository,
     VerifiedKnowledgeRevisionCache,
@@ -1127,6 +1128,9 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
             return epoch
 
     def open_native_source_view(self, space_id: str) -> NativeTextSourceView:
+        return self._open_native_source_view(space_id)
+
+    def _open_native_source_view(self, space_id: str) -> _PostgresNativeTextSourceView:
         with self._database.transaction() as conn:
             row = conn.execute(
                 sql.SQL(
@@ -1141,7 +1145,7 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
 class _PostgresNativeTextSourceView:
     __slots__ = ("_database", "_epoch", "_space_id")
 
-    def __init__(self, database: PostgresDatabase, space_id: str, epoch: int) -> None:
+    def __init__(self, database: ReadTransactions, space_id: str, epoch: int) -> None:
         self._database = database
         self._space_id = space_id
         self._epoch = epoch
@@ -1150,7 +1154,15 @@ class _PostgresNativeTextSourceView:
     def epoch(self) -> int:
         return self._epoch
 
-    def open_coherent_view(self) -> NativeTextSourceView:
+    def _with_transactions(self, transactions: ReadTransactions) -> _PostgresNativeTextSourceView:
+        return _PostgresNativeTextSourceView(transactions, self._space_id, self._epoch)
+
+    @contextmanager
+    def read_scope(self) -> Iterator[_PostgresNativeTextSourceView]:
+        with self._database.read_scope() as transactions:
+            yield self._with_transactions(transactions)
+
+    def open_coherent_view(self) -> _PostgresNativeTextSourceView:
         return _PostgresNativeTextSourceView(self._database, self._space_id, self._epoch)
 
     def get_provenance_snapshot(
