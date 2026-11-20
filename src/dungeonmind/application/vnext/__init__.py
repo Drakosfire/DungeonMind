@@ -96,6 +96,12 @@ from .native_source_extension import (
     publish_native_source_evidence_extension,
     recover_native_source_evidence_extension,
 )
+from .native_source_publication import (
+    get_native_source_publication_support,
+    preview_native_source_publication_evidence,
+    publish_governed_native_source_publication,
+    recover_governed_native_source_publication,
+)
 from .neighborhood import (
     MAX_NEIGHBORHOOD_SEED_COUNT,
     NeighborhoodLayerWork,
@@ -257,6 +263,7 @@ __all__ = [
     "compute_semantic_digest",
     "create_empty_space",
     "freeze_json_value",
+    "get_native_source_publication_support",
     "get_prospective_publication",
     "get_publication_receipt",
     "initialize_empty_knowledge_space",
@@ -265,10 +272,13 @@ __all__ = [
     "open_admitted_native_text",
     "open_native_text_source_access_context",
     "preview_native_source_evidence_extension",
+    "preview_native_source_publication_evidence",
     "publish_governed_materialization",
+    "publish_governed_native_source_publication",
     "publish_native_source_evidence_extension",
     "publish_native_text_source_evidence",
     "publish_prospective_contribution",
+    "recover_governed_native_source_publication",
     "recover_native_source_evidence_extension",
     "refresh_native_text_source_access_context",
     "resolve_prospective_contribution",

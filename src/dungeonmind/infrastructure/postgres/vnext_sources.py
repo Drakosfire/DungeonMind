@@ -43,6 +43,11 @@ from dungeonmind.contracts.vnext.native_source import (
     NativeTextSourceOriginV1,
     NativeUtf8SpanProofV1,
 )
+from dungeonmind.contracts.vnext.native_source_publication import (
+    GovernedNativeSourcePublicationReceiptV1,
+    GovernedNativeSourcePublicationV1,
+    NativeSourcePublicationSupportRefV1,
+)
 from dungeonmind.contracts.vnext.pdf_region import NativePdfSourceAdmissionV1
 from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
 from dungeonmind.contracts.vnext.source import SourceArtifactV3, SourceRevisionV2
@@ -91,7 +96,7 @@ def _record_fingerprint(
 
 
 def _read_extension(
-    conn: Connection[Any], space_id: str, extension_id: str
+    conn: Connection[Any], space_id: str, extension_id: str, *, metadata_only: bool = False
 ) -> NativeSourceEvidenceExtensionReceiptV1 | None:
     row = conn.execute(
         sql.SQL(
@@ -126,7 +131,10 @@ def _read_extension(
         )
     ):
         raise PersistenceIntegrityError("extension receipt identity drift")
-    root = _read_native_receipt(conn, space_id, receipt.original_admission_id)
+    root_record = _read_native_record(
+        conn, space_id, receipt.original_admission_id, include_body=not metadata_only
+    )
+    root = None if root_record is None else root_record["receipt"]
     if (
         root is None
         or canonical_sha256(root.model_dump(mode="json")) != receipt.original_admission_sha256
@@ -138,6 +146,117 @@ def _read_extension(
     if publication != receipt.publication_receipt:
         raise PersistenceIntegrityError("extension publication receipt drift")
     return receipt
+
+
+def _read_source_publication(
+    conn: Connection[Any], space_id: str, publication_id: str
+) -> GovernedNativeSourcePublicationReceiptV1 | None:
+    from ...contracts.vnext.native_source_publication import (
+        GovernedNativeSourcePublicationReceiptV1,
+    )
+
+    row = conn.execute(
+        sql.SQL(
+            "SELECT * FROM {}.knowledge_native_source_publications WHERE space_id=%s AND "
+            "publication_id=%s"
+        ).format(sql.Identifier(SCHEMA)),
+        (space_id, publication_id),
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        receipt = GovernedNativeSourcePublicationReceiptV1.model_validate(row["receipt_payload"])
+    except Exception as exc:
+        raise PersistenceIntegrityError("source publication reconstruction failed") from exc
+    if (
+        canonical_sha256(receipt.model_dump(mode="json")) != row["record_fingerprint"]
+        or any(
+            getattr(receipt, k) != row[k]
+            for k in (
+                "space_id",
+                "publication_id",
+                "original_admission_id",
+                "source_artifact_id",
+                "source_revision_id",
+                "mode",
+                "source_authority_epoch_before",
+                "source_authority_epoch_after",
+            )
+        )
+        or _read_receipt(conn, space_id, publication_id) != receipt.publication_receipt
+    ):
+        raise PersistenceIntegrityError("source publication receipt drift")
+    return receipt
+
+
+def _source_publication_metadata(
+    conn: Connection[Any], space_id: str, admission_id: str
+) -> tuple[SourceRevisionV2, tuple[NativeUtf8SpanProofV1, ...], NativeSourceAdmissionReceiptV1]:
+    record = _read_native_record(conn, space_id, admission_id, include_body=False)
+    if record is None:
+        raise PersistenceIntegrityError("source publication original missing")
+    return record["revision"], record["proofs"], record["receipt"]
+
+
+def _publication_intervals(
+    conn: Connection[Any], space_id: str, source_revision_id: str
+) -> set[tuple[int, int]]:
+    rows = conn.execute(
+        sql.SQL(
+            "SELECT publication_id FROM {}.knowledge_native_source_publications WHERE "
+            "space_id=%s AND source_revision_id=%s"
+        ).format(sql.Identifier(SCHEMA)),
+        (space_id, source_revision_id),
+    ).fetchall()
+    return {
+        (p.start_byte, p.end_byte)
+        for row in rows
+        for p in _read_source_publication(conn, space_id, row["publication_id"]).proofs
+    }
+
+
+def _lookup_source_support(
+    conn: Connection[Any], view: Any, space_id: str, source_revision_id: str, span_id: str
+) -> NativeSourcePublicationSupportRefV1 | None:
+    from ...application.vnext.native_source_publication import _support_reference
+
+    origins = []
+    row = conn.execute(
+        sql.SQL(
+            "SELECT admission_id FROM {}.knowledge_native_source_spans WHERE space_id=%s AND "
+            "span_id=%s"
+        ).format(sql.Identifier(SCHEMA)),
+        (space_id, span_id),
+    ).fetchone()
+    if row is not None:
+        _, proofs, receipt = _source_publication_metadata(conn, space_id, row["admission_id"])
+        origins.append(("admission", receipt, proofs))
+    for table, idcol, kind in (
+        ("knowledge_native_source_extensions", "extension_id", "extension"),
+        ("knowledge_native_source_publications", "publication_id", "publication"),
+    ):
+        rows = conn.execute(
+            sql.SQL(
+                "SELECT {} AS operation FROM {}.{} WHERE space_id=%s AND source_revision_id=%s "
+                "AND receipt_payload->'proofs' @> %s"
+            ).format(sql.Identifier(idcol), sql.Identifier(SCHEMA), sql.Identifier(table)),
+            (space_id, source_revision_id, jsonb([{"span_id": span_id}])),
+        ).fetchall()
+        for row in rows:
+            receipt = (
+                _read_extension(conn, space_id, row["operation"], metadata_only=True)
+                if kind == "extension"
+                else _read_source_publication(conn, space_id, row["operation"])
+            )
+            if receipt is None:
+                raise PersistenceIntegrityError("indexed support receipt missing")
+            origins.append((kind, receipt, receipt.proofs))
+    if len(origins) > 1:
+        raise PersistenceIntegrityError("support origin ambiguous")
+    if not origins:
+        return None
+    kind, receipt, proofs = origins[0]
+    return _support_reference(view, source_revision_id, span_id, kind, receipt, proofs)
 
 
 class _ExtensionLockedView:
@@ -166,6 +285,26 @@ class _ExtensionLockedView:
         self, space: str, operation: str
     ) -> NativeSourceEvidenceExtensionReceiptV1 | None:
         return _read_extension(self.conn, space, operation)
+
+    def get_native_source_publication_extension_receipt(
+        self, space_id: str, operation_id: str
+    ) -> NativeSourceEvidenceExtensionReceiptV1 | None:
+        return _read_extension(self.conn, space_id, operation_id, metadata_only=True)
+
+    def get_native_source_publication_support(
+        self, space_id: str, source_revision_id: str, span_id: str
+    ) -> NativeSourcePublicationSupportRefV1 | None:
+        return _lookup_source_support(self.conn, self, space_id, source_revision_id, span_id)
+
+    def get_native_source_publication_source(
+        self, space: str, operation: str
+    ) -> tuple[SourceRevisionV2, tuple[NativeUtf8SpanProofV1, ...], NativeSourceAdmissionReceiptV1]:
+        return _source_publication_metadata(self.conn, space, operation)
+
+    def get_native_source_publication_receipt(
+        self, space: str, operation: str
+    ) -> GovernedNativeSourcePublicationReceiptV1 | None:
+        return _read_source_publication(self.conn, space, operation)
 
     def open_native_source_view(self, space: str) -> NativeTextSourceView:
         row = self.conn.execute(
@@ -667,6 +806,157 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
         with self._database.transaction() as conn:
             return _read_extension(conn, space_id, extension_id)
 
+    def get_native_source_publication_extension_receipt(
+        self, space_id: str, operation_id: str
+    ) -> NativeSourceEvidenceExtensionReceiptV1 | None:
+        with self._database.transaction() as conn:
+            return _read_extension(conn, space_id, operation_id, metadata_only=True)
+
+    def get_native_source_publication_support(
+        self, space_id: str, source_revision_id: str, span_id: str
+    ) -> NativeSourcePublicationSupportRefV1 | None:
+        with self._database.transaction() as conn:
+            return _lookup_source_support(
+                conn,
+                _ExtensionLockedView(conn, self._database),
+                space_id,
+                source_revision_id,
+                span_id,
+            )
+
+    def get_native_source_publication_source(
+        self, space_id: str, admission_id: str
+    ) -> tuple[SourceRevisionV2, tuple[NativeUtf8SpanProofV1, ...], NativeSourceAdmissionReceiptV1]:
+        with self._database.transaction() as conn:
+            return _source_publication_metadata(conn, space_id, admission_id)
+
+    def get_native_source_publication_receipt(
+        self, space_id: str, publication_id: str
+    ) -> GovernedNativeSourcePublicationReceiptV1 | None:
+        with self._database.transaction() as conn:
+            return _read_source_publication(conn, space_id, publication_id)
+
+    def publish_governed_native_source_publication(
+        self,
+        *,
+        request: GovernedNativeSourcePublicationV1,
+        domain_contract: DomainContractDescriptor,
+        semantic_profile: SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
+        audience_labels: Sequence[str],
+    ) -> GovernedNativeSourcePublicationReceiptV1:
+        from ...application.vnext.errors import KnowledgePublicationOutcomeUnknownError
+        from ...application.vnext.native_source_publication import (
+            make_receipt,
+            publication_plan,
+            snapshot_inputs,
+        )
+        from ...contracts.vnext.native_source_publication import (
+            GovernedNativeSourcePublicationReceiptV1,
+        )
+
+        request, domain, profile = snapshot_inputs(request, domain_contract, semantic_profile)
+        with self._database.transaction() as conn:
+            _lock_native_epoch(conn)
+            _lock_space(conn, request.space_id, created_at=request.created_at)
+            locked = _ExtensionLockedView(conn, self._database)
+            record = _read_native_record(
+                conn, request.space_id, request.original_admission_id, include_body=False
+            )
+            intervals = (
+                set() if record is None else {(p.start_byte, p.end_byte) for p in record["proofs"]}
+            )
+            rows = conn.execute(
+                sql.SQL(
+                    "SELECT extension_id FROM {}.knowledge_native_source_extensions WHERE "
+                    "space_id=%s AND source_revision_id=%s"
+                ).format(sql.Identifier(SCHEMA)),
+                (request.space_id, request.source_revision_id),
+            ).fetchall()
+            for row in rows:
+                intervals.update(
+                    (p.start_byte, p.end_byte)
+                    for p in _read_extension(conn, request.space_id, row["extension_id"]).proofs
+                )
+            intervals.update(
+                _publication_intervals(conn, request.space_id, request.source_revision_id)
+            )
+            plan = publication_plan(
+                locked,
+                request,
+                domain,
+                profile,
+                audience_labels=tuple(audience_labels),
+                intervals=intervals,
+            )
+            if isinstance(plan, GovernedNativeSourcePublicationReceiptV1):
+                return plan
+
+            def insert_child(stored: StoredKnowledgeRevision) -> None:
+                _insert_revision(conn, stored)
+                if self._after_revision_insert:
+                    self._after_revision_insert()
+
+            stored = commit_expected_parent(
+                plan.command,
+                read_head=lambda: _read_head(conn, request.space_id),
+                read_revision=lambda rid: _read_revision(conn, request.space_id, rid),
+                insert_revision=insert_child,
+                advance_head=lambda head, event: _advance_head(conn, head, event),
+            )
+            pub = KnowledgePublicationReceipt(
+                space_id=request.space_id,
+                publication_id=request.publication_id,
+                command_sha256=canonical_sha256(plan.command.model_dump(mode="json")),
+                expected_parent_revision_id=request.expected_parent_revision_id,
+                published_revision_id=stored.revision.revision_id,
+                graph_payload_sha256=stored.graph_payload_sha256,
+            )
+            _insert_receipt(conn, pub)
+            if self._after_receipt_insert:
+                self._after_receipt_insert()
+            if request.evidence.mode == "new_intervals":
+                conn.execute(
+                    sql.SQL(
+                        "UPDATE {}.knowledge_native_source_authority SET epoch=epoch+1 WHERE "
+                        "singleton_id=1"
+                    ).format(sql.Identifier(SCHEMA))
+                )
+            receipt = make_receipt(request, plan, pub)
+            conn.execute(
+                sql.SQL(
+                    "INSERT INTO "
+                    "{}.knowledge_native_source_publications(space_id,publication_id,original_admission_id,source_artifact_id,source_revision_id,mode,source_authority_epoch_before,source_authority_epoch_after,receipt_payload,record_fingerprint)"
+                    " VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+                ).format(sql.Identifier(SCHEMA)),
+                (
+                    receipt.space_id,
+                    receipt.publication_id,
+                    receipt.original_admission_id,
+                    receipt.source_artifact_id,
+                    receipt.source_revision_id,
+                    receipt.mode,
+                    receipt.source_authority_epoch_before,
+                    receipt.source_authority_epoch_after,
+                    jsonb(receipt.model_dump(mode="json")),
+                    canonical_sha256(receipt.model_dump(mode="json")),
+                ),
+            )
+            if self._after_native_source_insert:
+                self._after_native_source_insert()
+            if self._after_native_receipt_insert:
+                self._after_native_receipt_insert()
+        if self._after_native_publication_commit:
+            try:
+                self._after_native_publication_commit()
+            except Exception as exc:
+                raise KnowledgePublicationOutcomeUnknownError(
+                    space_id=request.space_id,
+                    publication_id=request.publication_id,
+                    expected_published_revision_id=stored.revision.revision_id,
+                    reason="post_commit_acknowledgement_failed",
+                ) from exc
+        return receipt
+
     def publish_native_source_evidence_extension(
         self,
         *,
@@ -709,6 +999,9 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
             for row in rows:
                 prior = _read_extension(conn, request.space_id, row["extension_id"])
                 intervals.update((p.start_byte, p.end_byte) for p in prior.proofs)
+            intervals.update(
+                _publication_intervals(conn, request.space_id, request.source_revision_id)
+            )
             plan = extension_plan(
                 repository=locked,
                 request=request,
@@ -993,6 +1286,34 @@ class _PostgresNativeTextSourceView:
                     for proof in receipt.proofs:
                         if proof.span_id == span_id:
                             matches.append((proof, receipt.source_authority_epoch))
+                rows = conn.execute(
+                    sql.SQL(
+                        "SELECT publication_id FROM {}.knowledge_native_source_publications "
+                        "WHERE space_id=%s AND source_revision_id=%s AND mode='new_intervals' "
+                        "AND source_authority_epoch_after<=%s AND receipt_payload->'proofs' @> "
+                        "%s"
+                    ).format(sql.Identifier(SCHEMA)),
+                    (
+                        self._space_id,
+                        source_revision_id,
+                        self._epoch,
+                        jsonb([{"span_id": span_id}]),
+                    ),
+                ).fetchall()
+                for row in rows:
+                    receipt = _read_source_publication(conn, self._space_id, row["publication_id"])
+                    if (receipt.source_artifact_id, receipt.source_revision_id) != (
+                        source_artifact_id,
+                        source_revision_id,
+                    ) or canonical_sha256(
+                        record["receipt"].model_dump(mode="json")
+                    ) != receipt.original_admission_sha256:
+                        raise PersistenceIntegrityError("composed proof source drift")
+                    matches.extend(
+                        (p, receipt.source_authority_epoch_after)
+                        for p in receipt.proofs
+                        if p.span_id == span_id
+                    )
                 if not matches:
                     return None
                 if len(matches) != 1:

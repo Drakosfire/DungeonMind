@@ -74,6 +74,14 @@ from .native_source import (
     NativeTextSourceOriginV1,
     NativeUtf8SpanProofV1,
 )
+from .native_source_publication import (
+    GovernedNativeSourcePublicationReceiptV1,
+    GovernedNativeSourcePublicationV1,
+    NativeSourcePublicationBasisV1,
+    NativeSourcePublicationExistingSupportV1,
+    NativeSourcePublicationNewIntervalsV1,
+    NativeSourcePublicationSupportRefV1,
+)
 from .projection import FocusRef, ProjectionRequest, ProjectionSnapshot
 from .prospective import (
     DurableEntityRef,
@@ -134,6 +142,8 @@ __all__ = [
     "EpistemicBasis",
     "EvidenceRefV3",
     "FocusRef",
+    "GovernedNativeSourcePublicationReceiptV1",
+    "GovernedNativeSourcePublicationV1",
     "IdentityAlias",
     "IdentityDecisionKind",
     "IdentityDecisionStatus",
@@ -151,6 +161,10 @@ __all__ = [
     "LiteralValue",
     "MigrationOriginRef",
     "NativeSourceAdmissionReceiptV1",
+    "NativeSourcePublicationBasisV1",
+    "NativeSourcePublicationExistingSupportV1",
+    "NativeSourcePublicationNewIntervalsV1",
+    "NativeSourcePublicationSupportRefV1",
     "NativeTextEvidenceSpanRequestV1",
     "NativeTextSourceAccessV1",
     "NativeTextSourceAdmissionBindingV1",

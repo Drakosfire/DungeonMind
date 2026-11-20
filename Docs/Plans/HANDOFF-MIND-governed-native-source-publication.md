@@ -1,6 +1,6 @@
 # Governed native source publication: atomic facts and aliases
 
-Status: ACTIVE bounded design; HANDOFF ONLY. Implementation waits for root final start.
+Status: ACTIVE IMPLEMENTATION. Root final start authorized pinned design0c6198e581ab41b135a21915b6b5f0bcb4274dbd.
 Owner: MIND. User explicitly authorizes this lane's design, implementation, review,
 PR transport and subsequent separately controlled merge. No ARCH/PRIME gate.
 Pinned base: f1dd6d2d4688a44c1428076e00fe32940077237b.
@@ -152,7 +152,7 @@ source evidence closure. Any extraction from extension code must preserve old
 publication/recovery behavior and accepted validation cost (no new whole-history
 verification on ordinary publication; strict immutable recovery remains strict).
 
-## Exact18-path write lease and review map
+## Exact19-path write lease and review map
 
 1. Docs/Plans/HANDOFF-MIND-governed-native-source-publication.md (this handoff)
 2. Docs/Contracts/vnext/dm_governed_native_source_publication_v1.json (new standalone schema)
@@ -172,9 +172,13 @@ verification on ordinary publication; strict immutable recovery remains strict).
 16. tests/unit/test_vnext_prospective_aliases.py (old regression)
 17. tests/integration/test_postgres_vnext_native_source_evidence_extension.py (interoperability)
 18. tests/unit/test_vnext_contract_bundle.py (frozen inventory/schema assertion)
+19. tests/integration/test_migrations.py (root-approved exact new head expectations)
+
+Root rebrief: migration0023 makes the two existing0022 head expectations stale;
+19th path is coupled migration correctness, no unrelated test repairs.
 
 No other paths without root checkpoint. In particular no original bundle or
-PUBLIC_CONTRACT_MODELS changes: baseline18 models, generations, schemas, parsed
+PUBLIC_CONTRACT_MODELS changes: baseline17 models (actual pinned inventory; earlier18 count corrected), generations, schemas, parsed
 model/builder/artifact formats stay unchanged. Standalone schema embeds new public
 request/receipt definitions as needed. No old contract regeneration. No shared
 Steward/roadmap edits, new env/dependency/domain/pin/UI/transport changes.
@@ -213,8 +217,7 @@ TMPDIR/UV_CACHE_DIR; no new env/resync/worktree/deletion. Future evidence under
 scratch/v10-core/governed-native-source-publication after writable check. Only
 fixture-owned disposable test DBs; no live/provider/serving/baseline mutations.
 
-Root approves design/storage/lease; current authority is HANDOFF COMMIT/PUSH ONLY.
-Wait for explicit final implementation start. Report public API/port/storage scope
+Root approved design/storage/lease and explicitly authorized full implementation. Report public API/port/storage scope
 growth before editing outside lease. No partial Buddy manual API, profile transition
 or source admission bridge. Root owns subsequent Buddy adoption/manual work and
 profile1 enablement separately; full V10/current deployment/rollback/V11 remain open.
@@ -222,3 +225,55 @@ profile1 enablement separately; full V10/current deployment/rollback/V11 remain 
 Retain this unique handoff commit/branch. MIND owns retained task checkout/cache and
 all existing gate scratch; no cleanup performed or authorized. Cleanup follow-up
 requires explicit scope plus active-process/mount/dirty/unique-data checks.
+
+## Root-approved preparation API rebrief
+
+Public source access gives proof+epoch but not introduction operation/receipt SHA.
+Add within the same19 paths:
+get_native_source_publication_support(*, repository: NativeSourcePublicationRepository,
+ space_id: str, source_revision_id: str, span_id: str)
+ -> NativeSourcePublicationSupportRefV1 | None.
+This is privileged immutable metadata; trusted host authorizes World ownership
+before IO. No body/head/current source opens/writes and no citation authority.
+Repository method has the same exact coordinate arguments. Memory uses direct
+admission/extension/publication span indexes; Postgres uses the admission span PK
+and additive exact-proof GIN indexes in0023 on old extension/new publication JSON.
+An index adds no old row/schema-contract semantics. All3 origins verified after
+reopen without caller remembering old receipts; context/reuse-only introductions
+never masquerade as SUPPORT. Preview/publication still revalidate selected source,
+proofs, bytes, parent and current epoch. No new path or second outcome.
+
+## Root create-only boundary clarification
+
+This composition authorizes creation, not destructive governance of other source
+facts. Explicitly refuse accepted RetractAssertion, SupersedeAssertion and
+ProposeIdentityDecision before repository mutation; rejected inputs may remain
+sealed in full intent. Old generic planners retain their behavior. Child-survivor
+evidence closure alone cannot authorize deletions; both modes require memory/SQL
+zero-mutation tests with pre-existing facts from another source.
+
+## Working implementation checkpoint (not qualification acceptance)
+
+Working diagnostics under scratch/v10-core/governed-native-source-publication:
+unit1/2 passed12; expanded unit3 exposed missing test imports, unit5 exposed public
+DTO fixture assumptions and the corrected baseline17 count; all raw failures kept.
+unit9 owning+old alias/extension/bundle controls passed142. Types4 reports0 errors,
+full Ruff3 passes. SQL1 passed14; SQL2 passed43; SQL3 passed51 including migrations;
+SQL4 passed90 with1 stale old-extension downgrade-head expectation, corrected only
+0022->0023 in the already leased regression file. Each unique32903 test database
+has a lifecycle receipt proving zero connections before drop. These are working-
+source diagnostics, not final exact-head or broad qualification claims.
+
+Root/Hubble readiness repairs included: create-only accepted items (destructive
+retract/supersede/identity refused); selected SUPPORT's own current access and
+original role/metadata; exact immutable root/introduction row identities and
+original command/child/payload commitments against valid-row substitution. Public
+metadata SUPPORT discovery covers admission/extension/new-publication origins;
+reuse receipts introduce nothing. Old generic alias semantics unchanged. New
+allocation mappings are part of the new atomic receipt, not a second result write.
+
+Integrate accepted origin/main b6539db99fe5c961123bf7615c9d67cd4e40676b before final
+exact-head checks: concurrent provenance-batch capability is disjoint and must be
+preserved. Original design base f1dd remains historical design anchor. No Buddy
+environment sync or live change. Source/receipt provenance manifest and final
+owning SQL/unit/type/lint results still required before freeze/review handback.
