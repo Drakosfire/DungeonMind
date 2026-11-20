@@ -85,3 +85,26 @@ Hubble. Retarget only after240 accepted merge and explicit owning sequencing.
 MIND retains logs and unique protected commits for active goal. No cleanup/deletion;
 follow-up needs scoped approval plus process/mount/dirty/unique-data checks.
 Full native manual/UI/retirement/deployment/rollback/V11 work remains active.
+
+## Parent acceptance and terminal working proof
+
+Core240 merged757cc986a55aaba7013e27724e42ef50f814804c, reviewed36c5,
+review5985957336; CI44650060111 all3 terminalSUCCESS. Parent gate resolved while
+this child full run was live; no source/head edits occurred until terminal.
+The child now integrates accepted757cc and opens against main, not the old parent
+branch. Initial36c5 remains historical stack/design base. Exact tree comparison
+36c5->757cc is empty; production/test input equivalence is verified, not assumed.
+
+Unchanged parent-equivalent RED pair at handoff-onlydd24615:1pass1failure0!=1.
+Raw test SHA equals parent36c5 exactly. After the single import move, identical pair
+2pass, whole cache module26pass, full unit/conformance3207pass0failure0errors0skips;
+source test hash unchanged throughout. Full Ruff and Pyright0errors0warnings pass.
+These are working-source tests before accepted-parent integration; carry only via
+verified source equivalence, not a new integrated-head full execution claim.
+All29 assertion ASTs unchanged, complete test AST differs only by moving one import
+assignment from its function to beside global k after optional-extra gate. No
+production/cleanup changes. Original red and all command/XML/log receipts retained.
+
+After integration: freeze final child, verify exact2path cumulative main diff and
+input hashes, rerun the small ordered pair on the committed head. Root/Hubble owns
+final review/merge;239 remains protected and will integrate accepted repairs later.
