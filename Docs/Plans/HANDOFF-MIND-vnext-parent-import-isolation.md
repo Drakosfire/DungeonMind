@@ -95,3 +95,16 @@ access verified. Reuse v10-core-unit/tools environments; no new worktree require
 Still false: aliases are not removed, retained execution and mounted classic read
 routes are not fully quarantined, serving authority/rollback/V11 are not accepted.
 The full goal stays active after this prerequisite.
+
+## Facade ownership rebrief before runtime edits
+
+Actual patch inspection found older Core148 (`cfce638709f61a46a4eb9cc5aabe2b1504cbc275`)
+and Core150 (`368e0c883ec85a4ba71d9940b353677f6d7b38d6`) also propose changes to
+infrastructure/postgres/__init__.py. MIND, the operator-authorized owner of this
+complete lane, allocates the current-main import facade/aggregate wiring region
+to this slice. Their branches remain intact and unmerged here; their proposed
+relationship-correction/existence features and constructor changes are not adopted.
+Any later adoption requires a fresh rebase and owning review against this boundary.
+Other inspected open patches do not overlap these eight paths. This is an explicit
+current-file ownership disposition, not reliance on a future Git conflict or an
+assertion that the older PRs were merged. No lease path or behavioral scope expands.
