@@ -360,13 +360,21 @@ class PostgresKnowledgeRevisionRepository:
         )
         with self._database.transaction() as conn:
             _lock_space(conn, command.space_id, created_at=command.created_at)
-            parent = (
-                None
-                if command.expected_parent_revision_id is None
-                else _read_revision(
-                    conn, command.space_id, command.expected_parent_revision_id
+            parent_id = command.expected_parent_revision_id
+            parent = None
+            if parent_id is not None:
+                verified = (
+                    _read_verified_revision(
+                        conn, command.space_id, parent_id, self._verification_cache
+                    )
+                    if self._verification_cache is not None
+                    else False
                 )
-            )
+                parent = (
+                    _read_revision(conn, command.space_id, parent_id)
+                    if verified is False
+                    else verified
+                )
             if parent is not None:
                 validate_prospective_result_absent_from_parent(
                     parent_graph_payload=parent.graph_payload,
