@@ -143,6 +143,8 @@ def test_native_context_rebuild_on_child_and_parent_return(
     stage_counts["publication_ms"] = dict(calls)
     first_child = read("first_child_neighborhood_ms", child)
     assert first_child.identity.revision_id == child
+    if not use_artifact:
+        assert repo._published_parse is None
     assert read("warm_child_neighborhood_ms", child) is first_child
     returned_parent = read("return_to_parent_neighborhood_ms", parent)
     assert first_child.semantic_digest != first_parent.semantic_digest
@@ -158,7 +160,7 @@ def test_native_context_rebuild_on_child_and_parent_return(
     if use_artifact:
         assert "decode_read_artifact" in stage_samples["first_child_neighborhood_ms"]
     else:
-        assert [sample["revision"] for sample in rebuilds] == [parent, child, parent]
+        assert [sample["revision"] for sample in rebuilds] == [parent, parent]
     status = Path("/proc/self/status")
     memory = {}
     if status.is_file():
@@ -176,3 +178,7 @@ def test_native_context_rebuild_on_child_and_parent_return(
         "read_stages_ms": stage_samples,
         "read_stage_calls": stage_counts,
     }, sort_keys=True))
+    if not use_artifact:
+        stored = repo.get_revision(SPACE, child)
+        assert stored is not None
+        assert first_child == native_source_access._parse_revision(stored)

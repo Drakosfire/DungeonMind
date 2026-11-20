@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Callable, Sequence
 from datetime import datetime
+from threading import Lock
 from typing import Any, Literal
 
 from psycopg import Connection, sql
@@ -16,6 +17,7 @@ from ...application.vnext.authority import (
 )
 from ...application.vnext.errors import KnowledgePublicationIdempotencyConflictError
 from ...application.vnext.materialization import NATIVE_VNEXT_GRAPH_SCHEMA
+from ...application.vnext.model import ParsedKnowledgeRevision
 from ...application.vnext.prospective import (
     validate_prospective_result_absent_from_parent,
     validate_prospective_result_bindings,
@@ -46,6 +48,8 @@ from .database import SCHEMA, PostgresDatabase, jsonb
 from .serialization import _normalize
 from .vnext_read_artifacts import _insert_artifact, _read_artifact
 
+_PUBLISHED_PARSE_MAX_PAYLOAD_BYTES = 8_000_000
+
 _REVISION_SELECT = """
     space_id,
     revision_id,
@@ -75,6 +79,8 @@ class PostgresKnowledgeRevisionRepository:
     ) -> None:
         self._database = database
         self._verification_cache = verification_cache
+        self._published_parse_lock = Lock()
+        self._published_parse: tuple[str, str, ParsedKnowledgeRevision] | None = None
         self._after_revision_insert = after_revision_insert
         self._after_receipt_insert = after_receipt_insert
         self._after_prospective_result_insert = after_prospective_result_insert
@@ -358,6 +364,25 @@ class PostgresKnowledgeRevisionRepository:
             published_revision_id=revision_from_command(command).revision_id,
             results=list(result_bindings),
         )
+        captured: tuple[str, str, ParsedKnowledgeRevision] | None = None
+
+        def insert(value: StoredKnowledgeRevision) -> None:
+            def capture(parsed: ParsedKnowledgeRevision) -> None:
+                nonlocal captured
+                captured = (
+                    canonical_json(value.revision.model_dump(mode="json")),
+                    value._payload_json,
+                    parsed,
+                )
+
+            capture_parsed = (
+                capture
+                if self._verification_cache is not None
+                and len(value._payload_json.encode("utf-8")) <= _PUBLISHED_PARSE_MAX_PAYLOAD_BYTES
+                else None
+            )
+            _insert_revision(conn, value, capture_parsed=capture_parsed)
+
         with self._database.transaction() as conn:
             _lock_space(conn, command.space_id, created_at=command.created_at)
             parent_id = command.expected_parent_revision_id
@@ -405,7 +430,7 @@ class PostgresKnowledgeRevisionRepository:
                 read_revision=lambda revision_id: _read_revision(
                     conn, command.space_id, revision_id
                 ),
-                insert_revision=lambda value: _insert_revision(conn, value),
+                insert_revision=insert,
                 advance_head=lambda head, event: _advance_head(conn, head, event),
             )
             receipt = KnowledgePublicationReceipt(
@@ -421,10 +446,29 @@ class PostgresKnowledgeRevisionRepository:
             _insert_prospective_result(conn, result)
             if self._after_prospective_result_insert is not None:
                 self._after_prospective_result_insert()
-            return KnowledgeProspectivePublication(
-                publication_receipt=receipt,
-                prospective_result=result,
-            )
+        with self._published_parse_lock:
+            self._published_parse = captured
+        return KnowledgeProspectivePublication(
+            publication_receipt=receipt,
+            prospective_result=result,
+        )
+
+    def _take_published_parse(
+        self, verified: StoredKnowledgeRevision,
+    ) -> ParsedKnowledgeRevision | None:
+        with self._published_parse_lock:
+            candidate = self._published_parse
+            if candidate is None:
+                return None
+            envelope, payload, parsed = candidate
+            if parsed.revision_id != verified.revision.revision_id:
+                return None
+            self._published_parse = None
+            if payload != verified._payload_json or envelope != canonical_json(
+                verified.revision.model_dump(mode="json")
+            ):
+                return None
+            return parsed
 
 
 def _lock_space(conn: Connection[Any], space_id: str, *, created_at: Any) -> None:
@@ -582,7 +626,12 @@ def _read_verified_revision(
         keep_rows(decoded["graph_payload"])
     return stored
 
-def _insert_revision(conn: Connection[Any], stored: StoredKnowledgeRevision) -> None:
+def _insert_revision(
+    conn: Connection[Any],
+    stored: StoredKnowledgeRevision,
+    *,
+    capture_parsed: Callable[[ParsedKnowledgeRevision], None] | None = None,
+) -> None:
     revision = stored.revision
     payload = stored.graph_payload
     envelope = revision.model_dump(mode="json")
@@ -618,7 +667,7 @@ def _insert_revision(conn: Connection[Any], stored: StoredKnowledgeRevision) -> 
         ),
     )
 
-    _insert_artifact(conn, stored)
+    _insert_artifact(conn, stored, capture_parsed=capture_parsed)
 
 
 def _advance_head(conn: Connection[Any], head: KnowledgeHead, event: KnowledgeHeadEvent) -> None:
