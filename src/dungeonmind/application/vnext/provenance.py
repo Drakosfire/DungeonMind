@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, cast
 
 from dungeonmind.contracts.vnext.source import SourceArtifactV3, SourceRevisionV2
 from dungeonmind.domain.canonical import canonical_sha256
@@ -17,7 +17,7 @@ from .frozen_json import FrozenDict
 _ModelT = TypeVar("_ModelT", SourceArtifactV3, SourceRevisionV2)
 
 
-class _CopyOnReadModelMap(Mapping[str, _ModelT]):
+class _CopyOnReadModelMap:
     """Internal marker for maps that detach every value on access."""
 
     __slots__ = ()
@@ -30,10 +30,12 @@ def _make_sealed_copy_on_read_map(inner: Mapping[str, _ModelT]) -> Mapping[str, 
         {key: value.model_copy(deep=True) for key, value in inner.items()}
     )
 
-    class _SealedCopyOnReadModelMap(_CopyOnReadModelMap[_ModelT]):
+    class _SealedCopyOnReadModelMap(
+        _CopyOnReadModelMap, Mapping[str, SourceArtifactV3 | SourceRevisionV2]
+    ):
         __slots__ = ()
 
-        def __getitem__(self, key: str) -> _ModelT:
+        def __getitem__(self, key: str) -> SourceArtifactV3 | SourceRevisionV2:
             return sealed[key].model_copy(deep=True)
 
         def __iter__(self) -> Iterator[str]:
@@ -48,17 +50,17 @@ def _make_sealed_copy_on_read_map(inner: Mapping[str, _ModelT]) -> Mapping[str, 
         def get(
             self,
             key: str,
-            default: _ModelT | None = None,
-        ) -> _ModelT | None:
+            default: SourceArtifactV3 | SourceRevisionV2 | None = None,
+        ) -> SourceArtifactV3 | SourceRevisionV2 | None:
             if key not in sealed:
                 return default
             return sealed[key].model_copy(deep=True)
 
-        def items(self) -> Iterator[tuple[str, _ModelT]]:
+        def items(self) -> Iterator[tuple[str, SourceArtifactV3 | SourceRevisionV2]]:
             for key in sealed:
                 yield key, sealed[key].model_copy(deep=True)
 
-        def values(self) -> Iterator[_ModelT]:
+        def values(self) -> Iterator[SourceArtifactV3 | SourceRevisionV2]:
             for value in sealed.values():
                 yield value.model_copy(deep=True)
 
@@ -68,7 +70,7 @@ def _make_sealed_copy_on_read_map(inner: Mapping[str, _ModelT]) -> Mapping[str, 
         def __delattr__(self, name: str) -> None:
             raise TypeError("provenance snapshot maps are immutable")
 
-    return _SealedCopyOnReadModelMap()
+    return cast(Mapping[str, _ModelT], _SealedCopyOnReadModelMap())
 
 
 def _deep_copy_artifacts(
