@@ -132,11 +132,27 @@ def create_app(
         state: MindTurnAppState = app.state.mind_turn
         return state.readiness_probe()
 
-    @app.post("/v1/mind-turn", response_model=MindTurnResponse)
-    def mind_turn(body: MindTurnRequest) -> MindTurnResponse:
+    @app.post(
+        "/v1/mind-turn",
+        response_model=MindTurnResponse,
+        responses={410: {"description": "Fresh classic Mind Turn execution is retired."}},
+    )
+    def mind_turn(body: MindTurnRequest) -> MindTurnResponse | JSONResponse:
         state: MindTurnAppState = app.state.mind_turn
         authorized = authorize_demo_request(body, binding=state.demo_binding)
-        return state.service.execute(authorized)
+        completed = state.service.recover_completed_turn(authorized)
+        if completed is not None:
+            return completed
+        return JSONResponse(
+            status_code=410,
+            content={
+                "error": {
+                    "code": "classic_mind_turn_execution_retired",
+                    "message": "Only completed classic Mind Turns can be recovered.",
+                    "details": {},
+                },
+            },
+        )
 
     return app
 

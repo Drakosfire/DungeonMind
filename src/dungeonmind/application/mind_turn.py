@@ -192,6 +192,10 @@ class MindTurnService:
             if entry.users <= 0:
                 self._request_locks.pop(key, None)
 
+    def recover_completed_turn(self, request: MindTurnRequest) -> MindTurnResponse | None:
+        """Read the exact completed response without resuming a retrieval session."""
+        return self._find_replay(request)
+
     def execute(self, request: MindTurnRequest) -> MindTurnResponse:
         # Process-local coordination only. Run the demo host as a single worker.
         key, lock = self._acquire_request_lock(request.thread_id, request.request_id)

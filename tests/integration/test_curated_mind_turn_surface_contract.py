@@ -25,6 +25,7 @@ from dungeonmind.infrastructure.fixtures.curated_mind_turn import (
 from dungeonmind.service.api import create_app
 from dungeonmind.service.bootstrap import build_readiness_probe
 from dungeonmind.service.demo_access import DemoAccessBinding
+from tests.integration.test_mind_turn_replay import seed_completed_turn
 
 pytestmark = pytest.mark.integration
 
@@ -120,7 +121,7 @@ def test_allowed_origin_preflight_and_post_cors(cors_client) -> None:
         json=body,
         headers={"Origin": ALLOWED_ORIGIN},
     )
-    assert response.status_code == 200
+    assert response.status_code == 410
     assert response.headers.get("access-control-allow-origin") == ALLOWED_ORIGIN
     assert response.headers.get("access-control-allow-credentials") in (None, "false")
 
@@ -161,10 +162,12 @@ def test_readyz_consumable_from_allowed_origin(cors_client) -> None:
 
 
 def test_success_renders_grounded_semantics(cors_client) -> None:
-    client, _fixture, _service = cors_client
+    client, _fixture, service = cors_client
+    request_body = _template_body(request_id="req:b1b-success")
+    seed_completed_turn(client, service, request_body)
     response = client.post(
         "/v1/mind-turn",
-        json=_template_body(request_id="req:b1b-success"),
+        json=request_body,
         headers={"Origin": ALLOWED_ORIGIN},
     )
     assert response.status_code == 200
@@ -195,13 +198,15 @@ def test_success_renders_grounded_semantics(cors_client) -> None:
 
 
 def test_abstention_has_no_fabricated_entity_or_relationship(cors_client) -> None:
-    client, _fixture, _service = cors_client
-    response = client.post(
-        "/v1/mind-turn",
-        json=_template_body(
+    client, _fixture, service = cors_client
+    request_body = _template_body(
             request_id="req:b1b-moon-king",
             message="Who is the Moon King?",
-        ),
+        )
+    seed_completed_turn(client, service, request_body)
+    response = client.post(
+        "/v1/mind-turn",
+        json=request_body,
         headers={"Origin": ALLOWED_ORIGIN},
     )
     assert response.status_code == 200
@@ -237,6 +242,7 @@ def test_abstention_has_no_fabricated_entity_or_relationship(cors_client) -> Non
 def test_exact_replay_matches_and_skips_second_agent(cors_client) -> None:
     client, _fixture, service = cors_client
     body = _template_body(request_id="req:b1b-replay")
+    seed_completed_turn(client, service, body)
     first = client.post(
         "/v1/mind-turn",
         json=body,
@@ -255,8 +261,9 @@ def test_exact_replay_matches_and_skips_second_agent(cors_client) -> None:
 
 
 def test_changed_body_same_request_id_returns_sanitized_conflict(cors_client) -> None:
-    client, _fixture, _service = cors_client
+    client, _fixture, service = cors_client
     body = _template_body(request_id="req:b1b-conflict")
+    seed_completed_turn(client, service, body)
     first = client.post(
         "/v1/mind-turn",
         json=body,
