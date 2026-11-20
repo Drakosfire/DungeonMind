@@ -6,9 +6,9 @@ No client, pool, or environment lookup occurs at module import time.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 import psycopg
 from psycopg import Connection, sql
@@ -28,6 +28,34 @@ def _map_driver_error(exc: BaseException) -> None:
         raise PersistenceUnavailableError(str(exc)) from exc
     if isinstance(exc, psycopg.Error):
         raise PersistenceIntegrityError(str(exc)) from exc
+
+
+class ReadTransactions(Protocol):
+    def transaction(self) -> AbstractContextManager[Connection[Any]]: ...
+
+    def read_scope(self) -> AbstractContextManager[ReadTransactions]: ...
+
+
+class _ScopedReadTransactions:
+    def __init__(self, connection: Connection[Any]) -> None:
+        self._connection = connection
+
+    @contextmanager
+    def transaction(self) -> Iterator[Connection[Any]]:
+        if self._connection.closed:
+            raise PersistenceUnavailableError("native source read scope is closed")
+        try:
+            with self._connection.transaction():
+                yield self._connection
+        except Exception as exc:
+            _map_driver_error(exc)
+            raise
+
+    @contextmanager
+    def read_scope(self) -> Iterator[ReadTransactions]:
+        if self._connection.closed:
+            raise PersistenceUnavailableError("native source read scope is closed")
+        yield self
 
 
 class PostgresDatabase:
@@ -51,6 +79,17 @@ class PostgresDatabase:
         try:
             with self.connect() as conn, conn.transaction():
                 yield conn
+        except Exception as exc:
+            _map_driver_error(exc)
+            raise
+
+    @contextmanager
+    def read_scope(self) -> Iterator[ReadTransactions]:
+        """Reuse an owned read-only connection without merging transactions."""
+        try:
+            with self.connect() as connection:
+                connection.read_only = True
+                yield _ScopedReadTransactions(connection)
         except Exception as exc:
             _map_driver_error(exc)
             raise

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
@@ -41,7 +42,7 @@ from dungeonmind.contracts.vnext.source import SourceArtifactV3, SourceRevisionV
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
 
-from .database import SCHEMA, PostgresDatabase, jsonb
+from .database import SCHEMA, PostgresDatabase, ReadTransactions, jsonb
 from .records import (
     _ARTIFACT_SELECT,
     _REVISION_SELECT,
@@ -49,7 +50,11 @@ from .records import (
     _return_revision,
 )
 from .vnext_knowledge import _lock_space, _read_head, _read_revision
-from .vnext_sources import PostgresNativeSourceEvidenceRepository, _lock_native_epoch
+from .vnext_sources import (
+    PostgresNativeSourceEvidenceRepository,
+    _lock_native_epoch,
+    _PostgresNativeTextSourceView,
+)
 
 
 def _legacy_pair(
@@ -479,19 +484,26 @@ class PostgresOperatorSourceRepository(PostgresNativeSourceEvidenceRepository):
 
     def open_native_source_view(self, space_id: str) -> NativeTextSourceView:
         return _PostgresOperatorSourceView(
-            self._database, space_id, super().open_native_source_view(space_id)
+            self._database, space_id, self._open_native_source_view(space_id)
         )
 
 
 class _PostgresOperatorSourceView:
     def __init__(
-        self, database: PostgresDatabase, space_id: str, base: NativeTextSourceView,
+        self, database: ReadTransactions, space_id: str, base: _PostgresNativeTextSourceView,
     ) -> None:
         self._database, self._space_id, self._base = database, space_id, base
 
     @property
     def epoch(self) -> int:
         return self._base.epoch
+
+    @contextmanager
+    def read_scope(self) -> Iterator[_PostgresOperatorSourceView]:
+        with self._database.read_scope() as transactions:
+            yield _PostgresOperatorSourceView(
+                transactions, self._space_id, self._base._with_transactions(transactions)
+            )
 
     def open_coherent_view(self) -> _PostgresOperatorSourceView:
         return _PostgresOperatorSourceView(
