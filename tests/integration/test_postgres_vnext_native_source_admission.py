@@ -13,6 +13,7 @@ from dungeonmind.application.vnext.errors import (
 from dungeonmind.application.vnext.initialization import initialize_empty_knowledge_space
 from dungeonmind.application.vnext.native_source_access import (
     open_admitted_native_text,
+    open_admitted_native_text_batch,
     open_native_text_source_access_context,
     refresh_native_text_source_access_context,
 )
@@ -575,6 +576,12 @@ def test_postgres_concurrent_withdrawal_preserves_graph_and_pinned_source_view(p
     assert refreshed.source_view.epoch == context.source_view.epoch + 1
     assert open_admitted_native_text(refreshed, evidence_id).status == "unavailable"
     assert open_admitted_native_text(context, evidence_id).body_text == BODY
+    assert open_admitted_native_text_batch(refreshed, (evidence_id,)) == (
+        open_admitted_native_text(refreshed, evidence_id),
+    )
+    assert open_admitted_native_text_batch(context, (evidence_id,)) == (
+        open_admitted_native_text(context, evidence_id),
+    )
     assert fresh.get_head(request.space_id) == head
     assert fresh.head_events(request.space_id) == events
     assert (

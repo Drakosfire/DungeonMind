@@ -442,6 +442,9 @@ def test_new_publication_reopens_through_derived_read_artifact(pg, mode, monkeyp
     assert {e.evidence_ref_id for e in complete.evidence} == {proof.evidence_ref_id}
     opened = native_source_access.open_admitted_native_text(source_context, proof.evidence_ref_id)
     assert opened.status == "available" and opened.body_text == BODY
+    assert native_source_access.open_admitted_native_text_batch(
+        source_context, (proof.evidence_ref_id, "missing", proof.evidence_ref_id)
+    ) == (opened, native_source_access.open_admitted_native_text(source_context, "missing"), opened)
     assert (opened.source_artifact_id, opened.source_revision_id) == (
         root.source_artifact_id,
         root.source_revision_id,
