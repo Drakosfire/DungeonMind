@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from typing import Any
 
 from psycopg import Connection, sql
@@ -11,14 +12,18 @@ from pydantic import ValidationError
 from ...application.vnext._read_artifact import decode_read_artifact
 from ...application.vnext._source_wire import _FORMAT, UnsupportedSourceWire, encode_source_wire
 from ...application.vnext.errors import RevisionStructuralIntegrityError
-from ...application.vnext.model import PARSED_REVISION_FORMAT_VERSION
+from ...application.vnext.model import PARSED_REVISION_FORMAT_VERSION, ParsedKnowledgeRevision
 from ...application.vnext.records import StoredKnowledgeRevision
 from ...domain.canonical import canonical_sha256
 from ...domain.errors import PersistenceIntegrityError
 from .database import SCHEMA
 
 
-def _generate(stored: StoredKnowledgeRevision) -> bytes | None:
+def _generate(
+    stored: StoredKnowledgeRevision,
+    *,
+    capture_parsed: Callable[[ParsedKnowledgeRevision], None] | None = None,
+) -> bytes | None:
     try:
         artifact = encode_source_wire(stored)
     except UnsupportedSourceWire:
@@ -35,6 +40,8 @@ def _generate(stored: StoredKnowledgeRevision) -> bytes | None:
         raise
     if parsed is None:
         raise PersistenceIntegrityError("generated artifact unexpectedly unsupported")
+    if capture_parsed is not None:
+        capture_parsed(parsed)
     return artifact
 
 
@@ -43,8 +50,13 @@ def _insert_artifact(
     stored: StoredKnowledgeRevision,
     *,
     replace: bool = False,
+    capture_parsed: Callable[[ParsedKnowledgeRevision], None] | None = None,
 ) -> bool:
-    artifact = _generate(stored)
+    artifact = (
+        _generate(stored)
+        if capture_parsed is None
+        else _generate(stored, capture_parsed=capture_parsed)
+    )
     if artifact is None:
         return False
     # Replacement is exclusive to explicit identity-only backfill, never a silent

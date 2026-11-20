@@ -25,6 +25,7 @@ from dungeonmind.domain.errors import PersistenceIntegrityError
 from dungeonmind.infrastructure.postgres.database import PostgresDatabase
 from dungeonmind.infrastructure.postgres.vnext_knowledge import (
     PostgresKnowledgeRevisionRepository,
+    VerifiedKnowledgeRevisionCache,
 )
 from tests.unit.test_vnext_cas_publication import SPACE, _parsed_parent, genesis_command
 from tests.unit.test_vnext_governed_materialization import _lab_descriptors
@@ -335,10 +336,13 @@ def test_failure_after_result_insert_rolls_back_everything(migrated_database: st
     setup, parent = _setup(migrated_database)
 
     def boom() -> None:
+        assert repo._published_parse is None
         raise RuntimeError("after result insert")
 
     repo = PostgresKnowledgeRevisionRepository(
-        PostgresDatabase(migrated_database), after_prospective_result_insert=boom
+        PostgresDatabase(migrated_database),
+        verification_cache=VerifiedKnowledgeRevisionCache(max_bytes=1_000_000),
+        after_prospective_result_insert=boom,
     )
     with pytest.raises(KnowledgePublicationOutcomeUnknownError):
         _publish(
@@ -347,6 +351,7 @@ def test_failure_after_result_insert_rolls_back_everything(migrated_database: st
             _contribution([_entity()]),
             "prepared:rollback",
         )
+    assert repo._published_parse is None
     assert setup.get_head(SPACE).head_revision_id == parent.revision_id  # type: ignore[union-attr]
     assert _counts(migrated_database) == (1, 1, 0, 0)
 
@@ -416,4 +421,35 @@ def test_corrupt_result_fails_closed_and_fk_prevents_orphan(
                 parent.revision_id,
                 "0" * 64,
             ),
+        )
+
+
+def test_committed_parse_cannot_mask_changed_primary_row(migrated_database, pg):
+    from dungeonmind.application.vnext.native_source_access import (
+        open_native_text_source_access_context,
+    )
+
+    _, parent = _setup(migrated_database)
+    database = pg.database
+    repo = PostgresKnowledgeRevisionRepository(
+        database, verification_cache=VerifiedKnowledgeRevisionCache(max_bytes=1_000_000)
+    )
+    result = _publish(repo, parent, _contribution([_entity()]), "prepared:changed-row")
+    child = result.publication_receipt.published_revision_id
+    assert repo._published_parse is not None
+    with database.transaction() as conn:
+        conn.execute(
+            "UPDATE dungeonmind.knowledge_revisions "
+            "SET graph_payload = jsonb_set(graph_payload, '{unexpected}', 'true') "
+            "WHERE space_id = %s AND revision_id = %s",
+            (SPACE, child),
+        )
+    domain, _ = _lab_descriptors()
+    with pytest.raises(PersistenceIntegrityError, match="record_fingerprint"):
+        open_native_text_source_access_context(
+            repository=repo,
+            space_id=SPACE,
+            revision_id=child,
+            domain_contract=domain,
+            prefer_verified_source_rows=True,
         )

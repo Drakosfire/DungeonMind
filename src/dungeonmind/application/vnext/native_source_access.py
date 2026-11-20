@@ -152,6 +152,11 @@ def open_native_text_source_access_context(
         raise KnowledgeReadContextIntegrityError("native source context domain pin mismatch")
     def load_parsed() -> ParsedKnowledgeRevision:
         if load_rows is not None:
+            take = getattr(repository, "_take_published_parse", None)
+            if callable(take):
+                published_parse = take(stored)
+                if isinstance(published_parse, ParsedKnowledgeRevision):
+                    return published_parse
             parsed_rows = parse_verified_source_rows(stored, load_rows())
             if parsed_rows is not None:
                 return parsed_rows
