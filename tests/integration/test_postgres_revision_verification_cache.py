@@ -155,7 +155,7 @@ def test_current_historical_and_read_only_ephemeral_readers(migrated_database, p
                 actual = reader.get_revision(SPACE, expected.revision.revision_id)
                 assert actual == expected
                 actual.revision.domain_contract_ref.domain_id = "caller mutation"
-        assert reconstruct.call_count == 2  # First was cached by _setup.
+        assert reconstruct.call_count == 1  # Both proofs fit; only the second is new.
 
 
 def test_missing_row_does_not_reuse_a_verified_proof(migrated_database, pg):
