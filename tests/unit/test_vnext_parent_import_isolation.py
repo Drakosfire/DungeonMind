@@ -74,7 +74,7 @@ def test_cold_current_entry_points_do_not_load_classic_runtime(entry):
         ),
         "application": (
             "import dungeonmind.application as facade; "
-            "assert 'WorldGraphProjectionService' in dir(facade)"
+            "assert 'WorldGraphProjectionService' not in dir(facade)"
         ),
         "contract_models": (
             "from dungeonmind.contracts.vnext import KnowledgeRevision as Model; "
@@ -163,16 +163,6 @@ def test_cold_historical_reader_does_not_load_fresh_publishers_or_require_postgr
             "application",
             "finalize_contribution_review_v4",
             "dungeonmind.application.contribution_review_v4",
-        ),
-        (
-            "application",
-            "WorldGraphProjectionService",
-            "dungeonmind.application.world_graph_projection",
-        ),
-        (
-            "application",
-            "WorldGraphRetrievalService",
-            "dungeonmind.application.world_graph_retrieval",
         ),
     ],
 )
@@ -304,4 +294,21 @@ def test_retired_classic_contract_is_available_only_from_explicit_leaf(name, lea
     with pytest.raises(AttributeError):
         getattr(facade, name)
     definition = getattr(importlib.import_module(f"dungeonmind.contracts.{leaf}"), name)
+    assert definition.__name__ == name
+
+
+@pytest.mark.parametrize(
+    "name,leaf",
+    [
+        ("WorldGraphProjectionService", "world_graph_projection"),
+        ("WorldGraphRetrievalService", "world_graph_retrieval"),
+    ],
+)
+def test_retired_classic_service_is_available_only_from_explicit_leaf(name, leaf):
+    facade = importlib.import_module("dungeonmind.application")
+    assert name not in dir(facade)
+    assert name not in facade.__all__
+    with pytest.raises(AttributeError):
+        getattr(facade, name)
+    definition = getattr(importlib.import_module(f"dungeonmind.application.{leaf}"), name)
     assert definition.__name__ == name

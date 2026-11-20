@@ -1670,8 +1670,9 @@ def test_63_historical_reader_files_remain_at_pinned_digests() -> None:
 
 def _assert_world_graph_retrieval_compatibility() -> None:
     from dungeonmind import application as dm_application
+    from dungeonmind.application.world_graph_retrieval import WorldGraphRetrievalService
 
-    service = dm_application.WorldGraphRetrievalService
+    service = WorldGraphRetrievalService
     assert all(
         callable(getattr(service, method))
         for method in (
