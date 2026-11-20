@@ -150,6 +150,7 @@ def test_native_context_rebuild_on_child_and_parent_return(
     assert results["first_child_neighborhood_ms"] == results["warm_child_neighborhood_ms"]
     assert returned_parent == first_parent
     assert returned_parent is not first_parent
+    assert stage_counts["publication_ms"].get("_reconstruct", 0) == 1
     assert stage_counts["first_child_neighborhood_ms"].get("_reconstruct", 0) == 0
     assert stage_counts["return_to_parent_neighborhood_ms"].get(
         "_reconstruct", 0
