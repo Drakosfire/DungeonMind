@@ -11,6 +11,7 @@ from dungeonmind.contracts.vnext.domain import DomainContractDescriptor, Semanti
 from dungeonmind.contracts.vnext.knowledge import IdentityAlias, PublishKnowledgeRevisionCommand
 from dungeonmind.contracts.vnext.prospective import KnowledgeProspectivePublication
 from dungeonmind.contracts.vnext.prospective_aliases import ProspectiveAliasContributionV1
+from dungeonmind.contracts.vnext.source import EvidenceRefV3
 from dungeonmind.domain.canonical import canonical_json, canonical_sha256
 
 from .errors import RevisionStructuralIntegrityError
@@ -40,6 +41,7 @@ def _plan_prospective_alias_contribution(
     publication_id: str,
     domain_contract: DomainContractDescriptor,
     semantic_profile: SemanticProfileDescriptorV2,
+    admitted_evidence: Sequence[EvidenceRefV3] = (),
 ) -> tuple[
     GovernedMaterializationResult, ResolvedProspectiveContribution, PublishKnowledgeRevisionCommand
 ]:
@@ -65,6 +67,7 @@ def _plan_prospective_alias_contribution(
         publication_id=publication_id,
         domain_contract=domain_contract,
         semantic_profile=semantic_profile,
+        admitted_evidence=admitted_evidence,
     )
     _close_identity_decision_ids(resolved.canonical_contribution, decisions)
     started = time.perf_counter()
@@ -73,6 +76,7 @@ def _plan_prospective_alias_contribution(
     payload = base_command.graph_payload
     aliases = {a["alias_id"]: a for a in payload["aliases"]}
     accepted, rejected = list(base.accepted_item_ids), list(base.rejected_item_ids)
+    admitted_evidence_ids = {e.evidence_ref_id for e in admitted_evidence}
     for item in request.aliases:
         if decisions_by_id[item.item_id] != "accepted":
             rejected.append(item.item_id)
@@ -82,7 +86,11 @@ def _plan_prospective_alias_contribution(
             _fail("alias_target_not_accepted_entity_create", item_id=item.item_id)
         if item.alias_id in aliases or item.alias_id in parent.aliases_by_id:
             _fail("alias_create_identity_collision", alias_id=item.alias_id)
-        if any(identifier not in parent.evidence_by_id for identifier in item.evidence_ref_ids):
+        if any(
+            identifier not in parent.evidence_by_id
+            and identifier not in admitted_evidence_ids
+            for identifier in item.evidence_ref_ids
+        ):
             _fail("alias_evidence_not_in_parent", item_id=item.item_id)
         aliases[item.alias_id] = IdentityAlias(
             alias_id=item.alias_id,

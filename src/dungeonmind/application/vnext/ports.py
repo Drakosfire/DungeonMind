@@ -21,6 +21,11 @@ from dungeonmind.contracts.vnext.native_source import (
     NativeTextSourceOriginV1,
     NativeUtf8SpanProofV1,
 )
+from dungeonmind.contracts.vnext.native_source_publication import (
+    GovernedNativeSourcePublicationReceiptV1,
+    GovernedNativeSourcePublicationV1,
+    NativeSourcePublicationSupportRefV1,
+)
 from dungeonmind.contracts.vnext.operator_source import (
     OperatorSourceAttestationReceiptV1,
     OperatorSourceSelectionV1,
@@ -229,3 +234,34 @@ class OperatorSourceBindingRepository(NativeSourceEvidenceRepository, Protocol):
     def get_operator_source_receipt(
         self, space_id: str, operation_id: str
     ) -> OperatorSourceAttestationReceiptV1 | None: ...
+
+
+class NativeSourcePublicationRepository(NativeSourceEvidenceRepository, Protocol):
+    """Source-authorized publication; exact source metadata is immutable, not a body open."""
+
+    def get_native_source_publication_extension_receipt(
+        self, space_id: str, operation_id: str
+    ) -> NativeSourceEvidenceExtensionReceiptV1 | None: ...
+
+    def get_native_source_publication_support(
+        self, space_id: str, source_revision_id: str, span_id: str
+    ) -> NativeSourcePublicationSupportRefV1 | None: ...
+
+    def get_native_source_publication_source(
+        self, space_id: str, admission_id: str
+    ) -> tuple[
+        SourceRevisionV2, tuple[NativeUtf8SpanProofV1, ...], NativeSourceAdmissionReceiptV1
+    ]: ...
+
+    def get_native_source_publication_receipt(
+        self, space_id: str, publication_id: str
+    ) -> GovernedNativeSourcePublicationReceiptV1 | None: ...
+
+    def publish_governed_native_source_publication(
+        self,
+        *,
+        request: GovernedNativeSourcePublicationV1,
+        domain_contract: DomainContractDescriptor,
+        semantic_profile: SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
+        audience_labels: Sequence[str],
+    ) -> GovernedNativeSourcePublicationReceiptV1: ...

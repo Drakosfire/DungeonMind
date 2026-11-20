@@ -32,3 +32,27 @@ def test_bundle_inventory_matches_public_contract_models() -> None:
     assert bundle["semantic_invariants"]["invariant_count"] == len(
         bundle["semantic_invariants"]["invariants"]
     )
+
+
+def test_source_publication_contracts_are_additive_outside_frozen_inventory():
+    assert tuple(m.__name__ for m in vnext.PUBLIC_CONTRACT_MODELS) == (
+        "Assertion",
+        "ContributionDisposition",
+        "DomainContractDescriptor",
+        "DomainContractRef",
+        "Entity",
+        "EvidenceRefV3",
+        "IdentityAlias",
+        "IdentityDecisionV3",
+        "KnowledgeContribution",
+        "KnowledgeHead",
+        "KnowledgeRevision",
+        "ProjectionRequest",
+        "ProjectionSnapshot",
+        "PublishKnowledgeRevisionCommand",
+        "SemanticProfileDescriptorV2",
+        "SourceArtifactV3",
+        "SourceRevisionV2",
+    )
+    assert vnext.GovernedNativeSourcePublicationV1 not in vnext.PUBLIC_CONTRACT_MODELS
+    assert vnext.GovernedNativeSourcePublicationReceiptV1 not in vnext.PUBLIC_CONTRACT_MODELS

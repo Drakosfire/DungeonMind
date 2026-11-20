@@ -37,6 +37,11 @@ from dungeonmind.contracts.vnext.native_source import (
     NativeTextSourceOriginV1,
     NativeUtf8SpanProofV1,
 )
+from dungeonmind.contracts.vnext.native_source_publication import (
+    GovernedNativeSourcePublicationReceiptV1,
+    GovernedNativeSourcePublicationV1,
+    NativeSourcePublicationSupportRefV1,
+)
 from dungeonmind.contracts.vnext.publication import KnowledgePublicationReceipt
 from dungeonmind.contracts.vnext.source import SourceArtifactV3, SourceRevisionV2
 from dungeonmind.domain.canonical import canonical_sha256
@@ -105,6 +110,9 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
         self._after_native_publication_receipt_insert = after_receipt_insert
         self._native_epoch = 0
         self._native_withdrawals: dict[tuple[str, str, str], int] = {}
+        self._source_admission_by_span = {}
+        self._source_publication_receipts = {}
+        self._source_publication_by_span = {}
         self._extension_receipts = {}
         self._extension_by_span = {}
         self._native_receipts: dict[tuple[str, str], NativeSourceAdmissionReceiptV1] = {}
@@ -191,6 +199,7 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
             old_records = dict(self._native_records)
             old_by_revision = dict(self._by_revision)
             old_by_span = dict(self._by_span)
+            old_source_admission_by_span = dict(self._source_admission_by_span)
             old_global = dict(self._global_identity_space)
             try:
                 stored = commit_expected_parent(
@@ -239,6 +248,9 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
                 )
                 for proof in parts.span_proofs:
                     self._by_span[(request.space_id, proof.span_id)] = (record, proof)
+                    self._source_admission_by_span[(request.space_id, proof.span_id)] = (
+                        request.admission_id
+                    )
                 if self._after_native_source_insert is not None:
                     self._after_native_source_insert()
                 companion = NativeSourceAdmissionReceiptV1(
@@ -273,6 +285,7 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
                 self._native_records = old_records
                 self._by_revision = old_by_revision
                 self._by_span = old_by_span
+                self._source_admission_by_span = old_source_admission_by_span
                 self._global_identity_space = old_global
                 raise
         if self._after_publication_commit is not None:
@@ -290,6 +303,229 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
             if canonical_sha256(receipt.model_dump(mode="json")) != fingerprint:
                 raise PersistenceIntegrityError("extension receipt fingerprint drift")
             return type(receipt).model_validate(receipt.model_dump(mode="json"))
+
+    def get_native_source_publication_extension_receipt(
+        self, space_id: str, operation_id: str
+    ) -> NativeSourceEvidenceExtensionReceiptV1 | None:
+        return self.get_native_source_evidence_extension_receipt(space_id, operation_id)
+
+    def get_native_source_publication_support(
+        self, space_id: str, source_revision_id: str, span_id: str
+    ) -> NativeSourcePublicationSupportRefV1 | None:
+        from ...application.vnext.native_source_publication import _support_reference
+
+        with self._lock:
+            origins = []
+            admission = self._source_admission_by_span.get((space_id, span_id))
+            if admission is not None:
+                _, proofs, receipt = self.get_native_source_publication_source(space_id, admission)
+                origins.append(("admission", receipt, proofs))
+            extension = self._extension_by_span.get((space_id, span_id))
+            if extension is not None:
+                receipt = self.get_native_source_publication_extension_receipt(space_id, extension)
+                if receipt is None:
+                    raise PersistenceIntegrityError("support extension index drift")
+                origins.append(("extension", receipt, receipt.proofs))
+            publication = self._source_publication_by_span.get((space_id, span_id))
+            if publication is not None:
+                receipt = self.get_native_source_publication_receipt(space_id, publication)
+                if receipt is None:
+                    raise PersistenceIntegrityError("support publication index drift")
+                origins.append(("publication", receipt, receipt.proofs))
+            if len(origins) > 1:
+                raise PersistenceIntegrityError("support origin ambiguous")
+            if not origins:
+                return None
+            kind, receipt, proofs = origins[0]
+            return _support_reference(self, source_revision_id, span_id, kind, receipt, proofs)
+
+    def get_native_source_publication_source(
+        self, space_id: str, admission_id: str
+    ) -> tuple[SourceRevisionV2, tuple[NativeUtf8SpanProofV1, ...], NativeSourceAdmissionReceiptV1]:
+        """Immutable metadata only: never open/read/hash body bytes here."""
+        with self._lock:
+            receipt = self.get_native_source_admission_receipt(space_id, admission_id)
+            if receipt is None:
+                raise PersistenceIntegrityError("source publication original missing")
+            record = self._by_revision.get((space_id, receipt.source_revision_id))
+            if record is None or record.fingerprint != _native_fingerprint(
+                artifact=record.artifact,
+                revision=record.revision,
+                body_sha256=record.revision.content_sha256,
+                proofs=record.proofs,
+                origin=record.origin,
+                epoch=record.epoch,
+            ):
+                raise PersistenceIntegrityError("source publication original metadata drift")
+            if (
+                record.artifact.source_artifact_id,
+                record.revision.source_revision_id,
+                record.origin,
+                record.epoch,
+            ) != (
+                receipt.source_artifact_id,
+                receipt.source_revision_id,
+                receipt.origin,
+                receipt.source_authority_epoch,
+            ) or {(b.span_id, b.evidence_ref_id) for b in receipt.bindings} != {
+                (p.span_id, p.evidence_ref_id) for p in record.proofs
+            }:
+                raise PersistenceIntegrityError("source publication original proof drift")
+            return (
+                record.revision.model_copy(deep=True),
+                tuple(p.model_copy(deep=True) for p in record.proofs),
+                receipt,
+            )
+
+    def get_native_source_publication_receipt(
+        self, space_id: str, publication_id: str
+    ) -> GovernedNativeSourcePublicationReceiptV1 | None:
+        from ...contracts.vnext.native_source_publication import (
+            GovernedNativeSourcePublicationReceiptV1,
+        )
+
+        with self._lock:
+            value = self._source_publication_receipts.get((space_id, publication_id))
+            if value is None:
+                return None
+            receipt, fingerprint = value
+            if canonical_sha256(receipt.model_dump(mode="json")) != fingerprint:
+                raise PersistenceIntegrityError("source publication receipt fingerprint drift")
+            receipt = GovernedNativeSourcePublicationReceiptV1.model_validate(
+                receipt.model_dump(mode="json")
+            )
+            if (receipt.space_id, receipt.publication_id) != (
+                space_id,
+                publication_id,
+            ) or self._receipts.get((space_id, publication_id)) != receipt.publication_receipt:
+                raise PersistenceIntegrityError("source publication receipt identity drift")
+            return receipt
+
+    def publish_governed_native_source_publication(
+        self,
+        *,
+        request: GovernedNativeSourcePublicationV1,
+        domain_contract: DomainContractDescriptor,
+        semantic_profile: SemanticProfileDescriptorV2 | SemanticProfileDescriptorV3,
+        audience_labels: Sequence[str],
+    ) -> GovernedNativeSourcePublicationReceiptV1:
+        from ...application.vnext.errors import KnowledgePublicationOutcomeUnknownError
+        from ...application.vnext.native_source_publication import (
+            make_receipt,
+            publication_plan,
+            snapshot_inputs,
+        )
+        from ...contracts.vnext.native_source_publication import (
+            GovernedNativeSourcePublicationReceiptV1,
+        )
+
+        request, domain, profile = snapshot_inputs(request, domain_contract, semantic_profile)
+        with self._lock:
+            record = self._by_revision.get((request.space_id, request.source_revision_id))
+            intervals = (
+                set() if record is None else {(p.start_byte, p.end_byte) for p in record.proofs}
+            )
+            for key in self._extension_receipts:
+                receipt = self.get_native_source_evidence_extension_receipt(*key)
+                if receipt is None:
+                    raise PersistenceIntegrityError("extension receipt index drift")
+                if (receipt.space_id, receipt.source_revision_id) == (
+                    request.space_id,
+                    request.source_revision_id,
+                ):
+                    intervals.update((p.start_byte, p.end_byte) for p in receipt.proofs)
+            for key in self._source_publication_receipts:
+                receipt = self.get_native_source_publication_receipt(*key)
+                if receipt is None:
+                    raise PersistenceIntegrityError("publication receipt index drift")
+                if (receipt.space_id, receipt.source_revision_id) == (
+                    request.space_id,
+                    request.source_revision_id,
+                ):
+                    intervals.update((p.start_byte, p.end_byte) for p in receipt.proofs)
+            plan = publication_plan(
+                self,
+                request,
+                domain,
+                profile,
+                audience_labels=tuple(audience_labels),
+                intervals=intervals,
+            )
+            if isinstance(plan, GovernedNativeSourcePublicationReceiptV1):
+                return plan
+            ids = [i for p in plan.proofs for i in (p.span_id, p.evidence_ref_id)]
+            if any(i in self._global_identity_space for i in ids):
+                raise PersistenceIntegrityError("composed source identity collision")
+            names = (
+                "_revisions",
+                "_heads",
+                "_events",
+                "_receipts",
+                "_native_epoch",
+                "_source_publication_receipts",
+                "_source_publication_by_span",
+                "_global_identity_space",
+            )
+            snapshot = {
+                n: (
+                    list(getattr(self, n))
+                    if isinstance(getattr(self, n), list)
+                    else dict(getattr(self, n))
+                    if isinstance(getattr(self, n), dict)
+                    else getattr(self, n)
+                )
+                for n in names
+            }
+            try:
+                command = plan.command
+                stored = commit_expected_parent(
+                    command,
+                    read_head=lambda: self._heads.get(request.space_id),
+                    read_revision=lambda rid: self._revisions.get((request.space_id, rid)),
+                    insert_revision=self._insert_native_child,
+                    advance_head=self._advance_native_head,
+                )
+                pub = KnowledgePublicationReceipt(
+                    space_id=request.space_id,
+                    publication_id=request.publication_id,
+                    command_sha256=canonical_sha256(command.model_dump(mode="json")),
+                    expected_parent_revision_id=request.expected_parent_revision_id,
+                    published_revision_id=stored.revision.revision_id,
+                    graph_payload_sha256=stored.graph_payload_sha256,
+                )
+                self._receipts[(request.space_id, request.publication_id)] = pub
+                if self._after_native_publication_receipt_insert:
+                    self._after_native_publication_receipt_insert()
+                self._native_epoch += int(request.evidence.mode == "new_intervals")
+                receipt = make_receipt(request, plan, pub)
+                self._source_publication_receipts[(request.space_id, request.publication_id)] = (
+                    receipt,
+                    canonical_sha256(receipt.model_dump(mode="json")),
+                )
+                for proof in plan.proofs:
+                    self._source_publication_by_span[(request.space_id, proof.span_id)] = (
+                        request.publication_id
+                    )
+                self._global_identity_space.update({i: request.space_id for i in ids})
+                if self._after_native_source_insert:
+                    self._after_native_source_insert()
+                if self._after_native_receipt_insert:
+                    self._after_native_receipt_insert()
+            except Exception:
+                for n, v in snapshot.items():
+                    setattr(self, n, v)
+                raise
+        if self._after_publication_commit:
+            try:
+                self._after_publication_commit()
+            except Exception as exc:
+                raise KnowledgePublicationOutcomeUnknownError(
+                    space_id=request.space_id,
+                    publication_id=request.publication_id,
+                    expected_published_revision_id=stored.revision.revision_id,
+                    reason="post_commit_acknowledgement_failed",
+                ) from exc
+        return receipt.model_copy(deep=True)
 
     def publish_native_source_evidence_extension(
         self,
@@ -340,6 +576,15 @@ class InMemoryNativeSourceEvidenceRepository(InMemoryKnowledgeRevisionRepository
                     and receipt.source_revision_id == request.source_revision_id
                 ):
                     intervals.update((p.start_byte, p.end_byte) for p in receipt.proofs)
+            for key in self._source_publication_receipts:
+                composed = self.get_native_source_publication_receipt(*key)
+                if composed is None:
+                    raise PersistenceIntegrityError("publication receipt index drift")
+                if (composed.space_id, composed.source_revision_id) == (
+                    request.space_id,
+                    request.source_revision_id,
+                ):
+                    intervals.update((p.start_byte, p.end_byte) for p in composed.proofs)
             plan = extension_plan(
                 repository=self,
                 request=request,
@@ -567,6 +812,37 @@ class _InMemoryNativeTextSourceView:
                         raise PersistenceIntegrityError("extension span index drift")
                     indexed_span = (record, proof)
                     proof_epoch = receipt.source_authority_epoch
+            if indexed_span is None:
+                operation = self._repository._source_publication_by_span.get(
+                    (self._space_id, span_id)
+                )
+                if operation is not None:
+                    receipt = self._repository.get_native_source_publication_receipt(
+                        self._space_id, operation
+                    )
+                    if (
+                        receipt is None
+                        or receipt.mode != "new_intervals"
+                        or (receipt.source_artifact_id, receipt.source_revision_id)
+                        != (source_artifact_id, source_revision_id)
+                    ):
+                        raise PersistenceIntegrityError("composed span index drift")
+                    root = self._repository.get_native_source_admission_receipt(
+                        self._space_id, receipt.original_admission_id
+                    )
+                    if (
+                        root is None
+                        or canonical_sha256(root.model_dump(mode="json"))
+                        != receipt.original_admission_sha256
+                    ):
+                        raise PersistenceIntegrityError("composed span lineage drift")
+                    if receipt.source_authority_epoch_after > self._epoch:
+                        return None
+                    proof = next((p for p in receipt.proofs if p.span_id == span_id), None)
+                    if proof is None:
+                        raise PersistenceIntegrityError("composed span proof missing")
+                    indexed_span = (record, proof)
+                    proof_epoch = receipt.source_authority_epoch_after
             if (
                 indexed_revision is not record
                 or indexed_span is None
