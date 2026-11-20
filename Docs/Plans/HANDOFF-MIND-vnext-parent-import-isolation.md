@@ -1,6 +1,6 @@
 # vNext parent-package import isolation
 
-Status: ACTIVE. Owner MIND under explicit full-lane design, implementation,
+Status: COMPLETE — accepted implementation; merge pending. Owner MIND under explicit full-lane design, implementation,
 review and merge authorization. Serial Core successor to PR #247 at
 `d206e56a9aa34ae6eb6cc7ac61980a7ac8919c4d`; branch
 `codex/v10-native-import-isolation`, existing task Core checkout. Pin this brief
@@ -132,5 +132,46 @@ separate nested smoke environment. Isolate the new reflection proof instead of
 changing existing import-boundary assertions. Original logs remain evidence;
 these findings do not waive the required repaired-head full unit run.
 
-Acceptance remains pending repaired-head source, installed-wheel, PostgreSQL
-qualification and independent review. No serving build or authority changed.
+## Accepted source and remaining delivery
+
+Accepted source: `b7255ba0fb3513831e59da432ea3e83b64d88c74`. Independent
+COMMENT review [5993193078](https://github.com/Drakosfire/DungeonMind/pull/248#pullrequestreview-5993193078)
+accepts this bounded import prerequisite. PR #248 remains merge pending until
+the documentation seal is reviewed and its checks pass.
+
+- Exact-source default locked unit run: 3,236 passed, 21 skipped. The 21 include
+  ten new PostgreSQL-owning cases skipped without that optional extra; these
+  ten pass in the PostgreSQL-installed wheel run. This minimal 3,257-case scope
+  is distinct from the earlier 3,373-case extras-rich collection.
+- Whole Ruff, Core/PostgreSQL/service Pyright and all 362 facade bindings pass.
+  Synthetic 100-object CI smoke passes; no frozen retrieval baseline was rerun.
+- Exact-source PostgreSQL: 622 passed, one skipped, no failures/errors.
+  The owned verification database was dropped at zero clients and verified
+  absent; both recorded process IDs are absent. Source stayed clean/unchanged.
+- Built/installed wheel: eight minimal cold cases, 26 PostgreSQL-owning cases
+  (including class/constructor source reflection), 172 historical/conformance
+  cases, 219 package files and 362 aliases pass. Before/after installed origins
+  and file hashes agree; all 21 recorded processes are absent.
+- Hosted [CI44740012518](https://github.com/Drakosfire/DungeonMind/actions/runs/44740012518)
+  passes core (3,236/21), integration (622/1), synthetic smoke and actual
+  WorldKeeper `348c0dbf5156e7e7d5d951de90b9086501fc834f` source-admission witness.
+  It executed test-merge `3536b2b8e27e9efabc76c8ccf59efa3922f80f7e`, whose
+  tree `cba2f897e385d75198dee4cb7991e684b2c05dc1` equals accepted source.
+  This is not direct execution of a later documentation seal or final merge.
+
+Evidence owner MIND: task root
+`/home/drakosfire/Projects/.codex/v7-elderwyld-scope`,
+`scratch/v10-core-parent-import-isolation/{core-b7255ba0.json,sql-b7255ba0.json,ci-b7255ba0.log,wheel-b7255ba0/}`.
+Retain its scratch/cache and distinct repaired-wheel environment for the active
+full goal and exact-head audit; do not overwrite the a793 proof environment.
+At this checkpoint scratch is 6,688,911 bytes and cache 157,552,276 bytes on
+Projects UUID48fa5d10-fe99-4557-9fc9-d8a2a4b41ac8 (before this seal). No manual
+filesystem cleanup occurred; reclaimed filesystem bytes are zero. Cleanup follow-up:
+inventory active processes/mounts, dirty worktrees and unique commits before
+any specifically authorized disposal after these artifacts cease to be needed.
+
+Next serial slice adopts the accepted Core merge in Buddy and isolates native
+projection presentation imports; retained-bootstrap and mounted classic-route
+disposition remains subsequent work. No serving build or authority changed.
+Public aliases, deployment, later-write-safe rollback and V11 remain incomplete.
+The complete optimized Elderwyld cutover goal stays active.
