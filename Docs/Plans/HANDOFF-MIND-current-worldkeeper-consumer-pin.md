@@ -1,6 +1,6 @@
 # V10 — current WorldKeeper CI consumer pin
 
-Status: ACTIVE. Owner MIND under the operator's full-lane design, implementation,
+Status: IMPLEMENTED — exact-head CI/review pending. Owner MIND under the operator's full-lane design, implementation,
 review and merge authority. Serial predecessor Core245 accepted at
 `7b79fc4d1b5d5a39a3a59800fc2c0759b200221f` (review5988191850, exacte50c,
 CI44684331642 all3successful), then WK17 accepted at
@@ -73,3 +73,8 @@ under verified Projects UUID48fa5d10-fe99-4557-9fc9-d8a2a4b41ac8 for the active
 full goal. Existing accepted environments stay untouched. No new worktree,
 manual deletion or reclaimed bytes. Cleanup follow-up requires approved scoped
 inventory plus active process/mount, dirty/unique-data and unique-commit checks.
+
+Implementation: lease pin `fa49b0f` precedes the two exact pin-literal changes.
+The existing consumer witness and all its runtime assertions remain unchanged.
+The checkpoint preserves accepted V8/serving bytes and honest diagnostic limits.
+Exact-head CI output and final independent judgment belong in the PR/evidence.

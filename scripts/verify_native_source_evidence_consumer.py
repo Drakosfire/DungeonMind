@@ -13,7 +13,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-EXPECTED_KEEPER = "49a8620f066ce7ef8972a699020c012f50af9158"
+EXPECTED_KEEPER = "348c0dbf5156e7e7d5d951de90b9086501fc834f"
 BODY = "Authored acceptance fixture: the silver bell is kept beneath the north arch.\n"
 
 

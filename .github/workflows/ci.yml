@@ -88,7 +88,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Drakosfire/WorldKeeper
-          ref: 49a8620f066ce7ef8972a699020c012f50af9158
+          ref: 348c0dbf5156e7e7d5d951de90b9086501fc834f
           path: .ci/worldkeeper
 
       - name: Install uv
