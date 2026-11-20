@@ -24,7 +24,6 @@ from ..application.repositories import (
     FinalizedReviewPublicationRepository,
     WorldGraphRepository,
 )
-from ..application.review_publication import publish_finalized_review
 from ..application.world_campaign_ingest_context import (
     WorldCampaignIngestContextReader,
     WorldCampaignMembershipNotFoundError,
@@ -42,6 +41,7 @@ from ..contracts.world_campaign_ingest_context import (
 )
 from ..domain.errors import (
     CapabilityDeniedError,
+    ContributionReviewNotFoundError,
     DungeonMindError,
     PersistenceIntegrityError,
     PersistenceUnavailableError,
@@ -296,29 +296,28 @@ def create_publication_app(
         "/v1/finalized-review-publications",
         response_model=FinalizedReviewPublication,
     )
-    def publish(body: FinalizedReviewPublicationRequest, request: Request) -> JSONResponse:
+    def recover_publication(
+        body: FinalizedReviewPublicationRequest, request: Request,
+    ) -> JSONResponse:
         state: PublicationAppState = app.state.publication
         authorized = authorize_publication_request(
             body,
             authorization_header=request.headers.get("authorization"),
             binding=state.access_binding,
         )
-        published_at = state.clock.now()
-        if published_at.tzinfo is None or published_at.utcoffset() is None:
-            raise PersistenceIntegrityError(
-                "publication clock returned a naive datetime",
-                details={"reason": "publication_clock_not_timezone_aware"},
-            )
-        publication = publish_finalized_review(
-            authorized.world_id,
-            authorized.review_id,
-            published_at=published_at,
-            review_repository=state.review_repository,
-            world_graph_repository=state.world_graph_repository,
-            publication_repository=state.publication_repository,
-            graph_reader=state.graph_reader,
-            allowed_receipt_schemas=frozenset({"dm_finalized_review_publication_v1"}),
+        publication = state.publication_repository.get_for_review(
+            authorized.world_id, authorized.review_id,
         )
+        if publication is None:
+            raise ContributionReviewNotFoundError(
+                "No historical publication receipt exists for this review.",
+                details={"world_id": authorized.world_id, "review_id": authorized.review_id},
+            )
+        if (
+            publication.world_id != authorized.world_id
+            or publication.review_id != authorized.review_id
+        ):
+            raise PersistenceIntegrityError("historical publication selector correspondence failed")
         # This host exposes V1 only. Never inspect unsupported receipt content
         # through serialization, strip its evidence, or relabel it as V1.
         if (

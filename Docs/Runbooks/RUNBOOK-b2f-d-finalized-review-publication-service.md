@@ -51,9 +51,9 @@ Readiness means the database connection and required publication tables are
 visible for the configured world. It does not mean that a particular review is
 present, materializable, publishable, or current at the graph head.
 
-## Publish or retry
+## Recover an existing receipt
 
-The caller sends only the exact versioned identity request:
+The route accepts the original versioned identity request for receipt recovery. Fresh writes use the native vNext publication flow.
 
 ```bash
 export DUNGEONMIND_PUBLICATION_BEARER_TOKEN='local-secret-from-operator'
@@ -65,19 +65,15 @@ uv run python examples/finalized_review_publication_client/client.py \
 ```
 
 The response is the terminal `dm_finalized_review_publication_v1` record.
-Retry the identical body after a 503 outcome-unknown response. Do not change
-the timestamp, add graph fields, rebase, force, inspect the head, or create a
-second confirmation. A successful replay preserves the original
-`published_at`, even after descendants or explicit rollback.
+A successful replay preserves the original receipt and its `published_at` after descendants or explicit rollback. An unpublished review has no receipt and returns HTTP 404.
 
 ## Failure handling
 
 | HTTP | Meaning | Operator action |
 | ---: | --- | --- |
 | 403 | bearer/world binding denied | verify the configured secret and exact world |
-| 404 | durable review or pinned parent unavailable | inspect the exact durable identifiers |
-| 409 | stale parent, conflicting identity, or materialization failure | do not rebase; resolve the durable review/graph condition |
-| 503 | persistence unavailable or outcome unknown | retry the identical request; outcome-unknown explicitly has `retry_safe=true` |
+| 404 | no retained publication receipt | check the original world and review identifiers |
+| 503 | persistence unavailable | retry the identical receipt lookup |
 | 500 | stored authority integrity failure or sanitized internal error | stop and investigate persistence/service logs without exposing secrets |
 
 The service never infers success from `world_graph_heads`. Only the exact

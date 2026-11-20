@@ -233,7 +233,7 @@ def test_existing_http_host_refuses_internal_v2_replay_without_exposing_context(
     assert lane.publications.publish(lane.command) == receipt
 
 
-def test_v1_http_fresh_protected_custom_registry_denies_before_dispatch_then_library_works(pg):
+def test_v1_http_unpublished_protected_review_is_read_only_then_library_works(pg):
     from fastapi.testclient import TestClient
 
     from dungeonmind.application.mind_turn import FixedClock
@@ -265,11 +265,8 @@ def test_v1_http_fresh_protected_custom_registry_denies_before_dispatch_then_lib
             json=body,
             headers={"Authorization": "Bearer synthetic-test-token"},
         )
-        assert response.status_code == 403 and response.headers["cache-control"] == "no-store"
-        assert response.json()["error"]["code"] == "capability_denied"
-        assert response.json()["error"]["details"] == {
-            "reason": "publication_receipt_transport_unsupported"
-        }
+        assert response.status_code == 404 and response.headers["cache-control"] == "no-store"
+        assert response.json()["error"]["code"] == "contribution_review_not_found"
         override = client.post(
             "/v1/finalized-review-publications",
             json=dict(body, allowed_receipt_schemas=["dm_finalized_review_publication_v2"]),
@@ -341,7 +338,7 @@ def test_route_guard_checks_actual_v1_type_before_serialization_even_if_app_faul
     sentinel = OutputSentinel.model_construct(
         **dict(receipt.__dict__, schema_version="dm_finalized_review_publication_v1")
     )
-    monkeypatch.setattr(api, "publish_finalized_review", lambda *args, **kwargs: sentinel)
+    monkeypatch.setattr(lane.publications, "get_for_review", lambda *args: sentinel)
     app = api.create_publication_app(
         review_repository=pg.contribution_reviews,
         world_graph_repository=pg.world_graph,

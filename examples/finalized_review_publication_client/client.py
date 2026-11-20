@@ -20,7 +20,7 @@ TOKEN_ENVIRONMENT = "DUNGEONMIND_PUBLICATION_BEARER_TOKEN"
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Publish one finalized review through the DungeonMind service."
+        description="Recover one existing finalized-review receipt from DungeonMind."
     )
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--world-id", required=True)
