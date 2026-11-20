@@ -1,4 +1,4 @@
-"""Native PostgreSQL and HTTP proofs for metadata-only recap context reads."""
+"""PostgreSQL compatibility reader and classic HTTP retirement proofs."""
 
 import json
 from contextlib import contextmanager
@@ -52,19 +52,22 @@ def _url(world=WORLD_ID, campaign=CAMPAIGN):
     return f"/v1/worlds/{world}/campaigns/{campaign}/ingest-context"
 
 
-def test_http_returns_only_exact_metadata_and_does_not_write(pg) -> None:
+def test_historical_reader_returns_exact_metadata_and_http_refuses(pg) -> None:
     revision = _seed(pg)
     before = pg.world_graph.get_head(WORLD_ID)
-    response = _client(pg).get(_url(), headers=HEADERS)
-    assert response.status_code == 200
-    assert response.headers["cache-control"] == "no-store"
-    assert response.json() == {
+    reader = PostgresWorldCampaignIngestContextReader(pg.database)
+    context = reader.read_ingest_context(world_id=WORLD_ID, campaign_id=CAMPAIGN)
+    assert context.model_dump() == {
         "schema_version": "dm_world_campaign_ingest_context_v1",
         "world_id": WORLD_ID, "campaign_id": CAMPAIGN, "membership": "member",
         "head_revision_id": revision.revision_id,
         "graph_schema": revision.graph_schema,
         "graph_payload_sha256": revision.graph_payload_sha256,
     }
+    response = _client(pg, reader).get(_url(), headers=HEADERS)
+    assert response.status_code == 410
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json()["error"]["code"] == "classic_campaign_ingest_context_retired"
     assert pg.world_graph.get_head(WORLD_ID) == before
     with pg.database.transaction() as conn:
         row = conn.execute(
@@ -72,7 +75,7 @@ def test_http_returns_only_exact_metadata_and_does_not_write(pg) -> None:
         ).fetchone()
     assert row["n"] == 1
     print(json.dumps({
-        "witness": "metadata_read", "result": response.json(),
+        "witness": "metadata_read", "result": context.model_dump(),
         "head_unchanged": True, "head_events": row["n"],
     }))
 
@@ -83,7 +86,7 @@ def test_missing_membership_and_valid_membership_without_head_fail_closed(pg) ->
         reader.read_ingest_context(world_id=WORLD_ID, campaign_id=CAMPAIGN)
     client = _client(pg)
     missing = client.get(_url(), headers=HEADERS)
-    assert missing.status_code == 404
+    assert missing.status_code == 410
     assert missing.headers["cache-control"] == "no-store"
     with pg.database.transaction() as conn:
         assert conn.execute("SELECT COUNT(*) AS n FROM dungeonmind.worlds").fetchone()["n"] == 0
@@ -93,10 +96,10 @@ def test_missing_membership_and_valid_membership_without_head_fail_closed(pg) ->
     with pytest.raises(WorldGraphNotInitializedError):
         reader.read_ingest_context(world_id=WORLD_ID, campaign_id=CAMPAIGN)
     response = client.get(_url(), headers=HEADERS)
-    assert response.status_code == 409
+    assert response.status_code == 410
     assert response.headers["cache-control"] == "no-store"
-    assert response.json()["error"]["code"] == "world_graph_not_initialized"
-    print(json.dumps({"witness": "fail_closed", "missing_membership": 404, "no_head": 409}))
+    assert response.json()["error"]["code"] == "classic_campaign_ingest_context_retired"
+    print(json.dumps({"witness": "fail_closed", "missing_membership": 410, "no_head": 410}))
 
 
 def test_read_is_one_snapshot_despite_concurrent_membership_and_head_change(pg) -> None:

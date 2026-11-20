@@ -24,27 +24,18 @@ from ..application.repositories import (
     FinalizedReviewPublicationRepository,
     WorldGraphRepository,
 )
-from ..application.world_campaign_ingest_context import (
-    WorldCampaignIngestContextReader,
-    WorldCampaignMembershipNotFoundError,
-    WorldGraphNotInitializedError,
-    query_world_campaign_ingest_context,
-)
+from ..application.world_campaign_ingest_context import WorldCampaignIngestContextReader
 from ..contracts.fictional_time import FictionalTimeQueryResult
 from ..contracts.fictional_time_transport import FictionalTimeShadowQueryRequest
 from ..contracts.mind_turn import MindTurnRequest, MindTurnResponse
 from ..contracts.review_publication import FinalizedReviewPublication
 from ..contracts.review_publication_transport import FinalizedReviewPublicationRequest
-from ..contracts.world_campaign_ingest_context import (
-    WorldCampaignIngestContextRequestV1,
-    WorldCampaignIngestContextV1,
-)
+from ..contracts.world_campaign_ingest_context import WorldCampaignIngestContextRequestV1
 from ..domain.errors import (
     CapabilityDeniedError,
     ContributionReviewNotFoundError,
     DungeonMindError,
     PersistenceIntegrityError,
-    PersistenceUnavailableError,
 )
 from .demo_access import DemoAccessBinding, authorize_demo_request
 from .error_mapping import (
@@ -270,27 +261,9 @@ def create_publication_app(
         state: PublicationAppState = app.state.publication
         return state.readiness_probe()
 
-    @app.exception_handler(WorldCampaignMembershipNotFoundError)
-    async def _membership_missing(
-        _request: Request, exc: WorldCampaignMembershipNotFoundError
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=404, content=publication_error_envelope(exc),
-            headers={"Cache-Control": "no-store"},
-        )
-
-    @app.exception_handler(WorldGraphNotInitializedError)
-    async def _head_missing(
-        _request: Request, exc: WorldGraphNotInitializedError
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=409, content=publication_error_envelope(exc),
-            headers={"Cache-Control": "no-store"},
-        )
-
     @app.get(
         "/v1/worlds/{world_id}/campaigns/{campaign_id}/ingest-context",
-        response_model=WorldCampaignIngestContextV1,
+        responses={410: {"description": "Classic campaign ingest context is retired."}},
     )
     def ingest_context(world_id: str, campaign_id: str, request: Request) -> JSONResponse:
         state: PublicationAppState = app.state.publication
@@ -299,12 +272,16 @@ def create_publication_app(
             authorization_header=request.headers.get("authorization"),
             binding=state.access_binding,
         )
-        query = WorldCampaignIngestContextRequestV1(world_id=world_id, campaign_id=campaign_id)
-        if state.ingest_context_reader is None:
-            raise PersistenceUnavailableError("ingest context reader is not configured")
-        result = query_world_campaign_ingest_context(query, reader=state.ingest_context_reader)
+        WorldCampaignIngestContextRequestV1(world_id=world_id, campaign_id=campaign_id)
         return JSONResponse(
-            status_code=200, content=result.model_dump(mode="json"),
+            status_code=410,
+            content={
+                "error": {
+                    "code": "classic_campaign_ingest_context_retired",
+                    "message": "Classic campaign ingest context is retired.",
+                    "details": {},
+                },
+            },
             headers={"Cache-Control": "no-store"},
         )
 
