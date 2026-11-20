@@ -386,6 +386,27 @@ def _read_native_record(
     ).fetchone()
     if row is None:
         return None
+    span_rows = conn.execute(
+        sql.SQL(
+            """
+            SELECT span_id, evidence_ref_id, proof
+            FROM {}.knowledge_native_source_spans
+            WHERE space_id = %s AND admission_id = %s
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (space_id, admission_id),
+    ).fetchall()
+    return _verify_native_record(row, span_rows, space_id, admission_id, include_body=include_body)
+
+
+def _verify_native_record(
+    row: dict[str, Any],
+    span_rows: Sequence[dict[str, Any]],
+    space_id: str,
+    admission_id: str,
+    *,
+    include_body: bool,
+) -> dict[str, Any]:
     try:
         artifact = SourceArtifactV3.model_validate(row["source_artifact"])
         revision = SourceRevisionV2.model_validate(row["source_revision"])
@@ -425,16 +446,6 @@ def _read_native_record(
         or origin != receipt.origin
     ):
         raise PersistenceIntegrityError("native source row identity drift")
-    span_rows = conn.execute(
-        sql.SQL(
-            """
-            SELECT span_id, evidence_ref_id, proof
-            FROM {}.knowledge_native_source_spans
-            WHERE space_id = %s AND admission_id = %s
-            """
-        ).format(sql.Identifier(SCHEMA)),
-        (space_id, admission_id),
-    ).fetchall()
     expected_spans = {
         (proof.span_id, proof.evidence_ref_id, canonical_sha256(proof.model_dump(mode="json")))
         for proof in proofs
@@ -1186,7 +1197,10 @@ class _PostgresNativeTextSourceView:
                 rows = conn.execute(
                     sql.SQL(
                         """
-                        SELECT admission_id, source_artifact_id, source_revision_id
+                        SELECT space_id, admission_id, command_sha256, source_authority_epoch,
+                               source_artifact_id, source_revision_id, published_revision_id,
+                               source_artifact, source_revision, origin, span_proofs,
+                               receipt_payload, record_fingerprint
                         FROM {}.knowledge_native_source_admissions
                         WHERE space_id = %s AND source_authority_epoch <= %s
                           AND (source_artifact_id = ANY(%s) OR source_revision_id = ANY(%s))
@@ -1199,12 +1213,29 @@ class _PostgresNativeTextSourceView:
                         list(requested_revisions),
                     ),
                 ).fetchall()
+                spans_by_admission: dict[str, list[dict[str, Any]]] = {}
+                if rows:
+                    span_rows = conn.execute(
+                        sql.SQL(
+                            """
+                            SELECT admission_id, span_id, evidence_ref_id, proof
+                            FROM {}.knowledge_native_source_spans
+                            WHERE space_id = %s AND admission_id = ANY(%s)
+                            """
+                        ).format(sql.Identifier(SCHEMA)),
+                        (self._space_id, [row["admission_id"] for row in rows]),
+                    ).fetchall()
+                    for span in span_rows:
+                        spans_by_admission.setdefault(span["admission_id"], []).append(span)
                 for row in rows:
-                    record = _read_native_record(
-                        conn, self._space_id, row["admission_id"], include_body=False
+                    admission_id = row["admission_id"]
+                    record = _verify_native_record(
+                        row,
+                        spans_by_admission.get(admission_id, ()),
+                        self._space_id,
+                        admission_id,
+                        include_body=False,
                     )
-                    if record is None:
-                        raise PersistenceIntegrityError("native source record disappeared")
                     if row["source_artifact_id"] in requested_artifacts:
                         artifacts[row["source_artifact_id"]] = record["artifact"]
                     if row["source_revision_id"] in requested_revisions:
