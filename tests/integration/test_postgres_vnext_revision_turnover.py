@@ -30,7 +30,11 @@ pytestmark = pytest.mark.integration
 def test_native_context_rebuild_on_child_and_parent_return(
     pg, monkeypatch, entity_count, proof_entries, retain_records
 ):
-    proofs = VerifiedKnowledgeRevisionCache(max_bytes=64_000_000, max_entries=proof_entries)
+    accepted = os.environ.get("DUNGEONMIND_BENCH_ACCEPTED_V11") == "1"
+    if accepted and (proof_entries != 1 or retain_records):
+        pytest.skip("accepted V11 supports one proof and no evicted record retention")
+    proof_options = {} if accepted else {"max_entries": proof_entries}
+    proofs = VerifiedKnowledgeRevisionCache(max_bytes=64_000_000, **proof_options)
     repo = PostgresNativeSourceEvidenceRepository(pg.database, verification_cache=proofs)
     domain, profile = _lab_descriptors()
     use_artifact = os.environ.get("DUNGEONMIND_BENCH_ARTIFACT") == "1"
@@ -51,9 +55,8 @@ def test_native_context_rebuild_on_child_and_parent_return(
     service = NeighborhoodReadService()
     results = {}
     parent = repo.publish_revision(genesis_command(payload=payload)).revision.revision_id
-    cache = native_source_access.NativeParsedRevisionCache(
-        retain_evicted_records=retain_records
-    )
+    parsed_options = {} if accepted else {"retain_evicted_records": retain_records}
+    cache = native_source_access.NativeParsedRevisionCache(**parsed_options)
     rebuilds = []
     measurements = {}
     parse = native_source_access.parse_verified_source_rows
@@ -146,7 +149,7 @@ def test_native_context_rebuild_on_child_and_parent_return(
     stage_counts["publication_ms"] = dict(calls)
     first_child = read("first_child_neighborhood_ms", child)
     assert first_child.identity.revision_id == child
-    if not use_artifact:
+    if not use_artifact and not accepted:
         assert repo._published_parse is None
     assert read("warm_child_neighborhood_ms", child) is first_child
     returned_parent = read("return_to_parent_neighborhood_ms", parent)
@@ -159,7 +162,7 @@ def test_native_context_rebuild_on_child_and_parent_return(
         assert returned_parent.entities_by_id is first_parent.entities_by_id
         assert returned_parent.assertions_by_id is first_parent.assertions_by_id
         assert returned_parent.assertions_by_subject is not first_parent.assertions_by_subject
-    assert stage_counts["publication_ms"].get("_reconstruct", 0) == 1
+    assert stage_counts["publication_ms"].get("_reconstruct", 0) == (2 if accepted else 1)
     assert stage_counts["first_child_neighborhood_ms"].get("_reconstruct", 0) == 0
     assert stage_counts["return_to_parent_neighborhood_ms"].get(
         "_reconstruct", 0
@@ -167,7 +170,11 @@ def test_native_context_rebuild_on_child_and_parent_return(
     if use_artifact:
         assert "decode_read_artifact" in stage_samples["first_child_neighborhood_ms"]
     else:
-        expected_rebuilds = [parent] if retain_records else [parent, parent]
+        expected_rebuilds = [parent]
+        if accepted:
+            expected_rebuilds.append(child)
+        if not retain_records:
+            expected_rebuilds.append(parent)
         assert [sample["revision"] for sample in rebuilds] == expected_rebuilds
     status = Path("/proc/self/status")
     memory = {}
@@ -178,6 +185,7 @@ def test_native_context_rebuild_on_child_and_parent_return(
                 memory[name] = int(value.split()[0])
     print(json.dumps({
         "entity_count": entity_count,
+        "core_module": str(Path(vnext_knowledge.__file__).resolve()),
         "process_memory_kib": memory,
         "proof_entries": proof_entries,
         "proof_retained_bytes": proofs.retained_bytes,
