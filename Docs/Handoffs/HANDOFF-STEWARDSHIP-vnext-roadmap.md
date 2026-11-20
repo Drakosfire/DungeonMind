@@ -21,6 +21,20 @@
 **Read/performance architecture:** `Docs/Architecture/ARCHITECTURE-vnext-read-path-and-performance.md`  
 **One-line mission:** Steward the deliberate V0–V11 transition from the current World-shaped DungeonMind implementation to a domain-agnostic governed knowledge library while preserving authority invariants, historical readability, semantic parity, and evidence-backed read-path performance.
 
+## Current Elderwyld serving checkpoint — 2026-11-20
+
+The optimized native release serves Elderwyld on local Buddy port 5202.
+Core #260 merged at `046791d09f7c0f7d3b348578763f9c87c7f1ecf1`, and Buddy
+#4273 merged at `cf89e86624231a5e373d0afddc4d1be48e2af5de`. The
+[V11 serving evidence](../Reports/V11-elderwyld-serving-evidence.md)
+records the measured behavior, verified recovery point and schema-compatible
+fallback. The [accepted V8 artifact](dm_vnext_contract_acceptance_v1.json)
+governs the semantic and practical scale evidence.
+
+The next question is whether the remaining V10 boundary and V11 serving
+evidence justify closing the roadmap. Complete the remaining verification
+before advancing the successor optimization roadmap.
+
 ---
 
 ## §1 Steward role
