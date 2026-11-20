@@ -17,6 +17,7 @@ from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnav
 
 pytest.importorskip("psycopg")
 k = import_module("dungeonmind.infrastructure.postgres.vnext_knowledge")
+native = import_module("dungeonmind.infrastructure.postgres.vnext_sources")
 _row = import_module("tests.unit.test_postgres_vnext_revision_reconstruction")._row
 
 
@@ -73,7 +74,6 @@ def test_default_path_is_uncached_and_native_repository_forwards_injection():
         for _ in range(2):
             read(repo(db, None), db)
         assert reconstruct.call_count == 2
-    native = import_module("dungeonmind.infrastructure.postgres.vnext_sources")
     cache = k.VerifiedKnowledgeRevisionCache(max_bytes=1_000_000)
     with patch.object(k, "_reconstruct", wraps=k._reconstruct) as reconstruct:
         for _ in range(2):
