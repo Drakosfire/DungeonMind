@@ -1148,6 +1148,17 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
         return self._open_native_source_view(space_id)
 
     @contextmanager
+    def reuse_native_source_read_connection(self) -> Iterator[None]:
+        """Share read transport for one bounded sequence of independent source opens.
+
+        The caller owns the synchronous selection boundary. Each nested source
+        read scope acquires the current epoch, runs its own transactions, and
+        expires when that scope closes.
+        """
+        with self._database.reuse_read_connection():
+            yield
+
+    @contextmanager
     def open_native_source_read_scope(self, space_id: str) -> Iterator[NativeTextSourceView]:
         """Acquire the current epoch and subsequent reads on one owned connection."""
         with self._database.read_scope() as transactions:

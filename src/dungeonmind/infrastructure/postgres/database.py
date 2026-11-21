@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from threading import get_ident
 from typing import Any, Protocol
@@ -70,6 +71,32 @@ class _ScopedReadTransactions:
         yield self
 
 
+class _BorrowedReadTransactions:
+    """One revocable read scope on a session-owned connection."""
+
+    def __init__(self, session: _ScopedReadTransactions) -> None:
+        self._session: _ScopedReadTransactions | None = session
+
+    def close(self) -> None:
+        self._session = None
+
+    def _open_session(self) -> _ScopedReadTransactions:
+        session = self._session
+        if session is None:
+            raise PersistenceUnavailableError("native source read scope is closed")
+        return session
+
+    @contextmanager
+    def transaction(self) -> Iterator[Connection[Any]]:
+        with self._open_session().transaction() as connection:
+            yield connection
+
+    @contextmanager
+    def read_scope(self) -> Iterator[ReadTransactions]:
+        self._open_session()._check_owner()
+        yield self
+
+
 class PostgresDatabase:
     """Explicit connection factory. Constructed by callers with a DSN string."""
 
@@ -77,6 +104,9 @@ class PostgresDatabase:
         if not database_url:
             raise ValueError("database_url must be a non-empty PostgreSQL DSN")
         self._database_url = database_url
+        self._read_session: ContextVar[_ScopedReadTransactions | None] = ContextVar(
+            "postgres_read_session", default=None
+        )
 
     def connect(self) -> Connection[Any]:
         try:
@@ -96,8 +126,7 @@ class PostgresDatabase:
             raise
 
     @contextmanager
-    def read_scope(self) -> Iterator[ReadTransactions]:
-        """Reuse an owned read-only connection without merging transactions."""
+    def _new_read_scope(self) -> Iterator[_ScopedReadTransactions]:
         try:
             with self.connect() as connection:
                 connection.read_only = True
@@ -105,6 +134,37 @@ class PostgresDatabase:
         except Exception as exc:
             _map_driver_error(exc)
             raise
+
+    @contextmanager
+    def reuse_read_connection(self) -> Iterator[None]:
+        """Share one connection across sequential read scopes of this database."""
+        session = self._read_session.get()
+        if session is not None:
+            session._check_owner()
+            yield
+            return
+        with self._new_read_scope() as session:
+            token = self._read_session.set(session)
+            try:
+                yield
+            finally:
+                self._read_session.reset(token)
+
+    @contextmanager
+    def read_scope(self) -> Iterator[ReadTransactions]:
+        """Reuse an owned read-only connection without merging transactions."""
+        session = self._read_session.get()
+        if session is None:
+            with self._new_read_scope() as owned:
+                yield owned
+            return
+
+        session._check_owner()
+        borrowed = _BorrowedReadTransactions(session)
+        try:
+            yield borrowed
+        finally:
+            borrowed.close()
 
 
 def jsonb(value: Any) -> Jsonb:
