@@ -16,6 +16,7 @@ from dungeonmind.application.vnext.native_source_access import (
     open_admitted_native_text_batch,
     open_native_text_source_access_context,
     refresh_native_text_source_access_context,
+    refresh_native_text_source_access_scope,
 )
 from dungeonmind.application.vnext.native_source_admission import (
     publish_native_text_source_evidence,
@@ -588,6 +589,59 @@ def test_postgres_concurrent_withdrawal_preserves_graph_and_pinned_source_view(p
         fresh.get_native_source_admission_receipt(request.space_id, request.admission_id)
         == receipt
     )
+
+
+@pytest.mark.parametrize(
+    "repository_type", [PostgresNativeSourceEvidenceRepository, PostgresOperatorSourceRepository]
+)
+def test_refresh_and_exact_source_read_share_one_connection(pg, monkeypatch, repository_type):
+    if repository_type is PostgresOperatorSourceRepository:
+        authority = _operator_fixture()[3]
+        repository = repository_type(pg.database, approval_authority=authority.verifier)
+    else:
+        repository = repository_type(pg.database)
+    domain, profile, genesis = _init(repository)
+    request = _request(space_id=genesis.space_id, parent_revision_id=genesis.published_revision_id)
+    receipt = publish_native_text_source_evidence(
+        repository=repository, request=request, domain_contract=domain, semantic_profile=profile
+    )
+    context = open_native_text_source_access_context(
+        repository=repository, space_id=request.space_id,
+        revision_id=receipt.published_revision_id, domain_contract=domain,
+    )
+    evidence_id = receipt.bindings[0].evidence_ref_id
+    expected = open_admitted_native_text(context, evidence_id)
+    assert expected.body_text == BODY
+    original_connect = pg.database.connect
+    connections = []
+
+    def connect():
+        connection = original_connect()
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(pg.database, "connect", connect)
+    with refresh_native_text_source_access_scope(repository=repository, context=context) as fresh:
+        assert fresh.parsed is context.parsed
+        assert type(fresh.source_view) is type(context.source_view)
+        assert open_admitted_native_text(fresh, evidence_id) == expected
+        assert len(connections) == 1
+    assert connections[0].closed
+    with pytest.raises(PersistenceUnavailableError, match="read scope is closed"):
+        open_admitted_native_text(fresh, evidence_id)
+
+    repository.withdraw_native_source(
+        space_id=request.space_id,
+        source_artifact_id=receipt.source_artifact_id,
+        source_revision_id=receipt.source_revision_id,
+    )
+    before = len(connections)
+    with refresh_native_text_source_access_scope(repository=repository, context=context) as fresh:
+        assert fresh.source_view.epoch > context.source_view.epoch
+        assert open_admitted_native_text(fresh, evidence_id).status == "unavailable"
+        assert len(connections) == before + 1
+    assert open_admitted_native_text(context, evidence_id) == expected
+
 
 @pytest.mark.parametrize(
     "repository_type", [PostgresNativeSourceEvidenceRepository, PostgresOperatorSourceRepository]

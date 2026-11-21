@@ -1147,8 +1147,17 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
     def open_native_source_view(self, space_id: str) -> NativeTextSourceView:
         return self._open_native_source_view(space_id)
 
-    def _open_native_source_view(self, space_id: str) -> _PostgresNativeTextSourceView:
-        with self._database.transaction() as conn:
+    @contextmanager
+    def open_native_source_read_scope(self, space_id: str) -> Iterator[NativeTextSourceView]:
+        """Acquire the current epoch and subsequent reads on one owned connection."""
+        with self._database.read_scope() as transactions:
+            yield self._open_native_source_view(space_id, transactions=transactions)
+
+    def _open_native_source_view(
+        self, space_id: str, *, transactions: ReadTransactions | None = None
+    ) -> _PostgresNativeTextSourceView:
+        transactions = self._database if transactions is None else transactions
+        with transactions.transaction() as conn:
             row = conn.execute(
                 sql.SQL(
                     "SELECT epoch FROM {}.knowledge_native_source_authority WHERE singleton_id = 1"
@@ -1156,7 +1165,7 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
             ).fetchone()
             if row is None:
                 raise PersistenceIntegrityError("native source authority epoch row missing")
-            return _PostgresNativeTextSourceView(self._database, space_id, row["epoch"])
+            return _PostgresNativeTextSourceView(transactions, space_id, row["epoch"])
 
 
 class _PostgresNativeTextSourceView:

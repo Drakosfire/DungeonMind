@@ -487,6 +487,14 @@ class PostgresOperatorSourceRepository(PostgresNativeSourceEvidenceRepository):
             self._database, space_id, self._open_native_source_view(space_id)
         )
 
+    @contextmanager
+    def open_native_source_read_scope(self, space_id: str) -> Iterator[NativeTextSourceView]:
+        with self._database.read_scope() as transactions:
+            yield _PostgresOperatorSourceView(
+                transactions, space_id,
+                self._open_native_source_view(space_id, transactions=transactions),
+            )
+
 
 class _PostgresOperatorSourceView:
     def __init__(

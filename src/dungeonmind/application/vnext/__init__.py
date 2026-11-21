@@ -88,6 +88,7 @@ from .native_source_access import (
     open_admitted_native_text_batch,
     open_native_text_source_access_context,
     refresh_native_text_source_access_context,
+    refresh_native_text_source_access_scope,
 )
 from .native_source_admission import (
     publish_native_text_source_evidence,
@@ -283,6 +284,7 @@ __all__ = [
     "recover_governed_native_source_publication",
     "recover_native_source_evidence_extension",
     "refresh_native_text_source_access_context",
+    "refresh_native_text_source_access_scope",
     "resolve_prospective_contribution",
     "thaw_json_value",
     "transition_knowledge_semantic_profile",
