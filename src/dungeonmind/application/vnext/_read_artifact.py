@@ -7,7 +7,7 @@ parser; shared mutable validation models never escape this function.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from json.encoder import encode_basestring
 from typing import Annotated, Any
 
@@ -70,6 +70,7 @@ def decode_read_artifact(
 
 def parse_verified_source_rows(
     source: StoredKnowledgeRevision, rows: dict[str, Any],
+    *, _verified_indexes: Mapping[str, Mapping] | None = None,
 ) -> ParsedKnowledgeRevision | None:
     """Consume a request-owned decoded payload already bound by the source verifier."""
     if set(rows) != {"entities", "assertions", "aliases", "evidence"} or any(
@@ -97,7 +98,7 @@ def parse_verified_source_rows(
         rows.clear()
         return True
 
-    return _build_parsed_rows(source, feed)
+    return _build_parsed_rows(source, feed, _verified_indexes=_verified_indexes)
 
 
 _ConsumeRow = Callable[[str, dict[str, Any], bool, bool], None]
@@ -105,6 +106,7 @@ _ConsumeRow = Callable[[str, dict[str, Any], bool, bool], None]
 
 def _build_parsed_rows(
     source: StoredKnowledgeRevision, feed: Callable[[_ConsumeRow], bool],
+    *, _verified_indexes: Mapping[str, Mapping] | None = None,
 ) -> ParsedKnowledgeRevision | None:
     try:
         entities: list[ParsedEntity] = []
@@ -189,6 +191,7 @@ def _build_parsed_rows(
             aliases=aliases,
             evidence=evidence,
             _stream_digest=True,
+            _verified_indexes=_verified_indexes,
         )
     except (ValidationError, TypeError, ValueError, KeyError) as exc:
         raise PersistenceIntegrityError(

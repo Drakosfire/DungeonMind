@@ -261,6 +261,7 @@ def _build_parsed_knowledge_revision_from_records(
     evidence: Mapping[str, ParsedEvidenceRef] | Sequence[ParsedEvidenceRef] = (),
     _stream_digest: bool = False,
     _reuse_frozen_records: bool = False,
+    _verified_indexes: Mapping[str, Mapping] | None = None,
 ) -> ParsedKnowledgeRevision:
     """Build a deterministic, immutable ParsedKnowledgeRevision from internal immutable records.
 
@@ -368,6 +369,55 @@ def _build_parsed_knowledge_revision_from_records(
                     f"Assertion {aid!r} references missing evidence {ev_id!r}"
                 )
 
+    indexes = _verified_indexes
+    if indexes is None:
+        indexes = _build_structural_indexes(entities_dict, assertions_dict, aliases_dict, evidence_dict)
+
+    digest_builder = _stream_semantic_digest if _stream_digest else compute_semantic_digest
+    semantic_digest = digest_builder(
+        identity,
+        entities_dict,
+        assertions_dict,
+        aliases_dict,
+        evidence_dict,
+    )
+    compatibility_key = compute_compatibility_key(identity)
+    freeze_records = _deferred_frozen_dict if _stream_digest else FrozenDict
+
+    return ParsedKnowledgeRevision(
+        identity=identity,
+        entities_by_id=(
+            entities_dict
+            if isinstance(entities_dict, FrozenDict)
+            else freeze_records(entities_dict)
+        ),
+        assertions_by_id=(
+            assertions_dict
+            if isinstance(assertions_dict, FrozenDict)
+            else freeze_records(assertions_dict)
+        ),
+        aliases_by_id=(
+            aliases_dict
+            if isinstance(aliases_dict, FrozenDict)
+            else freeze_records(aliases_dict)
+        ),
+        evidence_by_id=(
+            evidence_dict
+            if isinstance(evidence_dict, FrozenDict)
+            else freeze_records(evidence_dict)
+        ),
+        semantic_digest=semantic_digest,
+        compatibility_key=compatibility_key,
+        **indexes,
+    )
+
+
+def _build_structural_indexes(
+    entities_dict: Mapping[str, ParsedEntity],
+    assertions_dict: Mapping[str, ParsedAssertion],
+    aliases_dict: Mapping[str, ParsedIdentityAlias],
+    evidence_dict: Mapping[str, ParsedEvidenceRef],
+) -> dict[str, Mapping]:
     # --- Structural Indexes ---
     # Sparse temporary buckets avoid retaining empty mutable containers for
     # unrelated entities. Final indexes below still include every primary key.
@@ -469,39 +519,7 @@ def _build_parsed_knowledge_revision_from_records(
         {term: tuple(sorted(aids)) for term, aids in term_ref_assertion_builder.items()}
     )
 
-    digest_builder = _stream_semantic_digest if _stream_digest else compute_semantic_digest
-    semantic_digest = digest_builder(
-        identity,
-        entities_dict,
-        assertions_dict,
-        aliases_dict,
-        evidence_dict,
-    )
-    compatibility_key = compute_compatibility_key(identity)
-    freeze_records = _deferred_frozen_dict if _stream_digest else FrozenDict
-
-    return ParsedKnowledgeRevision(
-        identity=identity,
-        entities_by_id=(
-            entities_dict
-            if isinstance(entities_dict, FrozenDict)
-            else freeze_records(entities_dict)
-        ),
-        assertions_by_id=(
-            assertions_dict
-            if isinstance(assertions_dict, FrozenDict)
-            else freeze_records(assertions_dict)
-        ),
-        aliases_by_id=(
-            aliases_dict
-            if isinstance(aliases_dict, FrozenDict)
-            else freeze_records(aliases_dict)
-        ),
-        evidence_by_id=(
-            evidence_dict
-            if isinstance(evidence_dict, FrozenDict)
-            else freeze_records(evidence_dict)
-        ),
+    return dict(
         assertions_by_subject=assertions_by_subject,
         entity_ref_outgoing=entity_ref_outgoing,
         entity_ref_incoming=entity_ref_incoming,
@@ -517,8 +535,6 @@ def _build_parsed_knowledge_revision_from_records(
         lexical_assertion_index=lexical_assertion_index,
         predicate_assertion_index=predicate_assertion_index,
         term_ref_assertion_index=term_ref_assertion_index,
-        semantic_digest=semantic_digest,
-        compatibility_key=compatibility_key,
     )
 
 

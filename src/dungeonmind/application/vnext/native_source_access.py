@@ -147,6 +147,9 @@ def open_native_text_source_access_context(
     audience_labels: Sequence[str] = (),
     parsed_cache: NativeParsedRevisionCache | None = None,
     prefer_verified_source_rows: bool = False,
+    _parse_verified_rows: Callable[
+        [StoredKnowledgeRevision, dict[str, Any]], ParsedKnowledgeRevision | None
+    ] | None = None,
 ) -> NativeTextSourceAccessContext:
     """Pin one exact native revision and one coherent source-authority epoch.
 
@@ -186,7 +189,20 @@ def open_native_text_source_access_context(
         != stored.revision.domain_contract_ref.descriptor_sha256
     ):
         raise KnowledgeReadContextIntegrityError("native source context domain pin mismatch")
+    if _parse_verified_rows is not None and (load_rows is None or parsed_cache is not None):
+        raise KnowledgeReadContextIntegrityError(
+            "custom native parser requires uncached verified source rows"
+        )
+
     def load_parsed() -> ParsedKnowledgeRevision:
+        if _parse_verified_rows is not None:
+            assert load_rows is not None
+            custom = _parse_verified_rows(stored, load_rows())
+            if custom is None or custom.revision_id != revision_id or custom.space_id != space_id:
+                raise KnowledgeReadContextIntegrityError("custom native parser changed revision identity")
+            if custom.graph_payload_sha256 != stored.graph_payload_sha256:
+                raise KnowledgeReadContextIntegrityError("custom native parser changed payload digest")
+            return custom
         if load_rows is not None:
             take = getattr(repository, "_take_published_parse", None)
             if callable(take):
