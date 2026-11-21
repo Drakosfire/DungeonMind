@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol, cast
+from typing import Any, Generic, Protocol, TypeVar, cast
 
 from dungeonmind.contracts.vnext.domain import (
     DomainContractDescriptor,
@@ -20,6 +20,7 @@ from .admission import (
     AlwaysAdmitPolicy,
     CandidateAdmissionResult,
     CandidateExclusion,
+    CandidateFacts,
     DomainAdmissionPolicy,
     assertion_visibility_passes,
     collect_evidence_dependencies,
@@ -33,9 +34,26 @@ from .admission import (
 )
 from .errors import CandidateAdmissionIntegrityError, KnowledgeReadContextIntegrityError
 from .frozen_json import FrozenJsonValue, freeze_json_value, thaw_json_value
-from .model import ParsedKnowledgeRevision
 from .ports import KnowledgeSourceReader
 from .provenance import KnowledgeProvenanceSnapshot, validate_provenance_snapshot_integrity
+from .records import ParsedDomainContractRef, ParsedSemanticProfileRef
+
+
+class _ReadFacts(CandidateFacts, Protocol):
+    @property
+    def space_id(self) -> str: ...
+
+    @property
+    def revision_id(self) -> str: ...
+
+    @property
+    def domain_contract_ref(self) -> ParsedDomainContractRef: ...
+
+    @property
+    def semantic_profile_ref(self) -> ParsedSemanticProfileRef: ...
+
+
+_ReadFactsT = TypeVar("_ReadFactsT", bound=_ReadFacts, covariant=True)
 
 
 class _SnapshotCallCounter(Protocol):
@@ -57,7 +75,7 @@ def _seal_model_dump(model: Any) -> FrozenJsonValue:
 
 def _verify_descriptor_pin(
     *,
-    parsed: ParsedKnowledgeRevision,
+    parsed: _ReadFacts,
     domain_contract: DomainContractDescriptor,
     semantic_profile: SemanticProfileDescriptorV2,
 ) -> None:
@@ -81,7 +99,7 @@ def _verify_descriptor_pin(
 
 
 @dataclass(frozen=True, slots=True)
-class KnowledgeReadContext:
+class KnowledgeReadContext(Generic[_ReadFactsT]):
     """One exact immutable revision + request + pinned descriptors for admission.
 
     Authorization/profile models are sealed as JSON dumps at construction. Public
@@ -89,7 +107,7 @@ class KnowledgeReadContext:
     rehydrate fresh copies, so callers cannot mutate pinned authority in place.
     """
 
-    parsed: ParsedKnowledgeRevision
+    parsed: _ReadFactsT
     domain_policy: DomainAdmissionPolicy
     source_reader: KnowledgeSourceReader
     _request_dump: FrozenJsonValue
@@ -104,7 +122,7 @@ class KnowledgeReadContext:
     def __init__(
         self,
         *,
-        parsed: ParsedKnowledgeRevision,
+        parsed: _ReadFactsT,
         request: ProjectionRequest,
         domain_contract: DomainContractDescriptor,
         semantic_profile: SemanticProfileDescriptorV2,

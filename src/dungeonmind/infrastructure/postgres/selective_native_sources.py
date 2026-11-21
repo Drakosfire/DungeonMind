@@ -1,8 +1,12 @@
 """Native source authority without an assertion graph open."""
 
 from collections.abc import Callable, Sequence
+from typing import Any
+
+from psycopg import Connection
 
 from dungeonmind.application.vnext._selective_read_proof import (
+    SelectiveReadProof,
     open_selective_read_proof,
     verify_selective_records,
 )
@@ -15,6 +19,7 @@ from dungeonmind.application.vnext.native_source_access import (
 )
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.domain import DomainContractDescriptor, DomainContractRef
+from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
 from dungeonmind.contracts.vnext.source import EvidenceRefV3
 from dungeonmind.domain.errors import PersistenceIntegrityError
 
@@ -50,22 +55,39 @@ def open_selective_native_text_source_access_context(
         revision, digest, content = activation
         proof = open_selective_read_proof(content, expected_sha256=digest, revision=revision)
         domain = _verified_source_domain(revision, domain_contract)
-        keys = tuple(proof.records["evidence"])
-        rows = _fetch(connection, pin, "selective_read_records", "evidence", keys)
-        verify_selective_records(proof, "evidence", keys, rows)
-        try:
-            evidence = FrozenDict([
-                (key, _parse_evidence(EvidenceRefV3.model_validate(row))) for key, row in rows
-            ])
-        except ValueError as exc:
-            raise PersistenceIntegrityError("selective source evidence is invalid") from exc
-        if any(key != record.evidence_ref_id for key, record in evidence.items()):
-            raise PersistenceIntegrityError("selective source evidence identity mismatch")
-        membership = NativeTextSourceMembership(_parse_revision_identity(revision), evidence)
+        membership = _read_membership(connection, revision, proof)
 
+    return _source_context(repository, membership, domain, audience_labels)
+
+
+def _read_membership(
+    connection: Connection[Any], revision: KnowledgeRevision, proof: SelectiveReadProof,
+) -> NativeTextSourceMembership:
+    pin = (revision.space_id, revision.revision_id)
+    keys = tuple(proof.records["evidence"])
+    rows = _fetch(connection, pin, "selective_read_records", "evidence", keys)
+    verify_selective_records(proof, "evidence", keys, rows)
+    try:
+        evidence = FrozenDict([
+            (key, _parse_evidence(EvidenceRefV3.model_validate(row))) for key, row in rows
+        ])
+    except ValueError as exc:
+        raise PersistenceIntegrityError("selective source evidence is invalid") from exc
+    if any(key != record.evidence_ref_id for key, record in evidence.items()):
+        raise PersistenceIntegrityError("selective source evidence identity mismatch")
+    return NativeTextSourceMembership(_parse_revision_identity(revision), evidence)
+
+
+def _source_context(
+    repository: PostgresNativeSourceEvidenceRepository,
+    membership: NativeTextSourceMembership,
+    domain: DomainContractDescriptor,
+    audience_labels: Sequence[str],
+) -> NativeTextSourceAccessContext[NativeTextSourceMembership]:
+    space_id = membership.identity.space_id
     return NativeTextSourceAccessContext(
         space_id=space_id,
-        revision_id=revision_id,
+        revision_id=membership.identity.revision_id,
         parsed=membership,
         source_view=repository.open_native_source_view(space_id),
         audience_labels=frozenset(audience_labels),
