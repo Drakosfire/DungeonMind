@@ -32,12 +32,14 @@ from .vnext_sources import PostgresNativeSourceEvidenceRepository
 
 
 def _load_activation(
-    connection: Connection[Any], pin: tuple[str, str],
+    connection: Connection[Any],
+    pin: tuple[str, str],
 ) -> tuple[KnowledgeRevision, str, bytes] | None:
     # First establish activation presence without detoasting the primary graph.
     anchor = connection.execute(
-        sql.SQL("SELECT * FROM {}.selective_read_activations WHERE space_id=%s AND revision_id=%s")
-        .format(sql.Identifier(SCHEMA)),
+        sql.SQL(
+            "SELECT * FROM {}.selective_read_activations WHERE space_id=%s AND revision_id=%s"
+        ).format(sql.Identifier(SCHEMA)),
         pin,
     ).fetchone()
     if anchor is None:
@@ -51,23 +53,32 @@ def _load_activation(
         """).format(sql.Identifier(SCHEMA)),
         pin,
     ).fetchone()
-    if (row is None or anchor["source_sql_sha256"] != row["source_sql_sha256"]
-            or anchor["source_record_fingerprint"] != row["record_fingerprint"]):
+    if (
+        row is None
+        or anchor["source_sql_sha256"] != row["source_sql_sha256"]
+        or anchor["source_record_fingerprint"] != row["record_fingerprint"]
+    ):
         raise PersistenceIntegrityError("selective projection primary revision drift")
     try:
         revision = KnowledgeRevision.model_validate(row["revision_payload"])
     except ValueError as exc:
         raise PersistenceIntegrityError("selective projection revision header is invalid") from exc
     columns = (
-        "schema_version", "space_id", "revision_id", "parent_revision_id",
-        "graph_schema", "graph_payload_sha256",
+        "schema_version",
+        "space_id",
+        "revision_id",
+        "parent_revision_id",
+        "graph_schema",
+        "graph_payload_sha256",
     )
-    if (any(row[key] != getattr(revision, key) for key in columns)
-            or _normalize(row["created_at"]) != _normalize(revision.created_at)):
+    if any(row[key] != getattr(revision, key) for key in columns) or _normalize(
+        row["created_at"]
+    ) != _normalize(revision.created_at):
         raise PersistenceIntegrityError("selective projection revision header drift")
     proof = connection.execute(
-        sql.SQL("SELECT content FROM {}.selective_read_proofs WHERE space_id=%s AND revision_id=%s")
-        .format(sql.Identifier(SCHEMA)),
+        sql.SQL(
+            "SELECT content FROM {}.selective_read_proofs WHERE space_id=%s AND revision_id=%s"
+        ).format(sql.Identifier(SCHEMA)),
         pin,
     ).fetchone()
     if proof is None:
@@ -76,7 +87,11 @@ def _load_activation(
 
 
 def _fetch(
-    connection: Connection[Any], pin: tuple[str, str], table: str, family: str, keys: Sequence[str],
+    connection: Connection[Any],
+    pin: tuple[str, str],
+    table: str,
+    family: str,
+    keys: Sequence[str],
 ) -> list[tuple[str, Any]]:
     if not keys:
         return []
@@ -157,7 +172,8 @@ def read_selective_neighborhood(
             if value["kind"] == "entity_ref":
                 entity_ids.add(value["entity_id"])
         evidence_ids = {
-            evidence_id for assertion in assertions
+            evidence_id
+            for assertion in assertions
             for evidence_id in assertion["metadata"]["evidence_ref_ids"]
         }
         projected = {
@@ -172,9 +188,16 @@ def read_selective_neighborhood(
         raise PersistenceIntegrityError("active selective projection facts are invalid")
     view = PostgresNativeSourceEvidenceRepository(database).open_native_source_view(pin[0])
     context = KnowledgeReadContext(
-        parsed=parsed, request=request, domain_contract=domain_contract,
-        semantic_profile=semantic_profile, domain_policy=domain_policy, source_reader=view,
+        parsed=parsed,
+        request=request,
+        domain_contract=domain_contract,
+        semantic_profile=semantic_profile,
+        domain_policy=domain_policy,
+        source_reader=view,
     )
     return NeighborhoodReadService().get_neighborhood(
-        context, seeds, depth, require_admitted_seeds=require_admitted_seeds,
+        context,
+        seeds,
+        depth,
+        require_admitted_seeds=require_admitted_seeds,
     )

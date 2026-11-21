@@ -9,14 +9,19 @@ from dungeonmind.application.vnext.native_source_access import NativeParsedRevis
 from dungeonmind.application.vnext.neighborhood import NeighborhoodReadService
 from dungeonmind.application.vnext.read_context import KnowledgeReadContext
 from dungeonmind.contracts.vnext.common import (
-    KnowledgeStanding, LabelsAllVisibility, ScopeBinding, ScopeSelector,
+    KnowledgeStanding,
+    LabelsAllVisibility,
+    ScopeBinding,
+    ScopeSelector,
 )
 from dungeonmind.contracts.vnext.domain import Entity
 from dungeonmind.contracts.vnext.projection import ProjectionRequest
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
 from dungeonmind.infrastructure.postgres.selective_neighborhood import read_selective_neighborhood
-from dungeonmind.infrastructure.postgres.selective_read_projection import publish_selective_read_projection
+from dungeonmind.infrastructure.postgres.selective_read_projection import (
+    publish_selective_read_projection,
+)
 from dungeonmind.infrastructure.postgres.vnext_sources import PostgresNativeSourceEvidenceRepository
 from tests.unit.test_vnext_cas_publication import SPACE, genesis_command
 from tests.unit.test_vnext_neighborhood import _edge, _lab_contract, _lab_profile
@@ -35,38 +40,54 @@ def selective_graph(pg):
         _edge("be", "b", "e", scope_value="two"),
     ]
     assertions = {
-        edge.assertion_id: edge.model_copy(update={
-            "metadata": edge.metadata.model_copy(update={"evidence_ref_ids": []}),
-        })
+        edge.assertion_id: edge.model_copy(
+            update={
+                "metadata": edge.metadata.model_copy(update={"evidence_ref_ids": []}),
+            }
+        )
         for edge in edges
     }
     payload = encode_native_graph_payload(
         entities={key: Entity(entity_id=key) for key in "abcde"},
-        assertions=assertions, aliases={}, evidence={},
+        assertions=assertions,
+        aliases={},
+        evidence={},
     )
     command = genesis_command(payload=payload)
-    command = command.model_copy(update={
-        "domain_contract_ref": command.domain_contract_ref.model_copy(update={
-            "domain_id": domain.domain_id,
-            "descriptor_sha256": canonical_sha256(domain.model_dump(mode="json")),
-        }),
-        "semantic_profile_ref": command.semantic_profile_ref.model_copy(update={
-            "profile_id": profile.profile_id,
-            "descriptor_sha256": canonical_sha256(profile.model_dump(mode="json")),
-        }),
-    })
+    command = command.model_copy(
+        update={
+            "domain_contract_ref": command.domain_contract_ref.model_copy(
+                update={
+                    "domain_id": domain.domain_id,
+                    "descriptor_sha256": canonical_sha256(domain.model_dump(mode="json")),
+                }
+            ),
+            "semantic_profile_ref": command.semantic_profile_ref.model_copy(
+                update={
+                    "profile_id": profile.profile_id,
+                    "descriptor_sha256": canonical_sha256(profile.model_dump(mode="json")),
+                }
+            ),
+        }
+    )
     repo = PostgresNativeSourceEvidenceRepository(pg.database)
     stored = repo.publish_revision(command)
     revision_id = stored.revision.revision_id
     request = ProjectionRequest(
-        space_id=SPACE, revision_id=revision_id,
+        space_id=SPACE,
+        revision_id=revision_id,
         scope_selector=ScopeSelector(bindings=[ScopeBinding(axis="test:scope", value="one")]),
-        audience_labels=["test:audience"], standing_selector=[KnowledgeStanding.ESTABLISHED],
+        audience_labels=["test:audience"],
+        standing_selector=[KnowledgeStanding.ESTABLISHED],
     )
     parsed = parse_verified_source_rows(stored, stored.graph_payload)
     context = KnowledgeReadContext(
-        parsed=parsed, request=request, domain_contract=domain, semantic_profile=profile,
-        domain_policy=policy, source_reader=repo.open_native_source_view(SPACE),
+        parsed=parsed,
+        request=request,
+        domain_contract=domain,
+        semantic_profile=profile,
+        domain_policy=policy,
+        source_reader=repo.open_native_source_view(SPACE),
     )
     return repo, command, context
 
@@ -78,14 +99,18 @@ def _read(database, context, **options):
         domain_contract=context.domain_contract,
         semantic_profile=context.semantic_profile,
         domain_policy=context.domain_policy,
-        seed_entity_ids=["a", "missing"], depth=2, require_admitted_seeds=True,
+        seed_entity_ids=["a", "missing"],
+        depth=2,
+        require_admitted_seeds=True,
         **options,
     )
 
 
 def _publish(database, context):
     return publish_selective_read_projection(
-        database, space_id=SPACE, revision_id=context.parsed.revision_id,
+        database,
+        space_id=SPACE,
+        revision_id=context.parsed.revision_id,
     )
 
 
@@ -94,13 +119,21 @@ def test_selective_depth_two_old_pin_matches_authorized_order(pg, selective_grap
     assert _read(pg.database, context) is None
     _publish(pg.database, context)
     revision_id = context.parsed.revision_id
-    repo.publish_revision(command.model_copy(update={
-        "parent_revision_id": revision_id, "expected_parent_revision_id": revision_id,
-        "operation_ids": ["op:child"],
-    }))
+    repo.publish_revision(
+        command.model_copy(
+            update={
+                "parent_revision_id": revision_id,
+                "expected_parent_revision_id": revision_id,
+                "operation_ids": ["op:child"],
+            }
+        )
+    )
     assert repo.get_head(SPACE).head_revision_id != revision_id
     expected = NeighborhoodReadService().get_neighborhood(
-        context, ["a", "missing"], depth=2, require_admitted_seeds=True,
+        context,
+        ["a", "missing"],
+        depth=2,
+        require_admitted_seeds=True,
     )
     assert tuple(a.assertion_id for a in expected.traversal_assertions) == ("ab", "cb")
     assert _read(pg.database, context) == expected
@@ -110,12 +143,19 @@ def test_selective_depth_two_old_pin_matches_authorized_order(pg, selective_grap
     ("mutation", "failure"),
     [
         ("DELETE FROM dungeonmind.selective_read_proofs", "proof is missing"),
-        ("DELETE FROM dungeonmind.selective_read_buckets WHERE family='outgoing' AND key='a'",
-         "bucket seal mismatch"),
-        ("DELETE FROM dungeonmind.selective_read_records WHERE family='assertions' AND key='ab'",
-         "records missing"),
-        ("UPDATE dungeonmind.knowledge_revisions SET graph_payload = graph_payload || '{\"bad\":true}'::jsonb",
-         "primary revision drift"),
+        (
+            "DELETE FROM dungeonmind.selective_read_buckets WHERE family='outgoing' AND key='a'",
+            "bucket seal mismatch",
+        ),
+        (
+            "DELETE FROM dungeonmind.selective_read_records WHERE family='assertions' AND key='ab'",
+            "records missing",
+        ),
+        (
+            "UPDATE dungeonmind.knowledge_revisions "
+            "SET graph_payload = graph_payload || '{\"bad\":true}'::jsonb",
+            "primary revision drift",
+        ),
     ],
 )
 def test_active_projection_refuses_corruption(pg, selective_graph, mutation, failure):

@@ -1,7 +1,8 @@
 """Exact pin and selective fact/bucket integrity."""
+
+import json
 from datetime import UTC, datetime
 from hashlib import sha256
-import json
 
 import pytest
 
@@ -14,10 +15,17 @@ from dungeonmind.application.vnext._selective_read_proof import (
 from dungeonmind.application.vnext.records import StoredKnowledgeRevision
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.common import (
-    EpistemicBasis, KnowledgeStanding, PublicVisibility, TimelessTemporalScope,
+    EpistemicBasis,
+    KnowledgeStanding,
+    PublicVisibility,
+    TimelessTemporalScope,
 )
 from dungeonmind.contracts.vnext.domain import (
-    Assertion, AssertionMetadata, DomainContractRef, Entity, EntityRefValue,
+    Assertion,
+    AssertionMetadata,
+    DomainContractRef,
+    Entity,
+    EntityRefValue,
 )
 from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
 from dungeonmind.domain.canonical import canonical_sha256
@@ -28,24 +36,35 @@ from dungeonmind.domain.errors import PersistenceIntegrityError
 def sample():
     entities = [Entity(entity_id=name).model_dump(mode="json") for name in ("a", "b")]
     edge = Assertion(
-        assertion_id="ab", subject_entity_id="a", predicate="demo:edge",
+        assertion_id="ab",
+        subject_entity_id="a",
+        predicate="demo:edge",
         value=EntityRefValue(entity_id="b"),
         metadata=AssertionMetadata(
-            standing=KnowledgeStanding.ESTABLISHED, visibility=PublicVisibility(),
-            epistemic_basis=EpistemicBasis.ASSERTED, claim_mode="demo:fact",
+            standing=KnowledgeStanding.ESTABLISHED,
+            visibility=PublicVisibility(),
+            epistemic_basis=EpistemicBasis.ASSERTED,
+            claim_mode="demo:fact",
             temporal_scope=TimelessTemporalScope(),
         ),
     ).model_dump(mode="json")
     payload = dict(entities=entities, assertions=[edge], aliases=[], evidence=[])
     revision = KnowledgeRevision(
-        space_id="space", revision_id="revision", created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        space_id="space",
+        revision_id="revision",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
         operation_ids=["op:seed"],
-        graph_schema="dm_vnext_graph_v1", graph_payload_sha256=canonical_sha256(payload),
+        graph_schema="dm_vnext_graph_v1",
+        graph_payload_sha256=canonical_sha256(payload),
         domain_contract_ref=DomainContractRef(
-            domain_id="demo.world", domain_revision="1", descriptor_sha256="a" * 64,
+            domain_id="demo.world",
+            domain_revision="1",
+            descriptor_sha256="a" * 64,
         ),
         semantic_profile_ref=SemanticProfileRef(
-            profile_id="demo.world.profile", profile_revision="1", descriptor_sha256="b" * 64,
+            profile_id="demo.world.profile",
+            profile_revision="1",
+            descriptor_sha256="b" * 64,
         ),
     )
     content = build_selective_read_proof(StoredKnowledgeRevision.seal(revision, payload))
@@ -54,7 +73,9 @@ def sample():
 
 def open_trusted(revision, content):
     return open_selective_read_proof(
-        content, expected_sha256=sha256(content).hexdigest(), revision=revision,
+        content,
+        expected_sha256=sha256(content).hexdigest(),
+        revision=revision,
     )
 
 
@@ -70,7 +91,8 @@ def test_revision_binding_and_independent_digest(sample):
     changed["buckets"]["outgoing"].clear()
     with pytest.raises(PersistenceIntegrityError, match="digest mismatch"):
         open_selective_read_proof(
-            json.dumps(changed).encode(), expected_sha256=sha256(content).hexdigest(),
+            json.dumps(changed).encode(),
+            expected_sha256=sha256(content).hexdigest(),
             revision=revision,
         )
 
@@ -95,4 +117,6 @@ def test_selected_fact_integrity_and_absence(sample):
     with pytest.raises(PersistenceIntegrityError, match="missing or unexpected"):
         verify_selective_records(proof, "assertions", ["ab"], [])
     with pytest.raises(PersistenceIntegrityError, match="seal mismatch"):
-        verify_selective_records(proof, "assertions", ["ab"], [("ab", edge | {"subject_entity_id": "wrong"})])
+        verify_selective_records(
+            proof, "assertions", ["ab"], [("ab", edge | {"subject_entity_id": "wrong"})]
+        )

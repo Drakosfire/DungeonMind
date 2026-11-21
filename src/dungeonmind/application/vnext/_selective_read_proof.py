@@ -14,11 +14,11 @@ from hashlib import sha256
 from types import MappingProxyType
 from typing import Any, Literal
 
+from dungeonmind.contracts.base import DungeonMindModel
+from dungeonmind.contracts.vnext.common import Sha256Hex
 from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
 from dungeonmind.domain.canonical import canonical_json, canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
-from dungeonmind.contracts.base import DungeonMindModel
-from dungeonmind.contracts.vnext.common import Sha256Hex
 
 from ._read_artifact import parse_verified_source_rows
 from .materialization import NATIVE_VNEXT_GRAPH_SCHEMA
@@ -33,7 +33,9 @@ _RECORD_IDS = {
 _EMPTY_BUCKET_DIGEST = canonical_sha256([])
 
 
-_BUCKET_FAMILIES = frozenset(("lexical", "predicate", "term", "subject", "aliases", "outgoing", "incoming"))
+_BUCKET_FAMILIES = frozenset(
+    ("lexical", "predicate", "term", "subject", "aliases", "outgoing", "incoming")
+)
 
 
 class _SelectiveReadProofWire(DungeonMindModel):
@@ -68,14 +70,13 @@ def build_selective_read_proof(stored: StoredKnowledgeRevision) -> bytes:
 def build_selective_read_projection(stored: StoredKnowledgeRevision) -> SelectiveReadProjection:
     """Derive the published rows and their seals from one verified revision."""
     revision = stored.revision
-    if (revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA
-            or revision.graph_payload_sha256 != stored.graph_payload_sha256):
+    if (
+        revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA
+        or revision.graph_payload_sha256 != stored.graph_payload_sha256
+    ):
         raise PersistenceIntegrityError("selective proof requires an exact native revision")
     rows = stored.graph_payload
-    records = {
-        table: {row[key]: row for row in rows[table]}
-        for table, key in _RECORD_IDS.items()
-    }
+    records = {table: {row[key]: row for row in rows[table]} for table, key in _RECORD_IDS.items()}
     parsed = parse_verified_source_rows(stored, rows)
     if parsed is None:
         raise PersistenceIntegrityError("selective proof requires native revision facts")
@@ -129,7 +130,10 @@ def build_selective_read_projection(stored: StoredKnowledgeRevision) -> Selectiv
 
 
 def open_selective_read_proof(
-    content: bytes, *, expected_sha256: str, revision: KnowledgeRevision,
+    content: bytes,
+    *,
+    expected_sha256: str,
+    revision: KnowledgeRevision,
 ) -> SelectiveReadProof:
     if sha256(content).hexdigest() != expected_sha256:
         raise PersistenceIntegrityError("selective proof digest mismatch")
@@ -138,15 +142,21 @@ def open_selective_read_proof(
     except ValueError as exc:
         raise PersistenceIntegrityError("selective proof is malformed") from exc
     if (proof.space_id, proof.revision_id, proof.revision_sha256, proof.payload_sha256) != (
-        revision.space_id, revision.revision_id,
-        canonical_sha256(revision.model_dump(mode="json")), revision.graph_payload_sha256,
+        revision.space_id,
+        revision.revision_id,
+        canonical_sha256(revision.model_dump(mode="json")),
+        revision.graph_payload_sha256,
     ):
         raise PersistenceIntegrityError("selective proof revision binding mismatch")
     if proof.records.keys() != _RECORD_IDS.keys() or proof.buckets.keys() != _BUCKET_FAMILIES:
         raise PersistenceIntegrityError("selective proof families are incomplete or unknown")
     return SelectiveReadProof(
-        records=MappingProxyType({key: MappingProxyType(value) for key, value in proof.records.items()}),
-        buckets=MappingProxyType({key: MappingProxyType(value) for key, value in proof.buckets.items()}),
+        records=MappingProxyType(
+            {key: MappingProxyType(value) for key, value in proof.records.items()}
+        ),
+        buckets=MappingProxyType(
+            {key: MappingProxyType(value) for key, value in proof.buckets.items()}
+        ),
     )
 
 

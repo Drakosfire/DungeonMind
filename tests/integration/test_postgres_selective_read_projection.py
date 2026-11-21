@@ -16,7 +16,9 @@ from tests.unit.test_vnext_cas_publication import SPACE, genesis_command
 
 pytestmark = pytest.mark.integration
 _TABLES = (
-    "selective_read_activations", "selective_read_proofs", "selective_read_records",
+    "selective_read_activations",
+    "selective_read_proofs",
+    "selective_read_records",
     "selective_read_buckets",
 )
 
@@ -55,7 +57,9 @@ def test_concurrent_projection_publication_and_replay(pg, migrated_database):
             "JOIN dungeonmind.selective_read_proofs p USING(space_id, revision_id)"
         ).fetchone()
     assert row["proof_sha256"] == digest
-    open_selective_read_proof(bytes(row["content"]), expected_sha256=digest, revision=stored.revision)
+    open_selective_read_proof(
+        bytes(row["content"]), expected_sha256=digest, revision=stored.revision
+    )
     assert repo.get_head(SPACE).head_revision_id == stored.revision.revision_id
     assert len(repo.head_events(SPACE)) == 1
 
@@ -72,14 +76,17 @@ def test_activation_and_all_projection_rows_roll_back_on_bucket_failure(pg, migr
     try:
         with pytest.raises(PersistenceIntegrityError, match="force_bucket_failure"):
             publish_selective_read_projection(
-                database, space_id=SPACE, revision_id=stored.revision.revision_id,
+                database,
+                space_id=SPACE,
+                revision_id=stored.revision.revision_id,
             )
         assert _counts(database) == [0, 0, 0, 0]
         assert repo.get_head(SPACE).head_revision_id == stored.revision.revision_id
     finally:
         with database.transaction() as connection:
             connection.execute(
-                "ALTER TABLE dungeonmind.selective_read_buckets DROP CONSTRAINT force_bucket_failure"
+                "ALTER TABLE dungeonmind.selective_read_buckets "
+                "DROP CONSTRAINT force_bucket_failure"
             )
 
 
