@@ -64,6 +64,14 @@ class NativeParsedRevisionCache:
         ] | None = None
         self._entry: tuple[tuple[str, str, str], ParsedKnowledgeRevision] | None = None
 
+    def _has_parsed_pin(self, space_id: str, revision_id: str) -> bool:
+        """Routing hint only. A cache hit still requires ordinary revision verification."""
+        with self._lock:
+            if self._entry is None:
+                return False
+            parsed = self._entry[1]
+            return (parsed.space_id, parsed.revision_id) == (space_id, revision_id)
+
     def parse(self, stored: StoredKnowledgeRevision) -> ParsedKnowledgeRevision:
         return self._parse_using(stored, lambda: _parse_revision(stored))
 
