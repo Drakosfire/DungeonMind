@@ -13,6 +13,7 @@ from typing import Annotated, Any
 
 from pydantic import Field, TypeAdapter, ValidationError
 
+from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
 from dungeonmind.contracts.vnext.domain import (
     Assertion,
     AssertionMetadata,
@@ -64,7 +65,7 @@ def decode_read_artifact(
     Full ordinary repository verification must precede this optional accelerator.
     """
     return _build_parsed_rows(
-        source, lambda consume: _decode_source_wire(data, source, consume) is not None
+        source.revision, lambda consume: _decode_source_wire(data, source, consume) is not None
     )
 
 
@@ -72,6 +73,13 @@ def parse_verified_source_rows(
     source: StoredKnowledgeRevision, rows: dict[str, Any],
 ) -> ParsedKnowledgeRevision | None:
     """Consume a request-owned decoded payload already bound by the source verifier."""
+    return _parse_authenticated_fact_rows(source.revision, rows)
+
+
+def _parse_authenticated_fact_rows(
+    revision: KnowledgeRevision, rows: dict[str, Any],
+) -> ParsedKnowledgeRevision | None:
+    """Parse authenticated facts, which may be a purpose-limited revision subset."""
     if set(rows) != {"entities", "assertions", "aliases", "evidence"} or any(
         type(table) is not list for table in rows.values()
     ):
@@ -97,14 +105,14 @@ def parse_verified_source_rows(
         rows.clear()
         return True
 
-    return _build_parsed_rows(source, feed)
+    return _build_parsed_rows(revision, feed)
 
 
 _ConsumeRow = Callable[[str, dict[str, Any], bool, bool], None]
 
 
 def _build_parsed_rows(
-    source: StoredKnowledgeRevision, feed: Callable[[_ConsumeRow], bool],
+    revision: KnowledgeRevision, feed: Callable[[_ConsumeRow], bool],
 ) -> ParsedKnowledgeRevision | None:
     try:
         entities: list[ParsedEntity] = []
@@ -183,7 +191,7 @@ def _build_parsed_rows(
         metadata.clear()
         values.clear()
         return _build_parsed_knowledge_revision_from_records(
-            _parse_revision_identity(source.revision),
+            _parse_revision_identity(revision),
             entities=entities,
             assertions=assertions,
             aliases=aliases,
