@@ -13,7 +13,10 @@ from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnav
 from dungeonmind.infrastructure.postgres.selective_native_sources import (
     open_selective_native_text_source_access_context,
 )
-from dungeonmind.infrastructure.postgres.selective_query import open_selective_query
+from dungeonmind.infrastructure.postgres.selective_query import (
+    open_selective_query,
+    open_selective_source_query,
+)
 from tests.integration import test_postgres_selective_neighborhood as neighborhood
 
 selective_graph = neighborhood.selective_graph
@@ -96,3 +99,63 @@ def test_selective_query_fails_closed_when_an_incoming_bucket_disappears(pg, sel
         assert reader is not None
         with pytest.raises(PersistenceIntegrityError, match="posting bucket seal mismatch"):
             reader.get_complete_entities(("b",))
+
+def test_one_projection_backs_source_query_and_retained_claim_reads(
+    pg, selective_graph, monkeypatch,
+):
+    repo, _, ordinary = selective_graph
+    full_source = open_native_text_source_access_context(
+        repository=repo, **_source_options(ordinary),
+    )
+    options = dict(
+        request=ordinary.request,
+        resolve_descriptors=lambda *_: (ordinary.domain_contract, ordinary.semantic_profile),
+        domain_policy=ordinary.domain_policy,
+        source_audience_labels=ordinary.request.audience_labels,
+    )
+    with open_selective_source_query(repo, **options) as inactive:
+        assert inactive is None
+    neighborhood._publish(pg.database, ordinary)
+    from dungeonmind.infrastructure.postgres import selective_query
+
+    load = selective_query._load_activation
+    opens = []
+
+    def track(connection, pin):
+        opens.append(pin)
+        return load(connection, pin)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("the selective path built the full Graph or reloaded already verified records")
+
+    monkeypatch.setattr(selective_query, "_load_activation", track)
+    monkeypatch.setattr(
+        "dungeonmind.application.vnext._read_artifact._build_parsed_knowledge_revision_from_records",
+        forbidden,
+    )
+    with open_selective_source_query(repo, **options) as opened:
+        assert opened is not None
+        source, reader = opened
+        assert source.parsed.evidence_by_id == full_source.parsed.evidence_by_id
+        assert source.source_view.epoch == full_source.source_view.epoch
+        for query in ("b b", "test:edge", "unknown phrase"):
+            assert reader.search_entities(query) == (
+                SearchReadService().search_entities(ordinary, query)
+            )
+        # Separate waves deliberately keep ab and cb in different contexts.
+        reader.get_complete_entities(("a",))
+        reader.get_complete_entities(("c",))
+        retained = reader.retain_complete_facts()
+    assert opens == [(ordinary.request.space_id, ordinary.request.revision_id)]
+    monkeypatch.setattr(selective_query, "_fetch", forbidden)
+    ids = ("cb", "ab", "cb")
+    assert retained.get_assertions_evidence(ids) == (
+        EvidenceReadService().get_assertions_evidence(ordinary, ids)
+    )
+    assert retained.get_complete_entity("a") == EntityReadService().get_complete_entity(
+        ordinary, "a",
+    )
+    with pytest.raises(PersistenceIntegrityError, match="assertion was not captured"):
+        retained.get_assertions_evidence(("bd",))
+    with pytest.raises(PersistenceIntegrityError, match="entity was not captured"):
+        retained.get_complete_entity("b")

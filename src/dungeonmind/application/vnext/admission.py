@@ -17,11 +17,11 @@ from dungeonmind.contracts.vnext.source import SourceArtifactV3
 from dungeonmind.domain.canonical import canonical_sha256
 
 from .errors import KnowledgeReadContextIntegrityError
-from .model import ParsedKnowledgeRevision
 from .provenance import KnowledgeProvenanceSnapshot
 from .records import (
     ParsedAssertion,
     ParsedDomainTemporalScope,
+    ParsedEvidenceRef,
     ParsedLabelsAllVisibility,
     ParsedLabelsAnyVisibility,
     ParsedPublicVisibility,
@@ -52,6 +52,13 @@ class CandidateAdmissionResult:
     excluded: tuple[CandidateExclusion, ...]
     work: AdmissionWorkCounts
     result_digest: str
+
+
+class CandidateFacts(Protocol):
+    """Exact facts needed to evaluate assertions and their evidence."""
+
+    def get_assertion(self, assertion_id: str) -> ParsedAssertion | None: ...
+    def get_evidence(self, evidence_ref_id: str) -> ParsedEvidenceRef | None: ...
 
 
 class DomainAdmissionPolicy(Protocol):
@@ -339,7 +346,7 @@ def validate_request_vocabulary(
 def evidence_chain_passes(
     assertion: ParsedAssertion,
     *,
-    parsed: ParsedKnowledgeRevision,
+    parsed: CandidateFacts,
     provenance: KnowledgeProvenanceSnapshot,
     audience: frozenset[str],
     declared_labels: frozenset[str],
@@ -360,7 +367,7 @@ def evidence_chain_passes(
 def evidence_refs_pass(
     evidence_ref_ids: Sequence[str],
     *,
-    parsed: ParsedKnowledgeRevision,
+    parsed: CandidateFacts,
     provenance: KnowledgeProvenanceSnapshot,
     audience: frozenset[str],
     declared_labels: frozenset[str],
@@ -425,7 +432,7 @@ def evidence_refs_pass(
 
 
 def collect_evidence_dependencies(
-    parsed: ParsedKnowledgeRevision,
+    parsed: CandidateFacts,
     candidate_assertion_ids: Sequence[str],
 ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
     evidence_ids: set[str] = set()
@@ -453,7 +460,7 @@ def collect_evidence_dependencies(
 
 
 def collect_evidence_ref_dependencies(
-    parsed: ParsedKnowledgeRevision,
+    parsed: CandidateFacts,
     evidence_ref_ids: Sequence[str],
 ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
     """Resolve deterministic source dependencies for a direct evidence-ref set."""

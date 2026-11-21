@@ -8,6 +8,7 @@ parser; shared mutable validation models never escape this function.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from json.encoder import encode_basestring
 from typing import Annotated, Any
 
@@ -81,41 +82,74 @@ def _parse_authenticated_fact_rows(
     rows: dict[str, Any],
 ) -> ParsedKnowledgeRevision | None:
     """Parse authenticated facts, which may be a purpose-limited revision subset."""
+    return _build_parsed_rows(revision, lambda consume: _feed_authenticated_facts(rows, consume))
+
+
+def _decode_authenticated_fact_rows(rows: dict[str, Any]) -> _DecodedFacts | None:
+    """Validate and freeze sealed facts without constructing Graph indexes."""
+    return _decode_rows(lambda consume: _feed_authenticated_facts(rows, consume))
+
+
+def _feed_authenticated_facts(rows: dict[str, Any], consume: _ConsumeRow) -> bool:
     if set(rows) != {"entities", "assertions", "aliases", "evidence"} or any(
         type(table) is not list for table in rows.values()
     ):
-        return None
+        return False
 
-    def feed(consume: _ConsumeRow) -> bool:
-        metadata_pool: dict[str, Any] = {}
-        value_pool: dict[str, Any] = {}
-        for key, table in rows.items():
-            for row in table:
-                if type(row) is not dict:
-                    raise ValueError("expected native source object")
-                if key == "assertions":
-                    # The verifier supplies only built-in JSON values. Their repr
-                    # preserves scalar types and signed zero. Different key order
-                    # may miss the pool, but cannot conflate different values.
-                    meta, value = row["metadata"], row["value"]
-                    row["metadata"] = metadata_pool.setdefault(repr(meta), meta)
-                    row["value"] = value_pool.setdefault(repr(value), value)
-                consume(key, row, False, False)
-        # The repository hands off ownership for this one parse. Release the
-        # mutable graph before building indexes over the frozen records.
-        rows.clear()
-        return True
-
-    return _build_parsed_rows(revision, feed)
+    metadata_pool: dict[str, Any] = {}
+    value_pool: dict[str, Any] = {}
+    for key, table in rows.items():
+        for row in table:
+            if type(row) is not dict:
+                raise ValueError("expected native source object")
+            if key == "assertions":
+                # The verifier supplies only built-in JSON values. Their repr
+                # preserves scalar types and signed zero. Different key order
+                # may miss the pool, but cannot conflate different values.
+                meta, value = row["metadata"], row["value"]
+                row["metadata"] = metadata_pool.setdefault(repr(meta), meta)
+                row["value"] = value_pool.setdefault(repr(value), value)
+            consume(key, row, False, False)
+    # The repository hands off ownership for this one parse. Release the
+    # mutable graph before building indexes over the frozen records.
+    rows.clear()
+    return True
 
 
 _ConsumeRow = Callable[[str, dict[str, Any], bool, bool], None]
+
+
+@dataclass(frozen=True, slots=True)
+class _DecodedFacts:
+    entities: tuple[ParsedEntity, ...]
+    assertions: tuple[ParsedAssertion, ...]
+    aliases: tuple[ParsedIdentityAlias, ...]
+    evidence: tuple[ParsedEvidenceRef, ...]
 
 
 def _build_parsed_rows(
     revision: KnowledgeRevision,
     feed: Callable[[_ConsumeRow], bool],
 ) -> ParsedKnowledgeRevision | None:
+    decoded = _decode_rows(feed)
+    if decoded is None:
+        return None
+    try:
+        return _build_parsed_knowledge_revision_from_records(
+            _parse_revision_identity(revision),
+            entities=decoded.entities,
+            assertions=decoded.assertions,
+            aliases=decoded.aliases,
+            evidence=decoded.evidence,
+            _stream_digest=True,
+        )
+    except (ValidationError, TypeError, ValueError, KeyError) as exc:
+        raise PersistenceIntegrityError(
+            f"native read artifact contract validation failed: {exc}"
+        ) from exc
+
+
+def _decode_rows(feed: Callable[[_ConsumeRow], bool]) -> _DecodedFacts | None:
     try:
         entities: list[ParsedEntity] = []
         aliases: list[ParsedIdentityAlias] = []
@@ -188,16 +222,7 @@ def _build_parsed_rows(
         # proceed to structural validation and return a parsed result.
         if not feed(consume):
             return None
-        metadata.clear()
-        values.clear()
-        return _build_parsed_knowledge_revision_from_records(
-            _parse_revision_identity(revision),
-            entities=entities,
-            assertions=assertions,
-            aliases=aliases,
-            evidence=evidence,
-            _stream_digest=True,
-        )
+        return _DecodedFacts(tuple(entities), tuple(assertions), tuple(aliases), tuple(evidence))
     except (ValidationError, TypeError, ValueError, KeyError) as exc:
         raise PersistenceIntegrityError(
             f"native read artifact contract validation failed: {exc}"
