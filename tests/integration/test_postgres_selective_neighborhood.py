@@ -4,6 +4,7 @@ import pytest
 
 from dungeonmind.application.vnext._read_artifact import parse_verified_source_rows
 from dungeonmind.application.vnext.admission import AlwaysAdmitPolicy
+from dungeonmind.application.vnext.entity_reads import EntityReadService
 from dungeonmind.application.vnext.materialization import encode_native_graph_payload
 from dungeonmind.application.vnext.native_source_access import NativeParsedRevisionCache
 from dungeonmind.application.vnext.neighborhood import NeighborhoodReadService
@@ -18,13 +19,16 @@ from dungeonmind.contracts.vnext.domain import Entity
 from dungeonmind.contracts.vnext.projection import ProjectionRequest
 from dungeonmind.domain.canonical import canonical_sha256
 from dungeonmind.domain.errors import PersistenceIntegrityError
-from dungeonmind.infrastructure.postgres.selective_neighborhood import read_selective_neighborhood
+from dungeonmind.infrastructure.postgres.selective_neighborhood import (
+    open_selective_neighborhood,
+    read_selective_neighborhood,
+)
 from dungeonmind.infrastructure.postgres.selective_read_projection import (
     publish_selective_read_projection,
 )
 from dungeonmind.infrastructure.postgres.vnext_sources import PostgresNativeSourceEvidenceRepository
 from tests.unit.test_vnext_cas_publication import SPACE, genesis_command
-from tests.unit.test_vnext_neighborhood import _edge, _lab_contract, _lab_profile
+from tests.unit.test_vnext_neighborhood import _edge, _lab_contract, _lab_profile, _literal
 
 pytestmark = pytest.mark.integration
 
@@ -38,6 +42,7 @@ def selective_graph(pg):
         _edge("cb", "c", "b"),
         _edge("bd", "b", "d", visibility=LabelsAllVisibility(labels=["test:hidden"])),
         _edge("be", "b", "e", scope_value="two"),
+        _literal("b-title", "b"),
     ]
     assertions = {
         edge.assertion_id: edge.model_copy(
@@ -180,3 +185,29 @@ def test_parsed_pin_routes_to_ordinary_read_without_touching_projection(pg, sele
 
     assert _read(NeverConnect(), context, parsed_cache=cache) is None
     assert _read(pg.database, context, parsed_cache=NativeParsedRevisionCache()) is not None
+
+
+def test_presentation_is_ordered_authorized_and_request_scoped(pg, selective_graph):
+    _, _, context = selective_graph
+    _publish(pg.database, context)
+    with open_selective_neighborhood(
+        pg.database,
+        request=context.request,
+        domain_contract=context.domain_contract,
+        semantic_profile=context.semantic_profile,
+        domain_policy=context.domain_policy,
+        seed_entity_ids=["a"],
+        depth=2,
+        require_admitted_seeds=True,
+    ) as opened:
+        assert opened is not None
+        ids = ["b", "a", "b"]
+        expected = tuple(EntityReadService().get_entity(context, entity_id) for entity_id in ids)
+        actual = opened.read_entities(ids)
+        assert actual == expected
+        assert "b-title" in {item.assertion_id for item in actual[0].assertions}
+        assert opened.read_entities([]) == ()
+        with pytest.raises(ValueError, match="authorized neighborhood"):
+            opened.read_entities(["d"])
+    with pytest.raises(PersistenceIntegrityError, match="read is closed"):
+        opened.read_entities(["a"])
