@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from functools import partial
 from threading import Lock
-from typing import Any, cast
+from typing import Any, Generic, TypeVar, cast
 
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.domain import DomainContractDescriptor, DomainContractRef
@@ -62,13 +62,18 @@ class NativeTextSourceMembership:
         return self.evidence_by_id.get(evidence_ref_id)
 
 
+_MembershipT = TypeVar(
+    "_MembershipT", bound=ParsedKnowledgeRevision | NativeTextSourceMembership, covariant=True,
+)
+
+
 @dataclass(frozen=True, slots=True)
-class NativeTextSourceAccessContext:
+class NativeTextSourceAccessContext(Generic[_MembershipT]):
     """Exact child membership, pinned source epoch and immutable visibility inputs."""
 
     space_id: str
     revision_id: str
-    parsed: ParsedKnowledgeRevision | NativeTextSourceMembership
+    parsed: _MembershipT
     source_view: NativeTextSourceView
     audience_labels: frozenset[str]
     declared_visibility_labels: frozenset[str]
@@ -185,7 +190,7 @@ def open_native_text_source_access_context(
     audience_labels: Sequence[str] = (),
     parsed_cache: NativeParsedRevisionCache | None = None,
     prefer_verified_source_rows: bool = False,
-) -> NativeTextSourceAccessContext:
+) -> NativeTextSourceAccessContext[ParsedKnowledgeRevision]:
     """Pin one exact native revision and one coherent source-authority epoch.
 
     A descriptor resolver receives both descriptor references from the loaded revision.
@@ -266,8 +271,8 @@ def _verified_source_domain(
 def refresh_native_text_source_access_context(
     *,
     repository: NativeSourceEvidenceRepository,
-    context: NativeTextSourceAccessContext,
-) -> NativeTextSourceAccessContext:
+    context: NativeTextSourceAccessContext[_MembershipT],
+) -> NativeTextSourceAccessContext[_MembershipT]:
     """Refresh source authority without reloading immutable Graph membership.
 
     The repository must be the authority that opened the original context. The
@@ -283,8 +288,8 @@ def refresh_native_text_source_access_context(
 def refresh_native_text_source_access_scope(
     *,
     repository: NativeSourceEvidenceRepository,
-    context: NativeTextSourceAccessContext,
-) -> Iterator[NativeTextSourceAccessContext]:
+    context: NativeTextSourceAccessContext[_MembershipT],
+) -> Iterator[NativeTextSourceAccessContext[_MembershipT]]:
     """Refresh one exact read while allowing its owner to share a read connection."""
     _validate_refresh_identity(context)
     open_scope = getattr(repository, "open_native_source_read_scope", None)
@@ -308,8 +313,8 @@ def _validate_refresh_identity(context: NativeTextSourceAccessContext) -> None:
 
 
 def _with_refreshed_view(
-    context: NativeTextSourceAccessContext, view: NativeTextSourceView
-) -> NativeTextSourceAccessContext:
+    context: NativeTextSourceAccessContext[_MembershipT], view: NativeTextSourceView,
+) -> NativeTextSourceAccessContext[_MembershipT]:
     if view.epoch < context.source_view.epoch:
         raise KnowledgeReadContextIntegrityError("native source authority epoch moved backwards")
     return replace(context, source_view=view)

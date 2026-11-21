@@ -913,7 +913,10 @@ def test_selective_source_membership_matches_exact_source_only_authority(
     assert open_admitted_native_text(candidate, evidence_id) == expected
 
 
-@pytest.mark.parametrize("corruption", ["evidence_missing", "evidence_changed", "source_seal"])
+@pytest.mark.parametrize(
+    "corruption",
+    ["evidence_missing", "evidence_changed", "evidence_scalar", "source_seal", "header"],
+)
 def test_active_source_membership_rejects_incomplete_or_corrupt_projection(pg, corruption):
     repository = _repository(pg)
     domain, profile, genesis = _init(repository)
@@ -934,10 +937,27 @@ def test_active_source_membership_rejects_incomplete_or_corrupt_projection(pg, c
                 SET value = jsonb_set(value, '{can_open_source}', 'false')
                 WHERE family = 'evidence'"""
             )
+        elif corruption == "evidence_scalar":
+            connection.execute(
+                "UPDATE dungeonmind.selective_read_records SET value='null' WHERE family='evidence'"
+            )
+        elif corruption == "header":
+            connection.execute(
+                """UPDATE dungeonmind.knowledge_revisions SET revision_payload = jsonb_set(
+                revision_payload, '{domain_contract_ref,descriptor_sha256}', to_jsonb(%s::text))""",
+                ("0" * 64,),
+            )
         else:
             connection.execute(
                 "UPDATE dungeonmind.selective_read_activations SET source_sql_sha256 = %s",
                 ("0" * 64,),
             )
+
+    def resolve_domain(domain_ref, profile_ref):
+        assert corruption != "header", "descriptor resolver received an unauthenticated header"
+        return domain
+
     with pytest.raises(PersistenceIntegrityError, match="selective"):
-        open_selective_native_text_source_access_context(repository, **pin, domain_contract=domain)
+        open_selective_native_text_source_access_context(
+            repository, **pin, domain_contract=resolve_domain,
+        )

@@ -32,7 +32,7 @@ def open_selective_native_text_source_access_context(
         | Callable[[DomainContractRef, SemanticProfileRef], DomainContractDescriptor]
     ),
     audience_labels: Sequence[str] = (),
-) -> NativeTextSourceAccessContext | None:
+) -> NativeTextSourceAccessContext[NativeTextSourceMembership] | None:
     """Open exact evidence membership, or request the ordinary path if inactive.
 
     An active projection must prove the complete evidence set, including
@@ -48,8 +48,8 @@ def open_selective_native_text_source_access_context(
         if activation is None:
             return None
         revision, digest, content = activation
-        domain = _verified_source_domain(revision, domain_contract)
         proof = open_selective_read_proof(content, expected_sha256=digest, revision=revision)
+        domain = _verified_source_domain(revision, domain_contract)
         keys = tuple(proof.records["evidence"])
         rows = _fetch(connection, pin, "selective_read_records", "evidence", keys)
         verify_selective_records(proof, "evidence", keys, rows)
