@@ -15,7 +15,6 @@ from dungeonmind.application.vnext._selective_read_proof import (
 )
 from dungeonmind.application.vnext.admission import DomainAdmissionPolicy
 from dungeonmind.application.vnext.entity_reads import EntityLookupResult, EntityReadService
-from dungeonmind.application.vnext.ports import NativeTextSourceView
 from dungeonmind.application.vnext.native_source_access import NativeParsedRevisionCache
 from dungeonmind.application.vnext.neighborhood import (
     NeighborhoodReadService,
@@ -23,6 +22,7 @@ from dungeonmind.application.vnext.neighborhood import (
     _normalize_depth,
     _normalize_seeds,
 )
+from dungeonmind.application.vnext.ports import NativeTextSourceView
 from dungeonmind.application.vnext.read_context import KnowledgeReadContext
 from dungeonmind.contracts.vnext.domain import DomainContractDescriptor, SemanticProfileDescriptorV2
 from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
@@ -36,12 +36,14 @@ from .vnext_sources import PostgresNativeSourceEvidenceRepository
 
 
 def _load_activation(
-    connection: Connection[Any], pin: tuple[str, str],
+    connection: Connection[Any],
+    pin: tuple[str, str],
 ) -> tuple[KnowledgeRevision, str, bytes] | None:
     # First establish activation presence without detoasting the primary graph.
     anchor = connection.execute(
-        sql.SQL("SELECT * FROM {}.selective_read_activations WHERE space_id=%s AND revision_id=%s")
-        .format(sql.Identifier(SCHEMA)),
+        sql.SQL(
+            "SELECT * FROM {}.selective_read_activations WHERE space_id=%s AND revision_id=%s"
+        ).format(sql.Identifier(SCHEMA)),
         pin,
     ).fetchone()
     if anchor is None:
@@ -55,23 +57,32 @@ def _load_activation(
         """).format(sql.Identifier(SCHEMA)),
         pin,
     ).fetchone()
-    if (row is None or anchor["source_sql_sha256"] != row["source_sql_sha256"]
-            or anchor["source_record_fingerprint"] != row["record_fingerprint"]):
+    if (
+        row is None
+        or anchor["source_sql_sha256"] != row["source_sql_sha256"]
+        or anchor["source_record_fingerprint"] != row["record_fingerprint"]
+    ):
         raise PersistenceIntegrityError("selective projection primary revision drift")
     try:
         revision = KnowledgeRevision.model_validate(row["revision_payload"])
     except ValueError as exc:
         raise PersistenceIntegrityError("selective projection revision header is invalid") from exc
     columns = (
-        "schema_version", "space_id", "revision_id", "parent_revision_id",
-        "graph_schema", "graph_payload_sha256",
+        "schema_version",
+        "space_id",
+        "revision_id",
+        "parent_revision_id",
+        "graph_schema",
+        "graph_payload_sha256",
     )
-    if (any(row[key] != getattr(revision, key) for key in columns)
-            or _normalize(row["created_at"]) != _normalize(revision.created_at)):
+    if any(row[key] != getattr(revision, key) for key in columns) or _normalize(
+        row["created_at"]
+    ) != _normalize(revision.created_at):
         raise PersistenceIntegrityError("selective projection revision header drift")
     proof = connection.execute(
-        sql.SQL("SELECT content FROM {}.selective_read_proofs WHERE space_id=%s AND revision_id=%s")
-        .format(sql.Identifier(SCHEMA)),
+        sql.SQL(
+            "SELECT content FROM {}.selective_read_proofs WHERE space_id=%s AND revision_id=%s"
+        ).format(sql.Identifier(SCHEMA)),
         pin,
     ).fetchone()
     if proof is None:
@@ -80,7 +91,11 @@ def _load_activation(
 
 
 def _fetch(
-    connection: Connection[Any], pin: tuple[str, str], table: str, family: str, keys: Sequence[str],
+    connection: Connection[Any],
+    pin: tuple[str, str],
+    table: str,
+    family: str,
+    keys: Sequence[str],
 ) -> list[tuple[str, Any]]:
     if not keys:
         return []
@@ -108,10 +123,15 @@ def read_selective_neighborhood(
 ) -> NeighborhoodResult | None:
     """Read a selective neighborhood, or request ordinary exact-pin fallback."""
     with open_selective_neighborhood(
-        database, request=request, domain_contract=domain_contract,
-        semantic_profile=semantic_profile, domain_policy=domain_policy,
-        seed_entity_ids=seed_entity_ids, depth=depth,
-        require_admitted_seeds=require_admitted_seeds, parsed_cache=parsed_cache,
+        database,
+        request=request,
+        domain_contract=domain_contract,
+        semantic_profile=semantic_profile,
+        domain_policy=domain_policy,
+        seed_entity_ids=seed_entity_ids,
+        depth=depth,
+        require_admitted_seeds=require_admitted_seeds,
+        parsed_cache=parsed_cache,
     ) as opened:
         return None if opened is None else opened.result
 
@@ -197,25 +217,36 @@ def open_selective_neighborhood(
                 if value["kind"] == "entity_ref":
                     required_entities.add(value["entity_id"])
             evidence_ids = {
-                evidence_id for assertion in assertions
+                evidence_id
+                for assertion in assertions
                 for evidence_id in assertion["metadata"]["evidence_ref_ids"]
             }
-            parsed = _parse_authenticated_fact_rows(revision, {
-                "entities": facts("entities", required_entities),
-                "assertions": assertions,
-                "aliases": [],
-                "evidence": facts("evidence", evidence_ids),
-            })
+            parsed = _parse_authenticated_fact_rows(
+                revision,
+                {
+                    "entities": facts("entities", required_entities),
+                    "assertions": assertions,
+                    "aliases": [],
+                    "evidence": facts("evidence", evidence_ids),
+                },
+            )
             if parsed is None:
                 raise PersistenceIntegrityError("active selective projection facts are invalid")
             return KnowledgeReadContext(
-                parsed=parsed, request=request, domain_contract=domain_contract,
-                semantic_profile=semantic_profile, domain_policy=domain_policy, source_reader=view,
+                parsed=parsed,
+                request=request,
+                domain_contract=domain_contract,
+                semantic_profile=semantic_profile,
+                domain_policy=domain_policy,
+                source_reader=view,
             )
 
         context = read_context(assertion_ids, entity_ids)
         result = NeighborhoodReadService().get_neighborhood(
-            context, seeds, depth, require_admitted_seeds=require_admitted_seeds,
+            context,
+            seeds,
+            depth,
+            require_admitted_seeds=require_admitted_seeds,
         )
         admitted_nodes = frozenset(entity.entity_id for entity in result.entities)
         active = True
@@ -229,9 +260,7 @@ def open_selective_neighborhood(
                 raise ValueError("presentation entities must belong to the authorized neighborhood")
             if not requested:
                 return ()
-            subject_ids = {
-                aid for bucket in buckets("subject", sorted(unique)) for aid in bucket
-            }
+            subject_ids = {aid for bucket in buckets("subject", sorted(unique)) for aid in bucket}
             presentation = read_context(subject_ids, unique)
             service = EntityReadService()
             return tuple(service.get_entity(presentation, key) for key in requested)
