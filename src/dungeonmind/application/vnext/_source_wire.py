@@ -50,7 +50,7 @@ _ASSERTION_FIELDS = frozenset(
     }
 )
 _MAX_CHUNK_DEPTH = 64
-_STRUCTURE_TOKEN = re.compile(r'["{}\[\]]')
+_STRUCTURE_TOKEN = re.compile(r'"(?:[^"\\]++|\\[\s\S])*+"|"[\s\S]*|[{}\[\]]')
 
 
 class UnsupportedSourceWire(ValueError):
@@ -78,42 +78,24 @@ def _constant(text: str) -> Any:
 
 
 def _depth(text: str, limit: int) -> int:
-    """Bound nesting before allocation, skipping string bodies in C via find.
+    """Bound nesting before allocation without interpreting JSON string escapes.
 
-    Escaped quotes are identified by the immediately preceding backslash run.
-    The scanner is linear and allocates no nested containers or token list.
-    json.loads subsequently checks the full syntax and bracket types.
+    The token pattern consumes whole string bodies, including an unterminated
+    string's remainder. Possessive repetitions avoid backtracking in long
+    strings. json.loads still checks escapes, brackets and full JSON syntax.
     """
-    depth = maximum = position = 0
-    while True:
-        token = _STRUCTURE_TOKEN.search(text, position)
-        if token is None:
-            return maximum
-        position = token.start()
-        char = token[0]
-        if char == '"':
-            start = position + 1
-            while True:
-                end = text.find('"', start)
-                if end < 0:
-                    return maximum  # json.loads reports the unterminated string.
-                back = end - 1
-                while back >= start and text[back] == "\\":
-                    back -= 1
-                if (end - 1 - back) % 2 == 0:
-                    break
-                start = end + 1
-            position = end + 1
-            continue
+    depth = maximum = 0
+    for token in _STRUCTURE_TOKEN.finditer(text):
+        char = text[token.start()]
         if char in "[{":
             depth += 1
             if depth > maximum:
                 maximum = depth
-            if depth > limit:
-                raise ValueError("JSON nesting limit exceeded")
+                if depth > limit:
+                    raise ValueError("JSON nesting limit exceeded")
         elif char in "]}":
             depth -= 1
-        position += 1
+    return maximum
 
 
 def _load(text: str, depth: int) -> Any:
