@@ -14,6 +14,9 @@ def upgrade() -> None:
             space_id text NOT NULL,
             revision_id text NOT NULL,
             proof_sha256 text NOT NULL CHECK(proof_sha256 ~ '^[0-9a-f]{64}$'),
+            source_sql_sha256 text NOT NULL CHECK(source_sql_sha256 ~ '^[0-9a-f]{64}$'),
+            source_record_fingerprint text NOT NULL
+                CHECK(source_record_fingerprint ~ '^[0-9a-f]{64}$'),
             PRIMARY KEY (space_id, revision_id),
             FOREIGN KEY (space_id, revision_id)
                 REFERENCES dungeonmind.knowledge_revisions(space_id, revision_id)

@@ -13,6 +13,11 @@ from dungeonmind.domain.errors import PersistenceIntegrityError
 from .database import PostgresDatabase, jsonb
 from .vnext_knowledge import SCHEMA, _read_revision
 
+# This digest binds the current PostgreSQL representation. It supplements
+# the canonical Core verification performed by the publisher. An output
+# representation change across PostgreSQL versions requires reactivation.
+_SOURCE_SQL_SHA256 = "encode(sha256(convert_to(graph_payload::text, 'UTF8')), 'hex')"
+
 
 def publish_selective_read_projection(
     database: PostgresDatabase, *, space_id: str, revision_id: str,
@@ -28,28 +33,42 @@ def publish_selective_read_projection(
         stored = _read_revision(connection, *pin, lock=True)
         if stored is None:
             raise PersistenceIntegrityError("selective projection source revision is missing")
+        source = connection.execute(
+            sql.SQL(f"""
+                SELECT {_SOURCE_SQL_SHA256} AS source_sql_sha256, record_fingerprint
+                FROM {{}}.knowledge_revisions WHERE space_id = %s AND revision_id = %s
+            """).format(sql.Identifier(SCHEMA)),
+            pin,
+        ).fetchone()
+        if source is None:
+            raise PersistenceIntegrityError("selective projection locked revision disappeared")
+        source_digest = source["source_sql_sha256"]
+        source_fingerprint = source["record_fingerprint"]
         projection = build_selective_read_projection(stored)
         digest = sha256(projection.proof).hexdigest()
         inserted = connection.execute(
             sql.SQL("""
-                INSERT INTO {}.selective_read_activations (space_id, revision_id, proof_sha256)
-                VALUES (%s, %s, %s)
+                INSERT INTO {}.selective_read_activations (
+                    space_id, revision_id, proof_sha256, source_sql_sha256, source_record_fingerprint
+                ) VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (space_id, revision_id) DO NOTHING
                 RETURNING proof_sha256
             """).format(sql.Identifier(SCHEMA)),
-            (*pin, digest),
+            (*pin, digest, source_digest, source_fingerprint),
         ).fetchone()
         if inserted is None:
             existing = connection.execute(
                 sql.SQL("""
-                    SELECT a.proof_sha256, p.content
+                    SELECT a.proof_sha256, a.source_sql_sha256, a.source_record_fingerprint, p.content
                     FROM {}.selective_read_activations a
                     JOIN {}.selective_read_proofs p USING (space_id, revision_id)
                     WHERE a.space_id = %s AND a.revision_id = %s
                 """).format(sql.Identifier(SCHEMA), sql.Identifier(SCHEMA)),
                 pin,
             ).fetchone()
-            if existing is None or existing["proof_sha256"] != digest:
+            if (existing is None or existing["proof_sha256"] != digest
+                    or existing["source_sql_sha256"] != source_digest
+                    or existing["source_record_fingerprint"] != source_fingerprint):
                 raise PersistenceIntegrityError("selective projection activation drift")
             open_selective_read_proof(
                 bytes(existing["content"]), expected_sha256=digest, revision=stored.revision,

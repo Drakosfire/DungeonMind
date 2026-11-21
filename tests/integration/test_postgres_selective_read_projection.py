@@ -6,6 +6,7 @@ import pytest
 from psycopg import sql
 
 from dungeonmind.application.vnext._selective_read_proof import open_selective_read_proof
+from dungeonmind.domain.errors import PersistenceIntegrityError
 from dungeonmind.infrastructure.postgres.database import PostgresDatabase
 from dungeonmind.infrastructure.postgres.selective_read_projection import (
     publish_selective_read_projection,
@@ -69,7 +70,7 @@ def test_activation_and_all_projection_rows_roll_back_on_bucket_failure(pg, migr
             "CHECK (false)"
         )
     try:
-        with pytest.raises(Exception, match="force_bucket_failure"):
+        with pytest.raises(PersistenceIntegrityError, match="force_bucket_failure"):
             publish_selective_read_projection(
                 database, space_id=SPACE, revision_id=stored.revision.revision_id,
             )
@@ -80,3 +81,18 @@ def test_activation_and_all_projection_rows_roll_back_on_bucket_failure(pg, migr
             connection.execute(
                 "ALTER TABLE dungeonmind.selective_read_buckets DROP CONSTRAINT force_bucket_failure"
             )
+
+
+def test_published_projection_rejects_activation_anchor_drift(pg, migrated_database):
+    database = PostgresDatabase(migrated_database)
+    repo = PostgresKnowledgeRevisionRepository(database)
+    stored = repo.publish_revision(genesis_command())
+    pin = dict(space_id=SPACE, revision_id=stored.revision.revision_id)
+    publish_selective_read_projection(database, **pin)
+    with database.transaction() as connection:
+        connection.execute(
+            "UPDATE dungeonmind.selective_read_activations SET source_sql_sha256 = %s",
+            ("0" * 64,),
+        )
+    with pytest.raises(PersistenceIntegrityError, match="activation drift"):
+        publish_selective_read_projection(database, **pin)
