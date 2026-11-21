@@ -201,7 +201,7 @@ def test_populated_extension_authority_refuses_downgrade(pg):
             conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()[
                 "version_num"
             ]
-            == "0023_native_source_publications"
+            == "0024_selective_read_projection"
         )
 
 

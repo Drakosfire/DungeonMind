@@ -56,8 +56,19 @@ class SelectiveReadProof:
     buckets: Mapping[str, Mapping[str, str]]
 
 
+@dataclass(frozen=True, slots=True)
+class SelectiveReadProjection:
+    proof: bytes
+    records: dict[str, dict[str, dict[str, Any]]]
+    buckets: dict[str, dict[str, list[Any]]]
+
+
 def build_selective_read_proof(stored: StoredKnowledgeRevision) -> bytes:
-    """Derive complete posting and fact seals from one verified native revision."""
+    return build_selective_read_projection(stored).proof
+
+
+def build_selective_read_projection(stored: StoredKnowledgeRevision) -> SelectiveReadProjection:
+    """Derive the published rows and their seals from one verified revision."""
     revision = stored.revision
     if (
         revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA
@@ -65,15 +76,12 @@ def build_selective_read_proof(stored: StoredKnowledgeRevision) -> bytes:
     ):
         raise PersistenceIntegrityError("selective proof requires an exact native revision")
     rows = stored.graph_payload
-    records = {
-        table: {row[key]: canonical_sha256(row) for row in rows[table]}
-        for table, key in _RECORD_IDS.items()
-    }
+    records = {table: {row[key]: row for row in rows[table]} for table, key in _RECORD_IDS.items()}
     parsed = parse_verified_source_rows(stored, rows)
     if parsed is None:
         raise PersistenceIntegrityError("selective proof requires native revision facts")
     buckets = {
-        name: {key: canonical_sha256(list(ids)) for key, ids in index.items() if ids}
+        name: {key: list(ids) for key, ids in index.items() if ids}
         for name, index in (
             ("lexical", parsed.lexical_assertion_index),
             ("predicate", parsed.predicate_assertion_index),
@@ -86,7 +94,7 @@ def build_selective_read_proof(stored: StoredKnowledgeRevision) -> bytes:
         ("outgoing", parsed.entity_ref_outgoing_assertions),
         ("incoming", parsed.entity_ref_incoming_assertions),
     ):
-        sealed: dict[str, str] = {}
+        edges: dict[str, list[Any]] = {}
         for key, ids in index.items():
             if not ids:
                 continue
@@ -96,8 +104,8 @@ def build_selective_read_proof(stored: StoredKnowledgeRevision) -> bytes:
                 if not isinstance(assertion.value, ParsedEntityRefValue):
                     raise PersistenceIntegrityError("selective edge bucket contains a non-edge")
                 entries.append([identifier, assertion.subject_entity_id, assertion.value.entity_id])
-            sealed[key] = canonical_sha256(entries)
-        buckets[name] = sealed
+            edges[key] = entries
+        buckets[name] = edges
 
     proof = _SelectiveReadProofWire(
         format_version="dm_selective_read_proof_v1",
@@ -105,10 +113,20 @@ def build_selective_read_proof(stored: StoredKnowledgeRevision) -> bytes:
         revision_id=revision.revision_id,
         revision_sha256=canonical_sha256(revision.model_dump(mode="json")),
         payload_sha256=stored.graph_payload_sha256,
+        records={
+            table: {key: canonical_sha256(row) for key, row in values.items()}
+            for table, values in records.items()
+        },
+        buckets={
+            family: {key: canonical_sha256(ids) for key, ids in values.items()}
+            for family, values in buckets.items()
+        },
+    )
+    return SelectiveReadProjection(
+        proof=canonical_json(proof.model_dump(mode="json")).encode("utf-8"),
         records=records,
         buckets=buckets,
     )
-    return canonical_json(proof.model_dump(mode="json")).encode("utf-8")
 
 
 def open_selective_read_proof(
