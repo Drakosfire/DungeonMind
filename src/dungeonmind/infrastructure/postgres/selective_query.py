@@ -90,11 +90,14 @@ class SelectiveQueryRead:
 
     def _buckets(self, family: str, keys: Sequence[str]) -> list[list[Any]]:
         self._assert_open()
+        requested = tuple(dict.fromkeys(keys))
         fetched = dict(_fetch(
-            self._connection, self._pin, "selective_read_buckets", family, keys,
+            self._connection, self._pin, "selective_read_buckets", family, requested,
         ))
-        rows = [(key, fetched.get(key, [])) for key in keys]
-        verify_selective_buckets(self._proof, family, keys, rows)
+        rows = [(key, fetched.get(key, [])) for key in requested]
+        if any(not isinstance(value, list) for _, value in rows):
+            raise PersistenceIntegrityError("selective posting bucket is not an array")
+        verify_selective_buckets(self._proof, family, requested, rows)
         return [value for _, value in rows]
 
     def _posting_ids(self, family: str, keys: Sequence[str]) -> set[str]:

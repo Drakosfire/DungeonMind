@@ -64,7 +64,7 @@ def test_selective_query_matches_search_entities_and_selected_claims(
     source = open_selective_native_text_source_access_context(repo, **_source_options(ordinary))
     assert source is not None
 
-    queries = ("a", "b", "related", "test:edge", "nothing matches")
+    queries = ("a", "b", "b b", "related", "test:edge", "nothing matches")
     entities = ("b", "a", "missing", "b")
     claims = ("ab", "bd", "be", "missing", "ab")
     with _open(pg.database, source, ordinary) as reader:
