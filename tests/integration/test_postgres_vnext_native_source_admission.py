@@ -12,6 +12,8 @@ from dungeonmind.application.vnext.errors import (
 )
 from dungeonmind.application.vnext.initialization import initialize_empty_knowledge_space
 from dungeonmind.application.vnext.native_source_access import (
+    NativeTextSourceMembership,
+    list_admitted_native_text_sources,
     open_admitted_native_text,
     open_admitted_native_text_batch,
     open_native_text_source_access_context,
@@ -21,8 +23,15 @@ from dungeonmind.application.vnext.native_source_access import (
 from dungeonmind.application.vnext.native_source_admission import (
     publish_native_text_source_evidence,
 )
+from dungeonmind.contracts.vnext.common import LabelsAnyVisibility
 from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnavailableError
 from dungeonmind.infrastructure.postgres import PostgresNativeSourceEvidenceRepository
+from dungeonmind.infrastructure.postgres.selective_native_sources import (
+    open_selective_native_text_source_access_context,
+)
+from dungeonmind.infrastructure.postgres.selective_read_projection import (
+    publish_selective_read_projection,
+)
 from dungeonmind.infrastructure.postgres.vnext_knowledge import (
     PostgresKnowledgeRevisionRepository,
 )
@@ -49,8 +58,8 @@ def _knowledge(repository: PostgresNativeSourceEvidenceRepository):
     return PostgresKnowledgeRevisionRepository(repository._database)
 
 
-def _init(repository):
-    domain, profile = _domain(), _profile()
+def _init(repository, *, visibility_labels=None):
+    domain, profile = _domain(visibility_labels=visibility_labels), _profile()
     receipt = initialize_empty_knowledge_space(
         repository=repository,
         space_id="space:postgres-native-source",
@@ -839,3 +848,96 @@ def test_native_metadata_snapshot_batches_text_admission_and_span_reads(pg, monk
         )
     with pytest.raises(PersistenceIntegrityError, match="span index drift"):
         view.get_native_text_sources(keys)
+
+
+@pytest.mark.parametrize("audience_can_open", [True, False])
+def test_selective_source_membership_matches_exact_source_only_authority(
+    pg, monkeypatch, audience_can_open,
+):
+    repository = _repository(pg)
+    label = "test:private"
+    domain, profile, genesis = _init(repository, visibility_labels=[label])
+    request = _request(
+        space_id=genesis.space_id,
+        parent_revision_id=genesis.published_revision_id,
+        visibility=LabelsAnyVisibility(kind="labels_any", labels=[label]),
+    )
+    receipt = publish_native_text_source_evidence(
+        repository=repository, request=request, domain_contract=domain, semantic_profile=profile,
+    )
+    pin = dict(space_id=request.space_id, revision_id=receipt.published_revision_id)
+    labels = [label] if audience_can_open else []
+    options = dict(**pin, domain_contract=domain, audience_labels=labels)
+    ordinary = open_native_text_source_access_context(repository=repository, **options)
+    assert open_selective_native_text_source_access_context(repository, **options) is None
+    publish_selective_read_projection(pg.database, **pin)
+    publish_selective_read_projection(
+        pg.database, space_id=genesis.space_id, revision_id=genesis.published_revision_id,
+    )
+
+    def fail_graph_open(*args, **kwargs):
+        pytest.fail("source-only preparation attempted a full Graph open")
+
+    monkeypatch.setattr(repository, "get_revision", fail_graph_open)
+    monkeypatch.setattr(repository, "get_revision_for_native_read", fail_graph_open)
+    monkeypatch.setattr(
+        "dungeonmind.application.vnext.native_source_access.build_parsed_knowledge_revision",
+        fail_graph_open,
+    )
+    candidate = open_selective_native_text_source_access_context(repository, **options)
+    assert isinstance(candidate.parsed, NativeTextSourceMembership)
+    assert candidate.parsed.identity == ordinary.parsed.identity
+    assert candidate.parsed.evidence_by_id == ordinary.parsed.evidence_by_id
+    expected_catalog = list_admitted_native_text_sources(ordinary)
+    assert list_admitted_native_text_sources(candidate) == expected_catalog
+    evidence_id = receipt.bindings[0].evidence_ref_id
+    expected = open_admitted_native_text(ordinary, evidence_id)
+    assert expected.status == ("available" if audience_can_open else "unavailable")
+    assert open_admitted_native_text(candidate, evidence_id) == expected
+    assert open_admitted_native_text_batch(candidate, (evidence_id, "unknown")) == (
+        expected, open_admitted_native_text(ordinary, "unknown"),
+    )
+
+    historical = open_selective_native_text_source_access_context(
+        repository, **(options | {"revision_id": genesis.published_revision_id}),
+    )
+    assert open_admitted_native_text(historical, evidence_id).status == "unavailable"
+    repository.withdraw_native_source(
+        space_id=request.space_id,
+        source_artifact_id=receipt.source_artifact_id,
+        source_revision_id=receipt.source_revision_id,
+    )
+    with refresh_native_text_source_access_scope(repository=repository, context=candidate) as fresh:
+        assert fresh.source_view.epoch > candidate.source_view.epoch
+        assert open_admitted_native_text(fresh, evidence_id).status == "unavailable"
+    assert open_admitted_native_text(candidate, evidence_id) == expected
+
+
+@pytest.mark.parametrize("corruption", ["evidence_missing", "evidence_changed", "source_seal"])
+def test_active_source_membership_rejects_incomplete_or_corrupt_projection(pg, corruption):
+    repository = _repository(pg)
+    domain, profile, genesis = _init(repository)
+    request = _request(space_id=genesis.space_id, parent_revision_id=genesis.published_revision_id)
+    receipt = publish_native_text_source_evidence(
+        repository=repository, request=request, domain_contract=domain, semantic_profile=profile,
+    )
+    pin = dict(space_id=request.space_id, revision_id=receipt.published_revision_id)
+    publish_selective_read_projection(pg.database, **pin)
+    with pg.database.transaction() as connection:
+        if corruption == "evidence_missing":
+            connection.execute(
+                "DELETE FROM dungeonmind.selective_read_records WHERE family = 'evidence'"
+            )
+        elif corruption == "evidence_changed":
+            connection.execute(
+                """UPDATE dungeonmind.selective_read_records
+                SET value = jsonb_set(value, '{can_open_source}', 'false')
+                WHERE family = 'evidence'"""
+            )
+        else:
+            connection.execute(
+                "UPDATE dungeonmind.selective_read_activations SET source_sql_sha256 = %s",
+                ("0" * 64,),
+            )
+    with pytest.raises(PersistenceIntegrityError, match="selective"):
+        open_selective_native_text_source_access_context(repository, **pin, domain_contract=domain)

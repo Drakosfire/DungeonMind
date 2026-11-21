@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.domain import DomainContractDescriptor, DomainContractRef
+from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
 from dungeonmind.contracts.vnext.native_source import (
     NativeTextSourceAccessV1,
     NativeTextSourceOriginV1,
@@ -22,14 +23,43 @@ from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnav
 
 from ._read_artifact import decode_read_artifact, parse_verified_source_rows
 from .admission import _contract_visibility_visible
-from .builder import _build_parsed_knowledge_revision_from_records, build_parsed_knowledge_revision
+from .builder import (
+    _build_parsed_knowledge_revision_from_records,
+    build_parsed_knowledge_revision,
+)
 from .errors import KnowledgeReadContextIntegrityError, NativeTextSourceAccessIntegrityError
+from .frozen_json import FrozenDict
 from .materialization import NATIVE_VNEXT_GRAPH_SCHEMA, decode_native_graph_payload
 from .model import ParsedKnowledgeRevision
 from .ports import NativeSourceEvidenceRepository, NativeTextSourceView, StoredNativeTextSource
-from .records import ParsedEvidenceRef, StoredKnowledgeRevision
+from .records import (
+    ParsedDomainContractRef,
+    ParsedEvidenceRef,
+    ParsedKnowledgeRevisionIdentity,
+    ParsedSemanticProfileRef,
+    StoredKnowledgeRevision,
+)
 
 _EVICTED_RECORD_MAX_PAYLOAD_BYTES = 8_000_000
+
+
+@dataclass(frozen=True, slots=True)
+class NativeTextSourceMembership:
+    """Verified evidence for one revision, with no structural Graph indexes."""
+
+    identity: ParsedKnowledgeRevisionIdentity
+    evidence_by_id: FrozenDict[str, ParsedEvidenceRef]
+
+    @property
+    def domain_contract_ref(self) -> ParsedDomainContractRef:
+        return self.identity.domain_contract_ref
+
+    @property
+    def semantic_profile_ref(self) -> ParsedSemanticProfileRef:
+        return self.identity.semantic_profile_ref
+
+    def get_evidence(self, evidence_ref_id: str) -> ParsedEvidenceRef | None:
+        return self.evidence_by_id.get(evidence_ref_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +68,7 @@ class NativeTextSourceAccessContext:
 
     space_id: str
     revision_id: str
-    parsed: ParsedKnowledgeRevision
+    parsed: ParsedKnowledgeRevision | NativeTextSourceMembership
     source_view: NativeTextSourceView
     audience_labels: frozenset[str]
     declared_visibility_labels: frozenset[str]
@@ -178,22 +208,8 @@ def open_native_text_source_access_context(
         load_rows = None
     if stored is None:
         raise KnowledgeReadContextIntegrityError("native source context revision is missing")
-    if stored.revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA:
-        raise KnowledgeReadContextIntegrityError("native source context is not a native revision")
-    if callable(domain_contract):
-        domain_contract = domain_contract(
-            stored.revision.domain_contract_ref, stored.revision.semantic_profile_ref
-        )
-    domain_snapshot = DomainContractDescriptor.model_validate(
-        domain_contract.model_dump(mode="json")
-    )
-    if (
-        domain_snapshot.domain_id != stored.revision.domain_contract_ref.domain_id
-        or domain_snapshot.domain_revision != stored.revision.domain_contract_ref.domain_revision
-        or canonical_sha256(domain_snapshot.model_dump(mode="json"))
-        != stored.revision.domain_contract_ref.descriptor_sha256
-    ):
-        raise KnowledgeReadContextIntegrityError("native source context domain pin mismatch")
+    domain_snapshot = _verified_source_domain(stored.revision, domain_contract)
+
     def load_parsed() -> ParsedKnowledgeRevision:
         if load_rows is not None:
             take = getattr(repository, "_take_published_parse", None)
@@ -219,6 +235,32 @@ def open_native_text_source_access_context(
         declared_visibility_labels=frozenset(domain_snapshot.visibility_labels),
         source_annotation_schemas=frozenset(domain_snapshot.source_annotation_schemas),
     )
+
+
+def _verified_source_domain(
+    revision: KnowledgeRevision,
+    domain_contract: (
+        DomainContractDescriptor
+        | Callable[[DomainContractRef, SemanticProfileRef], DomainContractDescriptor]
+    ),
+) -> DomainContractDescriptor:
+    if revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA:
+        raise KnowledgeReadContextIntegrityError("native source context is not a native revision")
+    if callable(domain_contract):
+        domain_contract = domain_contract(
+            revision.domain_contract_ref, revision.semantic_profile_ref
+        )
+    domain_snapshot = DomainContractDescriptor.model_validate(
+        domain_contract.model_dump(mode="json")
+    )
+    if (
+        domain_snapshot.domain_id != revision.domain_contract_ref.domain_id
+        or domain_snapshot.domain_revision != revision.domain_contract_ref.domain_revision
+        or canonical_sha256(domain_snapshot.model_dump(mode="json"))
+        != revision.domain_contract_ref.descriptor_sha256
+    ):
+        raise KnowledgeReadContextIntegrityError("native source context domain pin mismatch")
+    return domain_snapshot
 
 
 def refresh_native_text_source_access_context(
