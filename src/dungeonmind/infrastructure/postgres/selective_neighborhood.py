@@ -1,6 +1,8 @@
 """Opt-in exact-pin neighborhoods over authenticated PostgreSQL projections."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from psycopg import Connection, sql
@@ -12,6 +14,8 @@ from dungeonmind.application.vnext._selective_read_proof import (
     verify_selective_records,
 )
 from dungeonmind.application.vnext.admission import DomainAdmissionPolicy
+from dungeonmind.application.vnext.entity_reads import EntityLookupResult, EntityReadService
+from dungeonmind.application.vnext.ports import NativeTextSourceView
 from dungeonmind.application.vnext.native_source_access import NativeParsedRevisionCache
 from dungeonmind.application.vnext.neighborhood import (
     NeighborhoodReadService,
@@ -102,7 +106,37 @@ def read_selective_neighborhood(
     require_admitted_seeds: bool = False,
     parsed_cache: NativeParsedRevisionCache | None = None,
 ) -> NeighborhoodResult | None:
-    """Return a selective result, or None to use the ordinary exact-pin read.
+    """Read a selective neighborhood, or request ordinary exact-pin fallback."""
+    with open_selective_neighborhood(
+        database, request=request, domain_contract=domain_contract,
+        semantic_profile=semantic_profile, domain_policy=domain_policy,
+        seed_entity_ids=seed_entity_ids, depth=depth,
+        require_admitted_seeds=require_admitted_seeds, parsed_cache=parsed_cache,
+    ) as opened:
+        return None if opened is None else opened.result
+
+
+@dataclass(frozen=True, slots=True)
+class SelectiveNeighborhoodRead:
+    result: NeighborhoodResult
+    source_reader: NativeTextSourceView
+    read_entities: Callable[[Sequence[str]], tuple[EntityLookupResult, ...]]
+
+
+@contextmanager
+def open_selective_neighborhood(
+    database: PostgresDatabase,
+    *,
+    request: ProjectionRequest,
+    domain_contract: DomainContractDescriptor,
+    semantic_profile: SemanticProfileDescriptorV2,
+    domain_policy: DomainAdmissionPolicy,
+    seed_entity_ids: Sequence[str],
+    depth: Literal[1, 2] = 1,
+    require_admitted_seeds: bool = False,
+    parsed_cache: NativeParsedRevisionCache | None = None,
+) -> Iterator[SelectiveNeighborhoodRead | None]:
+    """Open a selective result and scoped presentation reader for this request.
 
     Scope/visibility and provenance are evaluated by the ordinary service
     against a fresh source view. Structural overfetch through unadmitted
@@ -114,12 +148,14 @@ def read_selective_neighborhood(
         raise ValueError("selective neighborhood requires an exact revision")
     pin = (request.space_id, request.revision_id)
     if parsed_cache is not None and parsed_cache._has_parsed_pin(*pin):
-        return None
+        yield None
+        return
     with database.transaction() as connection:
         connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         opened = _load_activation(connection, pin)
         if opened is None:
-            return None
+            yield None
+            return
         revision, digest, content = opened
         proof = open_selective_read_proof(content, expected_sha256=digest, revision=revision)
 
@@ -150,31 +186,57 @@ def read_selective_neighborhood(
         if require_admitted_seeds:
             for bucket in buckets("subject", seeds):
                 assertion_ids.update(bucket)
-        assertions = facts("assertions", assertion_ids)
-        for assertion in assertions:
-            entity_ids.add(assertion["subject_entity_id"])
-            value = assertion["value"]
-            if value["kind"] == "entity_ref":
-                entity_ids.add(value["entity_id"])
-        evidence_ids = {
-            evidence_id for assertion in assertions
-            for evidence_id in assertion["metadata"]["evidence_ref_ids"]
-        }
-        projected = {
-            "entities": facts("entities", entity_ids),
-            "assertions": assertions,
-            "aliases": [],
-            "evidence": facts("evidence", evidence_ids),
-        }
+        view = PostgresNativeSourceEvidenceRepository(database).open_native_source_view(pin[0])
 
-    parsed = _parse_authenticated_fact_rows(revision, projected)
-    if parsed is None:
-        raise PersistenceIntegrityError("active selective projection facts are invalid")
-    view = PostgresNativeSourceEvidenceRepository(database).open_native_source_view(pin[0])
-    context = KnowledgeReadContext(
-        parsed=parsed, request=request, domain_contract=domain_contract,
-        semantic_profile=semantic_profile, domain_policy=domain_policy, source_reader=view,
-    )
-    return NeighborhoodReadService().get_neighborhood(
-        context, seeds, depth, require_admitted_seeds=require_admitted_seeds,
-    )
+        def read_context(ids: set[str], entities: set[str]) -> KnowledgeReadContext:
+            assertions = facts("assertions", ids)
+            required_entities = set(entities)
+            for assertion in assertions:
+                required_entities.add(assertion["subject_entity_id"])
+                value = assertion["value"]
+                if value["kind"] == "entity_ref":
+                    required_entities.add(value["entity_id"])
+            evidence_ids = {
+                evidence_id for assertion in assertions
+                for evidence_id in assertion["metadata"]["evidence_ref_ids"]
+            }
+            parsed = _parse_authenticated_fact_rows(revision, {
+                "entities": facts("entities", required_entities),
+                "assertions": assertions,
+                "aliases": [],
+                "evidence": facts("evidence", evidence_ids),
+            })
+            if parsed is None:
+                raise PersistenceIntegrityError("active selective projection facts are invalid")
+            return KnowledgeReadContext(
+                parsed=parsed, request=request, domain_contract=domain_contract,
+                semantic_profile=semantic_profile, domain_policy=domain_policy, source_reader=view,
+            )
+
+        context = read_context(assertion_ids, entity_ids)
+        result = NeighborhoodReadService().get_neighborhood(
+            context, seeds, depth, require_admitted_seeds=require_admitted_seeds,
+        )
+        admitted_nodes = frozenset(entity.entity_id for entity in result.entities)
+        active = True
+
+        def read_entities(ids: Sequence[str]) -> tuple[EntityLookupResult, ...]:
+            if not active:
+                raise PersistenceIntegrityError("selective neighborhood read is closed")
+            requested = tuple(ids)
+            unique = set(requested)
+            if not unique.issubset(admitted_nodes):
+                raise ValueError("presentation entities must belong to the authorized neighborhood")
+            if not requested:
+                return ()
+            subject_ids = {
+                aid for bucket in buckets("subject", sorted(unique)) for aid in bucket
+            }
+            presentation = read_context(subject_ids, unique)
+            service = EntityReadService()
+            return tuple(service.get_entity(presentation, key) for key in requested)
+
+        try:
+            yield SelectiveNeighborhoodRead(result, view, read_entities)
+        finally:
+            active = False
