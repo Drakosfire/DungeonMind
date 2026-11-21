@@ -144,7 +144,7 @@ def _source_pair(index: int) -> tuple[str, str, SourceArtifactV3, SourceRevision
     return artifact_id, evidence_id, artifact, revision, evidence
 
 
-def _build_space(*, decoy_count: int) -> dict[str, Any]:
+def _build_space(*, decoy_count: int, raw_inputs: bool = False) -> dict[str, Any]:
     domain_contract, semantic_profile = _domain_and_profile()
     contract_digest = canonical_sha256(domain_contract.model_dump(mode="json"))
     profile_digest = canonical_sha256(semantic_profile.model_dump(mode="json"))
@@ -235,12 +235,6 @@ def _build_space(*, decoy_count: int) -> dict[str, Any]:
             descriptor_sha256=profile_digest,
         ),
     )
-    parsed = build_parsed_knowledge_revision(
-        revision=revision,
-        entities=entities,
-        assertions=assertions,
-        evidence=evidence,
-    )
     reader = InMemoryKnowledgeSourceReader(artifacts=artifacts, revisions=revisions)
     request = ProjectionRequest(
         space_id=revision.space_id,
@@ -251,6 +245,18 @@ def _build_space(*, decoy_count: int) -> dict[str, Any]:
         ),
         audience_labels=["bench:audience"],
         standing_selector=[KnowledgeStanding.ESTABLISHED],
+    )
+    if raw_inputs:
+        return {
+            "revision": revision, "entities": entities, "assertions": assertions,
+            "evidence": evidence, "request": request, "domain_contract": domain_contract,
+            "semantic_profile": semantic_profile, "source_reader": reader,
+        }
+    parsed = build_parsed_knowledge_revision(
+        revision=revision,
+        entities=entities,
+        assertions=assertions,
+        evidence=evidence,
     )
     context = KnowledgeReadContext(
         parsed=parsed,

@@ -1,0 +1,12 @@
+[package]
+name = "dm-compact-read-index"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "_dm_compact_read_index"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.26", features = ["extension-module"] }
