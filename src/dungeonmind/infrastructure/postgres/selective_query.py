@@ -1,12 +1,13 @@
 """Exact-pin search and claim reads over sealed PostgreSQL projections."""
 
+from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
-from psycopg import Connection
+from psycopg import Connection, sql
 
 from dungeonmind.application.vnext._read_artifact import (
     _decode_authenticated_fact_rows,
@@ -18,7 +19,7 @@ from dungeonmind.application.vnext._selective_read_proof import (
     verify_selective_buckets,
     verify_selective_records,
 )
-from dungeonmind.application.vnext.admission import DomainAdmissionPolicy
+from dungeonmind.application.vnext.admission import AlwaysAdmitPolicy, DomainAdmissionPolicy
 from dungeonmind.application.vnext.builder import _parse_revision_identity
 from dungeonmind.application.vnext.entity_reads import CompleteEntityLookupResult, EntityReadService
 from dungeonmind.application.vnext.evidence_reads import (
@@ -32,7 +33,12 @@ from dungeonmind.application.vnext.native_source_access import (
 )
 from dungeonmind.application.vnext.read_context import KnowledgeReadContext
 from dungeonmind.application.vnext.records import ParsedEntityRefValue
-from dungeonmind.application.vnext.search import SearchReadService, SearchResult, _require_query
+from dungeonmind.application.vnext.search import (
+    SearchReadService,
+    SearchResult,
+    _require_limit,
+    _require_query,
+)
 from dungeonmind.application.vnext.search_normalize import tokenize_search_text
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.domain import (
@@ -46,8 +52,10 @@ from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnav
 
 from ._selective_query_facts import _SelectiveQueryFacts
 from ._selective_revision import _fetch, _load_activation
+from ._selective_search_rank import read_bounded_search
 from .database import PostgresDatabase
 from .selective_native_sources import _read_membership, _source_context
+from .vnext_knowledge import SCHEMA
 from .vnext_sources import PostgresNativeSourceEvidenceRepository
 
 
@@ -159,6 +167,7 @@ class SelectiveQueryRead:
     def search_entities(self, query: str, *, limit: int = 20) -> SearchResult:
         """Read sealed predicate, term and lexical postings before ordinary search."""
         raw, normalized = _require_query(query)
+        limit = _require_limit(limit)
         postings = {}
         for family, keys in (
             ("predicate", (normalized,)),
@@ -166,10 +175,56 @@ class SelectiveQueryRead:
             ("lexical", tuple(dict.fromkeys(tokenize_search_text(normalized)))),
         ):
             for key, values in zip(keys, self._buckets(family, keys), strict=True):
-                postings[family, key] = tuple(values)
+                postings[family, key] = frozenset(values)
         assertion_ids = {identity for values in postings.values() for identity in values}
-        context = self._context(assertion_ids, entity_ids={raw}, postings=postings)
-        return SearchReadService().search_entities(context, query, limit=limit)
+
+        def read_wave(
+            subjects: set[str], buckets: Mapping[tuple[str, str], tuple[str, ...]],
+        ) -> SearchResult:
+            selected = {identity for values in buckets.values() for identity in values}
+            context = self._context(
+                selected, entity_ids={raw} if raw in subjects else set(), postings=buckets,
+            )
+            return SearchReadService().search_entities(context, query, limit=limit)
+
+        if type(self._policy) is AlwaysAdmitPolicy and 0 < limit < 128 and len(assertion_ids) > 256:
+            return read_bounded_search(
+                raw_query=raw,
+                normalized_query=normalized,
+                limit=limit,
+                exact_entity_exists=raw in self._proof.records["entities"],
+                postings=postings,
+                subject_assertions=self._verified_search_subjects(assertion_ids),
+                read_wave=read_wave,
+            )
+        return read_wave({raw}, {key: tuple(sorted(values)) for key, values in postings.items()})
+
+    def _verified_search_subjects(self, assertion_ids: set[str]) -> dict[str, set[str]]:
+        # Fast assignments from JSONB are a hint. Each assignment must be backed
+        # by the exact assertion directory and the publisher's sealed subject posting.
+        if not assertion_ids <= self._proof.records["assertions"].keys():
+            raise PersistenceIntegrityError("selective search posting references an unknown claim")
+        rows = self._connection.execute(
+            sql.SQL("""
+                SELECT key, value->>'subject_entity_id' AS subject
+                FROM {}.selective_read_records
+                WHERE space_id=%s AND revision_id=%s AND family='assertions' AND key=ANY(%s)
+            """).format(sql.Identifier(SCHEMA)),
+            (*self._pin, sorted(assertion_ids)),
+        ).fetchall()
+        if len(rows) != len(assertion_ids) or {row["key"] for row in rows} != assertion_ids:
+            raise PersistenceIntegrityError("selective search subject assignments are incomplete")
+        by_subject: dict[str, set[str]] = defaultdict(set)
+        for row in rows:
+            subject = row["subject"]
+            if not isinstance(subject, str) or subject not in self._proof.records["entities"]:
+                raise PersistenceIntegrityError("selective search subject is invalid")
+            by_subject[subject].add(row["key"])
+        subjects = tuple(sorted(by_subject))
+        for subject, certified in zip(subjects, self._buckets("subject", subjects), strict=True):
+            if not by_subject[subject] <= set(certified):
+                raise PersistenceIntegrityError("selective search subject assignment seal mismatch")
+        return dict(by_subject)
 
     def get_complete_entities(
         self, entity_ids: Sequence[str],
