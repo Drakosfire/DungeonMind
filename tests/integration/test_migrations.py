@@ -36,6 +36,10 @@ EXPECTED_TABLES = {
     "reviewed_world_initializations",
     "knowledge_spaces",
     "knowledge_revisions",
+    "selective_read_activations",
+    "selective_read_proofs",
+    "selective_read_records",
+    "selective_read_buckets",
     "knowledge_heads",
     "knowledge_head_events",
     "knowledge_publication_receipts",
@@ -83,7 +87,7 @@ def test_vector_extension_and_schema_tables(db) -> None:
 
         version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
         assert version is not None
-        assert version["version_num"] == "0023_native_source_publications"
+        assert version["version_num"] == "0024_selective_read_projection"
 
         constraints = conn.execute(
             """
@@ -151,7 +155,7 @@ def test_migrate_empty_database_roundtrip(database_url: str) -> None:
         database = PostgresDatabase(target)
         with database.connect() as conn:
             version = conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()
-            assert version["version_num"] == "0023_native_source_publications"
+            assert version["version_num"] == "0024_selective_read_projection"
             tables = conn.execute(
                 """
                 SELECT COUNT(*) AS n
