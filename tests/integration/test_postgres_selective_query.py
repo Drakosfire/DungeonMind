@@ -9,6 +9,7 @@ from dungeonmind.application.vnext.native_source_access import (
     open_native_text_source_access_context,
 )
 from dungeonmind.application.vnext.read_context import KnowledgeReadContext
+from dungeonmind.application.vnext.records import ParsedEntity
 from dungeonmind.application.vnext.search import SearchReadService
 from dungeonmind.contracts.vnext.common import LabelsAllVisibility, ScopeSelector
 from dungeonmind.contracts.vnext.domain import Entity, LiteralValue
@@ -17,6 +18,7 @@ from dungeonmind.infrastructure.postgres.selective_native_sources import (
     open_selective_native_text_source_access_context,
 )
 from dungeonmind.infrastructure.postgres.selective_query import (
+    SelectiveFactCache,
     open_selective_query,
     open_selective_source_query,
 )
@@ -249,3 +251,61 @@ def test_dense_bounded_search_rejects_forged_subject_assignment(pg, dense_search
         assert reader is not None
         with pytest.raises(PersistenceIntegrityError, match="subject assignment seal mismatch"):
             reader.search_entities("topic", limit=5)
+
+def test_warm_facts_skip_payload_reads_but_reverify_primary(pg, selective_graph, monkeypatch):
+    repo, _, ordinary = selective_graph
+    neighborhood._publish(pg.database, ordinary)
+    options = dict(
+        request=ordinary.request,
+        resolve_descriptors=lambda *_: (ordinary.domain_contract, ordinary.semantic_profile),
+        domain_policy=ordinary.domain_policy,
+        source_audience_labels=ordinary.request.audience_labels,
+        fact_cache=SelectiveFactCache(),
+    )
+    from dungeonmind.infrastructure.postgres import selective_query
+
+    fetch = selective_query._fetch
+    loads = []
+
+    def track(connection, pin, table, family, keys):
+        if table == "selective_read_records" and keys:
+            loads.append((family, tuple(keys)))
+        return fetch(connection, pin, table, family, keys)
+
+    monkeypatch.setattr(selective_query, "_fetch", track)
+    expected = SearchReadService().search_entities(ordinary, "test:relates")
+    assert expected.hits
+    for _ in range(2):
+        with open_selective_source_query(repo, **options) as opened:
+            assert opened is not None
+            _, reader = opened
+            assert reader.search_entities("test:relates") == expected
+    assert sum(family == 'assertions' for family, _ in loads) == 1
+
+    with pg.database.transaction() as connection:
+        connection.execute(
+            "UPDATE dungeonmind.knowledge_revisions "
+            "SET graph_payload = graph_payload || jsonb_build_object('corrupt', true) "
+            "WHERE revision_id = %s",
+            (ordinary.request.revision_id,),
+        )
+    with (
+        pytest.raises(PersistenceIntegrityError, match="primary revision drift"),
+        open_selective_source_query(repo, **options),
+    ):
+        pytest.fail("warm cache bypassed exact primary verification")
+
+
+def test_cache_bounds_and_partition_use_current_per_record_seal():
+    cache = SelectiveFactCache(max_records=2, max_wire_bytes=3)
+    pin = ("s", "r1")
+    rows = {name: (ParsedEntity(name), 2) for name in ("a", "b")}
+    cache._remember(pin, "entities", rows, {"a": "first", "b": "second"})
+    assert cache._read(pin, "entities", ("a", "b"), {"a": "first", "b": "second"}) == {
+        "b": ParsedEntity("b"),
+    }
+    assert not cache._read(pin, "entities", ("b",), {"b": "changed"})
+    assert not cache._read(("s", "r2"), "entities", ("b",), {"b": "second"})
+    cache._remember(pin, "entities", {"too-large": (ParsedEntity("too-large"), 4)},
+                    {"too-large": "large"})
+    assert not cache._read(pin, "entities", ("too-large",), {"too-large": "large"})

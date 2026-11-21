@@ -5,7 +5,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 
 from psycopg import Connection, sql
 
@@ -32,7 +32,13 @@ from dungeonmind.application.vnext.native_source_access import (
     _verified_source_domain,
 )
 from dungeonmind.application.vnext.read_context import KnowledgeReadContext
-from dungeonmind.application.vnext.records import ParsedEntityRefValue
+from dungeonmind.application.vnext.records import (
+    ParsedAssertion,
+    ParsedEntity,
+    ParsedEntityRefValue,
+    ParsedEvidenceRef,
+    ParsedIdentityAlias,
+)
 from dungeonmind.application.vnext.search import (
     SearchReadService,
     SearchResult,
@@ -50,6 +56,7 @@ from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
 from dungeonmind.contracts.vnext.projection import ProjectionRequest
 from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnavailableError
 
+from ._selective_fact_cache import Fact, SelectiveFactCache
 from ._selective_query_facts import _SelectiveQueryFacts
 from ._selective_revision import _fetch, _load_activation
 from ._selective_search_rank import read_bounded_search
@@ -151,6 +158,7 @@ class SelectiveQueryRead:
         semantic_profile: SemanticProfileDescriptorV2,
         domain_policy: DomainAdmissionPolicy,
         source_context: NativeTextSourceAccessContext,
+        fact_cache: SelectiveFactCache | None = None,
     ) -> None:
         self._connection = connection
         self._revision = revision
@@ -160,6 +168,7 @@ class SelectiveQueryRead:
         self._profile = semantic_profile.model_copy(deep=True)
         self._policy = domain_policy
         self._source_context = source_context
+        self._fact_cache = fact_cache
         self._pin = (revision.space_id, revision.revision_id)
         self._closed = False
         self._complete: dict[str, KnowledgeReadContext[_SelectiveQueryFacts]] = {}
@@ -276,6 +285,37 @@ class SelectiveQueryRead:
         verify_selective_records(self._proof, family, keys, rows)
         return [value for _, value in rows]
 
+    def _decoded(self, family: str, identifiers: set[str]) -> tuple[Fact, ...]:
+        self._assert_open()
+        cache = self._fact_cache
+        keys = sorted(identifiers)
+        seals = self._proof.records[family]
+        found = {} if cache is None else cache._read(self._pin, family, keys, seals)
+        rows = self._facts(family, identifiers - found.keys())
+        key_field = {
+            "assertions": "assertion_id", "aliases": "alias_id", "entities": "entity_id",
+            "evidence": "evidence_ref_id",
+        }[family]
+        if not rows:
+            return tuple(found[key] for key in keys if key in found)
+        wire_sizes = (
+            {row[key_field]: len(repr(row).encode("utf-8")) for row in rows}
+            if cache is not None else {}
+        )
+        inputs = {name: [] for name in ("assertions", "aliases", "entities", "evidence")}
+        inputs[family] = rows
+        decoded = _decode_authenticated_fact_rows(inputs)
+        if decoded is None:
+            raise PersistenceIntegrityError("selective query facts are invalid")
+        verified = {getattr(record, key_field): record for record in getattr(decoded, family)}
+        if cache is not None:
+            cache._remember(
+                self._pin, family, {key: (fact, wire_sizes[key]) for key, fact in verified.items()},
+                seals,
+            )
+        found.update(verified)
+        return tuple(found[key] for key in keys if key in found)
+
     def _context(
         self,
         assertion_ids: set[str],
@@ -284,29 +324,26 @@ class SelectiveQueryRead:
         alias_ids: set[str] | None = None,
         postings: Mapping[tuple[str, str], tuple[str, ...]] | None = None,
     ) -> KnowledgeReadContext[_SelectiveQueryFacts]:
-        assertions = self._facts("assertions", assertion_ids)
-        aliases = self._facts("aliases", alias_ids or set())
+        assertions = cast(tuple[ParsedAssertion, ...], self._decoded("assertions", assertion_ids))
+        aliases = cast(
+            tuple[ParsedIdentityAlias, ...], self._decoded("aliases", alias_ids or set()),
+        )
         entities = set() if entity_ids is None else set(entity_ids)
         evidence_ids: set[str] = set()
         for assertion in assertions:
-            entities.add(assertion["subject_entity_id"])
-            value = assertion["value"]
-            if value["kind"] == "entity_ref":
-                entities.add(value["entity_id"])
-            evidence_ids.update(assertion["metadata"]["evidence_ref_ids"])
+            entities.add(assertion.subject_entity_id)
+            if isinstance(assertion.value, ParsedEntityRefValue):
+                entities.add(assertion.value.entity_id)
+            evidence_ids.update(assertion.metadata.evidence_ref_ids)
         for alias in aliases:
-            entities.add(alias["entity_id"])
-            evidence_ids.update(alias["evidence_ref_ids"])
-        decoded = _decode_authenticated_fact_rows(
-            {
-                "entities": self._facts("entities", entities),
-                "assertions": assertions,
-                "aliases": aliases,
-                "evidence": self._facts("evidence", evidence_ids),
-            },
+            entities.add(alias.entity_id)
+            evidence_ids.update(alias.evidence_ref_ids)
+        decoded = _DecodedFacts(
+            entities=cast(tuple[ParsedEntity, ...], self._decoded("entities", entities)),
+            assertions=assertions,
+            aliases=aliases,
+            evidence=cast(tuple[ParsedEvidenceRef, ...], self._decoded("evidence", evidence_ids)),
         )
-        if decoded is None:
-            raise PersistenceIntegrityError("selective query facts are invalid")
         parsed = _SelectiveQueryFacts.from_decoded(
             _parse_revision_identity(self._revision), decoded, postings or {},
         )
@@ -375,6 +412,7 @@ def open_selective_source_query(
     ],
     domain_policy: DomainAdmissionPolicy,
     source_audience_labels: Sequence[str] = (),
+    fact_cache: SelectiveFactCache | None = None,
 ) -> Iterator[
     tuple[NativeTextSourceAccessContext[NativeTextSourceMembership], SelectiveQueryRead] | None
 ]:
@@ -398,6 +436,7 @@ def open_selective_source_query(
         source = _source_context(repository, membership, domain, source_audience_labels)
         reader = SelectiveQueryRead(
             connection, revision, proof, request, domain, profile, domain_policy, source,
+            fact_cache=fact_cache,
         )
         try:
             yield source, reader
