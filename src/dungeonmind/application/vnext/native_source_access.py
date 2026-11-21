@@ -48,7 +48,15 @@ class NativeTextSourceAccessContext:
 class NativeParsedRevisionCache:
     """Keep one immutable parsed graph for repeated reads of a verified revision."""
 
-    def __init__(self, *, retain_evicted_records: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        retain_evicted_records: bool = False,
+        max_evicted_payload_bytes: int = _EVICTED_RECORD_MAX_PAYLOAD_BYTES,
+    ) -> None:
+        if type(max_evicted_payload_bytes) is not int or max_evicted_payload_bytes < 1:
+            raise ValueError("max_evicted_payload_bytes must be a positive integer")
+        self._max_evicted_payload_bytes = max_evicted_payload_bytes
         self._lock = Lock()
         self._retain_evicted_records = retain_evicted_records
         self._evicted_records: tuple[
@@ -78,7 +86,7 @@ class NativeParsedRevisionCache:
             parsed = archived[1]() if archived is not None and archived[0] == key else load()
             if self._retain_evicted_records and self._entry is not None:
                 previous_key, previous = self._entry
-                if len(previous_key[2].encode("utf-8")) <= _EVICTED_RECORD_MAX_PAYLOAD_BYTES:
+                if len(previous_key[2].encode("utf-8")) <= self._max_evicted_payload_bytes:
                     # Keep immutable facts only. Indexes and digest will be rebuilt.
                     self._evicted_records = (
                         previous_key,

@@ -26,6 +26,30 @@ def test_memory_key_snapshots_mutable_envelope_and_equal_instant_offset():
     assert cache.parse(stored).operation_ids[-1] == "op:new"
 
 
+@pytest.mark.parametrize("fits", [False, True])
+def test_explicit_evicted_payload_budget_controls_record_reuse(monkeypatch, fits):
+    first = _source(_payload())
+    second = replace(first, revision=first.revision.model_copy(deep=True))
+    second.revision.created_at = datetime.fromisoformat("2026-09-15T13:00:00+01:00")
+    byte_count = len(first._payload_json.encode("utf-8"))
+    cache = access.NativeParsedRevisionCache(
+        retain_evicted_records=True,
+        max_evicted_payload_bytes=byte_count if fits else byte_count - 1,
+    )
+    original = access._parse_revision
+    loaded = []
+
+    def parse(stored):
+        loaded.append(stored.revision.created_at.isoformat())
+        return original(stored)
+
+    monkeypatch.setattr(access, "_parse_revision", parse)
+    expected = cache.parse(first)
+    cache.parse(second)
+    assert cache.parse(first) == expected
+    assert len(loaded) == (2 if fits else 3)
+
+
 def test_source_corruption_cannot_hide_behind_a_memory_hit():
     stored = _source(_payload())
     cache = access.NativeParsedRevisionCache()
