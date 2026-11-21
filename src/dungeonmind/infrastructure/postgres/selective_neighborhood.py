@@ -12,6 +12,7 @@ from dungeonmind.application.vnext._selective_read_proof import (
     verify_selective_records,
 )
 from dungeonmind.application.vnext.admission import DomainAdmissionPolicy
+from dungeonmind.application.vnext.native_source_access import NativeParsedRevisionCache
 from dungeonmind.application.vnext.neighborhood import (
     NeighborhoodReadService,
     NeighborhoodResult,
@@ -99,8 +100,9 @@ def read_selective_neighborhood(
     seed_entity_ids: Sequence[str],
     depth: Literal[1, 2] = 1,
     require_admitted_seeds: bool = False,
+    parsed_cache: NativeParsedRevisionCache | None = None,
 ) -> NeighborhoodResult | None:
-    """Return an authorized selective result, or None for an inactive exact pin.
+    """Return a selective result, or None to use the ordinary exact-pin read.
 
     Scope/visibility and provenance are evaluated by the ordinary service
     against a fresh source view. Structural overfetch through unadmitted
@@ -111,6 +113,8 @@ def read_selective_neighborhood(
     if request.revision_id is None:
         raise ValueError("selective neighborhood requires an exact revision")
     pin = (request.space_id, request.revision_id)
+    if parsed_cache is not None and parsed_cache._has_parsed_pin(*pin):
+        return None
     with database.transaction() as connection:
         connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         opened = _load_activation(connection, pin)

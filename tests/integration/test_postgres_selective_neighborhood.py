@@ -5,6 +5,7 @@ import pytest
 from dungeonmind.application.vnext._read_artifact import parse_verified_source_rows
 from dungeonmind.application.vnext.admission import AlwaysAdmitPolicy
 from dungeonmind.application.vnext.materialization import encode_native_graph_payload
+from dungeonmind.application.vnext.native_source_access import NativeParsedRevisionCache
 from dungeonmind.application.vnext.neighborhood import NeighborhoodReadService
 from dungeonmind.application.vnext.read_context import KnowledgeReadContext
 from dungeonmind.contracts.vnext.common import (
@@ -70,7 +71,7 @@ def selective_graph(pg):
     return repo, command, context
 
 
-def _read(database, context):
+def _read(database, context, **options):
     return read_selective_neighborhood(
         database,
         request=context.request,
@@ -78,6 +79,7 @@ def _read(database, context):
         semantic_profile=context.semantic_profile,
         domain_policy=context.domain_policy,
         seed_entity_ids=["a", "missing"], depth=2, require_admitted_seeds=True,
+        **options,
     )
 
 
@@ -123,3 +125,18 @@ def test_active_projection_refuses_corruption(pg, selective_graph, mutation, fai
         connection.execute(mutation)
     with pytest.raises(PersistenceIntegrityError, match=failure):
         _read(pg.database, context)
+
+
+def test_parsed_pin_routes_to_ordinary_read_without_touching_projection(pg, selective_graph):
+    repo, _, context = selective_graph
+    _publish(pg.database, context)
+    revision_id = context.parsed.revision_id
+    cache = NativeParsedRevisionCache()
+    cache.parse(repo.get_revision(SPACE, revision_id))
+
+    class NeverConnect:
+        def transaction(self):
+            pytest.fail("warm selective routing opened a database connection")
+
+    assert _read(NeverConnect(), context, parsed_cache=cache) is None
+    assert _read(pg.database, context, parsed_cache=NativeParsedRevisionCache()) is not None
