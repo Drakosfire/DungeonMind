@@ -644,6 +644,20 @@ def _assemble(
     )
 
 
+def _project_batched_assertion_provenance(
+    context: KnowledgeReadContext,
+    candidates: set[str],
+) -> Callable[[tuple[str, ...], tuple[str, ...]], KnowledgeProvenanceSnapshot]:
+    _, artifacts, revisions = collect_evidence_dependencies(context.parsed, tuple(candidates))
+    union = context.source_reader.get_provenance_snapshot(
+        artifact_ids=artifacts, revision_ids=revisions
+    )
+    validate_provenance_snapshot_integrity(
+        union, expected_artifact_ids=artifacts, expected_revision_ids=revisions
+    )
+    return _batch_provenance_projector(union, error_type=EntityReadIntegrityError)
+
+
 class EntityReadService:
     """Entity catalogue and exact-ID reads through the same Core admission seam."""
 
@@ -746,6 +760,34 @@ class EntityReadService:
             raise EntityReadIntegrityError("get_entity assembled a complete-entity result")
         return result
 
+    def get_entities(
+        self, context: KnowledgeReadContext, entity_ids: Sequence[str]
+    ) -> tuple[EntityLookupResult, ...]:
+        """Read basic entities in input order using one assertion provenance snapshot.
+
+        Duplicates and misses remain in the output. Each entity runs its own
+        admission policy over its exact dependencies. Per-entity work counts
+        exclude the shared snapshot.
+        """
+        candidates = {
+            assertion_id
+            for entity_id in set(entity_ids)
+            for assertion_id in context.parsed.get_subject_assertion_ids(entity_id)
+        }
+        if not candidates:
+            return tuple(self.get_entity(context, entity_id) for entity_id in entity_ids)
+        project = _project_batched_assertion_provenance(context, candidates)
+        results = []
+        for entity_id in entity_ids:
+            result = _assemble(
+                context=context, entity_id=entity_id, include_touching=False,
+                project_provenance=project,
+            )
+            if isinstance(result, CompleteEntityLookupResult):
+                raise EntityReadIntegrityError("Basic batch assembled a complete-entity result")
+            results.append(result)
+        return tuple(results)
+
     def get_complete_entity(
         self, context: KnowledgeReadContext, entity_id: str
     ) -> CompleteEntityLookupResult:
@@ -780,15 +822,7 @@ class EntityReadService:
                 *parsed.get_incoming_entity_ref_assertion_ids(entity_id),
             )
         }
-        _, artifacts, revisions = collect_evidence_dependencies(parsed, tuple(candidates))
-        union = context.source_reader.get_provenance_snapshot(
-            artifact_ids=artifacts, revision_ids=revisions
-        )
-        validate_provenance_snapshot_integrity(
-            union, expected_artifact_ids=artifacts, expected_revision_ids=revisions
-        )
-
-        project = _batch_provenance_projector(union, error_type=EntityReadIntegrityError)
+        project = _project_batched_assertion_provenance(context, candidates)
 
         results = []
         for entity_id in entity_ids:

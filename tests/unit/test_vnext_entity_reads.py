@@ -2194,8 +2194,11 @@ def test_entity_listing_batches_alias_provenance(alias_source_status: str) -> No
     )
 
 
+@pytest.mark.parametrize("complete", [False, True])
 @pytest.mark.parametrize("retracted", [False, True])
-def test_complete_entity_batch_preserves_exact_results_and_withdrawal(org_context, retracted):
+def test_entity_batch_preserves_exact_results_and_withdrawal(org_context, complete, retracted):
+    single_read = _SVC.get_complete_entity if complete else _SVC.get_entity
+    batch_read = _SVC.get_complete_entities if complete else _SVC.get_entities
     context, reader = org_context
     if retracted:
         artifact = reader._artifacts["src:ownership-document"]
@@ -2204,9 +2207,9 @@ def test_complete_entity_batch_preserves_exact_results_and_withdrawal(org_contex
         )
         context = _refresh_org_context(context, reader)
     ids = ("priya", "retrieval-evaluation", "missing-entity", "priya")
-    expected = tuple(_SVC.get_complete_entity(context, entity_id) for entity_id in ids)
+    expected = tuple(single_read(context, entity_id) for entity_id in ids)
     before = context.source_reader.snapshot_call_count
-    actual = _SVC.get_complete_entities(context, ids)
+    actual = batch_read(context, ids)
     assert context.source_reader.snapshot_call_count - before == (
         1 + sum(item.work.provenance_snapshot_calls for item in actual)
     )
@@ -2217,10 +2220,13 @@ def test_complete_entity_batch_preserves_exact_results_and_withdrawal(org_contex
     ) is not retracted
 
 
-def test_complete_entity_batch_misses_do_not_load_provenance(org_context):
+@pytest.mark.parametrize("complete", [False, True])
+def test_entity_batch_misses_do_not_load_provenance(org_context, complete):
+    batch_read = _SVC.get_complete_entities if complete else _SVC.get_entities
     context, _ = org_context
     before = context.source_reader.snapshot_call_count
-    result = _SVC.get_complete_entities(context, ("missing-1", "missing-2"))
+    assert batch_read(context, ()) == ()
+    result = batch_read(context, ("missing-1", "missing-2"))
     assert tuple(item.identity.entity_id for item in result) == ("missing-1", "missing-2")
     assert not any(item.found for item in result)
     assert context.source_reader.snapshot_call_count == before
