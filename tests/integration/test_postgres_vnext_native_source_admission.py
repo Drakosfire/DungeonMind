@@ -643,6 +643,56 @@ def test_refresh_and_exact_source_read_share_one_connection(pg, monkeypatch, rep
     assert open_admitted_native_text(context, evidence_id) == expected
 
 
+def test_selection_read_connection_refreshes_authority_and_expires_each_scope(pg, monkeypatch):
+    repository = PostgresNativeSourceEvidenceRepository(pg.database)
+    domain, profile, genesis = _init(repository)
+    request = _request(space_id=genesis.space_id, parent_revision_id=genesis.published_revision_id)
+    receipt = publish_native_text_source_evidence(
+        repository=repository, request=request, domain_contract=domain, semantic_profile=profile
+    )
+    context = open_native_text_source_access_context(
+        repository=repository, space_id=request.space_id,
+        revision_id=receipt.published_revision_id, domain_contract=domain,
+    )
+    evidence_id = receipt.bindings[0].evidence_ref_id
+    original_connect = pg.database.connect
+    connections = []
+
+    def connect():
+        connection = original_connect()
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(pg.database, "connect", connect)
+    with repository.reuse_native_source_read_connection():
+        with refresh_native_text_source_access_scope(
+            repository=repository, context=context
+        ) as first:
+            assert open_admitted_native_text(first, evidence_id).body_text == BODY
+        assert len(connections) == 1 and not connections[0].closed
+        assert connections[0].read_only is True
+        with pytest.raises(PersistenceUnavailableError, match="read scope is closed"):
+            open_admitted_native_text(first, evidence_id)
+
+        withdrawn_epoch = repository.withdraw_native_source(
+            space_id=request.space_id, source_artifact_id=receipt.source_artifact_id,
+            source_revision_id=receipt.source_revision_id,
+        )
+        assert len(connections) == 2 and connections[1].closed
+        with (
+            repository.reuse_native_source_read_connection(),
+            refresh_native_text_source_access_scope(repository=repository, context=context)
+            as reopened,
+        ):
+            assert reopened.source_view.epoch == withdrawn_epoch > first.source_view.epoch
+            assert open_admitted_native_text(reopened, evidence_id).status == "unavailable"
+        assert len(connections) == 2 and not connections[0].closed
+    assert connections[0].closed
+    with refresh_native_text_source_access_scope(repository=repository, context=context) as fresh:
+        assert open_admitted_native_text(fresh, evidence_id).status == "unavailable"
+    assert len(connections) == 3 and connections[2].closed
+
+
 @pytest.mark.parametrize(
     "repository_type", [PostgresNativeSourceEvidenceRepository, PostgresOperatorSourceRepository]
 )
