@@ -8,10 +8,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from functools import partial
 from threading import Lock
-from typing import Any, cast
+from typing import Any, Generic, TypeVar, cast
 
 from dungeonmind.contracts.semantic_profile import SemanticProfileRef
 from dungeonmind.contracts.vnext.domain import DomainContractDescriptor, DomainContractRef
+from dungeonmind.contracts.vnext.knowledge import KnowledgeRevision
 from dungeonmind.contracts.vnext.native_source import (
     NativeTextSourceAccessV1,
     NativeTextSourceOriginV1,
@@ -22,23 +23,57 @@ from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnav
 
 from ._read_artifact import decode_read_artifact, parse_verified_source_rows
 from .admission import _contract_visibility_visible
-from .builder import _build_parsed_knowledge_revision_from_records, build_parsed_knowledge_revision
+from .builder import (
+    _build_parsed_knowledge_revision_from_records,
+    build_parsed_knowledge_revision,
+)
 from .errors import KnowledgeReadContextIntegrityError, NativeTextSourceAccessIntegrityError
+from .frozen_json import FrozenDict
 from .materialization import NATIVE_VNEXT_GRAPH_SCHEMA, decode_native_graph_payload
 from .model import ParsedKnowledgeRevision
 from .ports import NativeSourceEvidenceRepository, NativeTextSourceView, StoredNativeTextSource
-from .records import ParsedEvidenceRef, StoredKnowledgeRevision
+from .records import (
+    ParsedDomainContractRef,
+    ParsedEvidenceRef,
+    ParsedKnowledgeRevisionIdentity,
+    ParsedSemanticProfileRef,
+    StoredKnowledgeRevision,
+)
 
 _EVICTED_RECORD_MAX_PAYLOAD_BYTES = 8_000_000
 
 
 @dataclass(frozen=True, slots=True)
-class NativeTextSourceAccessContext:
+class NativeTextSourceMembership:
+    """Verified evidence for one revision, with no structural Graph indexes."""
+
+    identity: ParsedKnowledgeRevisionIdentity
+    evidence_by_id: FrozenDict[str, ParsedEvidenceRef]
+
+    @property
+    def domain_contract_ref(self) -> ParsedDomainContractRef:
+        return self.identity.domain_contract_ref
+
+    @property
+    def semantic_profile_ref(self) -> ParsedSemanticProfileRef:
+        return self.identity.semantic_profile_ref
+
+    def get_evidence(self, evidence_ref_id: str) -> ParsedEvidenceRef | None:
+        return self.evidence_by_id.get(evidence_ref_id)
+
+
+_MembershipT = TypeVar(
+    "_MembershipT", bound=ParsedKnowledgeRevision | NativeTextSourceMembership, covariant=True,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class NativeTextSourceAccessContext(Generic[_MembershipT]):
     """Exact child membership, pinned source epoch and immutable visibility inputs."""
 
     space_id: str
     revision_id: str
-    parsed: ParsedKnowledgeRevision
+    parsed: _MembershipT
     source_view: NativeTextSourceView
     audience_labels: frozenset[str]
     declared_visibility_labels: frozenset[str]
@@ -155,7 +190,7 @@ def open_native_text_source_access_context(
     audience_labels: Sequence[str] = (),
     parsed_cache: NativeParsedRevisionCache | None = None,
     prefer_verified_source_rows: bool = False,
-) -> NativeTextSourceAccessContext:
+) -> NativeTextSourceAccessContext[ParsedKnowledgeRevision]:
     """Pin one exact native revision and one coherent source-authority epoch.
 
     A descriptor resolver receives both descriptor references from the loaded revision.
@@ -178,22 +213,8 @@ def open_native_text_source_access_context(
         load_rows = None
     if stored is None:
         raise KnowledgeReadContextIntegrityError("native source context revision is missing")
-    if stored.revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA:
-        raise KnowledgeReadContextIntegrityError("native source context is not a native revision")
-    if callable(domain_contract):
-        domain_contract = domain_contract(
-            stored.revision.domain_contract_ref, stored.revision.semantic_profile_ref
-        )
-    domain_snapshot = DomainContractDescriptor.model_validate(
-        domain_contract.model_dump(mode="json")
-    )
-    if (
-        domain_snapshot.domain_id != stored.revision.domain_contract_ref.domain_id
-        or domain_snapshot.domain_revision != stored.revision.domain_contract_ref.domain_revision
-        or canonical_sha256(domain_snapshot.model_dump(mode="json"))
-        != stored.revision.domain_contract_ref.descriptor_sha256
-    ):
-        raise KnowledgeReadContextIntegrityError("native source context domain pin mismatch")
+    domain_snapshot = _verified_source_domain(stored.revision, domain_contract)
+
     def load_parsed() -> ParsedKnowledgeRevision:
         if load_rows is not None:
             take = getattr(repository, "_take_published_parse", None)
@@ -221,11 +242,37 @@ def open_native_text_source_access_context(
     )
 
 
+def _verified_source_domain(
+    revision: KnowledgeRevision,
+    domain_contract: (
+        DomainContractDescriptor
+        | Callable[[DomainContractRef, SemanticProfileRef], DomainContractDescriptor]
+    ),
+) -> DomainContractDescriptor:
+    if revision.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA:
+        raise KnowledgeReadContextIntegrityError("native source context is not a native revision")
+    if callable(domain_contract):
+        domain_contract = domain_contract(
+            revision.domain_contract_ref, revision.semantic_profile_ref
+        )
+    domain_snapshot = DomainContractDescriptor.model_validate(
+        domain_contract.model_dump(mode="json")
+    )
+    if (
+        domain_snapshot.domain_id != revision.domain_contract_ref.domain_id
+        or domain_snapshot.domain_revision != revision.domain_contract_ref.domain_revision
+        or canonical_sha256(domain_snapshot.model_dump(mode="json"))
+        != revision.domain_contract_ref.descriptor_sha256
+    ):
+        raise KnowledgeReadContextIntegrityError("native source context domain pin mismatch")
+    return domain_snapshot
+
+
 def refresh_native_text_source_access_context(
     *,
     repository: NativeSourceEvidenceRepository,
-    context: NativeTextSourceAccessContext,
-) -> NativeTextSourceAccessContext:
+    context: NativeTextSourceAccessContext[_MembershipT],
+) -> NativeTextSourceAccessContext[_MembershipT]:
     """Refresh source authority without reloading immutable Graph membership.
 
     The repository must be the authority that opened the original context. The
@@ -241,8 +288,8 @@ def refresh_native_text_source_access_context(
 def refresh_native_text_source_access_scope(
     *,
     repository: NativeSourceEvidenceRepository,
-    context: NativeTextSourceAccessContext,
-) -> Iterator[NativeTextSourceAccessContext]:
+    context: NativeTextSourceAccessContext[_MembershipT],
+) -> Iterator[NativeTextSourceAccessContext[_MembershipT]]:
     """Refresh one exact read while allowing its owner to share a read connection."""
     _validate_refresh_identity(context)
     open_scope = getattr(repository, "open_native_source_read_scope", None)
@@ -266,8 +313,8 @@ def _validate_refresh_identity(context: NativeTextSourceAccessContext) -> None:
 
 
 def _with_refreshed_view(
-    context: NativeTextSourceAccessContext, view: NativeTextSourceView
-) -> NativeTextSourceAccessContext:
+    context: NativeTextSourceAccessContext[_MembershipT], view: NativeTextSourceView,
+) -> NativeTextSourceAccessContext[_MembershipT]:
     if view.epoch < context.source_view.epoch:
         raise KnowledgeReadContextIntegrityError("native source authority epoch moved backwards")
     return replace(context, source_view=view)

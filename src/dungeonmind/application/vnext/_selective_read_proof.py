@@ -188,5 +188,7 @@ def verify_selective_records(
     if len(rows) != len(expected) or {key for key, _ in rows} != expected:
         raise PersistenceIntegrityError("selective records missing or unexpected")
     for key, record in rows:
+        if not isinstance(record, Mapping):
+            raise PersistenceIntegrityError("selective record is not an object")
         if canonical_sha256(dict(record)) != seals[key]:
             raise PersistenceIntegrityError("selective record seal mismatch")
