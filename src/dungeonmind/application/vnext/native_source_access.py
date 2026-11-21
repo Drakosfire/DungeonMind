@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from functools import partial
 from threading import Lock
@@ -215,6 +216,28 @@ def refresh_native_text_source_access_context(
     exact parsed revision and its audience/domain inputs remain pinned; only
     the source view advances. Body reads still perform normal admission checks.
     """
+    _validate_refresh_identity(context)
+    view = repository.open_native_source_view(context.space_id)
+    return _with_refreshed_view(context, view)
+
+
+@contextmanager
+def refresh_native_text_source_access_scope(
+    *,
+    repository: NativeSourceEvidenceRepository,
+    context: NativeTextSourceAccessContext,
+) -> Iterator[NativeTextSourceAccessContext]:
+    """Refresh one exact read while allowing its owner to share a read connection."""
+    _validate_refresh_identity(context)
+    open_scope = getattr(repository, "open_native_source_read_scope", None)
+    if open_scope is None:
+        yield _with_refreshed_view(context, repository.open_native_source_view(context.space_id))
+        return
+    with open_scope(context.space_id) as view:
+        yield _with_refreshed_view(context, view)
+
+
+def _validate_refresh_identity(context: NativeTextSourceAccessContext) -> None:
     identity = context.parsed.identity
     if (
         not context.space_id.strip()
@@ -224,7 +247,11 @@ def refresh_native_text_source_access_context(
         or identity.graph_schema != NATIVE_VNEXT_GRAPH_SCHEMA
     ):
         raise KnowledgeReadContextIntegrityError("native source context identity mismatch")
-    view = repository.open_native_source_view(context.space_id)
+
+
+def _with_refreshed_view(
+    context: NativeTextSourceAccessContext, view: NativeTextSourceView
+) -> NativeTextSourceAccessContext:
     if view.epoch < context.source_view.epoch:
         raise KnowledgeReadContextIntegrityError("native source authority epoch moved backwards")
     return replace(context, source_view=view)
