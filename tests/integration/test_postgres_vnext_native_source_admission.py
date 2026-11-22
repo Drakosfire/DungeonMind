@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import pytest
 
+from dungeonmind.application.vnext.admission import AlwaysAdmitPolicy
 from dungeonmind.application.vnext.errors import (
     KnowledgePublicationOutcomeUnknownError,
     KnowledgeStaleParentRevisionError,
@@ -14,6 +15,7 @@ from dungeonmind.application.vnext.initialization import initialize_empty_knowle
 from dungeonmind.application.vnext.native_source_access import (
     NativeTextSourceMembership,
     list_admitted_native_text_sources,
+    native_text_source_candidates,
     open_admitted_native_text,
     open_admitted_native_text_batch,
     open_native_text_source_access_context,
@@ -23,12 +25,14 @@ from dungeonmind.application.vnext.native_source_access import (
 from dungeonmind.application.vnext.native_source_admission import (
     publish_native_text_source_evidence,
 )
-from dungeonmind.contracts.vnext.common import LabelsAnyVisibility
+from dungeonmind.contracts.vnext.common import LabelsAnyVisibility, ScopeSelector
+from dungeonmind.contracts.vnext.projection import ProjectionRequest
 from dungeonmind.domain.errors import PersistenceIntegrityError, PersistenceUnavailableError
 from dungeonmind.infrastructure.postgres import PostgresNativeSourceEvidenceRepository
 from dungeonmind.infrastructure.postgres.selective_native_sources import (
     open_selective_native_text_source_access_context,
 )
+from dungeonmind.infrastructure.postgres.selective_query import open_selective_source_query
 from dungeonmind.infrastructure.postgres.selective_read_projection import (
     publish_selective_read_projection,
 )
@@ -900,7 +904,34 @@ def test_selective_source_membership_matches_exact_source_only_authority(
     evidence_id = receipt.bindings[0].evidence_ref_id
     expected = open_admitted_native_text(ordinary, evidence_id)
     assert expected.status == ("available" if audience_can_open else "unavailable")
-    assert open_admitted_native_text(candidate, evidence_id) == expected
+    from dungeonmind.infrastructure.postgres import selective_native_sources
+
+    decoded = []
+    parse = selective_native_sources._parse_evidence
+
+    def observe(evidence):
+        decoded.append(evidence.evidence_ref_id)
+        return parse(evidence)
+
+    monkeypatch.setattr(selective_native_sources, "_parse_evidence", observe)
+    with open_selective_source_query(
+        repository,
+        request=ProjectionRequest(**pin, scope_selector=ScopeSelector(), audience_labels=labels),
+        resolve_descriptors=lambda *_: (domain, profile),
+        domain_policy=AlwaysAdmitPolicy(policy_id="test:compact-source-directory"),
+        source_audience_labels=labels,
+    ) as opened:
+        assert opened is not None
+        compact, _reader = opened
+    assert native_text_source_candidates(ordinary) is None
+    directory = native_text_source_candidates(compact)
+    assert directory is not None
+    assert [candidate.evidence_ref_id for candidate in directory] == [evidence_id]
+    assert list_admitted_native_text_sources(compact) == expected_catalog
+    assert not decoded
+    assert open_admitted_native_text(compact, evidence_id) == expected
+    assert open_admitted_native_text(compact, evidence_id) == expected
+    assert decoded == [evidence_id]
     assert open_admitted_native_text_batch(candidate, (evidence_id, "unknown")) == (
         expected, open_admitted_native_text(ordinary, "unknown"),
     )
@@ -918,11 +949,18 @@ def test_selective_source_membership_matches_exact_source_only_authority(
         assert fresh.source_view.epoch > candidate.source_view.epoch
         assert open_admitted_native_text(fresh, evidence_id).status == "unavailable"
     assert open_admitted_native_text(candidate, evidence_id) == expected
+    fresh = refresh_native_text_source_access_context(repository=repository, context=compact)
+    assert list_admitted_native_text_sources(fresh).sources == ()
+    assert open_admitted_native_text(fresh, evidence_id).status == "unavailable"
+    assert open_admitted_native_text(compact, evidence_id) == expected
 
 
 @pytest.mark.parametrize(
     "corruption",
-    ["evidence_missing", "evidence_changed", "evidence_scalar", "source_seal", "header"],
+    [
+        "evidence_missing", "evidence_changed", "evidence_scalar",
+        "misbound", "source_seal", "header",
+    ],
 )
 def test_active_source_membership_rejects_incomplete_or_corrupt_projection(pg, corruption):
     repository = _repository(pg)
@@ -948,6 +986,12 @@ def test_active_source_membership_rejects_incomplete_or_corrupt_projection(pg, c
             connection.execute(
                 "UPDATE dungeonmind.selective_read_records SET value='null' WHERE family='evidence'"
             )
+        elif corruption == "misbound":
+            connection.execute(
+                """UPDATE dungeonmind.selective_read_records
+                SET value = jsonb_set(value, '{evidence_ref_id}', '"wrong-id"')
+                WHERE family = 'evidence'"""
+            )
         elif corruption == "header":
             connection.execute(
                 """UPDATE dungeonmind.knowledge_revisions SET revision_payload = jsonb_set(
@@ -968,3 +1012,14 @@ def test_active_source_membership_rejects_incomplete_or_corrupt_projection(pg, c
         open_selective_native_text_source_access_context(
             repository, **pin, domain_contract=resolve_domain,
         )
+
+    with (
+        pytest.raises(PersistenceIntegrityError, match="selective"),
+        open_selective_source_query(
+            repository,
+            request=ProjectionRequest(**pin, scope_selector=ScopeSelector()),
+            resolve_descriptors=lambda *refs: (resolve_domain(*refs), profile),
+            domain_policy=AlwaysAdmitPolicy(policy_id="test:compact-source-directory"),
+        ),
+    ):
+        pytest.fail("corrupt evidence produced a source directory")
