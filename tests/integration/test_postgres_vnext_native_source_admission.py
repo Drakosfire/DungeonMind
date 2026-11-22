@@ -929,7 +929,7 @@ def test_postgres_discovery_batches_only_first_candidates_and_replays_in_order(p
         assert singles == [first]
         assert next(opens) == expected[1]
         assert singles == [first, "missing", second]
-        with pytest.raises(NativeTextSourceAccessIntegrityError, match="source record integrity"):
+        with pytest.raises(NativeTextSourceAccessIntegrityError, match="storage failed integrity validation"):
             next(opens)
 
 @pytest.mark.parametrize("audience_can_open", [True, False])
