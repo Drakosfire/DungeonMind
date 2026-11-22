@@ -1342,6 +1342,17 @@ class _PostgresNativeTextSourceView:
         self, keys: Sequence[tuple[str, str, str]]
     ) -> tuple[StoredNativeTextSource | None, ...]:
         """Resolve ordered exact span keys at this space and authority epoch."""
+        return self._get_native_text_sources(keys, narrow_extensions=True)
+
+    def get_native_text_sources_for_discovery(
+        self, keys: Sequence[tuple[str, str, str]]
+    ) -> tuple[StoredNativeTextSource | None, ...]:
+        """Match single-open extension integrity checks for discovery candidates."""
+        return self._get_native_text_sources(keys, narrow_extensions=False)
+
+    def _get_native_text_sources(
+        self, keys: Sequence[tuple[str, str, str]], *, narrow_extensions: bool
+    ) -> tuple[StoredNativeTextSource | None, ...]:
         if not keys:
             return ()
         requested: dict[tuple[str, str], set[str]] = {}
@@ -1403,7 +1414,9 @@ class _PostgresNativeTextSourceView:
                 missing = requested[pair] - proofs.keys()
                 if missing:
                     proofs.update(
-                        self._read_additional_spans(conn, pair, record, missing, narrow=True)
+                        self._read_additional_spans(
+                            conn, pair, record, missing, narrow=narrow_extensions
+                        )
                     )
 
                 artifact = record["artifact"]

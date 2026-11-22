@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from functools import partial
 from threading import Lock
@@ -489,6 +489,44 @@ def open_admitted_native_text_batch(
     if load is None:
         return tuple(open_admitted_native_text(context, item) for item in evidence_ref_ids)
 
+    return _open_admitted_native_text_batch(context, evidence_ref_ids, load)
+
+
+def open_first_admitted_native_text_by_group(
+    context: NativeTextSourceAccessContext,
+    evidence_groups: Sequence[Sequence[str]],
+) -> Iterator[NativeTextSourceAccessV1]:
+    """Yield the first available open in each ordered group, or an unavailable result.
+
+    Discovery callers group evidence for the same source pair before opening.
+    Batch only the first candidate per group. Later candidates remain lazy.
+    """
+    load = getattr(context.source_view, "get_native_text_sources_for_discovery", None)
+    first_opens: tuple[NativeTextSourceAccessV1, ...] | None = None
+    if callable(load):
+        # A speculative open may fail ahead of an earlier group's fallback.
+        # Let the ordinary opens determine which failure is observable.
+        with suppress(Exception):
+            first_opens = _open_admitted_native_text_batch(
+                context, [group[0] if group else "" for group in evidence_groups], load
+            )
+
+    for index, group in enumerate(evidence_groups):
+        opened = first_opens[index] if first_opens is not None else _unavailable()
+        if opened.status != "available":
+            start = 1 if first_opens is not None else 0
+            for evidence_id in group[start:]:
+                opened = open_admitted_native_text(context, evidence_id)
+                if opened.status == "available":
+                    break
+        yield opened
+
+
+def _open_admitted_native_text_batch(
+    context: NativeTextSourceAccessContext,
+    evidence_ref_ids: Sequence[str],
+    load: Callable[[Sequence[tuple[str, str, str]]], Sequence[StoredNativeTextSource | None]],
+) -> tuple[NativeTextSourceAccessV1, ...]:
     results = [_unavailable() for _ in evidence_ref_ids]
     eligible = []
     for index, evidence_id in enumerate(evidence_ref_ids):
