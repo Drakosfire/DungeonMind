@@ -58,6 +58,41 @@ def test_postgres_extension_readers_replay_and_repository_reopen(pg):
     assert access(reopened, domain, root, receipt.bindings[0].evidence_ref_id).status == "available"
 
 
+def test_postgres_batch_reads_only_matching_extension_and_preserves_epoch(pg, monkeypatch):
+    from dungeonmind.infrastructure.postgres import vnext_sources
+
+    repo = repository(pg)
+    domain, profile, _, root = setup_source(repo)
+    old = repo.open_native_source_view(root.space_id)
+    needed = publish(repo, domain, profile, extension(repo, root))
+    unrelated = extension(repo, root, operation="extension:unrelated", start=11, end=14)
+    publish(repo, domain, profile, unrelated)
+    current = repo.open_native_source_view(root.space_id)
+    pair = root.source_artifact_id, root.source_revision_id
+    wanted = (*pair, needed.bindings[0].span_id)
+    base = (*pair, root.bindings[0].span_id)
+    checked = []
+    verify = vnext_sources._verify_extension_row
+
+    def observe(conn, space_id, row, **kwargs):
+        checked.append(row["extension_id"])
+        return verify(conn, space_id, row, **kwargs)
+
+    monkeypatch.setattr(vnext_sources, "_verify_extension_row", observe)
+    assert old.get_native_text_sources((wanted,)) == (None,)
+    result = current.get_native_text_sources((wanted, base, wanted))
+    assert [item.span_proof.span_id for item in result] == [wanted[2], base[2], wanted[2]]
+    assert checked == [needed.extension_id]
+    assert result[0].authority_epoch == needed.source_authority_epoch
+
+    repo.withdraw_native_source(
+        space_id=root.space_id, source_artifact_id=pair[0], source_revision_id=pair[1],
+    )
+    assert current.get_native_text_sources((wanted,)) == (result[0],)
+    fresh = repo.open_native_source_view(root.space_id)
+    assert fresh.get_native_text_sources((wanted,))[0].source_artifact.status == "retracted"
+
+
 @pytest.mark.parametrize(
     "change",
     ["body", "source", "root", "slice", "epoch", "parent", "space", "metadata", "utf8", "bounds"],
@@ -160,22 +195,34 @@ def test_postgres_concurrent_parent_epoch_race_is_fail_closed(pg):
         )
 
 
-def test_postgres_tampered_extension_receipt_cannot_open_or_replay(pg):
+@pytest.mark.parametrize("hide_requested_span", [False, True])
+def test_postgres_tampered_extension_receipt_cannot_open_or_replay(pg, hide_requested_span):
     repo = repository(pg)
     domain, profile, _, root = setup_source(repo)
     req = extension(repo, root)
     receipt = publish(repo, domain, profile, req)
     with pg.database.transaction() as conn:
+        replacement = (
+            "receipt_payload #- '{proofs,0}'"
+            if hide_requested_span
+            else """jsonb_set(receipt_payload,'{source_revision_id}', '"forged"')"""
+        )
         conn.execute(
-            "UPDATE dungeonmind.knowledge_native_source_extensions "
-            "SET receipt_payload=jsonb_set(receipt_payload,'{source_revision_id}', '\"forged\"') "
-            "WHERE space_id=%s AND extension_id=%s",
+            sql.SQL(
+                "UPDATE dungeonmind.knowledge_native_source_extensions "
+                "SET receipt_payload={} WHERE space_id=%s AND extension_id=%s"
+            ).format(sql.SQL(replacement)),
             (root.space_id, req.extension_id),
         )
     with pytest.raises(PersistenceIntegrityError):
         publish(repo, domain, profile, req)
     with pytest.raises(PersistenceIntegrityError):
         access(repo, domain, root, receipt.bindings[0].evidence_ref_id)
+    view = repo.open_native_source_view(root.space_id)
+    with pytest.raises(PersistenceIntegrityError):
+        view.get_native_text_sources((
+            (root.source_artifact_id, root.source_revision_id, receipt.bindings[0].span_id),
+        ))
 
 
 def test_populated_extension_authority_refuses_downgrade(pg):
