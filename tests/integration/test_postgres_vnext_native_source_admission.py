@@ -772,7 +772,10 @@ def test_pinned_source_read_scope_reuses_a_read_only_connection(pg, monkeypatch,
         open_admitted_native_text(scoped, evidence_id)
 
 
-def test_native_metadata_snapshot_batches_text_admission_and_span_reads(pg, monkeypatch):
+@pytest.mark.parametrize("missing_span", [False, True])
+def test_native_metadata_snapshot_batches_text_admission_and_span_reads(
+    pg, monkeypatch, missing_span,
+):
     from psycopg import Connection
 
     repository = _repository(pg)
@@ -832,13 +835,17 @@ def test_native_metadata_snapshot_batches_text_admission_and_span_reads(pg, monk
             request_keys = [*keys[:size], keys[0], ("absent", "absent", "absent")]
             result = view.get_native_text_sources(request_keys)
             assert result == (*expected[:size], expected[0], None)
-            assert len(statements) == 3
+            assert len(statements) == 2
 
     with pg.database.transaction() as conn:
+        statement = (
+            "DELETE FROM dungeonmind.knowledge_native_source_spans"
+            if missing_span
+            else "UPDATE dungeonmind.knowledge_native_source_spans "
+            """SET proof = proof || '{"unexpected": true}'::jsonb"""
+        )
         conn.execute(
-            "UPDATE dungeonmind.knowledge_native_source_spans "
-            """SET proof = proof || '{"unexpected": true}'::jsonb """
-            "WHERE space_id = %s AND admission_id = %s",
+            statement + " WHERE space_id = %s AND admission_id = %s",
             (genesis.space_id, receipts[-1].admission_id),
         )
     with pytest.raises(PersistenceIntegrityError, match="span index drift"):
