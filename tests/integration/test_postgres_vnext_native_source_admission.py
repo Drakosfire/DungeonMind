@@ -102,7 +102,7 @@ def test_postgres_commits_exact_source_and_replays_after_descendant(pg, monkeypa
     with monkeypatch.context() as counter:
         counter.setattr(Connection, "execute", count)
         access = open_admitted_native_text(context, receipt.bindings[0].evidence_ref_id)
-    assert len(statements) == 3
+    assert len(statements) == 2
     assert access.status == "available"
     assert access.body_text == BODY
 
@@ -377,7 +377,7 @@ def test_postgres_source_metadata_reads_no_body_and_defers_byte_verification(pg,
     assert reads == [False, False]
     evidence_id = result.sources[0].evidence_ref_ids[0]
     assert open_admitted_native_text(context, evidence_id).status == "available"
-    assert reads == [False, False, True]
+    assert reads == [False, False]  # The exact read uses the typed projection.
 
     # Metadata is not proof of byte integrity. Exact opening retains that check.
     with pg.database.transaction() as conn:
