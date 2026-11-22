@@ -24,6 +24,7 @@ from .builder import (
 )
 from .entity_reads import (
     CompleteEntityLookupResult,
+    EntityClaimsResult,
     EntityListResult,
     EntityLookupResult,
     EntityReadCompleteness,
@@ -180,6 +181,7 @@ __all__ = [
     "CompleteEntityLookupResult",
     "DecodedKnowledgeContent",
     "DomainAdmissionPolicyRegistry",
+    "EntityClaimsResult",
     "EntityListResult",
     "EntityLookupResult",
     "EntityReadCompleteness",

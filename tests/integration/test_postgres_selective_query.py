@@ -2,7 +2,8 @@
 
 import pytest
 
-from dungeonmind.application.vnext.entity_reads import EntityReadService
+from dungeonmind.application.vnext.admission import AlwaysAdmitPolicy
+from dungeonmind.application.vnext.entity_reads import EntityClaimsResult, EntityReadService
 from dungeonmind.application.vnext.evidence_reads import EvidenceReadService
 from dungeonmind.application.vnext.materialization import encode_native_graph_payload
 from dungeonmind.application.vnext.native_source_access import (
@@ -19,6 +20,7 @@ from dungeonmind.infrastructure.postgres.selective_native_sources import (
 )
 from dungeonmind.infrastructure.postgres.selective_query import (
     SelectiveFactCache,
+    SelectiveQueryRead,
     open_selective_query,
     open_selective_source_query,
 )
@@ -92,6 +94,124 @@ def test_selective_query_matches_search_entities_and_selected_claims(
         reader.search_entities("b")
 
 
+def test_claim_projection_matches_complete_claims_without_alias_work(
+    pg, selective_graph, monkeypatch,
+):
+    repo, _, ordinary = selective_graph
+    neighborhood._publish(pg.database, ordinary)
+    source = open_selective_native_text_source_access_context(repo, **_source_options(ordinary))
+    ids = ("b", "missing", "a", "b")
+    expected = EntityReadService().get_complete_entities(ordinary, ids)
+    projected = tuple(
+        EntityClaimsResult(item.identity, item.found, item.assertions, item.completeness)
+        for item in expected
+    )
+    evidence = EvidenceReadService().get_assertions_evidence(ordinary, ("cb", "ab", "cb"))
+    original = SelectiveQueryRead._buckets
+
+    def watch(reader, family, keys):
+        assert family != "aliases"
+        return original(reader, family, keys)
+
+    monkeypatch.setattr(SelectiveQueryRead, "_buckets", watch)
+    with _open(pg.database, source, ordinary) as reader:
+        assert reader.get_entity_claims(ids) == projected
+        retained = reader.retain_complete_facts()
+    assert tuple(a.assertion_id for a in projected[0].assertions) == ("ab", "b-title", "cb")
+    assert retained.get_entity_claim("b") == projected[0]
+    assert retained.get_assertions_evidence(("cb", "ab", "cb")) == evidence
+    with pytest.raises(PersistenceIntegrityError, match="was not captured"):
+        retained.get_complete_entity("b")
+
+
+def test_claim_projection_respects_withdrawal_at_acquisition_epoch(pg):
+    from dungeonmind.application.vnext._read_artifact import parse_verified_source_rows
+    from dungeonmind.application.vnext.initialization import initialize_empty_knowledge_space
+    from dungeonmind.application.vnext.native_source_admission import (
+        publish_native_text_source_evidence,
+    )
+    from dungeonmind.contracts.vnext.knowledge import PublishKnowledgeRevisionCommand
+    from dungeonmind.contracts.vnext.projection import ProjectionRequest
+    from tests.integration.test_postgres_vnext_native_source_admission import (
+        _knowledge,
+        _repository,
+    )
+    from tests.unit.test_vnext_native_source_admission import NOW, _domain, _profile, _request
+
+    repo = _repository(pg)
+    domain = _domain().model_copy(update={"claim_modes": ["test:fact"]})
+    profile = _profile()
+    genesis = initialize_empty_knowledge_space(
+        repository=repo,
+        space_id="space:selective-source-claims",
+        initialization_id="init:selective-source-claims",
+        created_at=NOW,
+        domain_contract=domain,
+        semantic_profile=profile,
+    )
+    request = _request(
+        space_id=genesis.space_id, parent_revision_id=genesis.published_revision_id,
+    )
+    source = publish_native_text_source_evidence(
+        repository=repo, request=request, domain_contract=domain, semantic_profile=profile,
+    )
+    parent = _knowledge(repo).get_revision(source.space_id, source.published_revision_id)
+    assert parent is not None
+    assertion = _literal("claim", "a", evidence_id=source.bindings[0].evidence_ref_id)
+    assertion = assertion.model_copy(update={
+        "metadata": assertion.metadata.model_copy(update={"scope": []}),
+    })
+    payload = {
+        **parent.graph_payload,
+        "entities": [Entity(entity_id="a").model_dump(mode="json")],
+        "assertions": [assertion.model_dump(mode="json")],
+    }
+    stored = repo.publish_revision(PublishKnowledgeRevisionCommand(
+        space_id=source.space_id,
+        parent_revision_id=source.published_revision_id,
+        expected_parent_revision_id=source.published_revision_id,
+        operation_ids=["op:source-claim"],
+        graph_schema=parent.revision.graph_schema,
+        graph_payload=payload,
+        domain_contract_ref=parent.revision.domain_contract_ref,
+        semantic_profile_ref=parent.revision.semantic_profile_ref,
+        created_at=NOW.replace(minute=2),
+    ))
+    projection_request = ProjectionRequest(
+        space_id=source.space_id, revision_id=stored.revision.revision_id,
+        scope_selector=ScopeSelector(include_unscoped=True),
+        standing_selector=[assertion.metadata.standing],
+    )
+    context = KnowledgeReadContext(
+        parsed=parse_verified_source_rows(stored, stored.graph_payload),
+        request=projection_request,
+        domain_contract=domain,
+        semantic_profile=profile,
+        domain_policy=AlwaysAdmitPolicy(policy_id=domain.admission_policy_id),
+        source_reader=repo.open_native_source_view(source.space_id),
+    )
+    from dungeonmind.infrastructure.postgres.selective_read_projection import (
+        publish_selective_read_projection,
+    )
+    publish_selective_read_projection(
+        pg.database, space_id=source.space_id, revision_id=stored.revision.revision_id,
+    )
+
+    before = open_selective_native_text_source_access_context(repo, **_source_options(context))
+    repo.withdraw_native_source(
+        space_id=source.space_id, source_artifact_id=source.source_artifact_id,
+        source_revision_id=source.source_revision_id,
+    )
+    after = open_selective_native_text_source_access_context(repo, **_source_options(context))
+    for access, expected in ((before, ("claim",)), (after, ())):
+        assert access is not None
+        with _open(pg.database, access, context) as reader:
+            assert reader is not None
+            projected, = reader.get_entity_claims(("a",))
+            assert projected.found
+            assert tuple(item.assertion_id for item in projected.assertions) == expected
+
+
 def test_selective_query_fails_closed_when_an_incoming_bucket_disappears(pg, selective_graph):
     repo, _, ordinary = selective_graph
     neighborhood._publish(pg.database, ordinary)
@@ -105,6 +225,8 @@ def test_selective_query_fails_closed_when_an_incoming_bucket_disappears(pg, sel
         assert reader is not None
         with pytest.raises(PersistenceIntegrityError, match="posting bucket seal mismatch"):
             reader.get_complete_entities(("b",))
+        with pytest.raises(PersistenceIntegrityError, match="posting bucket seal mismatch"):
+            reader.get_entity_claims(("b",))
 
 
 def test_one_projection_backs_source_query_and_retained_claim_reads(

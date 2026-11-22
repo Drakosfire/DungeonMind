@@ -9,6 +9,7 @@ from typing import Literal
 from dungeonmind.domain.canonical import canonical_sha256
 
 from .admission import (
+    AlwaysAdmitPolicy,
     collect_evidence_dependencies,
     collect_evidence_ref_dependencies,
     evidence_refs_pass,
@@ -147,6 +148,16 @@ class EntityLookupResult:
 class CompleteEntityLookupResult(EntityLookupResult):
     related_entities: tuple[ParsedEntity, ...]
     aliases: tuple[ParsedIdentityAlias, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class EntityClaimsResult:
+    """Admitted own and incoming claims for one exact entity."""
+
+    identity: EntityReadIdentity
+    found: bool
+    assertions: tuple[ParsedAssertion, ...]
+    completeness: EntityReadCompleteness
 
 
 def _identity(context: KnowledgeReadContext, entity_id: str) -> EntityReadIdentity:
@@ -439,6 +450,20 @@ def _opposite_endpoint_id(assertion: ParsedAssertion, selected_entity_id: str) -
     return None
 
 
+def _admitted_assertions(
+    context: KnowledgeReadContext, assertion_ids: Sequence[str],
+) -> tuple[ParsedAssertion, ...]:
+    assertions = []
+    for assertion_id in assertion_ids:
+        assertion = context.parsed.get_assertion(assertion_id)
+        if assertion is None:
+            raise EntityReadIntegrityError(
+                f"admitted assertion missing from parsed revision: {assertion_id}"
+            )
+        assertions.append(assertion)
+    return tuple(assertions)
+
+
 def _assemble(
     *,
     context: KnowledgeReadContext,
@@ -514,15 +539,7 @@ def _assemble(
             candidate_ids, project_provenance=project_provenance
         )
     admitted_ids = admission.admitted_assertion_ids
-    assertions: list[ParsedAssertion] = []
-    for assertion_id in admitted_ids:
-        assertion = parsed.get_assertion(assertion_id)
-        if assertion is None:
-            raise EntityReadIntegrityError(
-                f"admitted assertion missing from parsed revision: {assertion_id}"
-            )
-        assertions.append(assertion)
-    assertions_tuple = tuple(assertions)
+    assertions_tuple = _admitted_assertions(context, admitted_ids)
 
     related: list[ParsedEntity] = []
     endpoint_lookups = 0
@@ -786,6 +803,53 @@ class EntityReadService:
             if isinstance(result, CompleteEntityLookupResult):
                 raise EntityReadIntegrityError("Basic batch assembled a complete-entity result")
             results.append(result)
+        return tuple(results)
+
+    def get_entity_claims(
+        self, context: KnowledgeReadContext, entity_ids: Sequence[str],
+    ) -> tuple[EntityClaimsResult, ...]:
+        """Project the claim closure with ordinary authorization in request order."""
+        parsed = context.parsed
+        candidates_by_entity = {
+            entity_id: _dedupe_sorted((
+                *parsed.get_subject_assertion_ids(entity_id),
+                *parsed.get_incoming_entity_ref_assertion_ids(entity_id),
+            ))
+            for entity_id in dict.fromkeys(entity_ids)
+            if parsed.get_entity(entity_id) is not None
+        }
+        all_candidates = {
+            key for candidates in candidates_by_entity.values() for key in candidates
+        }
+
+        admitted_ids: set[str] | None = None
+        project = None
+        if candidates_by_entity:
+            if type(context.domain_policy) is AlwaysAdmitPolicy:
+                # The built-in policy cannot observe the union provenance. All
+                # other gates inspect only the claim and its own dependencies.
+                admission = context.admit_candidates(tuple(all_candidates))
+                admitted_ids = set(admission.admitted_assertion_ids)
+            else:
+                project = _project_batched_assertion_provenance(context, all_candidates)
+
+        completeness = EntityReadCompleteness(status="complete")
+        results = []
+        for entity_id in entity_ids:
+            candidates = candidates_by_entity.get(entity_id)
+            if candidates is None:
+                visible = ()
+            elif admitted_ids is not None:
+                visible = tuple(key for key in candidates if key in admitted_ids)
+            else:
+                admission, _ = context._evaluate_candidates(candidates, project_provenance=project)
+                visible = admission.admitted_assertion_ids
+            results.append(EntityClaimsResult(
+                identity=_identity(context, entity_id),
+                found=candidates is not None,
+                assertions=_admitted_assertions(context, visible),
+                completeness=completeness,
+            ))
         return tuple(results)
 
     def get_complete_entity(

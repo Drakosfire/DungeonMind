@@ -3,7 +3,7 @@
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, cast
 
@@ -21,7 +21,11 @@ from dungeonmind.application.vnext._selective_read_proof import (
 )
 from dungeonmind.application.vnext.admission import AlwaysAdmitPolicy, DomainAdmissionPolicy
 from dungeonmind.application.vnext.builder import _parse_revision_identity
-from dungeonmind.application.vnext.entity_reads import CompleteEntityLookupResult, EntityReadService
+from dungeonmind.application.vnext.entity_reads import (
+    CompleteEntityLookupResult,
+    EntityClaimsResult,
+    EntityReadService,
+)
 from dungeonmind.application.vnext.evidence_reads import (
     AssertionEvidenceResult,
     EvidenceReadService,
@@ -71,6 +75,9 @@ class RetainedSelectiveQuery:
     """Verified immutable facts retained by the composer before its query closes."""
 
     _complete: Mapping[str, KnowledgeReadContext[_SelectiveQueryFacts]]
+    _claims: Mapping[str, KnowledgeReadContext[_SelectiveQueryFacts]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
     def get_complete_entity(self, entity_id: str) -> CompleteEntityLookupResult:
         """Repeat ordinary complete-entity admission for a captured query entity."""
@@ -79,13 +86,26 @@ class RetainedSelectiveQuery:
             raise PersistenceIntegrityError("entity was not captured by the selective query")
         return EntityReadService().get_complete_entity(context, entity_id)
 
+    def get_entity_claim(self, entity_id: str) -> EntityClaimsResult:
+        """Reauthorize claims for an entity captured during discovery."""
+        context = self._claims.get(entity_id) or self._complete.get(entity_id)
+        if context is None:
+            raise PersistenceIntegrityError(
+                "entity claims were not captured by the selective query"
+            )
+        return EntityReadService().get_entity_claims(context, (entity_id,))[0]
+
     def get_assertions_evidence(
         self, assertion_ids: Sequence[str],
     ) -> tuple[AssertionEvidenceResult, ...]:
         """Build ordered exact evidence from the query's already verified facts."""
         if not assertion_ids:
             return ()
-        contexts = tuple({id(context): context for context in self._complete.values()}.values())
+        contexts = tuple({
+            id(context): context
+            for captures in (self._complete, self._claims)
+            for context in captures.values()
+        }.values())
         preferred = next((
             context for context in contexts
             if all(context.parsed.get_assertion(key) is not None for key in assertion_ids)
@@ -100,7 +120,7 @@ class RetainedSelectiveQuery:
         assertion_ids: Sequence[str],
     ) -> tuple[AssertionEvidenceResult, ...]:
         if not contexts:
-            raise PersistenceIntegrityError("no complete entities were captured by the query")
+            raise PersistenceIntegrityError("no entity facts were captured by the query")
         assertions = {}
         for key in dict.fromkeys(assertion_ids):
             for context in contexts:
@@ -172,6 +192,7 @@ class SelectiveQueryRead:
         self._pin = (revision.space_id, revision.revision_id)
         self._closed = False
         self._complete: dict[str, KnowledgeReadContext[_SelectiveQueryFacts]] = {}
+        self._claims: dict[str, KnowledgeReadContext[_SelectiveQueryFacts]] = {}
 
     def search_entities(self, query: str, *, limit: int = 20) -> SearchResult:
         """Read sealed predicate, term and lexical postings before ordinary search."""
@@ -239,22 +260,38 @@ class SelectiveQueryRead:
         self, entity_ids: Sequence[str],
     ) -> tuple[CompleteEntityLookupResult, ...]:
         """Fetch the complete subject, incoming relationship and alias closures."""
+        context = self._entity_context(entity_ids, include_aliases=True)
+        results = EntityReadService().get_complete_entities(context, entity_ids)
+        self._complete.update(dict.fromkeys(entity_ids, context))
+        return results
+
+    def get_entity_claims(self, entity_ids: Sequence[str]) -> tuple[EntityClaimsResult, ...]:
+        """Fetch the exact subject and incoming claim closures for discovery."""
+        context = self._entity_context(entity_ids, include_aliases=False)
+        results = EntityReadService().get_entity_claims(context, entity_ids)
+        self._claims.update(dict.fromkeys(entity_ids, context))
+        return results
+
+    def _entity_context(
+        self, entity_ids: Sequence[str], *, include_aliases: bool,
+    ) -> KnowledgeReadContext[_SelectiveQueryFacts]:
         keys = tuple(dict.fromkeys(entity_ids))
         assertion_ids = self._posting_ids("subject", keys)
         assertion_ids.update(
             entry[0] for bucket in self._buckets("incoming", keys) for entry in bucket
         )
-        context = self._context(
-            assertion_ids, entity_ids=set(keys), alias_ids=self._posting_ids("aliases", keys),
+        return self._context(
+            assertion_ids,
+            entity_ids=set(keys),
+            alias_ids=self._posting_ids("aliases", keys) if include_aliases else None,
         )
-        results = EntityReadService().get_complete_entities(context, entity_ids)
-        self._complete.update(dict.fromkeys(keys, context))
-        return results
 
     def retain_complete_facts(self) -> RetainedSelectiveQuery:
         """Release the projection transaction before handling controller input."""
         self._assert_open()
-        return RetainedSelectiveQuery(MappingProxyType(self._complete.copy()))
+        return RetainedSelectiveQuery(
+            MappingProxyType(self._complete.copy()), MappingProxyType(self._claims.copy()),
+        )
 
     def get_assertions_evidence(
         self, assertion_ids: Sequence[str],
