@@ -501,7 +501,9 @@ def open_first_admitted_native_text_by_group(
     Discovery callers group evidence for the same source pair before opening.
     Batch only the first candidate per group. Later candidates remain lazy.
     """
-    load = getattr(context.source_view, "get_native_text_sources_for_discovery", None)
+    load: Callable[
+        [Sequence[tuple[str, str, str]]], Sequence[StoredNativeTextSource | None]
+    ] | None = getattr(context.source_view, "get_native_text_sources_for_discovery", None)
     first_opens: tuple[NativeTextSourceAccessV1, ...] | None = None
     if callable(load):
         # A speculative open may fail ahead of an earlier group's fallback.
