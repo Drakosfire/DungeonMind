@@ -5,12 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 
 from dungeonmind.domain.canonical import canonical_json, canonical_sha256
 
-from .admission import collect_evidence_dependencies
+from .admission import AlwaysAdmitPolicy, collect_evidence_dependencies
 from .entity_reads import (
     EntityReadCompleteness,
     EntityReadSourceArtifact,
@@ -351,6 +351,84 @@ def _captured_trace() -> EvidenceReadTrace:
     return bucket[-1]
 
 
+def _assertion_trace() -> EvidenceReadTrace:
+    return EvidenceReadTrace(
+        assertion_lookups=1,
+        evidence_lookups=0,
+        supporter_candidates=0,
+        assertions_evaluated=0,
+        policy_evaluations=0,
+        evidence_ids_consulted=0,
+        unique_artifact_ids_requested=0,
+        unique_revision_ids_requested=0,
+        provenance_snapshot_calls=0,
+        anchors_constructed=0,
+        anchors_revalidated=0,
+    )
+
+
+def _assemble_assertion_support(
+    context: KnowledgeReadContext,
+    identity: EvidenceReadIdentity,
+    assertion: ParsedAssertion,
+    snapshot: KnowledgeProvenanceSnapshot,
+    trace: EvidenceReadTrace,
+) -> AssertionEvidenceResult:
+    requested = assertion.assertion_id
+    parsed = context.parsed
+    evidence_ids = parsed.assertion_evidence.get(requested, ())
+    evidence_records: list[ParsedEvidenceRef] = []
+    for evidence_id in evidence_ids:
+        record = parsed.get_evidence(evidence_id)
+        if record is None:
+            raise EvidenceReadIntegrityError(
+                f"admitted assertion evidence missing from parsed revision: {evidence_id}"
+            )
+        evidence_records.append(record)
+    evidence_tuple = tuple(sorted(evidence_records, key=lambda item: item.evidence_ref_id))
+    artifacts, revisions, authorizations = _source_support_for_evidence(
+        evidence=evidence_tuple, snapshot=snapshot
+    )
+    anchors = tuple(
+        build_source_anchor(
+            context=context,
+            evidence=item,
+            source_artifacts=artifacts,
+            source_revisions=revisions,
+            source_authorizations=authorizations,
+            admitted_supporter_assertion_ids=(requested,),
+        )
+        for item in evidence_tuple
+    )
+    if _ACTIVE_TRACE.get() is not None:
+        _record_trace(_with_anchors(trace, constructed=len(anchors), revalidated=0))
+    completeness = _complete()
+    return AssertionEvidenceResult(
+        identity=identity,
+        requested_assertion_id=requested,
+        available=True,
+        assertion=assertion,
+        evidence=evidence_tuple,
+        source_artifacts=artifacts,
+        source_revisions=revisions,
+        anchors=anchors,
+        completeness=completeness,
+        result_digest=_available_support_digest(
+            identity=identity,
+            requested_key="requested_assertion_id",
+            requested_value=requested,
+            available=True,
+            assertion_id=assertion.assertion_id,
+            evidence=evidence_tuple,
+            admitted_supporter_ids=(requested,),
+            source_artifacts=artifacts,
+            source_revisions=revisions,
+            anchors=anchors,
+            completeness=completeness,
+        ),
+    )
+
+
 class EvidenceReadService:
     """Exact assertion/evidence support and source-anchor revalidation."""
 
@@ -375,6 +453,12 @@ class EvidenceReadService:
         )
         if not found:
             return tuple(self.get_assertion_evidence(context, value) for value in requested)
+        if type(context.domain_policy) is AlwaysAdmitPolicy:
+            admission, snapshot = context.evaluate_candidates(found)
+            return self._assemble_builtin_batch(
+                context, requested, frozenset(admission.admitted_assertion_ids), snapshot
+            )
+
         _, artifacts, revisions = collect_evidence_dependencies(context.parsed, found)
         snapshot = context.source_reader.get_provenance_snapshot(
             artifact_ids=artifacts, revision_ids=revisions,
@@ -389,6 +473,41 @@ class EvidenceReadService:
         )
         return tuple(self._get_assertion_evidence(context, value, project) for value in requested)
 
+    def _assemble_builtin_batch(
+        self,
+        context: KnowledgeReadContext,
+        requested: tuple[str, ...],
+        admitted: frozenset[str],
+        snapshot: KnowledgeProvenanceSnapshot,
+    ) -> tuple[AssertionEvidenceResult, ...]:
+        # All source records used in the result are selected by this claim's
+        # own evidence. A custom policy must still see its individual snapshot.
+        identity = _identity(context)
+        base = _assertion_trace()
+        record_work = _ACTIVE_TRACE.get() is not None
+        results = []
+        for key in requested:
+            assertion = context.parsed.get_assertion(key)
+            trace = base
+            if record_work and assertion is not None:
+                _, artifacts, revisions = collect_evidence_dependencies(
+                    context.parsed, (key,),
+                )
+                trace = replace(
+                    base,
+                    assertions_evaluated=1,
+                    policy_evaluations=int(key in admitted),
+                    evidence_ids_consulted=len(context.parsed.assertion_evidence.get(key, ())),
+                    unique_artifact_ids_requested=len(artifacts),
+                    unique_revision_ids_requested=len(revisions),
+                )
+            if assertion is None or key not in admitted:
+                result = self._unavailable_assertion(identity=identity, requested=key, trace=trace)
+            else:
+                result = _assemble_assertion_support(context, identity, assertion, snapshot, trace)
+            results.append(result)
+        return tuple(results)
+
     def _get_assertion_evidence(
         self,
         context: KnowledgeReadContext,
@@ -399,19 +518,7 @@ class EvidenceReadService:
         requested = _require_id(assertion_id, label="assertion ID")
         identity = _identity(context)
         parsed = context.parsed
-        trace = EvidenceReadTrace(
-            assertion_lookups=1,
-            evidence_lookups=0,
-            supporter_candidates=0,
-            assertions_evaluated=0,
-            policy_evaluations=0,
-            evidence_ids_consulted=0,
-            unique_artifact_ids_requested=0,
-            unique_revision_ids_requested=0,
-            provenance_snapshot_calls=0,
-            anchors_constructed=0,
-            anchors_revalidated=0,
-        )
+        trace = _assertion_trace()
         assertion = parsed.get_assertion(requested)
         if assertion is None:
             return self._unavailable_assertion(identity=identity, requested=requested, trace=trace)
@@ -429,55 +536,7 @@ class EvidenceReadService:
         if requested not in admission.admitted_assertion_ids:
             return self._unavailable_assertion(identity=identity, requested=requested, trace=trace)
 
-        evidence_records: list[ParsedEvidenceRef] = []
-        for evidence_id in evidence_ids:
-            record = parsed.get_evidence(evidence_id)
-            if record is None:
-                raise EvidenceReadIntegrityError(
-                    f"admitted assertion evidence missing from parsed revision: {evidence_id}"
-                )
-            evidence_records.append(record)
-        evidence_tuple = tuple(sorted(evidence_records, key=lambda item: item.evidence_ref_id))
-        artifacts, revisions, authorizations = _source_support_for_evidence(
-            evidence=evidence_tuple, snapshot=snapshot
-        )
-        anchors = tuple(
-            build_source_anchor(
-                context=context,
-                evidence=item,
-                source_artifacts=artifacts,
-                source_revisions=revisions,
-                source_authorizations=authorizations,
-                admitted_supporter_assertion_ids=(requested,),
-            )
-            for item in evidence_tuple
-        )
-        _record_trace(_with_anchors(trace, constructed=len(anchors), revalidated=0))
-        completeness = _complete()
-        return AssertionEvidenceResult(
-            identity=identity,
-            requested_assertion_id=requested,
-            available=True,
-            assertion=assertion,
-            evidence=evidence_tuple,
-            source_artifacts=artifacts,
-            source_revisions=revisions,
-            anchors=anchors,
-            completeness=completeness,
-            result_digest=_available_support_digest(
-                identity=identity,
-                requested_key="requested_assertion_id",
-                requested_value=requested,
-                available=True,
-                assertion_id=assertion.assertion_id,
-                evidence=evidence_tuple,
-                admitted_supporter_ids=(requested,),
-                source_artifacts=artifacts,
-                source_revisions=revisions,
-                anchors=anchors,
-                completeness=completeness,
-            ),
-        )
+        return _assemble_assertion_support(context, identity, assertion, snapshot, trace)
 
     def get_evidence(
         self,
