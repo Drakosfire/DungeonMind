@@ -1490,14 +1490,16 @@ class _PostgresNativeTextSourceView:
             ),
         ).fetchall()
         for row in publication_rows:
-            receipt = _read_source_publication(conn, self._space_id, row["publication_id"])
-            if receipt is None:
+            publication = _read_source_publication(conn, self._space_id, row["publication_id"])
+            if publication is None:
                 raise PersistenceIntegrityError("indexed source publication receipt missing")
-            if (receipt.source_artifact_id, receipt.source_revision_id) != pair or canonical_sha256(
-                record["receipt"].model_dump(mode="json")
-            ) != receipt.original_admission_sha256:
+            original_sha256 = canonical_sha256(record["receipt"].model_dump(mode="json"))
+            if (
+                (publication.source_artifact_id, publication.source_revision_id) != pair
+                or original_sha256 != publication.original_admission_sha256
+            ):
                 raise PersistenceIntegrityError("composed proof source drift")
-            add(receipt.proofs, receipt.source_authority_epoch)
+            add(publication.proofs, publication.source_authority_epoch_after)
 
         if narrow and span_ids - matches.keys():
             # A damaged receipt could hide a requested key from the SQL filter.

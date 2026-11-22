@@ -65,7 +65,7 @@ def test_postgres_batch_reads_only_matching_extension_and_preserves_epoch(pg, mo
     domain, profile, _, root = setup_source(repo)
     old = repo.open_native_source_view(root.space_id)
     needed = publish(repo, domain, profile, extension(repo, root))
-    unrelated = extension(repo, root, operation="extension:unrelated", start=11, end=14)
+    unrelated = extension(repo, root, operation="extension:unrelated", start=16, end=20)
     publish(repo, domain, profile, unrelated)
     current = repo.open_native_source_view(root.space_id)
     pair = root.source_artifact_id, root.source_revision_id

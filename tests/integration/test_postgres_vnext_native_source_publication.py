@@ -37,6 +37,17 @@ def test_postgres_atomic_commit_reopen_and_recovery(pg, mode):
     reopened = PostgresNativeSourceEvidenceRepository(pg.database)
     assert recover(reopened, domain, profile, request) == receipt
     assert publish(reopened, domain, profile, request) == receipt
+    view = reopened.open_native_source_view(root.space_id)
+    proof = receipt.proofs[0] if mode == "new_intervals" else receipt.reused_support[0].proof
+    expected = view.get_native_text_source(
+        source_artifact_id=root.source_artifact_id,
+        source_revision_id=root.source_revision_id,
+        span_id=proof.span_id,
+    )
+    assert expected is not None
+    assert view.get_native_text_sources((
+        (root.source_artifact_id, root.source_revision_id, proof.span_id),
+    )) == (expected,)
     repo.withdraw_native_source(
         space_id=root.space_id,
         source_artifact_id=root.source_artifact_id,
