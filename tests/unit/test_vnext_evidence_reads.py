@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import patch
@@ -12,7 +13,10 @@ import pytest
 
 from dungeonmind.application.vnext.admission import AlwaysAdmitPolicy, ExcludeByAssertionIdPolicy
 from dungeonmind.application.vnext.builder import build_parsed_knowledge_revision
-from dungeonmind.application.vnext.errors import EvidenceReadIntegrityError
+from dungeonmind.application.vnext.errors import (
+    EvidenceReadIntegrityError,
+    KnowledgeReadContextIntegrityError,
+)
 from dungeonmind.application.vnext.evidence_reads import (
     EvidenceReadService,
     _capture_evidence_read_trace,
@@ -746,6 +750,74 @@ def test_21_get_evidence_hoists_admitted_supporter_set() -> None:
     assert nested_set_in_comp == []
 
 
+@pytest.mark.parametrize("custom", [False, True])
+def test_selected_batch_matches_singles_and_preserves_policy_dependencies(monkeypatch, custom):
+    admissions = []
+    policy_inputs = []
+    original = KnowledgeReadContext._evaluate_candidates
+
+    def count(context, ids, **kwargs):
+        admissions.append(tuple(ids))
+        return original(context, ids, **kwargs)
+
+    class InspectingPolicy(AlwaysAdmitPolicy):
+        def narrow(self, *, assertion, request, domain_contract, semantic_profile, provenance):
+            policy_inputs.append((assertion.assertion_id, provenance.requested_artifact_ids))
+            return assertion.assertion_id != "asrt:policy"
+
+    monkeypatch.setattr(KnowledgeReadContext, "_evaluate_candidates", count)
+    context, _ = _lab_context(
+        entities=[Entity(entity_id="A")],
+        assertions=[
+            _literal("asrt:a", "A"),
+            _literal("asrt:b", "A", evidence_id="ev:withdrawn"),
+            _literal("asrt:policy", "A"),
+            _literal("asrt:hidden", "A", visibility=LabelsAllVisibility(labels=["test:hidden"])),
+        ],
+        evidence=[
+            _evidence("evidence:lab"),
+            _evidence("ev:withdrawn", artifact_id="src:withdrawn", revision_id="srcrev:withdrawn"),
+        ],
+        artifacts={
+            "src:lab": _artifact("src:lab", "srcrev:lab"),
+            "src:withdrawn": _artifact("src:withdrawn", "srcrev:withdrawn").model_copy(
+                update={"status": "retracted"}
+            ),
+        },
+        revisions={
+            "srcrev:lab": _revision("srcrev:lab", "src:lab"),
+            "srcrev:withdrawn": _revision("srcrev:withdrawn", "src:withdrawn"),
+        },
+        policy=InspectingPolicy(policy_id="test.always") if custom else None,
+    )
+    requested = ("asrt:b", "asrt:a", "asrt:hidden", "asrt:policy", "missing", "asrt:a")
+    expected = tuple(_SVC.get_assertion_evidence(context, key) for key in requested)
+    expected_policy_inputs = tuple(policy_inputs)
+    assert expected[0].available is False and expected[1].available is True
+    admissions.clear()
+    policy_inputs.clear()
+    before = context.source_reader.snapshot_call_count
+    assert _SVC.get_assertions_evidence(context, requested) == expected
+    assert context.source_reader.snapshot_call_count - before == 1
+    assert tuple(policy_inputs) == expected_policy_inputs
+    found = tuple(key for key in requested if key != "missing")
+    assert admissions == ([(key,) for key in found] if custom else [found])
+
+
+def test_selected_batch_rejects_mismatched_provenance_dependencies(monkeypatch):
+    context, _ = _visible_lab()
+    view = type(context.source_reader)
+    original = view.get_provenance_snapshot
+
+    def mismatched(source, **kwargs):
+        snapshot = original(source, **kwargs)
+        return replace(snapshot, requested_revision_ids=())
+
+    monkeypatch.setattr(view, "get_provenance_snapshot", mismatched)
+    with pytest.raises(KnowledgeReadContextIntegrityError, match="requested_revision_ids"):
+        _SVC.get_assertions_evidence(context, ("asrt:a", "asrt:a"))
+
+
 def test_ordered_assertion_evidence_batch_reuses_one_provenance_snapshot(monkeypatch) -> None:
     from dungeonmind.application.vnext import evidence_reads
 
@@ -770,6 +842,9 @@ def test_ordered_assertion_evidence_batch_reuses_one_provenance_snapshot(monkeyp
             _literal("asrt:b", "A"),
             _literal("asrt:hidden", "A", visibility=LabelsAllVisibility(labels=["test:hidden"])),
         ],
+        policy=ExcludeByAssertionIdPolicy(
+            policy_id="test.always", excluded_assertion_ids=frozenset(),
+        ),
     )
     requested = ("asrt:b", "missing", "asrt:hidden", "asrt:a", "asrt:b")
     expected = tuple(_SVC.get_assertion_evidence(context, value) for value in requested)
