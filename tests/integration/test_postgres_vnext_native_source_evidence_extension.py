@@ -3,7 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from psycopg import sql
+from psycopg import Connection, sql
 
 from dungeonmind.application.vnext.errors import (
     KnowledgePublicationOutcomeUnknownError,
@@ -59,8 +59,6 @@ def test_postgres_extension_readers_replay_and_repository_reopen(pg):
 
 
 def test_postgres_batch_reads_only_matching_extension_and_preserves_epoch(pg, monkeypatch):
-    from dungeonmind.infrastructure.postgres import vnext_sources
-
     repo = repository(pg)
     domain, profile, _, root = setup_source(repo)
     old = repo.open_native_source_view(root.space_id)
@@ -72,17 +70,20 @@ def test_postgres_batch_reads_only_matching_extension_and_preserves_epoch(pg, mo
     wanted = (*pair, needed.bindings[0].span_id)
     base = (*pair, root.bindings[0].span_id)
     checked = []
-    verify = vnext_sources._verify_extension_row
+    execute = Connection.execute
 
-    def observe(conn, space_id, row, **kwargs):
-        checked.append(row["extension_id"])
-        return verify(conn, space_id, row, **kwargs)
+    def observe(conn, query, params=None, **kwargs):
+        checked.append(query)
+        return execute(conn, query, params, **kwargs)
 
-    monkeypatch.setattr(vnext_sources, "_verify_extension_row", observe)
-    assert old.get_native_text_sources((wanted,)) == (None,)
-    result = current.get_native_text_sources((wanted, base, wanted))
+    with monkeypatch.context() as counter:
+        counter.setattr(Connection, "execute", observe)
+        assert old.get_native_text_sources((wanted,)) == (None,)
+        result = current.get_native_text_sources((wanted, base, wanted))
     assert [item.span_proof.span_id for item in result] == [wanted[2], base[2], wanted[2]]
-    assert checked == [needed.extension_id]
+    assert len(checked) == 4
+    assert all("receipt_payload" not in query and "span_proofs" not in query for query in checked)
+    assert sum("native_citation_proofs p" in query for query in checked) == 2
     assert result[0].authority_epoch == needed.source_authority_epoch
 
     repo.withdraw_native_source(
@@ -248,7 +249,7 @@ def test_populated_extension_authority_refuses_downgrade(pg):
             conn.execute("SELECT version_num FROM dungeonmind.alembic_version").fetchone()[
                 "version_num"
             ]
-            == "0024_selective_read_projection"
+            == "0025_native_citation_proofs"
         )
 
 
@@ -311,3 +312,66 @@ def test_postgres_recovery_verifies_immutable_ancestry(pg, corruption):
     )
 
     exercise_corrupt_recovery_ancestry(repository(pg), corruption)
+
+
+@pytest.mark.parametrize("damage", ["missing", "changed", "duplicate", "misbound"])
+def test_postgres_typed_proof_corruption_fails_closed(pg, damage):
+    repo = repository(pg)
+    domain, profile, _, root = setup_source(repo)
+    extension_receipt = publish(repo, domain, profile, extension(repo, root))
+    view = repo.open_native_source_view(root.space_id)
+    span_id = extension_receipt.bindings[0].span_id
+    keys = ((root.source_artifact_id, root.source_revision_id, span_id),)
+    assert view.get_native_text_sources(keys)[0].span_proof.span_id == span_id
+    with pg.database.transaction() as conn:
+        params = (root.space_id, extension_receipt.extension_id, span_id)
+        where = " WHERE (space_id, receipt_id, span_id) = (%s, %s, %s)"
+        if damage == "missing":
+            conn.execute("DELETE FROM dungeonmind.native_citation_proofs" + where, params)
+        elif damage == "changed":
+            conn.execute(
+                "UPDATE dungeonmind.native_citation_proofs SET slice_sha256 = repeat('0', 64)"
+                + where, params,
+            )
+        elif damage == "duplicate":
+            conn.execute(
+                """
+                INSERT INTO dungeonmind.native_citation_proofs
+                SELECT space_id, %s, span_id, evidence_ref_id, source_revision_id,
+                       start_byte, end_byte, slice_sha256
+                FROM dungeonmind.native_citation_proofs
+                """ + where,
+                (root.admission_id, *params),
+            )
+        else:
+            conn.execute(
+                "UPDATE dungeonmind.native_citation_proofs SET source_revision_id = 'wrong'"
+                + where, params,
+            )
+    with pytest.raises(PersistenceIntegrityError, match="span index drift"):
+        view.get_native_text_sources(keys)
+
+
+def test_populated_citation_projection_roundtrip_verifies_existing_receipts(pg):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo = repository(pg)
+    domain, profile, _, root = setup_source(repo)
+    receipt = publish(repo, domain, profile, extension(repo, root))
+    pair = (root.source_artifact_id, root.source_revision_id)
+    keys = ((*pair, receipt.bindings[0].span_id), (*pair, root.bindings[0].span_id))
+    view = repo.open_native_source_view(root.space_id)
+    expected = view.get_native_text_sources(keys)
+    assert all(item is not None for item in expected)
+    cwd = Path(__file__).parents[2]
+
+    for args in [("downgrade", "0024_selective_read_projection"), ("upgrade", "head")]:
+        result = subprocess.run(
+            [sys.executable, "-B", "-m", "alembic", *args],
+            cwd=cwd, capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+
+    assert view.get_native_text_sources(keys) == expected

@@ -31,6 +31,8 @@ TRUNCATE TABLE
     dungeonmind.source_admission_receipts,
     dungeonmind.knowledge_native_source_withdrawals,
     dungeonmind.knowledge_native_source_spans,
+    dungeonmind.native_citation_proofs,
+    dungeonmind.native_citation_manifests,
     dungeonmind.knowledge_native_source_admissions,
     dungeonmind.knowledge_head_events,
     dungeonmind.knowledge_heads,

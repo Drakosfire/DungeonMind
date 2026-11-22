@@ -62,6 +62,7 @@ from ...application.vnext.errors import (
 )
 from ...application.vnext.records import StoredKnowledgeRevision
 from .database import SCHEMA, PostgresDatabase, ReadTransactions, jsonb
+from .native_citation_proofs import insert_citation_manifest, read_citation_proofs
 from .vnext_knowledge import (
     PostgresKnowledgeRevisionRepository,
     VerifiedKnowledgeRevisionCache,
@@ -119,7 +120,6 @@ def _verify_extension_row(
     row: dict[str, Any],
     *,
     metadata_only: bool = False,
-    verified_root: NativeSourceAdmissionReceiptV1 | None = None,
 ) -> NativeSourceEvidenceExtensionReceiptV1:
     extension_id = row["extension_id"]
     try:
@@ -146,12 +146,10 @@ def _verify_extension_row(
         )
     ):
         raise PersistenceIntegrityError("extension receipt identity drift")
-    root = verified_root
-    if root is None:
-        root_record = _read_native_record(
-            conn, space_id, receipt.original_admission_id, include_body=not metadata_only
-        )
-        root = None if root_record is None else root_record["receipt"]
+    root_record = _read_native_record(
+        conn, space_id, receipt.original_admission_id, include_body=not metadata_only
+    )
+    root = None if root_record is None else root_record["receipt"]
     if (
         root is None
         or root.admission_id != receipt.original_admission_id
@@ -424,7 +422,7 @@ def _read_native_span_rows(
 
 def _verify_native_record(
     row: dict[str, Any],
-    span_rows: Sequence[dict[str, Any]] | None,
+    span_rows: Sequence[dict[str, Any]],
     space_id: str,
     admission_id: str,
     *,
@@ -469,24 +467,15 @@ def _verify_native_record(
         or origin != receipt.origin
     ):
         raise PersistenceIntegrityError("native source row identity drift")
-    if span_rows is None:
-        # The batch query verifies the complete mirrored proof set in PostgreSQL.
-        spans_match = row["span_index_matches"] is True
-    else:
-        expected_spans = {
-            (proof.span_id, proof.evidence_ref_id, canonical_sha256(proof.model_dump(mode="json")))
-            for proof in proofs
-        }
-        actual_spans = {
-            (
-                item["span_id"],
-                item["evidence_ref_id"],
-                canonical_sha256(item["proof"]),
-            )
-            for item in span_rows
-        }
-        spans_match = actual_spans == expected_spans
-    if not spans_match:
+    expected_spans = {
+        (proof.span_id, proof.evidence_ref_id, canonical_sha256(proof.model_dump(mode="json")))
+        for proof in proofs
+    }
+    actual_spans = {
+        (item["span_id"], item["evidence_ref_id"], canonical_sha256(item["proof"]))
+        for item in span_rows
+    }
+    if actual_spans != expected_spans:
         raise PersistenceIntegrityError("native source span index drift")
     return {
         "space_id": space_id,
@@ -505,6 +494,76 @@ def _read_native_receipt(
 ) -> NativeSourceAdmissionReceiptV1 | None:
     record = _read_native_record(conn, space_id, admission_id, include_body=True)
     return None if record is None else record["receipt"]
+
+
+def backfill_native_citation_proofs(conn: Connection[Any]) -> None:
+    """Project existing receipts only after the canonical readers verify them."""
+    from .native_citation_proofs import ReceiptKind
+
+    sources: tuple[tuple[ReceiptKind, str, str], ...] = (
+        ("admission", "knowledge_native_source_admissions", "admission_id"),
+        ("extension", "knowledge_native_source_extensions", "extension_id"),
+        ("publication", "knowledge_native_source_publications", "publication_id"),
+    )
+    for kind, table, key in sources:
+        rows = conn.execute(
+            sql.SQL("SELECT space_id, {} AS receipt_id, record_fingerprint FROM {}.{}").format(
+                sql.Identifier(key), sql.Identifier(SCHEMA), sql.Identifier(table),
+            )
+        ).fetchall()
+        for row in rows:
+            space_id, receipt_id = row["space_id"], row["receipt_id"]
+            if kind == "admission":
+                record = _read_native_record(conn, space_id, receipt_id, include_body=True)
+                if record is None:
+                    raise PersistenceIntegrityError("native citation admission missing")
+                root: NativeSourceAdmissionReceiptV1 = record["receipt"]
+                publication = _read_receipt(conn, space_id, receipt_id)
+                if publication is None or publication != root.publication_receipt:
+                    raise PersistenceIntegrityError("native citation admission publication drift")
+                admission_id, epoch = root.admission_id, root.source_authority_epoch
+                proofs = record["proofs"]
+                artifact_id, revision_id = root.source_artifact_id, root.source_revision_id
+            elif kind == "extension":
+                extension = _read_extension(conn, space_id, receipt_id, metadata_only=True)
+                if extension is None:
+                    raise PersistenceIntegrityError("native citation extension missing")
+                publication = extension.publication_receipt
+                admission_id, epoch, proofs = (
+                    extension.original_admission_id, extension.source_authority_epoch,
+                    extension.proofs,
+                )
+                artifact_id = extension.source_artifact_id
+                revision_id = extension.source_revision_id
+            else:
+                source = _read_source_publication(conn, space_id, receipt_id)
+                if source is None:
+                    raise PersistenceIntegrityError("native citation source publication missing")
+                original = _read_native_receipt(conn, space_id, source.original_admission_id)
+                if (
+                    original is None
+                    or (original.source_artifact_id, original.source_revision_id)
+                    != (source.source_artifact_id, source.source_revision_id)
+                    or canonical_sha256(original.model_dump(mode="json"))
+                    != source.original_admission_sha256
+                ):
+                    raise PersistenceIntegrityError("native citation publication lineage drift")
+                publication = source.publication_receipt
+                admission_id, epoch, proofs = (
+                    source.original_admission_id, source.source_authority_epoch_after, source.proofs
+                )
+                artifact_id, revision_id = source.source_artifact_id, source.source_revision_id
+            insert_citation_manifest(
+                conn,
+                kind=kind,
+                admission_id=admission_id,
+                source_artifact_id=artifact_id,
+                source_revision_id=revision_id,
+                authority_epoch=epoch,
+                receipt_fingerprint=row["record_fingerprint"],
+                publication=publication,
+                proofs=proofs,
+            )
 
 
 class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository):
@@ -833,6 +892,17 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
                         jsonb(proof.model_dump(mode="json")),
                     ),
                 )
+            insert_citation_manifest(
+                conn,
+                kind="admission",
+                admission_id=companion.admission_id,
+                source_artifact_id=companion.source_artifact_id,
+                source_revision_id=companion.source_revision_id,
+                authority_epoch=epoch,
+                receipt_fingerprint=fingerprint,
+                publication=publication_receipt,
+                proofs=parts.span_proofs,
+            )
             if self._after_native_receipt_insert is not None:
                 self._after_native_receipt_insert()
 
@@ -962,6 +1032,7 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
                     ).format(sql.Identifier(SCHEMA))
                 )
             receipt = make_receipt(request, plan, pub)
+            fingerprint = canonical_sha256(receipt.model_dump(mode="json"))
             conn.execute(
                 sql.SQL(
                     "INSERT INTO "
@@ -978,8 +1049,19 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
                     receipt.source_authority_epoch_before,
                     receipt.source_authority_epoch_after,
                     jsonb(receipt.model_dump(mode="json")),
-                    canonical_sha256(receipt.model_dump(mode="json")),
+                    fingerprint,
                 ),
+            )
+            insert_citation_manifest(
+                conn,
+                kind="publication",
+                admission_id=receipt.original_admission_id,
+                source_artifact_id=receipt.source_artifact_id,
+                source_revision_id=receipt.source_revision_id,
+                authority_epoch=receipt.source_authority_epoch_after,
+                receipt_fingerprint=fingerprint,
+                publication=pub,
+                proofs=receipt.proofs,
             )
             if self._after_native_source_insert:
                 self._after_native_source_insert()
@@ -1084,6 +1166,7 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
                 ).format(sql.Identifier(SCHEMA))
             ).fetchone()["epoch"]
             receipt = make_extension_receipt(plan, epoch, publication)
+            fingerprint = canonical_sha256(receipt.model_dump(mode="json"))
             conn.execute(
                 sql.SQL(
                     "INSERT INTO {}.knowledge_native_source_extensions("
@@ -1099,8 +1182,19 @@ class PostgresNativeSourceEvidenceRepository(PostgresKnowledgeRevisionRepository
                     request.source_revision_id,
                     epoch,
                     jsonb(receipt.model_dump(mode="json")),
-                    canonical_sha256(receipt.model_dump(mode="json")),
+                    fingerprint,
                 ),
+            )
+            insert_citation_manifest(
+                conn,
+                kind="extension",
+                admission_id=receipt.original_admission_id,
+                source_artifact_id=receipt.source_artifact_id,
+                source_revision_id=receipt.source_revision_id,
+                authority_epoch=epoch,
+                receipt_fingerprint=fingerprint,
+                publication=publication,
+                proofs=receipt.proofs,
             )
             if self._after_native_source_insert:
                 self._after_native_source_insert()
@@ -1344,228 +1438,64 @@ class _PostgresNativeTextSourceView:
         """Resolve ordered exact span keys at this space and authority epoch."""
         if not keys:
             return ()
-        requested: dict[tuple[str, str], set[str]] = {}
-        for artifact_id, revision_id, span_id in keys:
-            requested.setdefault((artifact_id, revision_id), set()).add(span_id)
-
-        resolved = {}
+        unique_keys = tuple(dict.fromkeys(keys))
+        pairs = tuple(dict.fromkeys((artifact, revision) for artifact, revision, _ in unique_keys))
+        artifacts, revisions = map(list, zip(*pairs, strict=True))
         with self._database.transaction() as conn:
             rows = conn.execute(
                 """
-                SELECT a.space_id, a.admission_id, a.command_sha256, a.source_authority_epoch,
-                       a.source_artifact_id, a.source_revision_id, a.published_revision_id,
-                       a.source_artifact, a.source_revision, a.origin, a.body_bytes, a.span_proofs,
-                       a.receipt_payload, a.record_fingerprint,
-                       CASE WHEN jsonb_typeof(a.span_proofs) = 'array' THEN
-                           jsonb_array_length(a.span_proofs) = (
-                               SELECT count(*) FROM dungeonmind.knowledge_native_source_spans AS s
-                               WHERE (s.space_id, s.admission_id) = (a.space_id, a.admission_id)
-                           )
-                           AND NOT EXISTS (
-                               SELECT 1 FROM jsonb_array_elements(a.span_proofs) AS expected(proof)
-                               LEFT JOIN dungeonmind.knowledge_native_source_spans AS s
-                                 ON (s.space_id, s.admission_id) = (a.space_id, a.admission_id)
-                                AND s.span_id = expected.proof->>'span_id'
-                               WHERE s.evidence_ref_id IS DISTINCT FROM
-                                         expected.proof->>'evidence_ref_id'
-                                  OR s.proof::text IS DISTINCT FROM expected.proof::text
-                           )
-                       ELSE false END AS span_index_matches
-                FROM dungeonmind.knowledge_native_source_admissions AS a
+                SELECT a.source_artifact_id, a.source_revision_id, a.source_artifact,
+                       a.source_revision, a.body_bytes,
+                       EXISTS (
+                           SELECT 1 FROM dungeonmind.knowledge_native_source_withdrawals w
+                           WHERE (w.space_id, w.source_artifact_id, w.source_revision_id) =
+                                 (a.space_id, a.source_artifact_id, a.source_revision_id)
+                             AND w.source_authority_epoch <= %s
+                       ) AS withdrawn
+                FROM dungeonmind.knowledge_native_source_admissions a
                 JOIN unnest(%s::text[], %s::text[]) AS requested(artifact_id, revision_id)
-                  ON a.source_artifact_id = requested.artifact_id
-                 AND a.source_revision_id = requested.revision_id
+                  ON (a.source_artifact_id, a.source_revision_id) =
+                     (requested.artifact_id, requested.revision_id)
                 WHERE a.space_id = %s AND a.source_authority_epoch <= %s
                 """,
-                (
-                    [artifact for artifact, _ in requested],
-                    [revision for _, revision in requested],
-                    self._space_id,
-                    self._epoch,
-                ),
+                (self._epoch, artifacts, revisions, self._space_id, self._epoch),
             ).fetchall()
-            if not rows:
-                return (None,) * len(keys)
-            withdrawn = _withdrawn_sources(
-                conn, self._space_id, sorted({artifact for artifact, _ in requested}), self._epoch
-            )
-            for row in rows:
-                pair = (row["source_artifact_id"], row["source_revision_id"])
-                admission_id = row["admission_id"]
-                record = _verify_native_record(
-                    row,
-                    None,
-                    self._space_id,
-                    admission_id,
-                    include_body=True,
-                )
-                proofs = {proof.span_id: (proof, record["epoch"]) for proof in record["proofs"]}
-                missing = requested[pair] - proofs.keys()
-                if missing:
-                    proofs.update(
-                        self._read_additional_spans(conn, pair, record, missing, narrow=True)
-                    )
+            proofs = read_citation_proofs(conn, self._space_id, self._epoch, unique_keys)
 
-                artifact = record["artifact"]
-                if pair in withdrawn:
-                    artifact = artifact.model_copy(update={"status": "retracted"})
-                for span_id in requested[pair] & proofs.keys():
-                    proof, epoch = proofs[span_id]
-                    resolved[(*pair, span_id)] = StoredNativeTextSource(
-                        source_artifact=artifact,
-                        source_revision=record["revision"],
-                        body_bytes=record["body"],
-                        span_proof=proof,
-                        authority_epoch=epoch,
-                    )
-        return tuple(resolved.get(key) for key in keys)
-
-    def _read_additional_spans(
-        self,
-        conn: Connection[Any],
-        pair: tuple[str, str],
-        record: dict[str, Any],
-        span_ids: set[str],
-        *,
-        narrow: bool = False,
-    ) -> dict[str, tuple[NativeUtf8SpanProofV1, int]]:
-        keys = [jsonb([{"span_id": span_id}]) for span_id in sorted(span_ids)]
-        scope = (self._space_id, *pair, self._epoch)
-        matches: dict[str, tuple[NativeUtf8SpanProofV1, int]] = {}
-
-        def add(proofs: Sequence[NativeUtf8SpanProofV1], epoch: int) -> None:
-            for proof in proofs:
-                if proof.span_id not in span_ids:
-                    continue
-                if proof.span_id in matches:
-                    raise PersistenceIntegrityError("extension span identity collision")
-                matches[proof.span_id] = (proof, epoch)
-
-        if narrow:
-            extension_rows = conn.execute(
-                """
-                SELECT * FROM dungeonmind.knowledge_native_source_extensions AS e
-                WHERE space_id = %s AND source_artifact_id = %s
-                  AND source_revision_id = %s AND source_authority_epoch <= %s
-                  AND EXISTS (
-                      SELECT 1 FROM unnest(%s::jsonb[]) AS requested(proof)
-                      WHERE e.receipt_payload->'proofs' @> requested.proof
-                  )
-                """,
-                (*scope, keys),
-            ).fetchall()
-            for row in extension_rows:
-                receipt = _verify_extension_row(
-                    conn, self._space_id, row, verified_root=record["receipt"],
-                )
-                add(receipt.proofs, receipt.source_authority_epoch)
-        else:
-            extension_rows = conn.execute(
-                """
-                SELECT extension_id FROM dungeonmind.knowledge_native_source_extensions
-                WHERE space_id = %s AND source_artifact_id = %s
-                  AND source_revision_id = %s AND source_authority_epoch <= %s
-                """,
-                scope,
-            ).fetchall()
-            for row in extension_rows:
-                receipt = _read_extension(conn, self._space_id, row["extension_id"])
-                if receipt is None:
-                    raise PersistenceIntegrityError("indexed extension receipt missing")
-                add(receipt.proofs, receipt.source_authority_epoch)
-
-        publication_rows = conn.execute(
-            """
-            SELECT publication_id FROM dungeonmind.knowledge_native_source_publications
-            WHERE space_id = %s AND source_revision_id = %s AND mode = 'new_intervals'
-              AND source_authority_epoch_after <= %s
-              AND EXISTS (
-                  SELECT 1 FROM unnest(%s::jsonb[]) AS requested(proof)
-                  WHERE receipt_payload->'proofs' @> requested.proof
-              )
-            """,
-            (
-                self._space_id, pair[1], self._epoch,
-                keys,
-            ),
-        ).fetchall()
-        for row in publication_rows:
-            publication = _read_source_publication(conn, self._space_id, row["publication_id"])
-            if publication is None:
-                raise PersistenceIntegrityError("indexed source publication receipt missing")
-            original_sha256 = canonical_sha256(record["receipt"].model_dump(mode="json"))
+        sources: dict[tuple[str, str], tuple[SourceArtifactV3, SourceRevisionV2, bytes]] = {}
+        for row in rows:
+            try:
+                artifact = SourceArtifactV3.model_validate(row["source_artifact"])
+                revision = SourceRevisionV2.model_validate(row["source_revision"])
+                body = bytes(row["body_bytes"])
+            except (ValueError, TypeError) as exc:
+                raise PersistenceIntegrityError(
+                    "native citation source reconstruction failed"
+                ) from exc
+            pair = row["source_artifact_id"], row["source_revision_id"]
             if (
-                (publication.source_artifact_id, publication.source_revision_id) != pair
-                or original_sha256 != publication.original_admission_sha256
+                (artifact.source_artifact_id, revision.source_revision_id) != pair
+                or revision.source_artifact_id != artifact.source_artifact_id
+                or hashlib.sha256(body).hexdigest() != revision.content_sha256
             ):
-                raise PersistenceIntegrityError("composed proof source drift")
-            add(publication.proofs, publication.source_authority_epoch_after)
+                raise PersistenceIntegrityError("native citation source fingerprint drift")
+            if row["withdrawn"]:
+                artifact = artifact.model_copy(update={"status": "retracted"})
+            sources[pair] = artifact, revision, body
 
-        if narrow and span_ids - matches.keys():
-            # A damaged receipt could hide a requested key from the SQL filter.
-            # Check unselected legacy receipts before returning an unresolved span.
-            remaining = conn.execute(
-                """
-                SELECT * FROM dungeonmind.knowledge_native_source_extensions
-                WHERE space_id = %s AND source_artifact_id = %s
-                  AND source_revision_id = %s AND source_authority_epoch <= %s
-                  AND extension_id <> ALL(%s)
-                """,
-                (*scope, [row["extension_id"] for row in extension_rows]),
-            ).fetchall()
-            for row in remaining:
-                receipt = _verify_extension_row(
-                    conn, self._space_id, row, verified_root=record["receipt"],
-                )
-                add(receipt.proofs, receipt.source_authority_epoch)
-        return matches
+        resolved: dict[tuple[str, str, str], StoredNativeTextSource] = {}
+        for key, (proof, epoch) in proofs.items():
+            source = sources.get((key[0], key[1]))
+            if source is None:
+                raise PersistenceIntegrityError("native citation proof source admission missing")
+            artifact, revision, body = source
+            resolved[key] = StoredNativeTextSource(
+                source_artifact=artifact, source_revision=revision, body_bytes=body,
+                span_proof=proof, authority_epoch=epoch,
+            )
+        return tuple(resolved.get(key) for key in keys)
 
     def get_native_text_source(
         self, *, source_artifact_id: str, source_revision_id: str, span_id: str
     ) -> StoredNativeTextSource | None:
-        with self._database.transaction() as conn:
-            row = conn.execute(
-                sql.SQL(
-                    """
-                    SELECT space_id, admission_id, command_sha256, source_authority_epoch,
-                           source_artifact_id, source_revision_id, published_revision_id,
-                           source_artifact, source_revision, origin, body_bytes, span_proofs,
-                           receipt_payload, record_fingerprint
-                    FROM {}.knowledge_native_source_admissions
-                    WHERE space_id = %s AND source_artifact_id = %s
-                      AND source_revision_id = %s AND source_authority_epoch <= %s
-                    """
-                ).format(sql.Identifier(SCHEMA)),
-                (self._space_id, source_artifact_id, source_revision_id, self._epoch),
-            ).fetchone()
-            if row is None:
-                return None
-            admission_id = row["admission_id"]
-            record = _verify_native_record(
-                row,
-                _read_native_span_rows(conn, self._space_id, admission_id),
-                self._space_id,
-                admission_id,
-                include_body=True,
-            )
-            span = next((proof for proof in record["proofs"] if proof.span_id == span_id), None)
-            proof_epoch = record["epoch"]
-            if span is None:
-                extra = self._read_additional_spans(
-                    conn, (source_artifact_id, source_revision_id), record, {span_id}
-                ).get(span_id)
-                if extra is None:
-                    return None
-                span, proof_epoch = extra
-            artifact = record["artifact"]
-            if (source_artifact_id, source_revision_id) in _withdrawn_sources(
-                conn, self._space_id, (source_artifact_id,), self._epoch
-            ):
-                artifact = artifact.model_copy(update={"status": "retracted"})
-            return StoredNativeTextSource(
-                source_artifact=artifact,
-                source_revision=record["revision"],
-                body_bytes=record["body"],
-                span_proof=span,
-                authority_epoch=proof_epoch,
-            )
+        return self.get_native_text_sources(((source_artifact_id, source_revision_id, span_id),))[0]
