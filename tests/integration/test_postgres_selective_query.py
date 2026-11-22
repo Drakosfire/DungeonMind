@@ -262,6 +262,16 @@ def test_one_projection_backs_source_query_and_retained_claim_reads(
         "dungeonmind.application.vnext._read_artifact._build_parsed_knowledge_revision_from_records",
         forbidden,
     )
+    fetch = selective_query._fetch
+
+    def no_evidence_reload(connection, pin, table, family, keys):
+        if table == "selective_read_records" and family == "evidence":
+            pytest.fail("query reloaded evidence authenticated by the combined opener")
+        return fetch(connection, pin, table, family, keys)
+
+    # The membership loader uses its own module's fetch. Search and claim
+    # discovery must use the decoded records from that membership directory.
+    monkeypatch.setattr(selective_query, "_fetch", no_evidence_reload)
     with open_selective_source_query(repo, **options) as opened:
         assert opened is not None
         source, reader = opened
@@ -275,6 +285,9 @@ def test_one_projection_backs_source_query_and_retained_claim_reads(
         reader.get_complete_entities(("a",))
         reader.get_complete_entities(("c",))
         retained = reader.retain_complete_facts()
+        assert reader.get_entity_claims(("b", "a")) == EntityReadService().get_entity_claims(
+            ordinary, ("b", "a"),
+        )
     assert opens == [(ordinary.request.space_id, ordinary.request.revision_id)]
     monkeypatch.setattr(selective_query, "_fetch", forbidden)
     ids = ("cb", "ab", "cb")
