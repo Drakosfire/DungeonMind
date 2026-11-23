@@ -302,10 +302,11 @@ def test_postgres_tampered_extension_receipt_cannot_open_or_replay(pg, hide_requ
     with pytest.raises(PersistenceIntegrityError):
         access(repo, domain, root, receipt.bindings[0].evidence_ref_id)
     view = repo.open_native_source_view(root.space_id)
+    keys = ((root.source_artifact_id, root.source_revision_id, receipt.bindings[0].span_id),)
     with pytest.raises(PersistenceIntegrityError):
-        view.get_native_text_sources((
-            (root.source_artifact_id, root.source_revision_id, receipt.bindings[0].span_id),
-        ))
+        view.get_native_text_sources(keys)
+    with pytest.raises(PersistenceIntegrityError):
+        view.get_native_text_sources_for_discovery(keys)
 
 
 def test_populated_extension_authority_refuses_downgrade(pg):
