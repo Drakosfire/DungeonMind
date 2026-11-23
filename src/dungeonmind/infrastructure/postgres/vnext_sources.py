@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import Any
 
@@ -70,6 +70,7 @@ from .vnext_knowledge import (
     _insert_revision,
     _lock_space,
     _read_head,
+    _read_publication_receipts,
     _read_receipt,
     _read_revision,
 )
@@ -120,6 +121,7 @@ def _verify_extension_row(
     *,
     metadata_only: bool = False,
     verified_root: NativeSourceAdmissionReceiptV1 | None = None,
+    verified_publications: Mapping[str, KnowledgePublicationReceipt] | None = None,
 ) -> NativeSourceEvidenceExtensionReceiptV1:
     extension_id = row["extension_id"]
     try:
@@ -160,7 +162,11 @@ def _verify_extension_row(
         != (receipt.source_artifact_id, receipt.source_revision_id, receipt.origin)
     ):
         raise PersistenceIntegrityError("extension original admission lineage drift")
-    publication = _read_receipt(conn, space_id, extension_id)
+    publication = (
+        _read_receipt(conn, space_id, extension_id)
+        if verified_publications is None
+        else verified_publications.get(extension_id)
+    )
     if publication != receipt.publication_receipt:
         raise PersistenceIntegrityError("extension publication receipt drift")
     return receipt
@@ -1400,22 +1406,38 @@ class _PostgresNativeTextSourceView:
             withdrawn = _withdrawn_sources(
                 conn, self._space_id, sorted({artifact for artifact, _ in requested}), self._epoch
             )
+            discovery_records = {}
+            discovery_extensions = {}
+            if not narrow_extensions:
+                roots = {}
+                for row in rows:
+                    pair = (row["source_artifact_id"], row["source_revision_id"])
+                    record = _verify_native_record(
+                        row, None, self._space_id, row["admission_id"], include_body=True,
+                    )
+                    discovery_records[pair] = record
+                    if requested[pair] - {proof.span_id for proof in record["proofs"]}:
+                        roots[pair] = record["receipt"]
+                discovery_extensions = self._read_discovery_extensions(conn, roots)
+
             for row in rows:
                 pair = (row["source_artifact_id"], row["source_revision_id"])
-                admission_id = row["admission_id"]
-                record = _verify_native_record(
-                    row,
-                    None,
-                    self._space_id,
-                    admission_id,
-                    include_body=True,
+                record = (
+                    _verify_native_record(
+                        row, None, self._space_id, row["admission_id"], include_body=True,
+                    )
+                    if narrow_extensions else discovery_records[pair]
                 )
                 proofs = {proof.span_id: (proof, record["epoch"]) for proof in record["proofs"]}
                 missing = requested[pair] - proofs.keys()
                 if missing:
                     proofs.update(
                         self._read_additional_spans(
-                            conn, pair, record, missing, narrow=narrow_extensions
+                            conn, pair, record, missing, narrow=narrow_extensions,
+                            verified_extensions=(
+                                None if narrow_extensions
+                                else (discovery_extensions.get(pair) or ())
+                            ),
                         )
                     )
 
@@ -1433,6 +1455,40 @@ class _PostgresNativeTextSourceView:
                     )
         return tuple(resolved.get(key) for key in keys)
 
+    def _read_discovery_extensions(
+        self,
+        conn: Connection[Any],
+        roots: Mapping[tuple[str, str], NativeSourceAdmissionReceiptV1],
+    ) -> dict[tuple[str, str], list[NativeSourceEvidenceExtensionReceiptV1]]:
+        if not roots:
+            return {}
+        rows = conn.execute(
+            """
+            SELECT e.*
+            FROM dungeonmind.knowledge_native_source_extensions AS e
+            JOIN unnest(%s::text[], %s::text[]) AS requested(artifact_id, revision_id)
+              ON e.source_artifact_id = requested.artifact_id
+             AND e.source_revision_id = requested.revision_id
+            WHERE e.space_id = %s AND e.source_authority_epoch <= %s
+            """,
+            (
+                [artifact for artifact, _ in roots], [revision for _, revision in roots],
+                self._space_id, self._epoch,
+            ),
+        ).fetchall()
+        publications = _read_publication_receipts(
+            conn, self._space_id, [row["extension_id"] for row in rows],
+        )
+        extensions: dict[tuple[str, str], list[NativeSourceEvidenceExtensionReceiptV1]] = {}
+        for row in rows:
+            pair = (row["source_artifact_id"], row["source_revision_id"])
+            receipt = _verify_extension_row(
+                conn, self._space_id, row, verified_root=roots[pair],
+                verified_publications=publications,
+            )
+            extensions.setdefault(pair, []).append(receipt)
+        return extensions
+
     def _read_additional_spans(
         self,
         conn: Connection[Any],
@@ -1441,6 +1497,7 @@ class _PostgresNativeTextSourceView:
         span_ids: set[str],
         *,
         narrow: bool = False,
+        verified_extensions: Sequence[NativeSourceEvidenceExtensionReceiptV1] | None = None,
     ) -> dict[str, tuple[NativeUtf8SpanProofV1, int]]:
         keys = [jsonb([{"span_id": span_id}]) for span_id in sorted(span_ids)]
         scope = (self._space_id, *pair, self._epoch)
@@ -1454,7 +1511,10 @@ class _PostgresNativeTextSourceView:
                     raise PersistenceIntegrityError("extension span identity collision")
                 matches[proof.span_id] = (proof, epoch)
 
-        if narrow:
+        if verified_extensions is not None:
+            for receipt in verified_extensions:
+                add(receipt.proofs, receipt.source_authority_epoch)
+        elif narrow:
             extension_rows = conn.execute(
                 """
                 SELECT * FROM dungeonmind.knowledge_native_source_extensions AS e

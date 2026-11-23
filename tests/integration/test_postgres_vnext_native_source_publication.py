@@ -45,9 +45,9 @@ def test_postgres_atomic_commit_reopen_and_recovery(pg, mode):
         span_id=proof.span_id,
     )
     assert expected is not None
-    assert view.get_native_text_sources((
-        (root.source_artifact_id, root.source_revision_id, proof.span_id),
-    )) == (expected,)
+    keys = ((root.source_artifact_id, root.source_revision_id, proof.span_id),)
+    assert view.get_native_text_sources(keys) == (expected,)
+    assert view.get_native_text_sources_for_discovery(keys) == (expected,)
     repo.withdraw_native_source(
         space_id=root.space_id,
         source_artifact_id=root.source_artifact_id,
