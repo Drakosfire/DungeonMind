@@ -263,7 +263,7 @@ def test_cache_retains_no_parsed_object():
 
     parsed = _parsed()
     weak_parsed = WeakParsed(
-        **{field.name: getattr(parsed, field.name) for field in fields(parsed)}
+        **{field.name: getattr(parsed, field.name) for field in fields(parsed) if field.init}
     )
     reference = weakref.ref(weak_parsed)
     cache = owner.AliasSearchIndexCache(2, 10000)
