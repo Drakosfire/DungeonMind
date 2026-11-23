@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import Any
 
@@ -70,6 +70,7 @@ from .vnext_knowledge import (
     _insert_revision,
     _lock_space,
     _read_head,
+    _read_publication_receipts,
     _read_receipt,
     _read_revision,
 )
@@ -120,6 +121,7 @@ def _verify_extension_row(
     *,
     metadata_only: bool = False,
     verified_root: NativeSourceAdmissionReceiptV1 | None = None,
+    verified_publications: Mapping[str, KnowledgePublicationReceipt] | None = None,
 ) -> NativeSourceEvidenceExtensionReceiptV1:
     extension_id = row["extension_id"]
     try:
@@ -160,7 +162,11 @@ def _verify_extension_row(
         != (receipt.source_artifact_id, receipt.source_revision_id, receipt.origin)
     ):
         raise PersistenceIntegrityError("extension original admission lineage drift")
-    publication = _read_receipt(conn, space_id, extension_id)
+    publication = (
+        _read_receipt(conn, space_id, extension_id)
+        if verified_publications is None
+        else verified_publications.get(extension_id)
+    )
     if publication != receipt.publication_receipt:
         raise PersistenceIntegrityError("extension publication receipt drift")
     return receipt
@@ -1462,16 +1468,20 @@ class _PostgresNativeTextSourceView:
         else:
             extension_rows = conn.execute(
                 """
-                SELECT extension_id FROM dungeonmind.knowledge_native_source_extensions
+                SELECT * FROM dungeonmind.knowledge_native_source_extensions
                 WHERE space_id = %s AND source_artifact_id = %s
                   AND source_revision_id = %s AND source_authority_epoch <= %s
                 """,
                 scope,
             ).fetchall()
+            publications = _read_publication_receipts(
+                conn, self._space_id, [row["extension_id"] for row in extension_rows],
+            )
             for row in extension_rows:
-                receipt = _read_extension(conn, self._space_id, row["extension_id"])
-                if receipt is None:
-                    raise PersistenceIntegrityError("indexed extension receipt missing")
+                receipt = _verify_extension_row(
+                    conn, self._space_id, row, verified_root=record["receipt"],
+                    verified_publications=publications,
+                )
                 add(receipt.proofs, receipt.source_authority_epoch)
 
         publication_rows = conn.execute(

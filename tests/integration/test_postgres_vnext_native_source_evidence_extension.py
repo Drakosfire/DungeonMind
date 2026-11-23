@@ -3,7 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from psycopg import sql
+from psycopg import Connection, sql
 
 from dungeonmind.application.vnext.errors import (
     KnowledgePublicationOutcomeUnknownError,
@@ -91,6 +91,50 @@ def test_postgres_batch_reads_only_matching_extension_and_preserves_epoch(pg, mo
     assert current.get_native_text_sources((wanted,)) == (result[0],)
     fresh = repo.open_native_source_view(root.space_id)
     assert fresh.get_native_text_sources((wanted,))[0].source_artifact.status == "retracted"
+
+
+def test_exact_source_open_batches_extensions_and_reuses_its_verified_root(pg, monkeypatch):
+    from dungeonmind.infrastructure.postgres import vnext_sources
+
+    repo = repository(pg)
+    domain, profile, _, root = setup_source(repo)
+    old = repo.open_native_source_view(root.space_id)
+    wanted = publish(repo, domain, profile, extension(repo, root))
+    extra = publish(repo, domain, profile, extension(
+        repo, root, operation="extension:unrelated", start=16, end=20,
+    ))
+    view = repo.open_native_source_view(root.space_id)
+    pair = root.source_artifact_id, root.source_revision_id
+    key = (*pair, wanted.bindings[0].span_id)
+    args = dict(source_artifact_id=key[0], source_revision_id=key[1], span_id=key[2])
+    assert old.get_native_text_source(**args) is None
+    expected, = view.get_native_text_sources((key,))
+    assert expected is not None
+    queries = []
+    execute = Connection.execute
+
+    def count(connection, query, *args, **kwargs):
+        queries.append(query if isinstance(query, str) else query.as_string(connection))
+        return execute(connection, query, *args, **kwargs)
+
+    def refuse_reread(*args, **kwargs):
+        pytest.fail("exact source open re-read its verified original admission")
+
+    with monkeypatch.context() as trace:
+        trace.setattr(Connection, "execute", count)
+        trace.setattr(vnext_sources, "_read_native_record", refuse_reread)
+        assert view.get_native_text_source(**args) == expected
+    assert sum("knowledge_native_source_extensions" in query for query in queries) == 1
+    assert sum("knowledge_publication_receipts" in query for query in queries) == 1
+
+    with pg.database.transaction() as conn:
+        conn.execute(
+            "UPDATE dungeonmind.knowledge_publication_receipts SET record_fingerprint = %s "
+            "WHERE space_id = %s AND publication_id = %s",
+            ("0" * 64, root.space_id, extra.extension_id),
+        )
+    with pytest.raises(PersistenceIntegrityError, match="publication receipt fingerprint drift"):
+        view.get_native_text_source(**args)
 
 
 @pytest.mark.parametrize(
