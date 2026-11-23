@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from psycopg import sql
+from psycopg import Connection, sql
 
 from dungeonmind.application.vnext.errors import (
     KnowledgePublicationOutcomeUnknownError,
     KnowledgeStaleParentRevisionError,
     NativeTextSourceAdmissionIntegrityError,
 )
+from dungeonmind.application.vnext.native_source_admission import (
+    publish_native_text_source_evidence,
+)
 from dungeonmind.domain.errors import PersistenceIntegrityError
 from dungeonmind.infrastructure.postgres import PostgresNativeSourceEvidenceRepository
+from tests.unit.test_vnext_native_source_admission import BODY, _request
 from tests.unit.test_vnext_native_source_evidence_extension import (
     access,
     exercise_access_and_conflict,
@@ -91,6 +96,84 @@ def test_postgres_batch_reads_only_matching_extension_and_preserves_epoch(pg, mo
     assert current.get_native_text_sources((wanted,)) == (result[0],)
     fresh = repo.open_native_source_view(root.space_id)
     assert fresh.get_native_text_sources((wanted,))[0].source_artifact.status == "retracted"
+
+
+def test_postgres_discovery_batches_full_extension_proofs_and_reuses_verified_roots(
+    pg, monkeypatch,
+):
+    from dungeonmind.infrastructure.postgres import vnext_sources
+
+    repo = repository(pg)
+    domain, profile, _, first = setup_source(repo)
+    second_body = f"{BODY}\nSecond source"
+    second = publish_native_text_source_evidence(
+        repository=repo,
+        request=_request(
+            space_id=first.space_id, parent_revision_id=first.published_revision_id,
+            admission_id="admit:discovery-second", body=second_body,
+        ),
+        domain_contract=domain, semantic_profile=profile,
+    )
+    old = repo.open_native_source_view(first.space_id)
+    first_proof = publish(
+        repo, domain, profile, extension(repo, first, operation="extension:first"),
+    )
+    extra = publish(repo, domain, profile, extension(
+        repo, first, operation="extension:extra", start=16, end=20,
+    ))
+    second_proof = publish(repo, domain, profile, extension(
+        repo, second, operation="extension:second",
+    ).model_copy(update={"expected_body_sha256": hashlib.sha256(second_body.encode()).hexdigest()}))
+    view = repo.open_native_source_view(first.space_id)
+
+    def key(root, receipt):
+        return root.source_artifact_id, root.source_revision_id, receipt.bindings[0].span_id
+
+    wanted = (key(second, second_proof), key(first, first_proof), key(second, second_proof))
+    original = key(first, first)
+    assert old.get_native_text_sources_for_discovery((*wanted, original)) == (
+        None, None, None,
+        old.get_native_text_source(
+            source_artifact_id=original[0], source_revision_id=original[1], span_id=original[2],
+        ),
+    )
+    expected = tuple(
+        view.get_native_text_source(source_artifact_id=a, source_revision_id=r, span_id=s)
+        for a, r, s in wanted
+    )
+    assert all(expected)
+
+    queries = []
+    execute = Connection.execute
+
+    def count(connection, query, *args, **kwargs):
+        queries.append(query if isinstance(query, str) else query.as_string(connection))
+        return execute(connection, query, *args, **kwargs)
+
+    def refuse_reread(*args, **kwargs):
+        pytest.fail("discovery re-read an original admission")
+
+    with monkeypatch.context() as trace:
+        trace.setattr(Connection, "execute", count)
+        trace.setattr(vnext_sources, "_read_native_record", refuse_reread)
+        assert view.get_native_text_sources_for_discovery(wanted) == expected
+    assert sum("knowledge_native_source_extensions" in query for query in queries) == 1
+    assert sum("knowledge_publication_receipts" in query for query in queries) == 1
+
+    with pg.database.transaction() as conn:
+        conn.execute(
+            "UPDATE dungeonmind.knowledge_publication_receipts SET record_fingerprint = %s "
+            "WHERE space_id = %s AND publication_id = %s",
+            ("0" * 64, first.space_id, extra.extension_id),
+        )
+    # The unrelated extension contributes no requested span but still needs proof.
+    assert view.get_native_text_sources(wanted) == expected
+    with pytest.raises(PersistenceIntegrityError, match="publication receipt fingerprint drift"):
+        view.get_native_text_sources_for_discovery(wanted)
+    with pytest.raises(PersistenceIntegrityError, match="publication receipt fingerprint drift"):
+        view.get_native_text_source(
+            source_artifact_id=wanted[1][0], source_revision_id=wanted[1][1], span_id=wanted[1][2],
+        )
 
 
 @pytest.mark.parametrize(
