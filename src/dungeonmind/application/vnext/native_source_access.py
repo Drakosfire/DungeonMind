@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import partial
 from threading import Lock
 from typing import Any, Generic, TypeVar, cast
@@ -30,8 +30,13 @@ from .builder import (
 from .errors import KnowledgeReadContextIntegrityError, NativeTextSourceAccessIntegrityError
 from .frozen_json import FrozenDict
 from .materialization import NATIVE_VNEXT_GRAPH_SCHEMA, decode_native_graph_payload
-from .model import ParsedKnowledgeRevision
-from .ports import NativeSourceEvidenceRepository, NativeTextSourceView, StoredNativeTextSource
+from .model import ParsedKnowledgeRevision, _index_source_evidence
+from .ports import (
+    NativeSourceEvidenceRepository,
+    NativeTextSourceSnapshot,
+    NativeTextSourceView,
+    StoredNativeTextSource,
+)
 from .records import (
     ParsedDomainContractRef,
     ParsedEvidenceRef,
@@ -49,6 +54,12 @@ class NativeTextSourceMembership:
 
     identity: ParsedKnowledgeRevisionIdentity
     evidence_by_id: FrozenDict[str, ParsedEvidenceRef]
+    _source_evidence: FrozenDict[tuple[str, str], tuple[str, ...]] = field(
+        init=False, repr=False, compare=False,
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_source_evidence", _index_source_evidence(self.evidence_by_id))
 
     @property
     def domain_contract_ref(self) -> ParsedDomainContractRef:
@@ -383,6 +394,57 @@ def _metadata_allowed(
     )
 
 
+def _admitted_source_metadata(
+    context: NativeTextSourceAccessContext,
+    snapshot: NativeTextSourceSnapshot,
+    artifact: SourceArtifactV3,
+    revision: SourceRevisionV2,
+    evidence: Sequence[ParsedEvidenceRef],
+) -> NativeTextSourceMetadata | None:
+    allowed = tuple(sorted(
+        row.evidence_ref_id for row in evidence
+        if _metadata_allowed(context, row, artifact, revision)
+    ))
+    if not allowed:
+        return None
+    return NativeTextSourceMetadata(
+        source_artifact=artifact.model_copy(deep=True),
+        source_revision=revision.model_copy(deep=True),
+        evidence_ref_ids=allowed,
+        origin=snapshot.get_origin(artifact.source_artifact_id, revision.source_revision_id),
+    )
+
+
+def get_admitted_native_text_source(
+    context: NativeTextSourceAccessContext,
+    *,
+    source_artifact_id: str,
+    source_revision_id: str,
+    content_sha256: str,
+) -> NativeTextSourceMetadata | None:
+    """Resolve one exact catalog choice against pinned membership and source authority."""
+    pair = (source_artifact_id, source_revision_id)
+    parsed = context.parsed
+    evidence = [
+        row for evidence_id in parsed._source_evidence.get(pair, ())
+        if _eligible_evidence(context, row := parsed.evidence_by_id[evidence_id])
+    ]
+    if not evidence:
+        return None
+    try:
+        snapshot = context.source_view.get_native_metadata_snapshot(
+            artifact_ids=(source_artifact_id,), revision_ids=(source_revision_id,),
+        )
+        artifact = snapshot.provenance.get_artifact(source_artifact_id)
+        revision = snapshot.provenance.get_revision(source_revision_id)
+        if artifact is None or revision is None:
+            return None
+        metadata = _admitted_source_metadata(context, snapshot, artifact, revision, evidence)
+        return metadata if revision.content_sha256 == content_sha256 else None
+    except PersistenceIntegrityError as exc:
+        raise NativeTextSourceAccessIntegrityError("source metadata integrity failed") from exc
+
+
 def list_admitted_native_text_sources(
     context: NativeTextSourceAccessContext,
     *,
@@ -419,22 +481,9 @@ def list_admitted_native_text_sources(
             if artifact is None or revision is None:
                 complete = False
                 continue
-            allowed = tuple(
-                sorted(
-                    row.evidence_ref_id
-                    for row in evidence
-                    if _metadata_allowed(context, row, artifact, revision)
-                )
-            )
-            if allowed:
-                sources.append(
-                    NativeTextSourceMetadata(
-                        source_artifact=artifact.model_copy(deep=True),
-                        source_revision=revision.model_copy(deep=True),
-                        evidence_ref_ids=allowed,
-                        origin=snapshot.get_origin(artifact_id, revision_id),
-                    )
-                )
+            metadata = _admitted_source_metadata(context, snapshot, artifact, revision, evidence)
+            if metadata is not None:
+                sources.append(metadata)
     except PersistenceUnavailableError:
         raise
     except PersistenceIntegrityError as exc:

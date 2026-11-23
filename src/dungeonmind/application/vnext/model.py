@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from json.encoder import encode_basestring
 
@@ -41,6 +41,17 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _index_source_evidence(
+    evidence_by_id: Mapping[str, ParsedEvidenceRef],
+) -> FrozenDict[tuple[str, str], tuple[str, ...]]:
+    by_pair: dict[tuple[str, str], list[str]] = {}
+    for evidence in evidence_by_id.values():
+        if evidence.source_revision_id is not None:
+            pair = (evidence.source_artifact_id, evidence.source_revision_id)
+            by_pair.setdefault(pair, []).append(evidence.evidence_ref_id)
+    return FrozenDict({pair: tuple(sorted(ids)) for pair, ids in by_pair.items()})
+
+
 @dataclass(frozen=True, slots=True)
 class ParsedKnowledgeRevision:
     """An immutable, deterministic, revision-local representation of decoded vNext knowledge.
@@ -56,6 +67,9 @@ class ParsedKnowledgeRevision:
     assertions_by_id: FrozenDict[str, ParsedAssertion]
     aliases_by_id: FrozenDict[str, ParsedIdentityAlias]
     evidence_by_id: FrozenDict[str, ParsedEvidenceRef]
+    _source_evidence: FrozenDict[tuple[str, str], tuple[str, ...]] = field(
+        init=False, repr=False, compare=False,
+    )
 
     # Structural graph indexes
     assertions_by_subject: FrozenDict[str, tuple[str, ...]]
@@ -143,6 +157,9 @@ class ParsedKnowledgeRevision:
         return tuple(
             self.aliases_by_id[alias_id] for alias_id in self.get_entity_alias_ids(entity_id)
         )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_source_evidence", _index_source_evidence(self.evidence_by_id))
 
     def get_evidence(self, evidence_ref_id: str) -> ParsedEvidenceRef | None:
         return self.evidence_by_id.get(evidence_ref_id)
