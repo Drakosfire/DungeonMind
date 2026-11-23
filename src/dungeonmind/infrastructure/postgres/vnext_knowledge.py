@@ -718,8 +718,30 @@ def _read_receipt(
         ).format(sql.Identifier(SCHEMA)),
         (space_id, publication_id),
     ).fetchone()
-    if row is None:
-        return None
+    return None if row is None else _verify_publication_receipt_row(row)
+
+
+def _read_publication_receipts(
+    conn: Connection[Any], space_id: str, publication_ids: Sequence[str]
+) -> dict[str, KnowledgePublicationReceipt]:
+    if not publication_ids:
+        return {}
+    rows = conn.execute(
+        sql.SQL(
+            """
+            SELECT schema_version, space_id, publication_id, command_sha256,
+                   expected_parent_revision_id, published_revision_id,
+                   graph_payload_sha256, status, record_fingerprint
+            FROM {}.knowledge_publication_receipts
+            WHERE space_id = %s AND publication_id = ANY(%s)
+            """
+        ).format(sql.Identifier(SCHEMA)),
+        (space_id, list(publication_ids)),
+    ).fetchall()
+    return {row["publication_id"]: _verify_publication_receipt_row(row) for row in rows}
+
+
+def _verify_publication_receipt_row(row: dict[str, Any]) -> KnowledgePublicationReceipt:
     fingerprint = row["record_fingerprint"]
     receipt_data = dict(row)
     receipt_data.pop("record_fingerprint", None)
