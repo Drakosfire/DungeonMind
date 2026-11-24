@@ -102,6 +102,13 @@ def _source_material(
                 raise NativeWorldCopyError(
                     "source evidence is unavailable to the authorized audience"
                 )
+            if (
+                opened.body_text is None
+                or opened.span_start_byte is None
+                or opened.span_end_byte is None
+                or opened.span_sha256 is None
+            ):
+                raise PersistenceIntegrityError("available source evidence is incomplete")
             native = view.get_native_text_source(
                 source_artifact_id=evidence["source_artifact_id"],
                 source_revision_id=evidence["source_revision_id"],
