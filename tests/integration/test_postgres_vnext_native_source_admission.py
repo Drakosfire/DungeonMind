@@ -9,10 +9,12 @@ import pytest
 from dungeonmind.application.vnext.errors import (
     KnowledgePublicationOutcomeUnknownError,
     KnowledgeStaleParentRevisionError,
+    NativeTextSourceAccessIntegrityError,
 )
 from dungeonmind.application.vnext.initialization import initialize_empty_knowledge_space
 from dungeonmind.application.vnext.native_source_access import (
     NativeTextSourceMembership,
+    get_admitted_native_text_source,
     list_admitted_native_text_sources,
     open_admitted_native_text,
     open_admitted_native_text_batch,
@@ -537,6 +539,79 @@ def test_postgres_retains_pdf_before_publication(pg, text_first):
     assert repository.get_native_pdf_source(request.space_id, revision.source_revision_id) is None
     assert repository.retain_native_pdf_source(request, body) == revision
     assert repository.get_head(request.space_id) == head
+
+
+def test_postgres_exact_source_metadata_checks_membership_and_only_reads_the_requested_pair(
+    pg, monkeypatch,
+):
+    repository = _repository(pg)
+    domain, profile, genesis = _init(repository, visibility_labels=["role:gm"])
+    parent = genesis.published_revision_id
+    receipts = []
+    for i in range(2):
+        receipt = publish_native_text_source_evidence(
+            repository=repository,
+            request=_request(
+                space_id=genesis.space_id, admission_id=f"admit:exact-{i}",
+                parent_revision_id=parent, body=f"{BODY}\nSource {i}",
+                visibility=LabelsAnyVisibility(kind="labels_any", labels=["role:gm"]),
+            ),
+            domain_contract=domain, semantic_profile=profile,
+        )
+        receipts.append(receipt)
+        parent = receipt.published_revision_id
+    context = open_native_text_source_access_context(
+        repository=repository, space_id=genesis.space_id, revision_id=parent,
+        domain_contract=domain, audience_labels=["role:gm"],
+    )
+    first = receipts[0]
+    catalog = list_admitted_native_text_sources(context)
+    expected, = [
+        item for item in catalog.sources
+        if item.source_artifact.source_artifact_id == first.source_artifact_id
+    ]
+    choice = dict(
+        source_artifact_id=first.source_artifact_id,
+        source_revision_id=first.source_revision_id,
+        content_sha256=expected.source_revision.content_sha256,
+    )
+    view_type = type(context.source_view)
+    snapshot = view_type.get_native_metadata_snapshot
+    reads = []
+
+    def observe(view, *, artifact_ids, revision_ids):
+        reads.append((tuple(artifact_ids), tuple(revision_ids)))
+        return snapshot(view, artifact_ids=artifact_ids, revision_ids=revision_ids)
+
+    monkeypatch.setattr(view_type, "get_native_metadata_snapshot", observe)
+    assert get_admitted_native_text_source(
+        context, **{**choice, "source_artifact_id": "absent"}
+    ) is None
+    assert not reads
+    assert get_admitted_native_text_source(context, **choice) == expected
+    assert reads == [((first.source_artifact_id,), (first.source_revision_id,))]
+    assert get_admitted_native_text_source(
+        context, **{**choice, "content_sha256": "0" * 64}
+    ) is None
+    assert get_admitted_native_text_source(
+        replace(context, audience_labels=frozenset()), **choice
+    ) is None
+    repository.withdraw_native_source(
+        space_id=genesis.space_id, source_artifact_id=first.source_artifact_id,
+        source_revision_id=first.source_revision_id,
+    )
+    fresh = refresh_native_text_source_access_context(repository=repository, context=context)
+    assert get_admitted_native_text_source(context, **choice) == expected
+    assert get_admitted_native_text_source(fresh, **choice) is None
+
+    with pg.database.transaction() as conn:
+        conn.execute(
+            "UPDATE dungeonmind.knowledge_native_source_admissions SET record_fingerprint = %s "
+            "WHERE space_id = %s AND admission_id = %s",
+            ("0" * 64, genesis.space_id, first.admission_id),
+        )
+    with pytest.raises(NativeTextSourceAccessIntegrityError):
+        get_admitted_native_text_source(context, **choice)
 
 
 def test_postgres_concurrent_withdrawal_preserves_graph_and_pinned_source_view(pg, monkeypatch):
