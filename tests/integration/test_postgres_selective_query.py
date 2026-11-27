@@ -7,6 +7,7 @@ from dungeonmind.application.vnext.entity_reads import EntityClaimsResult, Entit
 from dungeonmind.application.vnext.evidence_reads import EvidenceReadService
 from dungeonmind.application.vnext.materialization import encode_native_graph_payload
 from dungeonmind.application.vnext.native_source_access import (
+    native_text_source_candidates,
     open_native_text_source_access_context,
 )
 from dungeonmind.application.vnext.read_context import KnowledgeReadContext
@@ -245,7 +246,7 @@ def test_one_projection_backs_source_query_and_retained_claim_reads(
     with open_selective_source_query(repo, **options) as inactive:
         assert inactive is None
     neighborhood._publish(pg.database, ordinary)
-    from dungeonmind.infrastructure.postgres import selective_query
+    from dungeonmind.infrastructure.postgres import selective_native_sources, selective_query
 
     load = selective_query._load_activation
     opens = []
@@ -262,10 +263,20 @@ def test_one_projection_backs_source_query_and_retained_claim_reads(
         "dungeonmind.application.vnext._read_artifact._build_parsed_knowledge_revision_from_records",
         forbidden,
     )
+    parsed_ids = []
+    parse = selective_native_sources._parse_evidence
+
+    def track_evidence(evidence):
+        parsed_ids.append(evidence.evidence_ref_id)
+        return parse(evidence)
+
+    monkeypatch.setattr(selective_native_sources, "_parse_evidence", track_evidence)
     with open_selective_source_query(repo, **options) as opened:
         assert opened is not None
         source, reader = opened
-        assert source.parsed.evidence_by_id == full_source.parsed.evidence_by_id
+        assert native_text_source_candidates(source) == ()
+        assert native_text_source_candidates(full_source) is None
+        assert not parsed_ids
         assert source.source_view.epoch == full_source.source_view.epoch
         for query in ("b b", "test:edge", "unknown phrase"):
             assert reader.search_entities(query) == (
@@ -275,6 +286,10 @@ def test_one_projection_backs_source_query_and_retained_claim_reads(
         reader.get_complete_entities(("a",))
         reader.get_complete_entities(("c",))
         retained = reader.retain_complete_facts()
+        assert reader.get_entity_claims(("b", "a")) == EntityReadService().get_entity_claims(
+            ordinary, ("b", "a"),
+        )
+        assert len(parsed_ids) == len(set(parsed_ids))
     assert opens == [(ordinary.request.space_id, ordinary.request.revision_id)]
     monkeypatch.setattr(selective_query, "_fetch", forbidden)
     ids = ("cb", "ab", "cb")

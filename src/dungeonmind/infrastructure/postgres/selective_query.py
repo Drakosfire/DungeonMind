@@ -65,7 +65,7 @@ from ._selective_query_facts import _SelectiveQueryFacts
 from ._selective_revision import _fetch, _load_activation
 from ._selective_search_rank import read_bounded_search
 from .database import PostgresDatabase
-from .selective_native_sources import _read_membership, _source_context
+from .selective_native_sources import _read_source_directory, _source_context
 from .vnext_knowledge import SCHEMA
 from .vnext_sources import PostgresNativeSourceEvidenceRepository
 
@@ -179,6 +179,8 @@ class SelectiveQueryRead:
         domain_policy: DomainAdmissionPolicy,
         source_context: NativeTextSourceAccessContext,
         fact_cache: SelectiveFactCache | None = None,
+        *,
+        _verified_evidence: Mapping[str, ParsedEvidenceRef] | None = None,
     ) -> None:
         self._connection = connection
         self._revision = revision
@@ -189,6 +191,7 @@ class SelectiveQueryRead:
         self._policy = domain_policy
         self._source_context = source_context
         self._fact_cache = fact_cache
+        self._verified_evidence = _verified_evidence
         self._pin = (revision.space_id, revision.revision_id)
         self._closed = False
         self._complete: dict[str, KnowledgeReadContext[_SelectiveQueryFacts]] = {}
@@ -324,8 +327,11 @@ class SelectiveQueryRead:
 
     def _decoded(self, family: str, identifiers: set[str]) -> tuple[Fact, ...]:
         self._assert_open()
-        cache = self._fact_cache
         keys = sorted(identifiers)
+        evidence = self._verified_evidence
+        if family == "evidence" and evidence is not None:
+            return tuple(evidence[key] for key in keys if key in evidence)
+        cache = self._fact_cache
         seals = self._proof.records[family]
         found = {} if cache is None else cache._read(self._pin, family, keys, seals)
         rows = self._facts(family, identifiers - found.keys())
@@ -469,11 +475,12 @@ def open_selective_source_query(
             revision.domain_contract_ref, revision.semantic_profile_ref,
         )
         domain = _verified_source_domain(revision, domain)
-        membership = _read_membership(connection, revision, proof)
+        membership = _read_source_directory(connection, revision, proof)
         source = _source_context(repository, membership, domain, source_audience_labels)
         reader = SelectiveQueryRead(
             connection, revision, proof, request, domain, profile, domain_policy, source,
             fact_cache=fact_cache,
+            _verified_evidence=membership.evidence_by_id,
         )
         try:
             yield source, reader

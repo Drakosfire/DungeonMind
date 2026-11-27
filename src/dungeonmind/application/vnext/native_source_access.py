@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from functools import partial
@@ -28,7 +28,6 @@ from .builder import (
     build_parsed_knowledge_revision,
 )
 from .errors import KnowledgeReadContextIntegrityError, NativeTextSourceAccessIntegrityError
-from .frozen_json import FrozenDict
 from .materialization import NATIVE_VNEXT_GRAPH_SCHEMA, decode_native_graph_payload
 from .model import ParsedKnowledgeRevision
 from .ports import NativeSourceEvidenceRepository, NativeTextSourceView, StoredNativeTextSource
@@ -44,11 +43,23 @@ _EVICTED_RECORD_MAX_PAYLOAD_BYTES = 8_000_000
 
 
 @dataclass(frozen=True, slots=True)
+class NativeTextSourceCandidate:
+    """Revision membership for discovery; an exact source open still admits access."""
+
+    evidence_ref_id: str
+    source_artifact_id: str
+    source_revision_id: str
+    source_span_ref_id: str
+    annotation_schemas: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class NativeTextSourceMembership:
     """Verified evidence for one revision, with no structural Graph indexes."""
 
     identity: ParsedKnowledgeRevisionIdentity
-    evidence_by_id: FrozenDict[str, ParsedEvidenceRef]
+    evidence_by_id: Mapping[str, ParsedEvidenceRef]
+    source_candidates: tuple[NativeTextSourceCandidate, ...] | None = None
 
     @property
     def domain_contract_ref(self) -> ParsedDomainContractRef:
@@ -359,7 +370,7 @@ def _eligible_evidence(
 
 def _metadata_allowed(
     context: NativeTextSourceAccessContext,
-    evidence: ParsedEvidenceRef,
+    evidence: ParsedEvidenceRef | NativeTextSourceCandidate,
     artifact: SourceArtifactV3,
     revision: SourceRevisionV2,
 ) -> bool:
@@ -383,6 +394,16 @@ def _metadata_allowed(
     )
 
 
+def native_text_source_candidates(
+    context: NativeTextSourceAccessContext,
+) -> tuple[NativeTextSourceCandidate, ...] | None:
+    """Return the verified compact directory when the opener supplied one."""
+    membership = context.parsed
+    if isinstance(membership, NativeTextSourceMembership):
+        return membership.source_candidates
+    return None
+
+
 def list_admitted_native_text_sources(
     context: NativeTextSourceAccessContext,
     *,
@@ -393,18 +414,27 @@ def list_admitted_native_text_sources(
     Missing metadata yields partial discovery. Visibility exclusions do not disclose
     the excluded source or make an authorized audience's catalogue partial.
     """
-    pairs = {}
-    evidence_by_id = context.parsed.evidence_by_id
-    candidates = (
-        evidence_by_id.values()
-        if evidence_ref_ids is None
-        else (evidence_by_id.get(identity) for identity in dict.fromkeys(evidence_ref_ids))
-    )
-    for evidence in candidates:
-        if evidence is not None and _eligible_evidence(context, evidence):
-            pairs.setdefault((evidence.source_artifact_id, evidence.source_revision_id), []).append(
-                evidence
-            )
+    pairs: dict[
+        tuple[str, str], list[NativeTextSourceCandidate | ParsedEvidenceRef],
+    ] = {}
+    directory = native_text_source_candidates(context) if evidence_ref_ids is None else None
+    if directory is not None:
+        for candidate in directory:
+            if all(
+                term in context.source_annotation_schemas for term in candidate.annotation_schemas
+            ):
+                key = candidate.source_artifact_id, candidate.source_revision_id
+                pairs.setdefault(key, []).append(candidate)
+    else:
+        records = context.parsed.evidence_by_id
+        candidates = (
+            records.values() if evidence_ref_ids is None else
+            (records.get(identity) for identity in dict.fromkeys(evidence_ref_ids))
+        )
+        for evidence in candidates:
+            if evidence is not None and _eligible_evidence(context, evidence):
+                key = evidence.source_artifact_id, cast(str, evidence.source_revision_id)
+                pairs.setdefault(key, []).append(evidence)
     try:
         snapshot = context.source_view.get_native_metadata_snapshot(
             artifact_ids=sorted({pair[0] for pair in pairs}),
