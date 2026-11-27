@@ -6,9 +6,11 @@ from dataclasses import replace
 
 import pytest
 
+from dungeonmind.application.vnext import native_source_access
 from dungeonmind.application.vnext.errors import (
     KnowledgePublicationOutcomeUnknownError,
     KnowledgeStaleParentRevisionError,
+    NativeTextSourceAccessIntegrityError,
 )
 from dungeonmind.application.vnext.initialization import initialize_empty_knowledge_space
 from dungeonmind.application.vnext.native_source_access import (
@@ -16,6 +18,7 @@ from dungeonmind.application.vnext.native_source_access import (
     list_admitted_native_text_sources,
     open_admitted_native_text,
     open_admitted_native_text_batch,
+    open_first_admitted_native_text_by_group,
     open_native_text_source_access_context,
     refresh_native_text_source_access_context,
     refresh_native_text_source_access_scope,
@@ -592,6 +595,10 @@ def test_postgres_concurrent_withdrawal_preserves_graph_and_pinned_source_view(p
     assert open_admitted_native_text_batch(context, (evidence_id,)) == (
         open_admitted_native_text(context, evidence_id),
     )
+    for source_context in (context, refreshed):
+        assert list(open_first_admitted_native_text_by_group(
+            source_context, ((evidence_id,),)
+        )) == [open_admitted_native_text(source_context, evidence_id)]
     assert fresh.get_head(request.space_id) == head
     assert fresh.head_events(request.space_id) == events
     assert (
@@ -856,6 +863,76 @@ def test_native_metadata_snapshot_batches_text_admission_and_span_reads(
     with pytest.raises(PersistenceIntegrityError, match="span index drift"):
         view.get_native_text_sources(keys)
 
+
+def test_postgres_discovery_batches_only_first_candidates_and_replays_in_order(pg, monkeypatch):
+    from psycopg import Connection
+
+    repository = _repository(pg)
+    domain, profile, genesis = _init(repository)
+    parent = genesis.published_revision_id
+    receipts = []
+    for index in range(3):
+        receipt = publish_native_text_source_evidence(
+            repository=repository,
+            request=_request(
+                space_id=genesis.space_id,
+                admission_id=f"admit:discovery-{index}",
+                parent_revision_id=parent,
+                body=f"{BODY}\nSource {index}",
+            ),
+            domain_contract=domain,
+            semantic_profile=profile,
+        )
+        receipts.append(receipt)
+        parent = receipt.published_revision_id
+    context = open_native_text_source_access_context(
+        repository=repository, space_id=genesis.space_id, revision_id=parent,
+        domain_contract=domain,
+    )
+    first, second, third = [receipt.bindings[0].evidence_ref_id for receipt in receipts]
+    single = open_admitted_native_text
+    expected = [single(context, item) for item in (first, second, third, "absent")]
+    groups = ((first, "unused"), ("missing", second), (third,), ("absent",))
+    singles = []
+    queries = []
+    execute = Connection.execute
+
+    def track_single(access, item):
+        singles.append(item)
+        return single(access, item)
+
+    def track_query(connection, query, *args, **kwargs):
+        queries.append(query)
+        return execute(connection, query, *args, **kwargs)
+
+    monkeypatch.setattr(native_source_access, "open_admitted_native_text", track_single)
+    with context.source_view.read_scope() as view:
+        scoped = replace(context, source_view=view)
+        with monkeypatch.context() as counter:
+            counter.setattr(Connection, "execute", track_query)
+            assert list(open_first_admitted_native_text_by_group(scoped, groups)) == expected
+        assert singles == [second]
+        # Two SQL reads for the first candidates, followed by three for one retry.
+        assert len(queries) == 5
+
+    with pg.database.transaction() as conn:
+        conn.execute(
+            "DELETE FROM dungeonmind.knowledge_native_source_spans "
+            "WHERE space_id = %s AND admission_id = %s",
+            (genesis.space_id, receipts[-1].admission_id),
+        )
+    singles.clear()
+    with context.source_view.read_scope() as view:
+        scoped = replace(context, source_view=view)
+        opens = open_first_admitted_native_text_by_group(scoped, groups)
+        assert next(opens) == expected[0]
+        assert singles == [first]
+        assert next(opens) == expected[1]
+        assert singles == [first, "missing", second]
+        with pytest.raises(
+            NativeTextSourceAccessIntegrityError, match="storage failed integrity validation"
+        ):
+            next(opens)
 
 @pytest.mark.parametrize("audience_can_open", [True, False])
 def test_selective_source_membership_matches_exact_source_only_authority(
