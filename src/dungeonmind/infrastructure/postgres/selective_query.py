@@ -179,6 +179,8 @@ class SelectiveQueryRead:
         domain_policy: DomainAdmissionPolicy,
         source_context: NativeTextSourceAccessContext,
         fact_cache: SelectiveFactCache | None = None,
+        *,
+        _verified_evidence: Mapping[str, ParsedEvidenceRef] | None = None,
     ) -> None:
         self._connection = connection
         self._revision = revision
@@ -189,6 +191,7 @@ class SelectiveQueryRead:
         self._policy = domain_policy
         self._source_context = source_context
         self._fact_cache = fact_cache
+        self._verified_evidence = _verified_evidence
         self._pin = (revision.space_id, revision.revision_id)
         self._closed = False
         self._complete: dict[str, KnowledgeReadContext[_SelectiveQueryFacts]] = {}
@@ -324,8 +327,13 @@ class SelectiveQueryRead:
 
     def _decoded(self, family: str, identifiers: set[str]) -> tuple[Fact, ...]:
         self._assert_open()
-        cache = self._fact_cache
         keys = sorted(identifiers)
+        # Only the combined opener supplies this directory. It verified all
+        # evidence records against this reader's projection in this transaction.
+        evidence = self._verified_evidence
+        if family == "evidence" and evidence is not None:
+            return tuple(evidence[key] for key in keys if key in evidence)
+        cache = self._fact_cache
         seals = self._proof.records[family]
         found = {} if cache is None else cache._read(self._pin, family, keys, seals)
         rows = self._facts(family, identifiers - found.keys())
@@ -474,6 +482,7 @@ def open_selective_source_query(
         reader = SelectiveQueryRead(
             connection, revision, proof, request, domain, profile, domain_policy, source,
             fact_cache=fact_cache,
+            _verified_evidence=membership.evidence_by_id,
         )
         try:
             yield source, reader
